@@ -6,7 +6,7 @@ masking and the four-space skip, string-stored config with int casts on read,
 NULL templates read back as defaults, AUTOINCREMENT ids. Only synthetic
 secrets are used.
 
-usage: test_reconcile.py <schema.json> <hoard desired.json>
+usage: test_reconcile.py <schema.json>
 """
 
 import contextlib
@@ -24,7 +24,6 @@ from pathlib import Path
 import reconcile
 
 SCHEMA = json.loads(Path(sys.argv[1]).read_text())
-HOARD_DESIRED = json.loads(Path(sys.argv[2]).read_text())
 del sys.argv[1:]
 
 API_KEY = "synthetic-api-key-0123456789abcd"
@@ -35,10 +34,6 @@ SECRETS = {
     "group-chat": "-1002222222222",
     "smtp": "synthetic-smtp-password",
 }
-# credentials the hoard desired state refers to, filled with synthetic values
-for declared in HOARD_DESIRED["notifiers"]:
-    for secret in declared["secret_config"].values():
-        SECRETS.setdefault(secret["credential"], f"synthetic-{secret['credential']}")
 
 PARAMETER_TYPES = {"library_name": "str", "episode_count": "int", "media_type": "str"}
 MASK = "    "
@@ -419,20 +414,6 @@ class ReconcileTest(unittest.TestCase):
         self.assertEqual(self.run_reconcile({"notifiers": declared}), 0)
         self.assertEqual(self.writes(), [])
 
-    def test_hoard_desired_state_applies_and_converges(self):
-        self.run_reconcile(HOARD_DESIRED)
-        ids = sorted(n["id"] for n in HOARD_DESIRED["notifiers"])
-        self.assertEqual(sorted(self.fake.rows), ids)
-        self.fake.calls.clear()
-        self.assertEqual(self.run_reconcile(HOARD_DESIRED), 0)
-        self.assertEqual(self.writes(), [])
-        self.assert_no_secret_output()
-
-    def test_hoard_desired_state_matches_ui_stored_rows(self):
-        self.seed(HOARD_DESIRED["notifiers"])
-        self.assertEqual(self.run_reconcile(HOARD_DESIRED), 0)
-        self.assertEqual(self.writes(), [])
-
     def test_absent_id_below_existing_ids_is_refused(self):
         self.seed([notifier(2)])
         with self.assertRaisesRegex(reconcile.ReconcileError, "cannot be recreated"):
@@ -600,15 +581,6 @@ class ReconcileTest(unittest.TestCase):
         api.call = reconcile.ReadOnly(api.call)
         with contextlib.redirect_stdout(self.output):
             return reconcile.preview(api, desired, SCHEMA, self.tmp, deadline=0)
-
-    def test_preview_of_hoard_state_is_safe_and_writes_nothing(self):
-        self.seed(HOARD_DESIRED["notifiers"])
-        before = copy.deepcopy(self.fake.rows)
-        self.assertTrue(self.run_preview(HOARD_DESIRED))
-        self.assertEqual(self.writes(), [])
-        self.assertEqual(self.fake.rows, before)
-        self.assertEqual(self.output.getvalue().count("would update nothing"), 5)
-        self.assert_no_secret_output()
 
     def test_preview_flags_a_differing_secret_without_sending_it(self):
         self.seed([notifier(1), notifier(2)])

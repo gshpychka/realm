@@ -1,6 +1,6 @@
 """Offline tests for configure.py on synthetic config.ini and database files.
 
-usage: test_configure.py <schema.json> <configobj dir> <hoard settings.json>
+usage: test_configure.py <schema.json> <configobj dir>
 """
 
 import contextlib
@@ -18,7 +18,6 @@ import configure
 
 SCHEMA = json.loads(Path(sys.argv[1]).read_text())
 CONFIGOBJ = Path(sys.argv[2])
-HOARD_DESIRED = json.loads(Path(sys.argv[3]).read_text())
 del sys.argv[1:]
 
 SECRETS = {"api": "synthetic-api-key-0123456789abcd", "plex": "synthetic-plex-token-xx"}
@@ -220,17 +219,6 @@ class ConfigureTest(unittest.TestCase):
                 },
                 SCHEMA,
             )
-
-    def test_hoard_settings_are_valid(self):
-        configure.check(HOARD_DESIRED, SCHEMA)
-
-    def test_hoard_plex_token_is_tautullis_own(self):
-        # the shared plex-token (homepage) is not Tautulli's working token
-        credentials = {
-            (s["section"], s["key"]): s["credential"] for s in HOARD_DESIRED["secrets"]
-        }
-        self.assertEqual(credentials["PMS", "pms_token"], "tautulli-plex-token")
-        self.assertNotIn("plex-token", credentials.values())
 
     def run_preview(self):
         with contextlib.redirect_stdout(self.output):

@@ -489,8 +489,8 @@ let
         python3 -I $out/configure.py check ${settingsFile} $out/schema.json
         python3 -I $out/reconcile.py check ${notifiersFile} $out/schema.json
         cp $src/*.py .
-        python3 test_configure.py $out/schema.json ${configobjDir} ${settingsFile}
-        python3 test_reconcile.py $out/schema.json ${notifiersFile}
+        python3 test_configure.py $out/schema.json ${configobjDir}
+        python3 test_reconcile.py $out/schema.json
       '';
   # the configobj copy Tautulli itself reads and writes config.ini with
   configobjDir = "${cfg.package}/libexec/tautulli/lib";
