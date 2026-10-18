@@ -46,6 +46,12 @@
       # not following our nixpkgs: more cache hits that way
       url = "github:numtide/llm-agents.nix";
     };
+    hermes-agent = {
+      # Upstream provides a sealed Python environment and the native NixOS module.
+      url = "github:NousResearch/hermes-agent";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
+    };
     pituitary = {
       url = "git+ssh://git@github.com/gshpychka/pituitary";
       inputs.nixpkgs.follows = "nixpkgs";

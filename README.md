@@ -30,6 +30,9 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
 | `scripts/` | Runbooks for the travel router, Kodi box and Voice PE; OpenClaw's nixos-control plugin |
 | `tests/` | NixOS VM tests |
 
+Hoard also supports [Hermes Agent](machines/hoard/hermes-agent/README.md), with
+its own service identity, Telegram bot, model login and persistent state.
+
 ## Usage
 
 ```sh
