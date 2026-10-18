@@ -57,9 +57,9 @@ in
   services.adguardhome = {
     enable = true;
     mutableSettings = false;
-    host = "127.0.0.1"; # for the web UI
     settings = {
       schema_version = 29;
+      http.address = "127.0.0.1:3000"; # for the web UI
       users = [
         {
           name = "glib";

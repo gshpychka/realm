@@ -15,7 +15,7 @@
     radarr = config.services.radarr.settings.server.port;
     lidarr = config.services.lidarr.settings.server.port;
     prowlarr = config.services.prowlarr.settings.server.port;
-    bazarr = config.services.bazarr.listenPort;
+    bazarr = config.services.bazarr.settings.general.port;
     seerr = config.services.seerr.port;
     maintainerr = 6246;
     tautulli = config.services.tautulli.port;
