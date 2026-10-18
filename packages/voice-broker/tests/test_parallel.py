@@ -31,6 +31,9 @@ class Ears:
     def feed(self, pcm: np.ndarray, audible: bool) -> None:
         pass
 
+    def user_heard(self, back_s: float | None, during: bool = False) -> None:
+        pass
+
     def start(self) -> None:
         pass
 
