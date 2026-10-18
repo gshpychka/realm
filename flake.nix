@@ -300,6 +300,14 @@
                 buildPhase = "bun run check";
                 installPhase = "touch $out";
               };
+              # the Voice PE component's ESP-free logic, built for the host
+              voice-pe = pkgs.runCommandCC "check-voice-pe" { buildInputs = [ pkgs.gtest ]; } ''
+                $CXX -std=c++20 -Wall -Wextra -Werror -I${./scripts/voice-pe/components/voice_broker} \
+                  ${./scripts/voice-pe/components/voice_broker/session.cpp} ${./scripts/voice-pe/tests}/*.cpp \
+                  -lgtest_main -lgtest -o test
+                ./test
+                touch $out
+              '';
             }
           );
         in

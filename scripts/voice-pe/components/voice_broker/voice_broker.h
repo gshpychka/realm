@@ -13,10 +13,11 @@
 //   mic task     microphone callback: frames mic audio into io_queue_
 //   audio task   speaker output callback: frames PLAYED reports into io_queue_
 
+#include "credential.h"
 #include "protocol.h"
+#include "session.h"
 #include "esphome/components/api/custom_api_device.h"
 #include "esphome/core/preferences.h"
-#include <mutex>
 
 #ifndef USE_API_NOISE
 #error "voice_broker credential provisioning requires API Noise encryption"
@@ -45,9 +46,7 @@
 
 namespace esphome::voice_broker {
 
-enum class Phase : uint8_t { LISTENING, THINKING, REPLYING };
-
-class VoiceBroker : public Component, public api::CustomAPIDevice {
+class VoiceBroker : public Component, public api::CustomAPIDevice, protected Session::Device {
  public:
   void setup() override;
   void loop() override;
@@ -69,10 +68,10 @@ class VoiceBroker : public Component, public api::CustomAPIDevice {
   void start(const std::string &wake_word);
   // Ends the conversation from the device side (button, wake word).
   void stop();
-  bool is_running() const { return this->state_ != State::IDLE; }
+  bool is_running() const { return this->session_.running(); }
 
  protected:
-  enum class State : uint8_t { IDLE, CONNECTING, WAITING_READY, ACTIVE };
+  using Event = Session::Event;
 
   struct IoItem {
     enum Op : uint8_t { OPEN, CLOSE, BINARY, TEXT } op;
@@ -81,18 +80,21 @@ class VoiceBroker : public Component, public api::CustomAPIDevice {
     size_t len;
   };
 
-  struct Event {
-    enum Type : uint8_t { CONNECTED, DISCONNECTED, END, PHASE } type;
-    uint32_t generation;
-    Phase phase;
-  };
-
   // esp_websocket_client's handler argument: ties events to the connection
   // they came from, so late events from a closed one are ignored.
   struct HandlerContext {
     VoiceBroker *parent;
     uint32_t generation;
   };
+
+  bool connect() override;
+  void begin(const std::string &wake_word) override;
+  void send_stop() override;
+  void disconnect() override;
+  void on_phase(Phase phase) override;
+  void on_end() override;
+  void on_error() override;
+  void on_startup_failure(const std::string &wake_word) override;
 
   static void io_task_(void *arg);
   void io_open_(uint32_t generation);
@@ -108,14 +110,11 @@ class VoiceBroker : public Component, public api::CustomAPIDevice {
   bool queue_io_(IoItem::Op op, uint8_t *data = nullptr, size_t len = 0);
   void queue_control_(const char *type, std::initializer_list<std::pair<const char *, std::string>> fields = {});
   void feed_speaker_();
-  void teardown_();
-  void startup_failure_();
 
   std::string url_;
-  struct SavedToken { char value[257]{}; };
-  std::string token_;
+  struct SavedToken { char value[Credential::MAX_SIZE + 1]{}; };
+  Credential credential_;
   ESPPreferenceObject token_preference_;
-  std::mutex token_mutex_;
   microphone::MicrophoneSource *mic_source_{nullptr};
   speaker::Speaker *speaker_{nullptr};
 
@@ -124,10 +123,7 @@ class VoiceBroker : public Component, public api::CustomAPIDevice {
   Trigger<> error_trigger_;
   Trigger<std::string> startup_failure_trigger_;
 
-  State state_{State::IDLE};
-  std::string wake_word_;
-  // Bumped per conversation; io items and events from older ones are dropped.
-  std::atomic<uint32_t> generation_{0};
+  Session session_{*this};
   // Mic and speaker callbacks only produce frames while this is set.
   std::atomic<bool> streaming_{false};
 

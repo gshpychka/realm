@@ -76,7 +76,7 @@ No imported store snapshots, local caches or GC roots are needed. The earlier
 preflight artifacts; they are not in the package dependency graph.
 
 To update, change the release/commit/archive/PyPI hash locks deliberately, review
-localization in `reconstruct.py`, then build and run the regression/artifact tests.
+localization in `reconstruct.py`, then build the firmware and the `voice-pe` check.
 Never add Wi-Fi/API/broker secrets as Nix attributes or files.
 
 Existing-solution preflight: `marcus7070/esphome-flake` packages only the old CLI.
@@ -143,16 +143,16 @@ routing compares it with `Hey Jarvis`. Both model IDs and the
 
 ### Startup fallback (no replay)
 
-The device sends START but **no microphone audio** until the broker emits its
-first `phase: listening`, already sent only after `ModelSession.open` succeeds
-in `packages/voice-broker/src/voice_broker/conversation.py`. Connection refusal,
-authentication failure, END/disconnect before readiness, or a 10-second combined
-connection/model-startup timeout invokes normal `voice_assistant.start` once.
-A component allocation failure falls back immediately. Generation checks ignore
-late events and stale queued opens; no reconnect or backend retry loop is used.
+The device streams the microphone from connection; the broker holds that audio
+until its model session opens, then emits the first `phase: listening`
+(readiness). Connection refusal, authentication failure, END/disconnect before
+readiness, or a 10-second combined connection/model-startup timeout invokes
+normal `voice_assistant.start` once. A component allocation failure or a missing
+token falls back immediately. Generation checks ignore late events and stale
+queued opens; no reconnect or backend retry loop is used.
 
-No audio/transcript is replayed. Words spoken during connection/startup are not
-sent: wait for the listening cue and repeat the command if fallback occurs.
+No audio/transcript is replayed: speech held for a failed startup is dropped, so
+repeat the command at the Assist listening cue.
 After readiness, failures end Live without automatic Assist fallback, because
 tools may already have acted. Normal completion and button/wake cancellation
 never fall back. The stock button/timer/announcement behavior is retained.
@@ -167,6 +167,8 @@ deployment are required.
 ### Verification
 
 ESPHome config/code generation passed without secrets. Never compile firmware on hoard.
+The `voice-pe` flake check runs the component's startup fallback and token rules
+(`session.cpp`, `credential.h`) on the host.
 
 Verified clean-source artifact (2026-10-12):
 `/nix/store/9zdi5bkmy4ipi8sjdacpl0znwfcy6bar-voice-pe-firmware-26.9.0-esphome-2026.8.0`.
