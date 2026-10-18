@@ -93,6 +93,7 @@
 
     claudeCode.enable = true;
     codex.enable = true;
+    codexMigration.enable = true;
     onedrive.enable = true;
 
     root = {
