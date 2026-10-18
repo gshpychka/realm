@@ -13,7 +13,6 @@
 let
   cfg = config.my.voice-broker;
   openclaw = config.my.openclaw;
-  gw = config.services.openclaw-gateway;
   json = pkgs.formats.json { };
   voicePes = lib.filterAttrs (_: host: host.voiceArea != null) config.my.hosts;
   voicePeIps = map (host: host.lanIp) (lib.attrValues voicePes);
