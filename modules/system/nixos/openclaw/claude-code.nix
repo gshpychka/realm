@@ -44,8 +44,16 @@ in
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
       {
-        # ACP is on unless set to false
-        services.openclaw-gateway.config.acp.enabled = cfg.claudeCode.enable;
+        services.openclaw-gateway.config.acp = {
+          # ACP is on unless set to false
+          enabled = cfg.claudeCode.enable || cfg.codex.enable;
+          # Built here in one list: gateway config merges with lib.recursiveUpdate,
+          # where a second module's list would replace this one, not extend it.
+          # "codex" is Codex's id in acpx's registry. The acpx backend, its
+          # permission mode and the default agent below stay Claude Code's; with
+          # Claude Code off, none of them is set.
+          allowedAgents = lib.optional cfg.claudeCode.enable agentId ++ lib.optional cfg.codex.enable "codex";
+        };
       }
       (lib.mkIf cfg.claudeCode.enable (
         lib.mkMerge [
@@ -62,7 +70,6 @@ in
                 acp = {
                   backend = "acpx";
                   defaultAgent = agentId;
-                  allowedAgents = [ agentId ];
                 };
                 plugins.entries.acpx = {
                   enabled = true;
