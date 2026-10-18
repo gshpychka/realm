@@ -119,7 +119,7 @@ in
         UMask = "0077";
 
         ExecStartPost = [ (lib.getExe readinessCheck) ];
-        # the gateway is ready about 10s after its start in tests/nixos-switch.nix
+        # the gateway is ready about 10s after its start
         TimeoutStartSec = 120;
         # On stop, SIGTERM reaches the gateway alone, which drains active
         # turns before it exits 0; the SIGKILL that follows reaches what its

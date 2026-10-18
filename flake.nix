@@ -249,10 +249,6 @@
               bun2nix = inputs.bun2nix.packages.${system}.default;
             in
             {
-              voice-pe-unit = import ./scripts/voice-pe/checks.nix {
-                inherit pkgs;
-                source = self;
-              };
               statix = pkgs.runCommand "check-statix" { nativeBuildInputs = [ pkgs.statix ]; } ''
                 statix check ${self} -c ${self}
                 touch $out

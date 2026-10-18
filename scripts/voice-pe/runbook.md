@@ -166,13 +166,7 @@ deployment are required.
 
 ### Verification
 
-Run `CXX=g++ python3 scripts/voice-pe/tests/test_startup.py` to exercise actual
-firmware state-machine methods against mocked I/O (not ESP32 concurrency/audio).
-ESPHome config/code generation passed without secrets. Actual-method host tests
-use dummy values; they are not hardware concurrency/audio/reboot tests. Never
-compile firmware on hoard. Run the credential test with
-`CXX=g++ python3 scripts/voice-pe/tests/test_provision.py`; audit a built output with
-`python3 scripts/voice-pe/tests/audit_firmware.py /nix/store/…-voice-pe-firmware-…`.
+ESPHome config/code generation passed without secrets. Never compile firmware on hoard.
 
 Verified clean-source artifact (2026-10-12):
 `/nix/store/9zdi5bkmy4ipi8sjdacpl0znwfcy6bar-voice-pe-firmware-26.9.0-esphome-2026.8.0`.
@@ -182,8 +176,7 @@ Independent remote regenerations produced identical full generated-project and
 Python-module NAR hashes, and identical firmware/bootloader/partition-table/ELF
 checksums. Codegen uses a fixed Python hash seed to stabilize schema comments.
 The clean source copy contained no `.esphome`, imported lock, secrets or plan;
-its dependency graph had no imported snapshot/root references. Remote Nix tests
-passed for startup/fallback, credential action and public-input contracts.
+its dependency graph had no imported snapshot/root references.
 No device flashing or NixOS switching was performed.
 
 With authorization, flash one named PE first, then check:

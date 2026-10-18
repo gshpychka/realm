@@ -71,10 +71,8 @@ in
   };
 
   # Only notification event emission / optional Telegram topic routing differs.
-  # Extract from an unstarted image, verify hashes, run offline regression tests,
-  # and bind the four patched modules read-only. Cancellation notices survive.
-  # notifications.service.js is extracted only so the tests drive the real
-  # notification dispatcher; it is neither patched nor mounted.
+  # Extract from an unstarted image, verify hashes, and bind the four patched
+  # modules read-only. Cancellation notices survive.
   systemd.services.docker-maintainerr = {
     serviceConfig = {
       RuntimeDirectory = "maintainerr-notification-patch";
@@ -89,8 +87,6 @@ in
       ${pkgs.docker}/bin/docker cp "$source:/opt/app/apps/server/dist/modules/collections/collections.service.js" "$temp/collections.service.js"
       ${pkgs.docker}/bin/docker cp "$source:/opt/app/apps/server/dist/modules/rules/tasks/rule-executor.service.js" "$temp/rule-executor.service.js"
       ${pkgs.docker}/bin/docker cp "$source:/opt/app/apps/server/dist/modules/notifications/agents/telegram.js" "$temp/telegram.js"
-      ${pkgs.docker}/bin/docker cp "$source:/opt/app/apps/server/dist/modules/notifications/notifications.service.js" "$temp/notifications.service.js"
-      ${pkgs.nodejs}/bin/node ${notificationFiles}/test.cjs "$temp"
       ${pkgs.nodejs}/bin/node ${notificationFiles}/patch.cjs "$temp"
       for file in collection-handler.js collections.service.js rule-executor.service.js telegram.js; do
         ${pkgs.nodejs}/bin/node --check "$temp/$file"

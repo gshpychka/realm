@@ -38,7 +38,7 @@ let
       "W503"
     ];
   } (builtins.readFile ./arr-sync.py);
-  # the engine, usable only once its tests (fake Servarr API, synthetic secrets) pass
+  # the engine, usable only once its tests pass
   engine =
     pkgs.runCommand "arr-sync-tested"
       {
