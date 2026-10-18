@@ -65,6 +65,21 @@ in
       description = "Native plugin paths, merged before rendering the Gateway JSON config.";
     };
 
+    bindings = lib.mkOption {
+      type = lib.types.listOf (lib.types.attrsOf lib.types.json);
+      default = [ ];
+      example = [
+        {
+          agentId = "main";
+          match = {
+            channel = "telegram";
+            accountId = "*";
+          };
+        }
+      ];
+      description = "Route bindings (https://docs.openclaw.ai/concepts/multi-agent), merged before rendering the Gateway JSON config; empty leaves `bindings` unset.";
+    };
+
     workspace = lib.mkOption {
       type = lib.types.str;
       default = "${gw.stateDir}/workspace";
@@ -100,6 +115,10 @@ in
         # The upstream JSON option uses recursiveUpdate, which replaces lists.
         # Aggregate in a typed Nix list first so one plugin cannot erase another.
         plugins.load.paths = cfg.pluginPaths;
+      }
+      // lib.optionalAttrs (cfg.bindings != [ ]) {
+        # the same for bindings, a list too
+        inherit (cfg) bindings;
       };
     };
 
