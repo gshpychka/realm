@@ -24,10 +24,6 @@ GPT-Live stays the only voice:
   Home Assistant turns heard but not yet told, in the order they happened.
   Their audio offsets are logged, not compared with GPT-Live's timeline, whose
   time base the API does not document.
-- Whether the user spoke over the assistant, which decides whether Home
-  Assistant hears the audio held meanwhile (assist.py), is judged within
-  GPT-Live's timeline alone: a user transcript fragment against the assistant's
-  own transcript, both stamped on it. No offset between it and the mic is assumed.
 """
 
 from __future__ import annotations
@@ -98,17 +94,6 @@ _SETTLE_MAX_S = 2.0
 # Classifications of one request when more of it keeps arriving while it is classified.
 _ROUTE_ATTEMPTS = 3
 
-# Parallel: the assistant's transcript fragments this close on Live's timeline are one stretch of its speech.
-_SPAN_JOIN_MS = 500
-# Parallel: user speech starting this soon after the assistant's speech ended on Live's timeline is still over
-# it: the speaker plays it out later than Live stamps it (conversation.py PLAYBACK_LEAD and its hangover).
-_OVER_ASSISTANT_TAIL_MS = 1500
-# Parallel: stretches of the assistant's speech kept to judge user speech against.
-_SPANS_KEPT = 16
-# Parallel: how long ago speech over the assistant began, at least, when its transcript arrives. A
-# fragment's stamps don't include how late it arrives, which is not measured; this assumes up to 2.5 s,
-# so the user's first words are kept. assist.BARGE_IN_BACK_MAX_S bounds it.
-_BACK_MIN_MS = 2500
 # Parallel: how long a finished Home Assistant turn waits for a delegation to claim it before it is told on its own:
 # GPT-Live usually delegates before Home Assistant is done, so this only catches a late delegation.
 _CLAIM_GRACE_S = 1.0
@@ -154,7 +139,6 @@ class HomeEars(Protocol):
     events: asyncio.Queue[HomeEvent]
 
     def feed(self, pcm: np.ndarray, audible: bool) -> None: ...
-    def user_heard(self, back_s: float | None, during: bool = False) -> None: ...
     def start(self) -> None: ...
     def stop(self) -> asyncio.Task[None] | None: ...
 
@@ -393,11 +377,6 @@ class LiveSession:
         self._delegation_offset: int | None = None
         # Parallel: Home Assistant's turns by number, until GPT-Live is told.
         self._slots: dict[int, _Slot] = {}
-        # Parallel: the assistant's speech on Live's timeline, [start_ms, end_ms] of each stretch, newest last.
-        self._assistant_spans: deque[list[int]] = deque(maxlen=_SPANS_KEPT)
-        # Parallel: the newest end (ms) of a user transcript fragment on Live's timeline. Only the user's
-        # are taken: they follow the mic audio, while the assistant's are stamped as its speech is made.
-        self._timeline_ms = 0
         # Parallel: the gaps (HomeTurn.gap) a cut turn was told for: the other pieces of the same cut are not.
         self._gaps_told: set[int] = set()
         # The newest Home Assistant turn that acted: an observation of an older one is stale.
@@ -526,17 +505,8 @@ class LiveSession:
                 case "session.input_transcript.delta":
                     self._host.mark_activity()
                     self._user_starts.append(event.start_ms)
-                    if self._parallel is not None:
-                        self._timeline_ms = max(self._timeline_ms, event.end_ms)
-                        back_s, during = self._over_assistant(event.start_ms)
-                        if back_s is not None:
-                            # Live's timeline trails the mic by what the pacer still holds; Home Assistant's doesn't.
-                            back_s += self._mic.pending_samples / SPEAKER_RATE
-                        self._parallel.home.user_heard(back_s, during)
                     self._hear("user", event.delta)
                 case "session.output_transcript.delta":
-                    if self._parallel is not None:
-                        self._assistant_spoke(event.start_ms, event.end_ms)
                     self._hear("assistant", event.delta)
                 case "session.delegation.created":
                     await self._host.set_phase(Phase.THINKING)
@@ -549,28 +519,6 @@ class LiveSession:
                 case "error":
                     log.error("openai error: %s (%s)", event.error.message, event.error.code)
         self._flush_transcripts()
-
-    def _assistant_spoke(self, start_ms: int, end_ms: int) -> None:
-        spans = self._assistant_spans
-        if spans and start_ms <= spans[-1][1] + _SPAN_JOIN_MS:
-            spans[-1][1] = max(spans[-1][1], end_ms)
-        else:
-            spans.append([start_ms, end_ms])
-
-    def _over_assistant(self, start_ms: int) -> tuple[float | None, bool]:
-        """How long ago (s) user speech starting at `start_ms` began, if over the assistant's speech, else None;
-        and whether it began within the assistant's speech itself rather than just after it.
-
-        Both are on Live's own timeline, so no clock or audio offset is assumed: a fragment
-        trailing what the user said before the assistant began starts before its speech.
-        The time ago is measured to the newest end of the user's fragments, which trails the audio.
-        This assumes each fragment is stamped with where its own words start (as every fragment's
-        start_ms is documented), not where the utterance does.
-        """
-        if not any(start <= start_ms <= end + _OVER_ASSISTANT_TAIL_MS for start, end in self._assistant_spans):
-            return None, False
-        during = any(start <= start_ms <= end for start, end in self._assistant_spans)
-        return max(self._timeline_ms - start_ms, _BACK_MIN_MS) / 1000, during
 
     def _hear(self, role: Role, text: str) -> None:
         if self._heard and self._heard[-1][0] != role:

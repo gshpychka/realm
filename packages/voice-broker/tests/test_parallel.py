@@ -7,14 +7,11 @@ from collections.abc import Awaitable, Callable
 
 import numpy as np
 import pytest
+import virtual_time
 from live_fakes import Connection, conversation
 from voice_broker import live
 from voice_broker.assist import HeardSpeech, HomeEvent, HomeTurn, Outcome
 from voice_broker.live import Parallel
-
-# The claim grace and the combine wait, shortened: only their order matters.
-CLAIM_GRACE_S = 0.005
-COMBINE_WAIT_S = 0.02
 
 LIGHT = HomeTurn(1, Outcome.ACTED, "The light is on.", "turn on the light")
 LIGHT_TOLD = "Home Assistant: The light is on."
@@ -32,9 +29,6 @@ class Ears:
         self.events: asyncio.Queue[HomeEvent] = asyncio.Queue()
 
     def feed(self, pcm: np.ndarray, audible: bool) -> None:
-        pass
-
-    def user_heard(self, back_s: float | None, during: bool = False) -> None:
         pass
 
     def start(self) -> None:
@@ -64,7 +58,7 @@ async def settle() -> None:
 
 
 async def until(condition: Callable[[], bool]) -> None:
-    async with asyncio.timeout(5):
+    async with asyncio.timeout(60):
         while not condition():
             await asyncio.sleep(0.001)
 
@@ -127,9 +121,7 @@ def said(*parts: str) -> str:
         (cut_in_two, [], [live._HOME_FAILED.format(reason="speech cut")]),
     ],
 )
-def test_each_home_assistant_turn_is_told_once(monkeypatch, scenario: Scenario, spoken, thought):
-    monkeypatch.setattr(live, "_CLAIM_GRACE_S", CLAIM_GRACE_S)
-    monkeypatch.setattr(live, "_COMBINE_WAIT_S", COMBINE_WAIT_S)
+def test_each_home_assistant_turn_is_told_once(scenario: Scenario, spoken, thought):
     ears, agent = Ears(), Agent()
 
     async def main() -> Connection:
@@ -137,9 +129,9 @@ def test_each_home_assistant_turn_is_told_once(monkeypatch, scenario: Scenario, 
             await scenario(conn, ears, agent)
             await until(lambda: len(conn.spoken) + len(conn.thought) >= len(spoken) + len(thought))
             # past every wait that could tell a turn a second time
-            await asyncio.sleep(2 * (CLAIM_GRACE_S + COMBINE_WAIT_S))
+            await asyncio.sleep(60)
         return conn
 
-    conn = asyncio.run(main())
+    conn = virtual_time.run(main())
     assert conn.spoken == spoken
     assert conn.thought == thought
