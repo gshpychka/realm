@@ -29,5 +29,15 @@ in
         };
       };
     };
+    # The ACP dispatcher runs only registered agent ids; acp.allowedAgents
+    # admitting "codex" (claude-code.nix) doesn't register it.
+    services.openclaw-gateway.config.agents.entries.codex = {
+      model = {
+        primary = "openai/gpt-6.1-sol";
+        # an explicit empty list overrides inherited fallbacks
+        fallbacks = [ ];
+      };
+      thinkingDefault = "xhigh";
+    };
   };
 }
