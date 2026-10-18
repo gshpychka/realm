@@ -3,76 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
-from types import SimpleNamespace
 
-import numpy as np
-from voice_broker.config import Live
+from live_fakes import Connection, conversation
 from voice_broker.home_assistant import HomeAssistantFailed, HomeReply
 from voice_broker.live import _APPEND_MAX_BYTES, LiveSession, Routed, _chunks
-from voice_broker.openclaw import Turn
-from voice_broker.protocol import Phase
 from voice_broker.routing import RouteDecision, RouteRequest, RoutingFailed
-
-
-class Host:
-    assistant_audible = False
-
-    def play(self, samples: np.ndarray) -> None:
-        pass
-
-    async def set_phase(self, phase: Phase) -> None:
-        pass
-
-    def mark_activity(self) -> None:
-        pass
-
-
-class Connection:
-    """A scripted Live connection: its events are queued by the test, its commentary recorded."""
-
-    def __init__(self) -> None:
-        self.events: asyncio.Queue[SimpleNamespace | None] = asyncio.Queue()
-        self.spoken: list[str] = []
-        self.clock_ms = 0
-        self.session = SimpleNamespace(
-            start=self._start,
-            input_audio=SimpleNamespace(append=self._ignore),
-            commentary=SimpleNamespace(append=self._comment),
-        )
-
-    async def _start(self, session: dict) -> None:
-        await self.events.put(SimpleNamespace(type="session.started"))
-
-    async def _ignore(self, **kwargs) -> None:
-        pass
-
-    async def _comment(self, content: str, delegation_id: str | None) -> None:
-        self.spoken.append(content)
-
-    def user(self, text: str, start_ms: int | None = None) -> None:
-        self.clock_ms += 100
-        start = self.clock_ms if start_ms is None else start_ms
-        self.events.put_nowait(
-            SimpleNamespace(type="session.input_transcript.delta", delta=text, start_ms=start, end_ms=start + 100)
-        )
-
-    def delegate(self, delegation_id: str) -> None:
-        self.clock_ms += 100
-        self.events.put_nowait(
-            SimpleNamespace(
-                type="session.delegation.created", delegation=SimpleNamespace(id=delegation_id), offset_ms=self.clock_ms
-            )
-        )
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        event = await self.events.get()
-        if event is None:
-            raise StopAsyncIteration
-        return event
 
 
 class Backends:
@@ -104,27 +39,12 @@ class Backends:
         return "Done."
 
 
-async def nothing_recent() -> list[Turn]:
-    return []
-
-
 def run(script, backends: Backends, route=None) -> Connection:
     async def main() -> Connection:
-        conn = Connection()
-
-        @asynccontextmanager
-        async def connect():
-            yield conn
-
         routed = Routed(route or backends.route, backends.converse, 60.0, settle_s=0.01)
-        live = Live(model="gpt-live-1", voice="marin", instructions="")
-        session = LiveSession(live, "Kitchen", backends.consult, nothing_recent, connect, None, routed)
-        async with session.open(Host()):
-            receiving = asyncio.create_task(session.receive())
+        async with conversation(backends.consult, routed) as (conn, session):
             await script(conn, session)
             await idle(session)
-            await conn.events.put(None)
-            await receiving
         return conn
 
     return asyncio.run(main())
