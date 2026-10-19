@@ -1,5 +1,6 @@
 { entities }:
 let
+  template = import ../template.nix;
   ignoredPrinterErrors = [
     "HMS_0701_2500_0002_0001" # AMS B drying without a power adapter
     "HMS_0300_A700_0003_0001" # Informational chamber/filtration fan notice
@@ -15,9 +16,8 @@ in
       BALCONY_H2_C_PRINT_ERROR = entities.binary_sensor.balconyH2CPrintError;
     };
   };
-  restore_chamber = {
+  restore_chamber = template.variable "chamber_light_was_off" // {
     output = "boolean";
-    file = "printer/restore-chamber.jinja";
   };
   print_finished = {
     output = "text";
@@ -43,13 +43,11 @@ in
     output = "text";
     file = "printer/print-color.jinja";
   };
-  print_progress = {
+  print_progress = template.variable "progress" // {
     output = "integer";
-    file = "printer/print-progress.jinja";
   };
-  print_when = {
+  print_when = template.variable "end_ts" // {
     output = "integer";
-    file = "printer/print-when.jinja";
   };
   print_status = {
     output = "text";

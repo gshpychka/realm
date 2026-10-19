@@ -1,7 +1,8 @@
-# All source code comes from files. Bindings substitute JSON data only; the
-# parentheses and from_json filter belong to the authored Jinja expression.
+# Authored logic comes from files; a closed constructor emits simple references.
+# Bindings substitute JSON data only into authored Jinja expressions.
 let
   root = ./jinja;
+  template = import ./template.nix;
   unique =
     values:
     builtins.attrNames (
@@ -61,13 +62,44 @@ let
     declarations:
     let
       programs = builtins.attrValues declarations;
-      files = map (item: item.file) programs;
+      files = map (item: item.file) (builtins.filter (item: item ? file) programs);
       helpers = builtins.concatLists (map (item: item.helpers or [ ]) programs);
     in
     assert builtins.length (unique files) == builtins.length files;
     assert checkInventory (files ++ helpers);
-    builtins.mapAttrs (
-      _: item:
+    builtins.mapAttrs (_: resolveProgram) declarations;
+  resolveProgram =
+    item:
+    assert builtins.isAttrs item;
+    assert builtins.elem item.output [
+      "text"
+      "boolean"
+      "integer"
+      "number"
+      "list"
+      "mapping"
+      "nullable-text"
+      "number-or-unknown"
+    ];
+    if item ? reference then
+      assert
+        builtins.attrNames item == [
+          "output"
+          "reference"
+        ];
+      let
+        inherit (template.ref item.reference) reference;
+      in
+      {
+        inherit (item) output;
+        # jinja-generator: the path above contains validated identifiers only.
+        source = "{{ ${builtins.concatStringsSep "." reference} }}";
+        provenance = {
+          kind = "reference";
+          path = reference;
+        };
+      }
+    else
       assert builtins.all (
         name:
         builtins.elem name [
@@ -77,16 +109,6 @@ let
           "helpers"
         ]
       ) (builtins.attrNames item);
-      assert builtins.elem item.output [
-        "text"
-        "boolean"
-        "integer"
-        "number"
-        "list"
-        "mapping"
-        "nullable-text"
-        "number-or-unknown"
-      ];
       let
         helpers = item.helpers or [ ];
         source =
@@ -94,10 +116,14 @@ let
           + bind (read item.file) (item.bindings or { });
       in
       {
-        inherit (item) output file;
-        inherit helpers source;
-      }
-    ) declarations;
+        inherit (item) output;
+        inherit source;
+        provenance = {
+          kind = "file";
+          inherit (item) file;
+          inherit helpers;
+        };
+      };
 in
 {
   inherit
@@ -106,5 +132,6 @@ in
     inventory
     checkInventory
     resolve
+    resolveProgram
     ;
 }

@@ -291,7 +291,7 @@ def validate_confirmation_prompt(hass, contracts):
     return count
 
 
-async def validate_templates(hass, config, contracts, literals):
+async def validate_templates(hass, config, contracts, literals, references):
     device_registry.async_setup(hass)
     await device_registry.async_load(hass, load_empty=True)
     await entity_registry.async_load(hass, load_empty=True)
@@ -331,9 +331,16 @@ async def validate_templates(hass, config, contracts, literals):
         name: item["output"] for name, item in contracts.items()
     } == expected_outputs
     assert all(
-        set(item) == {"source", "output", "file", "helpers"}
-        for item in contracts.values()
+        set(item) == {"source", "output", "provenance"} for item in contracts.values()
     )
+    for contract in contracts.values():
+        origin = contract["provenance"]
+        if origin["kind"] == "reference":
+            assert set(origin) == {"kind", "path"}
+            assert contract["source"] == "{{" + " " + ".".join(origin["path"]) + " }}"
+        else:
+            assert origin["kind"] == "file"
+            assert set(origin) == {"kind", "file", "helpers"}
     assert used == registered, {
         "unchecked": sorted(used - registered),
         "unused": sorted(registered - used),
@@ -349,7 +356,7 @@ async def validate_templates(hass, config, contracts, literals):
     inventory = [
         {
             "program": names[source],
-            "file": contracts[names[source]]["file"],
+            "provenance": contracts[names[source]]["provenance"],
             "path": list(path),
         }
         for path, source in templates_in(config)
@@ -362,7 +369,11 @@ async def validate_templates(hass, config, contracts, literals):
         {
             file
             for contract in contracts.values()
-            for file in [contract["file"], *contract["helpers"]]
+            if contract["provenance"]["kind"] == "file"
+            for file in [
+                contract["provenance"]["file"],
+                *contract["provenance"]["helpers"],
+            ]
         }
     )
     Path("template-file-inventory.json").write_text(
@@ -700,6 +711,20 @@ async def validate_templates(hass, config, contracts, literals):
             == fixture["expected"]
         )
 
+    # Generated references retain native values and strict undefined behavior.
+    for fixture in references:
+        result = checked_render(hass, fixture["contract"], fixture["variables"])
+        assert result == fixture["expected"]
+        assert isinstance(result, type(fixture["expected"])), (
+            fixture["contract"]["provenance"],
+            type(result),
+            type(fixture["expected"]),
+        )
+        assert_rejected(
+            lambda fixture=fixture: checked_render(hass, fixture["contract"], {}),
+            TemplateError,
+        )
+
     def fixture(name):
         return (
             Path(__file__).parents[1] / "fixtures/templates" / f"{name}.jinja"
@@ -773,7 +798,7 @@ async def validate_templates(hass, config, contracts, literals):
     for entity in list(hass.states.async_entity_ids()):
         hass.states.async_remove(entity)
     print(
-        f"Template QA passed: {len(contracts)} programs / {len(file_inventory)} source files, {sum(counts.values())} strict typed renders, {len(literals)} strict literal round trips, {len(list(templates_in(config)))} audited uses, scope/quoting/undefined/order negatives."
+        f"Template QA passed: {len(contracts)} programs / {len(file_inventory)} source files, {sum(counts.values())} strict typed renders, {len(literals)} strict literal round trips, {len(references)} generated-reference renders and undefined negatives, {len(list(templates_in(config)))} audited uses, scope/quoting/undefined/order negatives."
     )
     print(
         f"Weather/prompt contracts passed: {weather_count} weather cases / {weather_count} strict typed renders; {prompt_count} raw prompt renders."

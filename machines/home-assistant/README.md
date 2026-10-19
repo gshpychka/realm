@@ -41,20 +41,29 @@ variables, then execution options, omitting absent fields. Bodies stay native
 attrsets and lists. Dependent variables use `orderedVariables`, which emits one
 action per binding in list order. `templates.nix` merges seven domain modules
 under `templates/`: system, printer, power, weather, media, GPT and climate.
-These Nix modules declare the source file, native result type, constant bindings
-and any shared helpers for each program. The 74 programs live in dedicated
-semantic `.jinja` files under `configuration/jinja/<domain>/`; shared macros live
-in `configuration/jinja/shared/`. Declarations use named references.
-`merge-template-domains.nix` rejects duplicate exports, and `template-files.nix`
-loads sources with `builtins.readFile`. Its complete file inventory rejects
-unregistered or missing files, duplicate program files and unused or missing
-bindings. Adding a program requires its file, Nix metadata and behavior fixture.
+These Nix modules declare native result types and semantic program references.
+`template.nix` provides closed constructors for a variable or dotted attribute
+path: `template.variable "end_ts"` and `template.ref [ "trigger" "id" ]`.
+For example, `print_when = template.variable "end_ts" // { output = "integer"; };`
+registers a generated reference with its native output contract. The constructors
+accept nonempty ASCII identifiers and reject expression strings, filters, calls,
+indexing, invalid paths and reserved root names. They generate only dotted lookup
+syntax; more complex logic stays in semantic `.jinja` files.
+
+The 74 programs comprise five generated references and 69 authored programs under
+`configuration/jinja/<domain>/`, with one shared macro in `jinja/shared/` (70
+production files). `merge-template-domains.nix` rejects duplicate exports, and
+`template-files.nix` resolves file sources with `builtins.readFile` or emits a
+validated reference. Every resolved contract records its file/helper or reference
+path provenance. The complete file inventory rejects unregistered or missing
+files, duplicate program files and unused or missing bindings. New programs need
+metadata and behavior fixtures; authored programs also need a source file.
 
 Constant placeholders have the form `@@JSON_NAME@@`, used as
 `(@@JSON_NAME@@ | from_json)` in the `.jinja` file. The loader serializes each
 binding twice as JSON, so quotes, escapes, Unicode, newlines and template-looking
 text remain data. The authored Jinja expression decodes the embedded JSON with
-HA's `from_json`. No Jinja source is generated in Nix strings.
+HA's `from_json`. Generated source is limited to the validated reference constructor.
 `configuration/jinja/shared/safe-fields.jinja` handles missing fields in provider
 responses, including native HA event/state objects. Helpers are prepended in
 their declared order without adding whitespace. Files retain their intentional
@@ -62,8 +71,10 @@ trailing-newline behavior; editing prompt whitespace can change spoken output.
 Negative and serialization templates live separately in
 `packages/home-assistant/tests/fixtures/templates/*.jinja`. Clearly marked
 delimiter-looking input data remains in test declarations. The layout check
-rejects inline Jinja programs throughout the first-party HA Nix and Python trees;
-upstream patch context is outside that scan.
+rejects inline Jinja programs throughout the first-party HA Nix and Python trees,
+with one exact exception for the validated reference emitter. It also rejects
+production files containing only a reference. Upstream patch context is outside
+that scan.
 
 The existing-solutions preflight reviewed the maintained
 [nixpkgs HA module](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/home-automation/home-assistant.nix)
@@ -232,10 +243,14 @@ negative temperatures and warming taking priority over cooling. Eighteen raw
 confirmation-prompt renders check instructions and interpolation of quoted,
 escaped, Unicode, multiline and Jinja-looking title data. Every template has an
 explicit output-type and behavior fixture; new programs require extending that
-coverage inventory. Source-order checks cover every evaluated automation, and
+coverage inventory. Nine generated-reference cases cover dotted lookup, native
+scalar/mapping/list/null results, underscores, digits and keyword attributes,
+with strict undefined checks. Nix negatives reject injection and raw-source or
+mixed-file bypasses; generated sources still require registry membership.
+Source-order checks cover every evaluated automation, and
 Nix tests check the public API and reject duplicate domain exports. The QA
 output includes a derived `template-scope-inventory.json` with the current
-program names, source files and use paths, plus `template-file-inventory.json`
+program names, file/reference provenance and use paths, plus `template-file-inventory.json`
 covering every registered program and shared helper file.
 
 Run this scoped check locally without remote builders:

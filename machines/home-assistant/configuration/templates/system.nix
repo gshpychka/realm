@@ -1,8 +1,10 @@
 { entities }:
+let
+  template = import ../template.nix;
+in
 {
-  announcement = {
+  announcement = template.variable "announcement" // {
     output = "text";
-    file = "system/announcement.jinja";
   };
   has_announcement = {
     output = "boolean";
@@ -13,9 +15,8 @@
     file = "system/device-offline.jinja";
     helpers = [ "shared/safe-fields.jinja" ];
   };
-  message = {
+  message = template.variable "message" // {
     output = "text";
-    file = "system/message.jinja";
   };
   provider_changed = {
     output = "text";

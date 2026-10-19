@@ -19,6 +19,8 @@ let
   configFile = (pkgs.formats.yaml { }).generate "configuration.yaml" filteredConfiguration;
   templates = import ../../../machines/home-assistant/configuration/templates.nix;
   templateFiles = import ../../../machines/home-assistant/configuration/template-files.nix;
+  template = import ../../../machines/home-assistant/configuration/template.nix;
+  referenceFixtures = import ./nix/template-references.nix;
   # Include syntax-looking input, both quote styles, escapes, Unicode and native
   # JSON booleans/null in the actual serialization constructor's round trip.
   literalValues = [
@@ -39,6 +41,12 @@ let
   templateFixtures = pkgs.writeText "ha-template-contracts.json" (
     builtins.toJSON {
       contracts = templates;
+      references = map (fixture: {
+        contract = templateFiles.resolveProgram (
+          template.ref fixture.path // { inherit (fixture) output; }
+        );
+        inherit (fixture) variables expected;
+      }) referenceFixtures;
       literals = map (value: {
         source = templateFiles.bind (builtins.readFile ./fixtures/templates/literal-round-trip.jinja) {
           VALUE = value;

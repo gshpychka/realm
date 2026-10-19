@@ -2,6 +2,8 @@
 let
   ha = import ../../../../machines/home-assistant/configuration/lib.nix { inherit lib; };
   unchecked = builtins.readFile ../fixtures/templates/unchecked.jinja;
+  template = import ../../../../machines/home-assistant/configuration/template.nix;
+  files = import ../../../../machines/home-assistant/configuration/template-files.nix;
   rejects = value: !(builtins.tryEval (builtins.deepSeq value true)).success;
   valid = {
     alias = "Fixture";
@@ -46,6 +48,21 @@ assert rejects (
   }
 );
 assert rejects (ha.condition ha.templates.message);
+# Generating safe syntax does not exempt an unregistered reference from checks.
+assert rejects (
+  ha.action {
+    set_conversation_response =
+      (files.resolveProgram (
+        template.ref [
+          "trigger"
+          "id"
+        ]
+        // {
+          output = "text";
+        }
+      )).source;
+  }
+);
 assert rejects (
   ha.script {
     alias = "Fixture";

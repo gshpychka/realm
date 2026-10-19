@@ -13,6 +13,15 @@ def inline_jinja(path):
     errors = []
     previous = ""
     for number, line in enumerate(path.read_text().splitlines(), 1):
+        # Only this closed constructor may emit executable Jinja from Nix.
+        # Keep the exception tied to its exact validated-reference expression.
+        if (
+            path.parts[-4:]
+            == ("machines", "home-assistant", "configuration", "template-files.nix")
+            and line.strip()
+            == 'source = "' + "{{" + ' ${builtins.concatStringsSep "." reference} }}";'
+        ):
+            continue
         if not line.lstrip().startswith("#") and re.search(r"\{(?:\{|%|#)", line):
             # The constructor's delimiter detector contains tokens, not programs.
             tokens = re.sub(r"""["']\{(?:\{|%|#)["']""", "", line)
@@ -106,6 +115,22 @@ def check_layout(root):
                 continue
             if not valid:
                 errors.append(f"{relative}: file belongs outside this responsibility")
+            if suffix == ".jinja" and base == MACHINE:
+                reference = re.fullmatch(
+                    r"\s*\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}\s*",
+                    path.read_text(),
+                )
+                if reference and reference[1] not in (
+                    "true",
+                    "false",
+                    "none",
+                    "True",
+                    "False",
+                    "None",
+                ):
+                    errors.append(
+                        f"{relative}: simple references belong in template.ref"
+                    )
             if suffix in (".nix", ".py"):
                 errors.extend(inline_jinja(path))
 
