@@ -59,19 +59,21 @@ writeShellApplication {
         fi
         ;;
       component)
-        [[ $# == 2 && -f packages/home-assistant/custom-components/$1.nix ]] \
-          || { usage >&2; exit 2; }
+        [[ $# == 2 && $1 =~ ^[a-z][a-z0-9_]*$ ]] || { usage >&2; exit 2; }
+        file=packages/home-assistant/custom-components/$1.nix
+        [[ -f $file ]] || file=packages/home-assistant/custom-components/$1/package.nix
+        [[ -f $file ]] || { usage >&2; exit 2; }
         case "$1" in
           hassarr|homeeasy_local)
             [[ $2 == skip ]] || { echo 'Set the reviewed version/rev in the component expression, then use skip.' >&2; exit 2; } ;;
         esac
-        update "componentPackages.$1" "$2" --override-filename "packages/home-assistant/custom-components/$1.nix"
+        update "componentPackages.$1" "$2" --override-filename "$file"
         ;;
       dependency)
         [[ $# == 2 ]] || { usage >&2; exit 2; }
         case "$1" in
           aiohttp|yarl|propcache|home-assistant-frontend|homeeasy|translitua|novaposhta-python-client|croniter|passlib)
-            file=packages/home-assistant/python/$1.nix
+            file=packages/home-assistant/core-dependencies/$1.nix
             [[ -f $file ]] || file=packages/home-assistant/core.nix
             update "core.python3Packages.$1" "$2" --override-filename "$file" ;;
           *) usage >&2; exit 2 ;;
@@ -83,7 +85,7 @@ writeShellApplication {
           uv-build|pydantic-monty|python-dotenv)
             extra=()
             if [[ $1 != python-dotenv ]]; then extra=(--custom-dep otherSource); fi
-            update "mcp.updatePackages.$1" "$2" --override-filename "packages/home-assistant/python/$1.nix" "''${extra[@]}" ;;
+            update "mcp.updatePackages.$1" "$2" --override-filename "packages/home-assistant/mcp-dependencies/$1.nix" "''${extra[@]}" ;;
           *) usage >&2; exit 2 ;;
         esac
         ;;
@@ -126,8 +128,10 @@ writeShellApplication {
         "$0" core skip
         "$0" mcp skip
         update mcp skip --no-src --custom-dep skills --override-filename packages/home-assistant/mcp.nix
-        for file in packages/home-assistant/custom-components/*.nix; do
-          domain=''${file##*/}
+        for file in packages/home-assistant/custom-components/*.nix packages/home-assistant/custom-components/*/package.nix; do
+          [[ -f $file ]] || continue
+          domain=''${file%/package.nix}
+          domain=''${domain##*/}
           "$0" component "''${domain%.nix}" skip
         done
         for name in aiohttp yarl propcache home-assistant-frontend homeeasy translitua novaposhta-python-client croniter passlib; do

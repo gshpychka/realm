@@ -1,18 +1,60 @@
 Home Assistant on a Raspberry Pi 5 with an Argon ONE V3 case and NVMe storage.
 
-The machine root contains host and service declarations. Runtime code lives in
-`runtime/argonone/`, `runtime/backup/` and `runtime/yasno-address-guard/`, each owned
-by its service or Pyscript component. The package root at
-`packages/home-assistant/` groups ordinary `callPackage` expressions: `core.nix`,
-`mcp.nix`, `custom-components/` and `python/`;
-`patches/<integration>/` holds the integration and dependency patches.
-`packages/home-assistant/tests/default.nix` assembles offline QA, with constructor
-checks in `tests/nix/` and validators and behavior checks in `tests/python/`.
-Third-party component sources keep their upstream layout.
+The machine root contains host and service declarations. `configuration/` uses
+normal NixOS modules grouped by household domain. A domain owns its automations,
+scripts, template contracts and authored Jinja programs together: weather's
+conversation automation, output contracts and report programs live in
+`configuration/weather/`; printer notifications, inspection script and programs
+live in `configuration/printer/`. Shared constructors, entities, helpers, scenes
+and integration configuration remain at the configuration root.
 
-`configuration/` contains normal NixOS modules: automations grouped by purpose,
-voice/media/device scripts, helpers, scenes, and YAML-capable integrations. The
-45 automations, four scripts and two scenes describe the active household
+The source boundaries are:
+
+```text
+machines/home-assistant/
+  configuration/
+    climate/               AC script and programs, fan status program
+    devices/               device availability, leak and appliance automations
+    gpt/                   expert conversation script and programs
+    lighting/              button and scheduled lighting automations
+    media/                 playback and Assist automations, scripts and programs
+    power/                 power notifications and button actions, programs
+    printer/               printer automations, inspection script and programs
+    shared/                safe provider-field macro
+    system/                startup/shutdown automations and notification programs
+    voice/                 assistant selection, volume and provider announcements
+    weather/               weather automation and programs
+  runtime/
+    argonone/              case cooling component
+    backup/                consistent backup component
+    yasno-address-guard/    Pyscript address transaction component
+packages/home-assistant/
+  core.nix                 Core package and its Python runtime scope
+  mcp.nix                  MCP package and its separate Python runtime scope
+  update.nix               explicit source-update commands
+  core-dependencies/       Core runtime compatibility packages
+    pymodbus/              native override and its test-isolation patch
+    zigpy/                 native override and its semaphore-test patch
+  mcp-dependencies/        MCP dependencies and build backend
+  custom-components/      native component package expressions
+    dyson_local/           component expression and vacuum API patch
+  tests/
+    default.nix            offline QA assembly
+    configuration/         native schema, constructor and service behavior checks
+    layout/                ownership guard and its regression tests
+    mcp/                   package imports, dependency metadata and resource checks
+    runtime/               cooling, backup and Yasno component contracts
+    templates/             Nix/Python template checks and their fixtures
+    updater/               source refresh, path selection and failure contracts
+```
+
+Leaf package expressions stay flat until a component needs supporting assets;
+its `package.nix`, patches and tests then share the component directory. The
+Core and MCP dependency directories describe distinct consuming runtimes.
+Third-party component sources keep their upstream layout. Existing runtime
+component boundaries remain cohesive.
+
+The 45 automations, four scripts and two scenes describe the active household
 behavior. Automations omit `initial_state` so HA can restore their last runtime
 enabled state. Definitions and features change through Nix.
 
@@ -40,7 +82,7 @@ Automation fields follow alias, description, triggers, conditions, actions,
 variables, then execution options, omitting absent fields. Bodies stay native
 attrsets and lists. Dependent variables use `orderedVariables`, which emits one
 action per binding in list order. `templates.nix` merges seven domain modules
-under `templates/`: system, printer, power, weather, media, GPT and climate.
+at `<domain>/templates.nix`: system, printer, power, weather, media, GPT and climate.
 These Nix modules declare native result types and semantic program references.
 `template.nix` provides closed constructors for a variable or dotted attribute
 path: `template.variable "end_ts"` and `template.ref [ "trigger" "id" ]`.
@@ -51,7 +93,7 @@ indexing, invalid paths and reserved root names. They generate only dotted looku
 syntax; more complex logic stays in semantic `.jinja` files.
 
 The 74 programs comprise five generated references and 69 authored programs under
-`configuration/jinja/<domain>/`, with one shared macro in `jinja/shared/` (70
+`configuration/<domain>/`, with one shared macro in `configuration/shared/` (70
 production files). `merge-template-domains.nix` rejects duplicate exports, and
 `template-files.nix` resolves file sources with `builtins.readFile` or emits a
 validated reference. Every resolved contract records its file/helper or reference
@@ -64,12 +106,12 @@ Constant placeholders have the form `@@JSON_NAME@@`, used as
 binding twice as JSON, so quotes, escapes, Unicode, newlines and template-looking
 text remain data. The authored Jinja expression decodes the embedded JSON with
 HA's `from_json`. Generated source is limited to the validated reference constructor.
-`configuration/jinja/shared/safe-fields.jinja` handles missing fields in provider
+`configuration/shared/safe-fields.jinja` handles missing fields in provider
 responses, including native HA event/state objects. Helpers are prepended in
 their declared order without adding whitespace. Files retain their intentional
 trailing-newline behavior; editing prompt whitespace can change spoken output.
 Negative and serialization templates live separately in
-`packages/home-assistant/tests/fixtures/templates/*.jinja`. Clearly marked
+`packages/home-assistant/tests/templates/fixtures/*.jinja`. Clearly marked
 delimiter-looking input data remains in test declarations. The layout check
 rejects inline Jinja programs throughout the first-party HA Nix and Python trees,
 with one exact exception for the validated reference emitter. It also rejects
@@ -239,7 +281,7 @@ including unsupported gestures, malformed/unknown devices and checked-body
 boundaries. AC and expert-query scripts guard their inputs before calling services;
 unavailable weather and provider responses produce explicit fallback text.
 
-`packages/home-assistant/tests/python/service_contracts.py` executes the current
+`packages/home-assistant/tests/configuration/service_contracts.py` executes the current
 media and power actions with HA's pinned native script engine and local recording
 service stubs. The 39 media scenarios specify explicit and inferred movie/show
 requests, rejected requests, unknown/malformed classifications, confirmation
@@ -274,9 +316,14 @@ nix build --offline --no-write-lock-file --no-link --print-out-paths \
   --builders '' --max-jobs 1 --cores 1 -L .#checks.x86_64-linux.home-assistant-config
 ```
 
-The same check enforces the responsibility boundaries across the complete HA
-machine and package trees. Python runtime tests
-load the component sources directly from their declared locations.
+The same check enforces ownership across the complete HA machine and package
+trees. Seven guard regression tests accept colocated modules, programs, patches
+and tests within their domain or component, and reject unowned global buckets,
+orphan component assets, inline Jinja and simple-reference program files.
+Updater fixtures exercise flat and directory component expressions, Core/MCP
+dependency paths, current-tag Matter refresh, registry failures, skill rollback
+and sequential partial failure. Runtime tests load component sources directly
+from their declared locations.
 
 These are schema, conservative scope and representative behavior checks. They
 are not static typing or formal verification of arbitrary Jinja, device

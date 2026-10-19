@@ -8,17 +8,8 @@ let
   core = home-assistant.override {
     inherit extraComponents;
     packageOverrides = ps: previous: {
-      # Upstream diagnostic tests mutate a process-wide ASCII delimiter. With
-      # one pytest worker they contaminate unrelated framer tests. Reset the
-      # delimiter between tests to isolate each fixture.
-      pymodbus = previous.pymodbus.overridePythonAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./patches/pymodbus/pymodbus-test-isolation.patch ];
-      });
-      # A released semaphore slot may start a queued task before the second
-      # equal-duration task finishes. Test semaphore capacity and task causality.
-      zigpy = previous.zigpy.overridePythonAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./patches/zigpy/zigpy-test-order.patch ];
-      });
+      pymodbus = ps.callPackage ./core-dependencies/pymodbus { inherit (previous) pymodbus; };
+      zigpy = ps.callPackage ./core-dependencies/zigpy { inherit (previous) zigpy; };
       # Core 2026.10.2 selects these aio-libs versions and frontend wheel.
       yarl = previous.yarl.overridePythonAttrs (
         finalAttrs: _previous: {
@@ -78,11 +69,11 @@ let
           };
         }
       );
-      homeeasy = ps.callPackage ./python/homeeasy.nix { };
-      translitua = ps.callPackage ./python/translitua.nix { };
-      novaposhta-python-client = ps.callPackage ./python/novaposhta-python-client.nix { };
-      croniter = ps.callPackage ./python/croniter.nix { };
-      passlib = ps.callPackage ./python/passlib.nix { };
+      homeeasy = ps.callPackage ./core-dependencies/homeeasy.nix { };
+      translitua = ps.callPackage ./core-dependencies/translitua.nix { };
+      novaposhta-python-client = ps.callPackage ./core-dependencies/novaposhta-python-client.nix { };
+      croniter = ps.callPackage ./core-dependencies/croniter.nix { };
+      passlib = ps.callPackage ./core-dependencies/passlib.nix { };
     };
     extraPackages =
       ps:

@@ -20,7 +20,7 @@ let
   templates = import ../../../machines/home-assistant/configuration/templates.nix;
   templateFiles = import ../../../machines/home-assistant/configuration/template-files.nix;
   template = import ../../../machines/home-assistant/configuration/template.nix;
-  referenceFixtures = import ./nix/template-references.nix;
+  referenceFixtures = import ./templates/reference-fixtures.nix;
   # Include syntax-looking input, both quote styles, escapes, Unicode and native
   # JSON booleans/null in the actual serialization constructor's round trip.
   literalValues = [
@@ -48,18 +48,18 @@ let
         inherit (fixture) variables expected;
       }) referenceFixtures;
       literals = map (value: {
-        source = templateFiles.bind (builtins.readFile ./fixtures/templates/literal-round-trip.jinja) {
+        source = templateFiles.bind (builtins.readFile ./templates/fixtures/literal-round-trip.jinja) {
           VALUE = value;
         };
         expected = value;
       }) literalValues;
     }
   );
-  constructors = import ./nix/constructors-test.nix { inherit (pkgs) lib; };
-  updaterChecks = import ./nix/updater-test.nix { inherit pkgs; };
+  constructors = import ./configuration/constructors-test.nix { inherit (pkgs) lib; };
+  updaterChecks = import ./updater { inherit pkgs; };
 in
 assert constructors;
-assert import ./nix/template-files-test.nix;
+assert import ./templates/template-files-test.nix;
 pkgs.runCommand "home-assistant-config-qa"
   {
     nativeBuildInputs = [
@@ -72,7 +72,8 @@ pkgs.runCommand "home-assistant-config-qa"
     export HOME=$TMPDIR
     export PYTHONDONTWRITEBYTECODE=1
     test -f ${updaterChecks}/passed
-    ${python}/bin/python ${./.}/python/layout.py ${../../..}
+    ${python}/bin/python ${./.}/layout/check.py ${../../..}
+    ${python}/bin/python ${./.}/layout/test_check.py
     env -i HOME="$TMPDIR" PATH="$PATH" ${packages.mcp}/bin/ha-mcp --version \
       | ${pkgs.gnugrep}/bin/grep -Fx 'ha-mcp ${packages.mcp.version}'
     # The broker's test-config mode validates auth/ACL syntax with fixture files.
@@ -93,9 +94,9 @@ pkgs.runCommand "home-assistant-config-qa"
     # Use HA's wrapper environment to check that HA and custom components resolve
     # their dependencies from the declared Core Python path.
     env -i HOME="$TMPDIR" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
-      PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/python/validate-ha.py \
+      PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/configuration/validate-ha.py \
       ${configFile} "$PWD" ${templateFixtures} ${../../../machines/home-assistant}
-    ${python}/bin/python ${./.}/python/test-runtime.py ${../../../machines/home-assistant}
+    ${python}/bin/python ${./.}/runtime/check.py ${../../../machines/home-assistant}
     mkdir -p $out
     cp template-scope-inventory.json template-file-inventory.json $out/
   ''

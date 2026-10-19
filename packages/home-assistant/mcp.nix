@@ -3,11 +3,11 @@ let
   # MCP's vendored FastMCP requires these newer wheel versions and uv backend.
   mcpPython = pkgs.python314Packages.overrideScope (
     ps: _previous: {
-      python-dotenv = ps.callPackage ./python/python-dotenv.nix { };
-      pydantic-monty = ps.callPackage ./python/pydantic-monty.nix { };
+      python-dotenv = ps.callPackage ./mcp-dependencies/python-dotenv.nix { };
+      pydantic-monty = ps.callPackage ./mcp-dependencies/pydantic-monty.nix { };
     }
   );
-  buildBackend = mcpPython.callPackage ./python/uv-build.nix { };
+  buildBackend = mcpPython.callPackage ./mcp-dependencies/uv-build.nix { };
   mcpSkills = pkgs.fetchFromGitHub {
     owner = "homeassistant-ai";
     repo = "skills";
@@ -89,7 +89,7 @@ mcpPython.toPythonApplication (
         HOMEASSISTANT_TOKEN=synthetic-packaging-fixture \
         MCP_SECRET_PATH=/synthetic-packaging-fixture \
         ENABLE_MANDATORY_BPS=true ENABLE_STRICT_MANDATORY_BPS=true \
-        ${mcpPython.python.interpreter} ${./tests/python/validate-mcp.py}
+        ${mcpPython.python.interpreter} ${./tests/mcp/check.py}
     '';
     # Package validation checks native HTTP imports, dependency metadata and
     # gate resources with synthetic settings and blocked socket connections.

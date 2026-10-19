@@ -5,13 +5,13 @@ let
   files = import ./template-files.nix;
   merge = import ./merge-template-domains.nix;
   domains = [
-    (import ./templates/system.nix { inherit entities; })
-    (import ./templates/printer.nix { inherit entities; })
-    (import ./templates/power.nix { inherit entities; })
-    (import ./templates/weather.nix { inherit entities; })
-    (import ./templates/media.nix)
-    (import ./templates/gpt.nix { inherit entities; })
-    (import ./templates/climate.nix { inherit entities; })
+    (import ./system/templates.nix { inherit entities; })
+    (import ./printer/templates.nix { inherit entities; })
+    (import ./power/templates.nix { inherit entities; })
+    (import ./weather/templates.nix { inherit entities; })
+    (import ./media/templates.nix)
+    (import ./gpt/templates.nix { inherit entities; })
+    (import ./climate/templates.nix { inherit entities; })
   ];
 in
 files.resolve (merge domains)

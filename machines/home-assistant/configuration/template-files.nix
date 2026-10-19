@@ -1,7 +1,7 @@
 # Authored logic comes from files; a closed constructor emits simple references.
 # Bindings substitute JSON data only into authored Jinja expressions.
 let
-  root = ./jinja;
+  root = ./.;
   template = import ./template.nix;
   unique =
     values:
@@ -25,8 +25,8 @@ let
           if type == "directory" then
             collect (directory + "/${name}") (relative + "/")
           else
-            assert type == "regular" && builtins.match ".*\\.jinja" name != null;
-            [ relative ]
+            assert type == "regular";
+            if builtins.match ".*\\.jinja" name != null then [ relative ] else [ ]
         ) (builtins.readDir directory)
       )
     );
