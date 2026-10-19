@@ -157,8 +157,7 @@ nix build --offline --no-write-lock-file --no-link --print-out-paths \
 ```
 
 The same check enforces the responsibility boundaries across the complete HA
-machine and package trees and rejects references to removed source paths,
-including in repository entrypoints and documentation. Python runtime tests
+machine and package trees. Python runtime tests
 load the component sources directly from their declared locations.
 
 These are schema, conservative scope and representative behavior checks. They
