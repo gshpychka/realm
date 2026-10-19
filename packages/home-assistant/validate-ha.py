@@ -55,7 +55,7 @@ async def validate(hass, configuration, components, component_path):
             await cv.async_validate(hass, PLATFORM_SCHEMA, item)
         except Exception as error:
             failures.append(
-                ["automation", item["id"], type(error).__name__, str(error)]
+                ["automation", item["alias"], type(error).__name__, str(error)]
             )
     for name, item in configuration["script"].items():
         try:

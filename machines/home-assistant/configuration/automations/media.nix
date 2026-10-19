@@ -3,7 +3,6 @@ let
   inherit (ha)
     entities
     devices
-    automation
     call
     state
     zha
@@ -12,7 +11,7 @@ let
 in
 {
   services.home-assistant.config.automation = [
-    (automation "media_goodnight" {
+    {
       actions = [
         (call "scene.turn_on" entities.scene.night { transition = 1; })
         { set_conversation_response = "Goodnight!"; }
@@ -28,8 +27,8 @@ in
           trigger = "conversation";
         }
       ];
-    })
-    (automation "media_ask_to_activate_movie_scene" {
+    }
+    {
       actions = [
         (call "timer.start" entities.timer.movieSceneCooldown { })
         (announce "Hold the table button to activate the movie scene" { preannounce = true; })
@@ -61,13 +60,13 @@ in
           };
         }
       ];
-    })
-    (automation "media_activate_movie_scene_on_table_button_long_press" {
+    }
+    {
       actions = [ (call "scene.turn_on" entities.scene.tvWatching { transition = 1; }) ];
       alias = "Media / Activate Movie scene on Table button Long press";
       conditions = [ (state entities.timer.movieSceneOfferWindow "active") ];
       description = "Long press activates the movie scene only while the offer window timer is running; otherwise the same press falls through to the light toggles.";
       triggers = [ (zha devices.roomTableButton "remote_button_long_press" "button") ];
-    })
+    }
   ];
 }

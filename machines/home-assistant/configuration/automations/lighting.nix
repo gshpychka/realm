@@ -4,7 +4,6 @@ let
     entities
     devices
     areas
-    automation
     call
     state
     zha
@@ -17,7 +16,7 @@ let
 in
 {
   services.home-assistant.config.automation = [
-    (automation "lighting_overhead_lights_toggle" {
+    {
       actions = [ (call "light.toggle" entities.light.roomOverheadLights { }) ];
       alias = "Lighting / Overhead lights toggle";
       triggers = [
@@ -27,8 +26,8 @@ in
         (zha devices.kitchenLightswitch "remote_button_quadruple_press" "remote_button_quadruple_press")
         (zha devices.roomTableButton "remote_button_short_press" "remote_button_short_press")
       ];
-    })
-    (automation "lighting_kitchen_lights_toggle" {
+    }
+    {
       actions = [ (call "light.toggle" entities.light.kitchenLights { }) ];
       alias = "Lighting / Kitchen lights toggle";
       triggers = [
@@ -38,8 +37,8 @@ in
         (zha devices.bedButton "remote_button_quadruple_press" "remote_button_quadruple_press")
         (zha devices.roomTableButton "remote_button_quadruple_press" "remote_button_quadruple_press")
       ];
-    })
-    (automation "lighting_bed_light_toggle" {
+    }
+    {
       actions = [ (call "light.toggle" entities.light.bedLight { }) ];
       alias = "Lighting / Bed light toggle";
       triggers = [
@@ -48,16 +47,16 @@ in
         (zha devices.roomLightswitch "remote_button_triple_press" "remote_button_triple_press")
         (zha devices.roomTableButton "remote_button_triple_press" "remote_button_triple_press")
       ];
-    })
-    (automation "lighting_party_light_toggle" {
+    }
+    {
       actions = [ (call "light.toggle" entities.light.partyLight { }) ];
       alias = "Lighting / Party light toggle";
       triggers = [
         (zha devices.kitchenLightswitch "remote_button_triple_press" "remote_button_triple_press")
         (zha devices.kitchenTableButton "remote_button_triple_press" "remote_button_triple_press")
       ];
-    })
-    (automation "lighting_room_lights_full_brightness" {
+    }
+    {
       actions = [
         (call "light.turn_on" entities.light.roomOverheadLights {
           brightness_pct = 100;
@@ -71,8 +70,8 @@ in
         (zha devices.bedShelfButton "remote_button_double_press" "button_1")
         (zha devices.roomTableButton "remote_button_double_press" "remote_button_double_press")
       ];
-    })
-    (automation "lighting_kitchen_lights_full_brightness" {
+    }
+    {
       actions = [
         (call "light.turn_on" entities.light.kitchenLights {
           brightness_pct = 100;
@@ -84,14 +83,14 @@ in
         (zha devices.kitchenLightswitch "remote_button_double_press" "remote_button_double_press")
         (zha devices.kitchenTableButton "remote_button_double_press" "remote_button_double_press")
       ];
-    })
-    (automation "lighting_cute_lights_toggle" {
+    }
+    {
       actions = [ (call "light.toggle" entities.light.cuteLights { }) ];
       alias = "Lighting / Cute lights toggle";
       conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
       triggers = longPress;
-    })
-    (automation "lighting_turn_on_plant_light" {
+    }
+    {
       actions = [
         {
           action = "light.turn_on";
@@ -109,8 +108,8 @@ in
           at = "08:00:00";
         }
       ];
-    })
-    (automation "lighting_turn_off_plant_light" {
+    }
+    {
       actions = [ (call "light.turn_off" entities.light.plantLight { }) ];
       alias = "Lighting / Turn off plant light";
       conditions = [ (state entities.light.plantLight "on") ];
@@ -120,14 +119,14 @@ in
           at = "20:00:00";
         }
       ];
-    })
-    (automation "lighting_lava_lamp_toggle" {
+    }
+    {
       actions = [ (call "light.toggle" entities.light.lavaLamp { }) ];
       alias = "Lighting / Lava lamp toggle";
       conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
       triggers = longPress;
-    })
-    (automation "lighting_flash_light_when_room_assistant_starts_listening" {
+    }
+    {
       actions = [
         (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = -10; })
         (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = 10; })
@@ -157,6 +156,6 @@ in
           trigger = "assist_satellite.listening";
         }
       ];
-    })
+    }
   ];
 }

@@ -3,20 +3,17 @@ Home Assistant on a Raspberry Pi 5 with an Argon ONE V3 case and NVMe storage.
 `configuration/` contains normal NixOS modules: automations grouped by purpose,
 voice/media/device scripts, helpers, scenes, and YAML-capable integrations. The
 45 automations, four scripts and two scenes describe the active household
-behavior. Automations restore their last runtime enabled state, so a temporary
-disable survives a restart. Definitions and features change through Nix.
+behavior. Automations omit `initial_state` so HA can restore their last runtime
+enabled state. Definitions and features change through Nix.
 
 `entities.nix` names the entity references used by the declarations. `devices.nix`
 contains only ZHA event sources, the soundbar's cloud device identity, and three
 unresolved service targets. `lib.nix` shares service calls, state conditions,
-announcements, ZHA triggers and the printer snapshot sequence. It also gives
-each automation a semantic ID, independent of its display alias.
+announcements, ZHA triggers and the printer snapshot sequence.
 
-HA accepts automations without an ID, but only stores automation traces when an
-ID exists ([Core trace implementation](https://github.com/home-assistant/core/blob/2026.10.2/homeassistant/components/automation/trace.py)).
-The ID also supplies registry identity. These benefits justify stable semantic
-IDs; timestamps do not. An ID alone does not make Nix-managed configuration
-editable in HA ([HA automation documentation](https://www.home-assistant.io/docs/automation/yaml/)).
+Automations omit optional top-level IDs and keep descriptive aliases. Trigger
+IDs are retained where branch conditions reference them. Nix-managed definitions
+are edited in Nix.
 Scenes have no explicit IDs: their names provide the entity names used by callers,
 and the [scene schema](https://github.com/home-assistant/core/blob/2026.10.2/homeassistant/components/homeassistant/scene.py)
 accepts this. Script/helper keys are functional entity names. The fan and Ollama

@@ -2,7 +2,6 @@
 let
   inherit (ha)
     entities
-    automation
     call
     state
     announce
@@ -10,7 +9,7 @@ let
 in
 {
   services.home-assistant.config.automation = [
-    (automation "power_turn_on_reaper_in_the_morning" {
+    {
       actions = [ (call "switch.turn_on" entities.switch.reaperPower { }) ];
       alias = "Power / Turn on reaper in the morning";
       conditions = [ (state entities.binary_sensor.reaperPing "off") ];
@@ -20,8 +19,8 @@ in
           trigger = "time";
         }
       ];
-    })
-    (automation "power_reaper_windows_button" {
+    }
+    {
       actions = [
         {
           choose = [
@@ -52,8 +51,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "power_city_power_is_off" {
+    }
+    {
       actions = [
         {
           variables = {
@@ -81,8 +80,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "power_low_battery" {
+    }
+    {
       actions = [
         (announce
           "Warning: The battery level is - {{states('${entities.sensor.batteryCharge}') | int }}  percent..."
@@ -104,8 +103,8 @@ in
             11
             6
           ];
-    })
-    (automation "power_low_battery_remaining_time" {
+    }
+    {
       actions = [
         (announce
           "Warning: Less than one hour of battery power remaining. Battery is at {{ states('${entities.sensor.batteryCharge}') | round(0) }} percent."
@@ -123,8 +122,8 @@ in
           trigger = "numeric_state";
         }
       ];
-    })
-    (automation "power_hoard_is_offline" {
+    }
+    {
       actions = [ (announce "Hoard is offline" { }) ];
       alias = "Power / Hoard is offline";
       triggers = [
@@ -134,8 +133,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "power_hoard_is_back_online" {
+    }
+    {
       actions = [ (announce "Hoard is back online." { }) ];
       alias = "Power / Hoard is back online";
       conditions = [ (state entities.input_boolean.fullyLoaded "on") ];
@@ -146,8 +145,8 @@ in
           to = "on";
         }
       ];
-    })
-    (automation "power_city_power_back_on" {
+    }
+    {
       actions = [
         {
           variables = {
@@ -172,6 +171,6 @@ in
           trigger = "state";
         }
       ];
-    })
+    }
   ];
 }

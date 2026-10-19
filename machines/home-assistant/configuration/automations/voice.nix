@@ -3,7 +3,6 @@ let
   inherit (ha)
     entities
     devices
-    automation
     call
     state
     zha
@@ -31,7 +30,7 @@ let
 in
 {
   services.home-assistant.config.automation = [
-    (automation "voice_moment_of_silence_announcement" {
+    {
       actions = [ (announce "It's time for a moment of silence" { preannounce = false; }) ];
       alias = "Voice / Moment of silence announcement";
       triggers = [
@@ -40,8 +39,8 @@ in
           trigger = "time";
         }
       ];
-    })
-    (automation "voice_switch_to_local_assistant" {
+    }
+    {
       actions = [ { action = "rest_command.ollama_preload"; } ] ++ selectAssistants "Reaper";
       alias = "Voice / Switch to local assistant";
       conditions = [
@@ -79,8 +78,8 @@ in
           trigger = "homeassistant";
         }
       ];
-    })
-    (automation "voice_switch_to_remote_assistant" {
+    }
+    {
       actions = selectAssistants "Remote";
       alias = "Voice / Switch to remote assistant";
       conditions = [ (notAllAssistants "Remote") ];
@@ -101,8 +100,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "voice_voice_assistant_changed_to_local_announcement" {
+    }
+    {
       actions = [ (announce "Voice assistant changed to local." { }) ];
       alias = "Voice / Voice assistant changed to Local announcement";
       triggers = [
@@ -112,8 +111,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "voice_voice_assistant_changed_to_remote_announcement" {
+    }
+    {
       actions = [ (announce "Voice assistant changed to remote." { }) ];
       alias = "Voice / Voice assistant changed to Remote announcement";
       triggers = [
@@ -123,8 +122,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "voice_lower_voice_volume_at_night" {
+    }
+    {
       actions = [
         {
           action = "media_player.volume_set";
@@ -143,8 +142,8 @@ in
           trigger = "time";
         }
       ];
-    })
-    (automation "voice_set_voice_volume_back_to_full_in_the_morning" {
+    }
+    {
       actions = [
         {
           action = "media_player.volume_set";
@@ -163,8 +162,8 @@ in
           trigger = "time";
         }
       ];
-    })
-    (automation "voice_internet_provider_change_announcement" {
+    }
+    {
       actions = [
         (announce "Internet provider changed to {{states('${entities.sensor.internetProvider}')}}" { })
       ];
@@ -192,8 +191,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "voice_add_media_using_assist" {
+    }
+    {
       actions = [
         # HA renders variables in order; Nix attribute sets are sorted.
         {
@@ -378,8 +377,8 @@ in
           trigger = "conversation";
         }
       ];
-    })
-    (automation "voice_announce_battery_level_via_button" {
+    }
+    {
       actions = [
         (announce "Battery is at {{states('${entities.sensor.batteryCharge}')}} percent." {
           preannounce = false;
@@ -392,8 +391,8 @@ in
         (zha devices.kitchenTableButton "remote_button_quintuple_press" "remote_button_quintuple_press")
         (zha devices.bedButton "remote_button_quintuple_press" "remote_button_quintuple_press")
       ];
-    })
-    (automation "voice_power_system_alarm_announcement" {
+    }
+    {
       actions = [
         (announce ''
           Attention - alarm triggered: {{ trigger.to_state.attributes.friendly_name }}
@@ -425,8 +424,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "voice_print_check_by_voice" {
+    }
+    {
       actions = [
         {
           action = "script.check_print";
@@ -453,6 +452,6 @@ in
           trigger = "conversation";
         }
       ];
-    })
+    }
   ];
 }

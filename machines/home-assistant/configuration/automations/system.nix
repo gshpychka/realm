@@ -1,10 +1,10 @@
 { ha, ... }:
 let
-  inherit (ha) entities automation call;
+  inherit (ha) entities call;
 in
 {
   services.home-assistant.config.automation = [
-    (automation "system_weather_report" {
+    {
       actions = [
         {
           action = "weather.get_forecasts";
@@ -70,8 +70,8 @@ in
           trigger = "conversation";
         }
       ];
-    })
-    (automation "system_enable_fully_loaded_after_startup" {
+    }
+    {
       actions = [
         (call "input_boolean.turn_off" entities.input_boolean.fullyLoaded { })
         {
@@ -88,8 +88,8 @@ in
           trigger = "homeassistant";
         }
       ];
-    })
-    (automation "system_disable_fully_loaded_on_shutdown" {
+    }
+    {
       actions = [ (call "input_boolean.turn_off" entities.input_boolean.fullyLoaded { }) ];
       alias = "System / Disable fully loaded on shutdown";
       triggers = [
@@ -98,6 +98,6 @@ in
           trigger = "homeassistant";
         }
       ];
-    })
+    }
   ];
 }

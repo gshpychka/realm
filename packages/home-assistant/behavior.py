@@ -12,8 +12,16 @@ from homeassistant.helpers.template import Template
 
 
 async def validate_behavior(hass, config):
+    assert len(config["automation"]) == 45
+    assert len(config["script"]) == 4
+    assert len(config["scene"]) == 2
+    automations = {item["alias"]: item for item in config["automation"]}
+    assert len(automations) == 45
+    assert all(" / " in alias for alias in automations)
+    assert all("id" not in item for item in config["automation"])
+
     def automation(alias):
-        return next(a for a in config["automation"] if a["alias"] == alias)
+        return automations[alias]
 
     async def variables(actions, context):
         for action in actions:
@@ -187,6 +195,25 @@ async def validate_behavior(hass, config):
         ("switch.turn_off", "switch.hot_water_valve"),
         ("switch.turn_off", "switch.cold_water_valve"),
     ]
+
+    # Trigger IDs select branches; they are distinct from an automation's ID.
+    live = automation("Devices / 3D print Live Activity")
+    assert [trigger["id"] for trigger in live["triggers"]] == [
+        "update",
+        "update",
+        "update",
+        "end",
+    ]
+    assert live["triggers"][0]["to"] == ["prepare", "running", "pause"]
+    assert live["triggers"][3]["to"] == ["finish", "failed"]
+    assert [branch["conditions"] for branch in live["actions"][0]["choose"]] == [
+        [{"condition": "trigger", "id": "update"}],
+        [{"condition": "trigger", "id": "end"}],
+    ]
+    assert live["conditions"][0]["conditions"][0] == {
+        "condition": "trigger",
+        "id": "end",
+    }
 
     # Exercise converted device triggers, including startup/unavailable edges
     # and attribute-only changes. These call only this local recording callback.

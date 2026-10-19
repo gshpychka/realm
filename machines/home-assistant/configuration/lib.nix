@@ -27,11 +27,6 @@ in
     state
     ;
 
-  # IDs enable stored traces and stable registry identity. Names are independent
-  # of display aliases; Nix remains the source of automation definitions.
-  # Omit initial_state so HA restores temporary runtime on/off choices.
-  automation = id: definition: { inherit id; } // definition;
-
   # Button presses and device-offline events have no equivalent entity state.
   zha = device: type: subtype: {
     trigger = "device";

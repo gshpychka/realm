@@ -4,7 +4,6 @@ let
     entities
     devices
     areas
-    automation
     call
     state
     zha
@@ -18,7 +17,7 @@ let
 in
 {
   services.home-assistant.config.automation = [
-    (automation "devices_print_error_notification" {
+    {
       actions = [ (announce "{{ announcement }}" { }) ];
       alias = "Devices / Print error notification";
       conditions = [
@@ -59,8 +58,8 @@ in
           {%- set details = hms or print_err -%}
           {{ 'Printer error. ' ~ details if details else ''' }}'';
       };
-    })
-    (automation "devices_print_finished_notification" {
+    }
+    {
       actions = (
         printerSnapshot "print_finished_snapshot.jpg"
         ++ [
@@ -94,8 +93,8 @@ in
       variables = {
         chamber_light_was_off = "{{ is_state('${entities.light.balconyH2CChamberLight}', 'off') }}";
       };
-    })
-    (automation "devices_zigbee_router_offline" {
+    }
+    {
       actions = [ (announce "The Zigbee router is offline" { }) ];
       alias = "Devices / Zigbee router offline";
       triggers = [
@@ -105,8 +104,8 @@ in
           trigger = "state";
         }
       ];
-    })
-    (automation "devices_zigbee_is_back_online" {
+    }
+    {
       actions = [ (announce "The Zigbee router is back online." { }) ];
       alias = "Devices / Zigbee is back online";
       conditions = [ (state entities.input_boolean.fullyLoaded "on") ];
@@ -117,8 +116,8 @@ in
           to = "on";
         }
       ];
-    })
-    (automation "devices_water_leak_detected" {
+    }
+    {
       actions = [
         (call "switch.turn_off" entities.switch.hotWaterValve { })
         (call "switch.turn_off" entities.switch.coldWaterValve { })
@@ -162,8 +161,8 @@ in
           to = "on";
         }
       ];
-    })
-    (automation "devices_zigbee_device_offline_notification" {
+    }
+    {
       actions = [
         (announce
           "{{ device_attr(trigger.event.data.device_id, 'name_by_user') or device_attr(trigger.event.data.device_id, 'name') }} is offline"
@@ -180,8 +179,8 @@ in
         (zha devices.kitchenLightswitch "device_offline" "device_offline")
         (zha devices.kitchenTableButton "device_offline" "device_offline")
       ];
-    })
-    (automation "devices_turn_off_dyson_night_mode" {
+    }
+    {
       actions = [ (call "switch.turn_off" entities.switch.dysonNightMode { }) ];
       alias = "Devices / Turn off Dyson Night mode";
       triggers = [
@@ -190,8 +189,8 @@ in
           trigger = "time";
         }
       ];
-    })
-    (automation "devices_3d_print_live_activity" {
+    }
+    {
       actions = [
         {
           choose = [
@@ -332,6 +331,6 @@ in
         progress = "{{ states('${entities.sensor.balconyH2CPrintProgress}') | int(0) }}";
         task = "{{ states('${entities.sensor.balconyH2CTaskName}') if has_value('${entities.sensor.balconyH2CTaskName}') else 'Print' }}";
       };
-    })
+    }
   ];
 }
