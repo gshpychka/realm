@@ -1,0 +1,512 @@
+{
+  "baseline": "ed89082551c1c92416213ee0907fbf6618a983a2",
+  "unchanged_config_sha256": "fe1fdfa4be2e6ad161f63493012550d75df10f2cb304177a74155b9eef85e14d",
+  "contracts": {
+    "ac_ready": {
+      "output": "boolean",
+      "sha256": "ce8aa05bffc582308fbd9fdb2bbc2e56dceaa6da172d2e91cdd37f203da66ee8"
+    },
+    "announcement": {
+      "output": "text",
+      "sha256": "8cc282e54b6dcddc5a5c8261abecad77efbf03b3093895fd0ceb004e190efa51"
+    },
+    "battery_level": {
+      "output": "text",
+      "sha256": "b43b3f030da7a1baca06f5a07c9289030f56a525bad627b97862a92a303f4c56"
+    },
+    "battery_low": {
+      "output": "text",
+      "sha256": "f38126e5621e362ec41592bf771603dbb5ed4a608e489ceab1b1a9f97d21a83a"
+    },
+    "battery_time_low": {
+      "output": "text",
+      "sha256": "e7c220c539fd29052323474a829b3fadd20e49fd96912563f0e0116b4ebd8a1f"
+    },
+    "chamber_was_off": {
+      "output": "boolean",
+      "sha256": "e03e274cb783fe69ba30db7cca96cc77a600a8e7a1270e4260d6e215eb818621"
+    },
+    "city_power_off": {
+      "output": "text",
+      "sha256": "529015cd3d599f1c85b67c11d5831f4946711b54c8c9be6748debd0a2491045a"
+    },
+    "city_power_on": {
+      "output": "text",
+      "sha256": "5ea573a262d422eeeeb13ce5661493c88ba002c371b053ec9a0e89658134669a"
+    },
+    "classified_media": {
+      "output": "text",
+      "sha256": "91cbe83a6b242ee6e189c32a68d656e6b4361bbb8d1e792ab28d721046e2cac5"
+    },
+    "classifier_prompt": {
+      "output": "text",
+      "sha256": "dd2406a4a8b19f9dc8af6c291bc844d15e6e9222d86542928104b95b7895d3ae"
+    },
+    "clean_title": {
+      "output": "text",
+      "sha256": "3d9ffd4439dc2232ec51acf821b78d3e71f2116f2b4af53db61d196fa73e1053"
+    },
+    "condition_change": {
+      "output": "boolean",
+      "sha256": "d34f961c772168ed5409dfd2781b1c95c9c710a9cc03b6a39e47876cdab2cddf"
+    },
+    "confirmation_prompt": {
+      "output": "text",
+      "sha256": "8c65be0c9c12fb0a6791e6b6dcf9e32f34e5c9ffa773702c04a0e342d1283b8b"
+    },
+    "device_offline": {
+      "output": "text",
+      "sha256": "cc56bf16367d54c48edb8e9476b4d798e4daa1ba6b440ed862c27e8aa2d26248"
+    },
+    "end_ts": {
+      "output": "integer",
+      "sha256": "730174b992109d0894944f8f4839a658bc143cd96ff8033cb7e0eba4281da891"
+    },
+    "fan_speed": {
+      "output": "number-or-unknown",
+      "sha256": "8751de3c8a3ced24fd3a4883d648bd7200362ea5814d53f38104f8e1391c1e21"
+    },
+    "forecast": {
+      "output": "list",
+      "sha256": "87f5e86b110e397242908e929473d3dc0ea681c2ed10ad7264221951949f6b38"
+    },
+    "gpt_conversation": {
+      "output": "text",
+      "sha256": "c0b6034a281476304b051e834f156e4b55e632753ca933cfeebd1f49decbf6de"
+    },
+    "gpt_ready": {
+      "output": "boolean",
+      "sha256": "ef2787886884136ba9c75ec65c9cf2453c24af65951bb8d3785aa3bdc6efdb7f"
+    },
+    "gpt_request": {
+      "output": "mapping",
+      "sha256": "ed000473452e6ca9bcb996001d3897d0c89be9eb2ac7cf3fc41bc11fab0e0ca8"
+    },
+    "gpt_speech": {
+      "output": "text",
+      "sha256": "580077ba01fe19495834d4c77cadcf470273b41a6374e8c81b7d381f77dda369"
+    },
+    "has_announcement": {
+      "output": "boolean",
+      "sha256": "d638ed674b25e3f12d655b9fbf84df94650665a784db4167e20777ea9fda49e9"
+    },
+    "hvac_mode": {
+      "output": "text",
+      "sha256": "b7fbad9fd6b421b6fc249b13c19e66bd670b89e2d2e5baa8c0334318befce246"
+    },
+    "layer": {
+      "output": "integer",
+      "sha256": "9cb06f70c49c77d081941ef7abc0ad0cdbc57dca75a39790ff13b6b625a5de7b"
+    },
+    "layers": {
+      "output": "integer",
+      "sha256": "12926234353fbea4d985495119ef518407e1aa75ec26f9bd79a293bb47081229"
+    },
+    "max_temp": {
+      "output": "number",
+      "sha256": "d728e19ee1ef6473e4a93fae3ed597234491508cc6d76bf87f414b43939183a1"
+    },
+    "media_confirmation": {
+      "output": "text",
+      "sha256": "644e856f193bfbaf61a029737b2cba30181a1fa6b6afc413d6485654ebe9deca"
+    },
+    "media_kind": {
+      "output": "text",
+      "sha256": "4bc7a8aa71ca31a596df49dbdfbcbb59b82d66d05c3452cb90880b48084fd731"
+    },
+    "message": {
+      "output": "text",
+      "sha256": "6b9990045b0910a13ab4f498fd0f62d057f07cd10b1250873b311f8e501f77d5"
+    },
+    "min_temp": {
+      "output": "number",
+      "sha256": "85d961ea5e789424fc543a7a062a260605a9ce1a5dcc80fb4967abf779141b9f"
+    },
+    "movie_media": {
+      "output": "boolean",
+      "sha256": "36111d97d57778848d53efd355ea2de88fdc70345a6b880252f70a06fdb7e558"
+    },
+    "next_hours": {
+      "output": "list",
+      "sha256": "7a5b46563877635cb55978dc0598c6785a1499e68344c8886cbd336e2ca9d3d8"
+    },
+    "now_cond": {
+      "output": "text",
+      "sha256": "d94a78113f860715f7166849b7f3924fe23eb48f8d4d99a100f21ccc1817bd7e"
+    },
+    "now_feels": {
+      "output": "number",
+      "sha256": "45dc5b81450cb5bf41b7c2f8f8036f9eb1e41bfe480e0e33594cf67eb44bd46c"
+    },
+    "now_precip": {
+      "output": "number",
+      "sha256": "1051bb684e5ef8d2028eff43294eedcd9bd88332201989b128f24b735364477f"
+    },
+    "now_temp": {
+      "output": "number",
+      "sha256": "81fff7295532e012a51131158226d5c3c467d2f724d451d8641623207185528a"
+    },
+    "ollama_online": {
+      "output": "boolean",
+      "sha256": "371434aab7f9fb8f4012cef24eacaa4cd58ec6f2360e7ec14d772f78576bc085"
+    },
+    "paused": {
+      "output": "boolean",
+      "sha256": "fa53814cd2ee9c4ce8bd4d2c19a99af1d74d01b9d52c706688b932b61f1bc824"
+    },
+    "power_alarm": {
+      "output": "text",
+      "sha256": "812d6b78d0c238fd044415f541cbbffc4535a1f49bd9de3db82422f764304025"
+    },
+    "print_answer": {
+      "output": "text",
+      "sha256": "d141c4d4474b64d9351bfdf3032a2e8b98962355d6aab192421b9cfd9dbd93f0"
+    },
+    "print_chronometer": {
+      "output": "boolean",
+      "sha256": "6e72d1ba2ce8047fa7478f4c4b4c6ddc53a320d99f5cd2dff63d51c56a0be240"
+    },
+    "print_color": {
+      "output": "text",
+      "sha256": "ae6d43ababc4dcb605f629bb1b077557e9e9bba55c8437d191156ec5ed23566c"
+    },
+    "print_error": {
+      "output": "nullable-text",
+      "sha256": "a3ff37707b50c6e36cdd1c7cef1bd9c9338cf857d951b6e7228068e7db274b7e"
+    },
+    "print_eta": {
+      "output": "text",
+      "sha256": "4964f73eee5ee2217fa30c6f9c3ee96579a8ab261edae712bd762f9ceb5d0f1e"
+    },
+    "print_final_color": {
+      "output": "text",
+      "sha256": "d57f9fdbe9d3b1e8ce1cc6d55ce77a8da964c17ff8a232ef7c9371eac9d496af"
+    },
+    "print_final_icon": {
+      "output": "text",
+      "sha256": "c92ab1a9ee0adf603e57698ab8ba3c40bb07d82e7979f6140cc57de7f88cb8dd"
+    },
+    "print_final_progress": {
+      "output": "integer",
+      "sha256": "5a03de66ce0927d64385faec02f3c62da74f8e2fe852de5d914392bd3e44947b"
+    },
+    "print_final_status": {
+      "output": "text",
+      "sha256": "4e1f205cfe698873db5d5dbc9f534476d6079d18918408a31e192682e98fb8d2"
+    },
+    "print_final_text": {
+      "output": "text",
+      "sha256": "a458c575c39bdff606460286588e2afe0adedbd87777c5cea90958f41c19f065"
+    },
+    "print_finished": {
+      "output": "text",
+      "sha256": "3f6d162da7df6fc515be3559eeadcc8a96c829255784bbc63fa3f94daaf10ea8"
+    },
+    "print_ok": {
+      "output": "boolean",
+      "sha256": "e7b489acdd7f02df6438a6aa07d715caf840b15df8c6df1069c38daf5bb510d1"
+    },
+    "print_percent": {
+      "output": "text",
+      "sha256": "3113058795874e900ec4101908437f64879b01125da35fffabe7bf032b68cfc0"
+    },
+    "print_progress": {
+      "output": "integer",
+      "sha256": "93e99834d68046a65fef340588642dd5ffb113c9447094c456d7b15234f4d54b"
+    },
+    "print_prompt": {
+      "output": "text",
+      "sha256": "b085e7ea8501686c66e663d6ee40da8b49edb6755a71277dac6622078efeb9ed"
+    },
+    "print_status": {
+      "output": "text",
+      "sha256": "1537ca9877ba28e6e34e47ceea1426b6a9c03cfc70b066610e8a627591957401"
+    },
+    "print_verdict": {
+      "output": "text",
+      "sha256": "1217f283b3d384c0429d1501dcc06b0019b84826e23d55607c819bd0c8aeed6b"
+    },
+    "print_when": {
+      "output": "integer",
+      "sha256": "3f90504b93f1de8ad6511223dc310213658f88ff14797bfb3d996a582dcb105d"
+    },
+    "printer_errors": {
+      "output": "text",
+      "sha256": "c0b57fe0be1f19b9aa189a72b46fc6b9a51666aab4192718a12e9ee94f469c32"
+    },
+    "progress": {
+      "output": "integer",
+      "sha256": "220ab05bb2040e96e231f0592fe70dbbae78a4efb234363d0bcdcf3ad593b060"
+    },
+    "provider_changed": {
+      "output": "text",
+      "sha256": "5bc74d1e1be7bb19ca347d7fea645ee34daf636f69bf23391d0a456148680137"
+    },
+    "raw_title": {
+      "output": "text",
+      "sha256": "10de3c7e41af7310c123631e874868bf10639b5fbbd7b882023107e72892a574"
+    },
+    "raw_type": {
+      "output": "text",
+      "sha256": "bdc859440dab7e83af03023d47681b2951383755004d9260ec1135f9f04ee3ee"
+    },
+    "reject_media": {
+      "output": "boolean",
+      "sha256": "0c3afbe25e7b1546c328991abbf6650d852c1b27e2ddf1192687845e73a8d569"
+    },
+    "restore_chamber": {
+      "output": "boolean",
+      "sha256": "5f6ac8ebdb2a948944d4603d781dbe17415e3be8df4522e93201164a28382329"
+    },
+    "show_media": {
+      "output": "boolean",
+      "sha256": "a5986e9bfccc8bd4ec98613ed2b1e77873200c6733021b3b9464cc41c7577ca5"
+    },
+    "slots": {
+      "output": "mapping",
+      "sha256": "faa724bde925e355eddf4537de74b84bf663c94a6012008710f56a4b689209fc"
+    },
+    "target_temperature": {
+      "output": "number",
+      "sha256": "4a09c6b97550078474f87a4f5a5bd889fd365bd2ec8e265f09e71670c693517c"
+    },
+    "task": {
+      "output": "text",
+      "sha256": "cb5017045aa566d50b0de6ada9367bf7a2ef82c41ab5cfe8678b743ec5dcc08a"
+    },
+    "temp_diff": {
+      "output": "number",
+      "sha256": "05dc4cac7f144919baca3141c3cfde98f76274d5c370d66739b11b37d63a69af"
+    },
+    "title_case": {
+      "output": "text",
+      "sha256": "d31d29769d10e85632f5701e089ccc41039c95e3b911ea2d2c964cd4357e841e"
+    },
+    "unknown_media": {
+      "output": "boolean",
+      "sha256": "a4c7a57654ea5c7f0932d75837f58e490b34a353d364e27868c10a750aa9b44a"
+    },
+    "unsure_media": {
+      "output": "text",
+      "sha256": "c14303aa212cfc47f1bc7fce89b817a94b5af6a87686bcc169ef0c64ccf70208"
+    },
+    "weather_report": {
+      "output": "text",
+      "sha256": "77b39b1e42d02ec91bf080bd6912971a757b4b8238bbc7a2a822302b6b04f9d2"
+    },
+    "will_rain": {
+      "output": "boolean",
+      "sha256": "28899dad4b50b776001fb6e433e0b46aba8fff8cf1ed8bd87af38c700d0cd7e7"
+    }
+  },
+  "weather_source": "{% set ns = namespace(t='') %} {# current #} {% if is_number(state_attr((\"\\\"weather.openweathermap\\\"\" | from_json), 'temperature')) %}{% set ns.t = ns.t ~ \"It's \" ~ (now_temp | round(0)) ~ \" degrees and \" ~ now_cond ~ \". \" %}{% else %}{% set ns.t = 'Current weather information is unavailable. ' %}{% endif %} {% if diff > 2 %}\n  {% set ns.t = ns.t ~ \"Feels like \" ~ (now_feels | round(0)) ~ \" degrees. \" %}\n{% endif %} {% if now_precip > 0 %}\n  {% set ns.t = ns.t ~ \"There's precipitation right now. \" %}\n{% endif %} {# next 6 h #} {% if will_rain %}\n  {% set ns.t = ns.t ~ \"Rain is likely within the next few hours. \" %}\n{% endif %} {% if (max_t - now_temp) > 3 %}\n  {% set ns.t = ns.t ~ \"It will warm up to about \" ~ (max_t | round(0)) ~ \" degrees in the next six hours. \" %}\n{% elif (now_temp - min_t) > 3 %}\n  {% set ns.t = ns.t ~ \"Expect it to cool down to around \" ~ (min_t | round(0)) ~ \" degrees in the next six hours. \" %}\n{% endif %} {{ ns.t | trim }}",
+  "media_actions": [
+    {
+      "variables": {
+        "slots": {
+          "template": "slots"
+        }
+      }
+    },
+    {
+      "variables": {
+        "raw_title": {
+          "template": "raw_title"
+        }
+      }
+    },
+    {
+      "variables": {
+        "raw_type": {
+          "template": "raw_type"
+        }
+      }
+    },
+    {
+      "variables": {
+        "media_kind": {
+          "template": "media_kind"
+        }
+      }
+    },
+    {
+      "variables": {
+        "clean_title": {
+          "template": "clean_title"
+        }
+      }
+    },
+    {
+      "alias": "Stop if this is not a movie or show",
+      "if": [
+        {
+          "alias": "The title is a list or calendar entry",
+          "condition": "template",
+          "value_template": {
+            "template": "reject_media"
+          }
+        }
+      ],
+      "then": [
+        {
+          "alias": "Say nothing was added",
+          "set_conversation_response": "That sounds like a list or calendar item, not a movie or show, so I didn't add anything."
+        },
+        {
+          "stop": "Not a media request"
+        }
+      ]
+    },
+    {
+      "alias": "Classify media kind via LLM if necessary",
+      "choose": [
+        {
+          "alias": "Necessary",
+          "conditions": [
+            {
+              "alias": "media_kind is unknown",
+              "condition": "template",
+              "value_template": {
+                "template": "unknown_media"
+              }
+            }
+          ],
+          "sequence": [
+            {
+              "action": "conversation.process",
+              "alias": "Ask LLM to classify media",
+              "data": {
+                "agent_id": "conversation.chatgpt_2",
+                "text": {
+                  "template": "classifier_prompt"
+                }
+              },
+              "response_variable": "llm_kind"
+            },
+            {
+              "alias": "set classified media_kind variable",
+              "variables": {
+                "media_kind": {
+                  "template": "classified_media"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "choose": [
+        {
+          "alias": "media_kind is STILL unknown",
+          "conditions": [
+            {
+              "alias": "media_kind is unknown",
+              "condition": "template",
+              "value_template": {
+                "template": "unknown_media"
+              }
+            }
+          ],
+          "sequence": [
+            {
+              "alias": "Set response with error message",
+              "set_conversation_response": {
+                "template": "unsure_media"
+              }
+            }
+          ]
+        }
+      ],
+      "default": [
+        {
+          "alias": "Choose between movie or show",
+          "choose": [
+            {
+              "alias": "Movie",
+              "conditions": [
+                {
+                  "alias": "media_kind is movie",
+                  "condition": "template",
+                  "value_template": {
+                    "template": "movie_media"
+                  }
+                }
+              ],
+              "sequence": [
+                {
+                  "action": "hassarr.add_overseerr_movie",
+                  "data": {
+                    "title": {
+                      "template": "title_case"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "alias": "Show",
+              "conditions": [
+                {
+                  "alias": "media_kind is show",
+                  "condition": "template",
+                  "value_template": {
+                    "template": "show_media"
+                  }
+                }
+              ],
+              "sequence": [
+                {
+                  "action": "hassarr.add_overseerr_tv_show",
+                  "data": {
+                    "title": {
+                      "template": "title_case"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "action": "ai_task.generate_data",
+          "alias": "Ask for a joke",
+          "data": {
+            "entity_id": "ai_task.openai_ai_task",
+            "instructions": {
+              "template": "confirmation_prompt"
+            },
+            "task_name": "Media added confirmation"
+          },
+          "response_variable": "witty_remark"
+        },
+        {
+          "alias": "Set success response",
+          "set_conversation_response": {
+            "template": "media_confirmation"
+          }
+        }
+      ]
+    }
+  ],
+  "prompt_sha256": [
+    "8001a9d51dbae63f3f6c1ded09cb0b073672c3b01f10952f5f54082f3ed813b9",
+    "ed1209777641127265785f2e1d2eebc216be8a5fb124cbb3c679334ef16dd50f",
+    "3f6f9973980f0e21dab47e06b721ffab74a4086d82efeddd6991e7e406c0fcc9",
+    "0d6bfeb5a61634542520a7b3762c142ed6c68d398da7f403d02edb903820d14d",
+    "67ff1627e9da14cfb347e03289b38f4cc7dd495b6f262c898539ee4ad1e6c1bc",
+    "2440ce5c37242595e5beb5e5b08948bcf4d7e83da370c605a8b1bfcab05d962c",
+    "976fefb4b1a0560830cd07c56c38985fbeb65423d8427ebbeee55b4e55fbac03",
+    "829922d76c461554670aa961576dca94dd09eb5f9cc3c6a7f88749e07d825fe8",
+    "cd105103eb5eb38c91d9d647b49226bf445cb1b388398113409ed6e06741d591",
+    "143e6ced54cd5f3cb17d2f8925b77278e5a9bbfff71ef559f8799fff7299e569",
+    "92cf1a2beb8941f324e7824468568648dc2f1c95b4b0ab5075f9b3d75e12d530",
+    "f46c339f4b5a3b9d103074352ebeecdc6baa182577209da5d57246e622c525e8",
+    "b2cc4c340bbc89748cae7eb2d12b7ee6328de60dde8c443b6b403db1a44b9645",
+    "b6dde3b97e1c2eb295979194b3d7e410ac55f6ba06be15965290dcb5f33a559a",
+    "b4dd7995a04351100d748c72bfd69caf00e757750dca8470d66a07c5444d2f2b",
+    "91c3f3cace0ae90ee0ad4c9dd321516a34bdda23ad5bddc750294619071a7483",
+    "0225322d437962732ae0910c242039c77aa696854c2358f2d1e82f49decafd16",
+    "ec2fc3b330bbbbcaa60b1ff0b91d3c32fe62ea3c7a19a0dee65797c19f6c500f"
+  ]
+}

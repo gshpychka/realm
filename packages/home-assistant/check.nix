@@ -74,7 +74,8 @@ pkgs.runCommand "home-assistant-config-qa"
     # must not accidentally satisfy a missing HA/custom-component requirement.
     env -i HOME="$TMPDIR" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
       PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/validate-ha.py \
-      ${configFile} "$PWD" ${templateFixtures}
+      ${configFile} "$PWD" ${templateFixtures} ${../../machines/home-assistant}
     ${python}/bin/python ${./test-runtime.py} ${../../machines/home-assistant}
-    touch $out
+    mkdir -p $out
+    cp template-scope-inventory.json $out/
   ''

@@ -6,9 +6,11 @@ must be reviewed before extending them. No services or integration setup run.
 """
 
 import copy
+import json
 import math
 from collections import Counter
 from collections.abc import Mapping
+from pathlib import Path
 
 from homeassistant.core import State
 from homeassistant.exceptions import TemplateError
@@ -81,12 +83,16 @@ def audit_scope(hass, configuration):
             for key in ["then", "else", "default", "parallel", "sequence"]:
                 if key in action:
                     actions(action[key], available, (*location, key))
-            for branch in action.get("choose", []):
+            for branch_index, branch in enumerate(action.get("choose", [])):
                 check(
-                    branch["conditions"], available, (*location, "choose", "conditions")
+                    branch["conditions"],
+                    available,
+                    (*location, "choose", branch_index, "conditions"),
                 )
                 actions(
-                    branch["sequence"], available, (*location, "choose", "sequence")
+                    branch["sequence"],
+                    available,
+                    (*location, "choose", branch_index, "sequence"),
                 )
             # Response variables are available only after their service call.
             if "response_variable" in action and "action" in action:
@@ -169,6 +175,16 @@ async def validate_templates(hass, config, contracts, literals):
         except TemplateError as error:
             raise AssertionError(f"{name}: compile failed") from error
     audit_scope(hass, config)
+    # Derive paths from the evaluated tree, including current if/then and choose
+    # indexes. Never retain stale paths from the previous control-flow layout.
+    names = {item["source"]: name for name, item in contracts.items()}
+    inventory = [
+        {"program": names[source], "path": list(path)}
+        for path, source in templates_in(config)
+    ]
+    Path("template-scope-inventory.json").write_text(
+        json.dumps(inventory, indent=2) + "\n"
+    )
 
     weather = "weather.openweathermap"
     forecast = {"temperature": 20, "condition": "sunny", "precipitation_probability": 0}
@@ -535,6 +551,25 @@ async def validate_templates(hass, config, contracts, literals):
     )["actions"]
     merged = {k: v for action in media[:5] for k, v in action["variables"].items()}
     media[:5] = [{"variables": dict(sorted(merged.items()))}]
+    assert_rejected(lambda: audit_scope(hass, bad), ValueError)
+    # The flattened if still binds its response before classification, and an
+    # optional branch's new response name must not leak to later actions.
+    bad = copy.deepcopy(config)
+    media = next(
+        a for a in bad["automation"] if a["alias"] == "Voice / Add media using Assist"
+    )["actions"]
+    classifier = next(
+        a for a in media if a.get("alias") == "Classify media kind via LLM if necessary"
+    )["then"]
+    classifier.reverse()
+    assert_rejected(lambda: audit_scope(hass, bad), ValueError)
+    bad = copy.deepcopy(config)
+    media = next(
+        a for a in bad["automation"] if a["alias"] == "Voice / Add media using Assist"
+    )["actions"]
+    media.append(
+        {"variables": {"leaked_kind": contracts["classified_media"]["source"]}}
+    )
     assert_rejected(lambda: audit_scope(hass, bad), ValueError)
     # Restore a clean state fixture set for the separate behavioral tests.
     for entity in list(hass.states.async_entity_ids()):

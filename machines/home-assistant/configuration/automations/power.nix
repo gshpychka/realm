@@ -7,21 +7,39 @@ let
     state
     announce
     ;
+  notifyPowerChange = message: [
+    { variables = { inherit message; }; }
+    (announce templates.message { preannounce = true; })
+    {
+      action = "telegram_bot.send_message";
+      data = {
+        disable_notification = true;
+        inherit (templates) message;
+      };
+    }
+  ];
 in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
-      actions = [ (call "switch.turn_on" entities.switch.reaperPower { }) ];
       alias = "Power / Turn on reaper in the morning";
-      conditions = [ (state entities.binary_sensor.reaperPing "off") ];
       triggers = [
         {
           at = "07:00:00";
           trigger = "time";
         }
       ];
+      conditions = [ (state entities.binary_sensor.reaperPing "off") ];
+      actions = [ (call "switch.turn_on" entities.switch.reaperPower { }) ];
     }
     {
+      alias = "Power / Reaper Windows Button";
+      triggers = [
+        {
+          entity_id = [ entities.input_button.reaperWindows ];
+          trigger = "state";
+        }
+      ];
       actions = [
         {
           choose = [
@@ -45,30 +63,8 @@ in
         }
         { action = "shell_command.reaper_windows"; }
       ];
-      alias = "Power / Reaper Windows Button";
-      triggers = [
-        {
-          entity_id = [ entities.input_button.reaperWindows ];
-          trigger = "state";
-        }
-      ];
     }
     {
-      actions = [
-        {
-          variables = {
-            message = templates.city_power_off;
-          };
-        }
-        (announce templates.message { preannounce = true; })
-        {
-          action = "telegram_bot.send_message";
-          data = {
-            disable_notification = true;
-            inherit (templates) message;
-          };
-        }
-      ];
       alias = "Power / City power is off";
       triggers = [
         {
@@ -81,11 +77,9 @@ in
           trigger = "state";
         }
       ];
+      actions = notifyPowerChange templates.city_power_off;
     }
     {
-      actions = [
-        (announce templates.battery_low { preannounce = true; })
-      ];
       alias = "Power / Low battery";
       triggers =
         map
@@ -101,11 +95,11 @@ in
             11
             6
           ];
+      actions = [
+        (announce templates.battery_low { preannounce = true; })
+      ];
     }
     {
-      actions = [
-        (announce templates.battery_time_low { preannounce = true; })
-      ];
       alias = "Power / Low battery remaining time";
       triggers = [
         {
@@ -117,9 +111,11 @@ in
           trigger = "numeric_state";
         }
       ];
+      actions = [
+        (announce templates.battery_time_low { preannounce = true; })
+      ];
     }
     {
-      actions = [ (announce "Hoard is offline" { }) ];
       alias = "Power / Hoard is offline";
       triggers = [
         {
@@ -128,11 +124,10 @@ in
           trigger = "state";
         }
       ];
+      actions = [ (announce "Hoard is offline" { }) ];
     }
     {
-      actions = [ (announce "Hoard is back online." { }) ];
       alias = "Power / Hoard is back online";
-      conditions = [ (state entities.input_boolean.fullyLoaded "on") ];
       triggers = [
         {
           trigger = "state";
@@ -140,23 +135,10 @@ in
           to = "on";
         }
       ];
+      conditions = [ (state entities.input_boolean.fullyLoaded "on") ];
+      actions = [ (announce "Hoard is back online." { }) ];
     }
     {
-      actions = [
-        {
-          variables = {
-            message = templates.city_power_on;
-          };
-        }
-        (announce templates.message { preannounce = true; })
-        {
-          action = "telegram_bot.send_message";
-          data = {
-            disable_notification = true;
-            inherit (templates) message;
-          };
-        }
-      ];
       alias = "Power / City power back on";
       triggers = [
         {
@@ -166,6 +148,7 @@ in
           trigger = "state";
         }
       ];
+      actions = notifyPowerChange templates.city_power_on;
     }
   ];
 }

@@ -1,7 +1,7 @@
 """Validate using HA's real schemas and dependency metadata, without setup.
 
-No HA service, integration setup, automation or provider action is run. Socket
-connections are blocked even if an imported third-party module attempts one.
+No HA service or integration setup runs. Native script tests register only local
+service stubs. Socket connections are blocked even if an import attempts one.
 """
 
 import asyncio
@@ -203,6 +203,10 @@ async def validate(hass, configuration, components, component_path, template_fix
         from behavior import validate_behavior
 
         await validate_behavior(hass, configuration)
+        from readability import validate_field_order, validate_readability
+
+        validate_field_order(Path(sys.argv[4]))
+        await validate_readability(hass, configuration, template_fixtures["contracts"])
         # Check the API port with an inert device value; no device method runs.
         from custom_components.dyson_local.vacuum import DYSON_STATES, DysonVacuumEntity
         from homeassistant.components.vacuum import VacuumActivity

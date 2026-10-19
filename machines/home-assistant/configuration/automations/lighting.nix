@@ -21,7 +21,6 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
-      actions = [ (call "light.toggle" entities.light.roomOverheadLights { }) ];
       alias = "Lighting / Overhead lights toggle";
       triggers = [
         (singlePress devices.roomLightswitch)
@@ -30,9 +29,9 @@ in
         (quadruplePress devices.kitchenLightswitch)
         (singlePress devices.roomTableButton)
       ];
+      actions = [ (call "light.toggle" entities.light.roomOverheadLights { }) ];
     }
     {
-      actions = [ (call "light.toggle" entities.light.kitchenLights { }) ];
       alias = "Lighting / Kitchen lights toggle";
       triggers = [
         (singlePress devices.kitchenLightswitch)
@@ -41,9 +40,9 @@ in
         (quadruplePress devices.bedButton)
         (quadruplePress devices.roomTableButton)
       ];
+      actions = [ (call "light.toggle" entities.light.kitchenLights { }) ];
     }
     {
-      actions = [ (call "light.toggle" entities.light.bedLight { }) ];
       alias = "Lighting / Bed light toggle";
       triggers = [
         (singlePress devices.bedButton)
@@ -51,22 +50,17 @@ in
         (triplePress devices.roomLightswitch)
         (triplePress devices.roomTableButton)
       ];
+      actions = [ (call "light.toggle" entities.light.bedLight { }) ];
     }
     {
-      actions = [ (call "light.toggle" entities.light.partyLight { }) ];
       alias = "Lighting / Party light toggle";
       triggers = [
         (triplePress devices.kitchenLightswitch)
         (triplePress devices.kitchenTableButton)
       ];
+      actions = [ (call "light.toggle" entities.light.partyLight { }) ];
     }
     {
-      actions = [
-        (call "light.turn_on" entities.light.roomOverheadLights {
-          brightness_pct = 100;
-          transition = 1;
-        })
-      ];
       alias = "Lighting / Room lights full brightness";
       triggers = [
         (doublePress devices.roomLightswitch)
@@ -74,27 +68,41 @@ in
         (doublePress devices.bedShelfButton)
         (doublePress devices.roomTableButton)
       ];
+      actions = [
+        (call "light.turn_on" entities.light.roomOverheadLights {
+          brightness_pct = 100;
+          transition = 1;
+        })
+      ];
     }
     {
+      alias = "Lighting / Kitchen lights full brightness";
+      triggers = [
+        (doublePress devices.kitchenLightswitch)
+        (doublePress devices.kitchenTableButton)
+      ];
       actions = [
         (call "light.turn_on" entities.light.kitchenLights {
           brightness_pct = 100;
           transition = 1;
         })
       ];
-      alias = "Lighting / Kitchen lights full brightness";
-      triggers = [
-        (doublePress devices.kitchenLightswitch)
-        (doublePress devices.kitchenTableButton)
-      ];
     }
     {
-      actions = [ (call "light.toggle" entities.light.cuteLights { }) ];
       alias = "Lighting / Cute lights toggle";
-      conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
       triggers = lightTogglePresses;
+      conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
+      actions = [ (call "light.toggle" entities.light.cuteLights { }) ];
     }
     {
+      alias = "Lighting / Turn on plant light";
+      triggers = [
+        {
+          trigger = "time";
+          at = "08:00:00";
+        }
+      ];
+      conditions = [ (state entities.light.plantLight "off") ];
       actions = [
         {
           action = "light.turn_on";
@@ -104,40 +112,37 @@ in
           };
         }
       ];
-      alias = "Lighting / Turn on plant light";
-      conditions = [ (state entities.light.plantLight "off") ];
-      triggers = [
-        {
-          trigger = "time";
-          at = "08:00:00";
-        }
-      ];
     }
     {
-      actions = [ (call "light.turn_off" entities.light.plantLight { }) ];
       alias = "Lighting / Turn off plant light";
-      conditions = [ (state entities.light.plantLight "on") ];
       triggers = [
         {
           trigger = "time";
           at = "20:00:00";
         }
       ];
+      conditions = [ (state entities.light.plantLight "on") ];
+      actions = [ (call "light.turn_off" entities.light.plantLight { }) ];
     }
     {
-      actions = [ (call "light.toggle" entities.light.lavaLamp { }) ];
       alias = "Lighting / Lava lamp toggle";
-      conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
       triggers = lightTogglePresses;
+      conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
+      actions = [ (call "light.toggle" entities.light.lavaLamp { }) ];
     }
     {
-      actions = [
-        (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = -10; })
-        (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = 10; })
-        (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = -10; })
-        (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = 10; })
-      ];
       alias = "Lighting / Flash light when Room assistant starts listening";
+      triggers = [
+        {
+          options = {
+            behavior = "each";
+          };
+          target = {
+            area_id = areas.room;
+          };
+          trigger = "assist_satellite.listening";
+        }
+      ];
       conditions = [
         {
           condition = "light.is_on";
@@ -149,16 +154,11 @@ in
           };
         }
       ];
-      triggers = [
-        {
-          options = {
-            behavior = "each";
-          };
-          target = {
-            area_id = areas.room;
-          };
-          trigger = "assist_satellite.listening";
-        }
+      actions = [
+        (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = -10; })
+        (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = 10; })
+        (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = -10; })
+        (call "light.turn_on" entities.light.overhead4Light { brightness_step_pct = 10; })
       ];
     }
   ];

@@ -121,7 +121,11 @@ async def validate_behavior(hass, config):
     ]:
         values = await variables(media[:5], {"trigger": {"slots": slots}})
         assert values["clean_title"] == title and values["media_kind"] == kind
-    rejection = media[5]["if"][0]["value_template"]
+    rejection = next(
+        action
+        for action in media
+        if action.get("alias") == "Stop if this is not a movie or show"
+    )["if"][0]["value_template"]
     assert render(rejection, {"raw_title": "milk to my shopping list"}) is True
     assert render(rejection, {"raw_title": "The Matrix"}) is False
 

@@ -32,7 +32,6 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
-      actions = [ (announce "It's time for a moment of silence" { preannounce = false; }) ];
       alias = "Voice / Moment of silence announcement";
       triggers = [
         {
@@ -40,26 +39,10 @@ in
           trigger = "time";
         }
       ];
+      actions = [ (announce "It's time for a moment of silence" { preannounce = false; }) ];
     }
     {
-      actions = [ { action = "rest_command.ollama_preload"; } ] ++ selectAssistants "Reaper";
       alias = "Voice / Switch to local assistant";
-      conditions = [
-        (notAllAssistants "Reaper")
-        {
-          condition = "and";
-          conditions = [
-            (state entities.binary_sensor.ollamaStatus "on")
-            {
-              condition = "not";
-              conditions = [
-                (state entities.stt.whisperReaper "unavailable")
-                (state entities.tts.openaiTtsKokoro "unavailable")
-              ];
-            }
-          ];
-        }
-      ];
       triggers = [
         {
           entity_id = [ entities.binary_sensor.ollamaStatus ];
@@ -79,11 +62,26 @@ in
           trigger = "homeassistant";
         }
       ];
+      conditions = [
+        (notAllAssistants "Reaper")
+        {
+          condition = "and";
+          conditions = [
+            (state entities.binary_sensor.ollamaStatus "on")
+            {
+              condition = "not";
+              conditions = [
+                (state entities.stt.whisperReaper "unavailable")
+                (state entities.tts.openaiTtsKokoro "unavailable")
+              ];
+            }
+          ];
+        }
+      ];
+      actions = [ { action = "rest_command.ollama_preload"; } ] ++ selectAssistants "Reaper";
     }
     {
-      actions = selectAssistants "Remote";
       alias = "Voice / Switch to remote assistant";
-      conditions = [ (notAllAssistants "Remote") ];
       triggers = [
         {
           entity_id = [ entities.stt.whisperReaper ];
@@ -101,9 +99,10 @@ in
           trigger = "state";
         }
       ];
+      conditions = [ (notAllAssistants "Remote") ];
+      actions = selectAssistants "Remote";
     }
     {
-      actions = [ (announce "Voice assistant changed to local." { }) ];
       alias = "Voice / Voice assistant changed to Local announcement";
       triggers = [
         {
@@ -112,9 +111,9 @@ in
           trigger = "state";
         }
       ];
+      actions = [ (announce "Voice assistant changed to local." { }) ];
     }
     {
-      actions = [ (announce "Voice assistant changed to remote." { }) ];
       alias = "Voice / Voice assistant changed to Remote announcement";
       triggers = [
         {
@@ -123,8 +122,16 @@ in
           trigger = "state";
         }
       ];
+      actions = [ (announce "Voice assistant changed to remote." { }) ];
     }
     {
+      alias = "Voice / Lower voice volume at night";
+      triggers = [
+        {
+          at = "23:00:00";
+          trigger = "time";
+        }
+      ];
       actions = [
         {
           action = "media_player.volume_set";
@@ -136,15 +143,15 @@ in
           };
         }
       ];
-      alias = "Voice / Lower voice volume at night";
+    }
+    {
+      alias = "Voice / Set voice volume back to full in the morning";
       triggers = [
         {
-          at = "23:00:00";
+          at = "08:00:00";
           trigger = "time";
         }
       ];
-    }
-    {
       actions = [
         {
           action = "media_player.volume_set";
@@ -156,19 +163,18 @@ in
           };
         }
       ];
-      alias = "Voice / Set voice volume back to full in the morning";
-      triggers = [
-        {
-          at = "08:00:00";
-          trigger = "time";
-        }
-      ];
     }
     {
-      actions = [
-        (announce templates.provider_changed { })
-      ];
       alias = "Voice / Internet provider change announcement";
+      triggers = [
+        {
+          entity_id = [ entities.sensor.internetProvider ];
+          for = {
+            seconds = 15;
+          };
+          trigger = "state";
+        }
+      ];
       conditions = [
         {
           after = "08:00:00";
@@ -183,17 +189,24 @@ in
           ];
         }
       ];
-      triggers = [
-        {
-          entity_id = [ entities.sensor.internetProvider ];
-          for = {
-            seconds = 15;
-          };
-          trigger = "state";
-        }
+      actions = [
+        (announce templates.provider_changed { })
       ];
     }
     {
+      alias = "Voice / Add media using Assist";
+      triggers = [
+        {
+          command = [
+            "(download|add|send) [the] (movie|film) {movie_title} (on|to|in|into|2) [my|our|the] [media] ((plex|duplex) [library|collection]|library|collection|watch list|watchlist)"
+            "(download|add|send) [the] [tv|television] (show|series) {show_title} (on|to|in|into|2) [my|our|the] [media] ((plex|duplex) [library|collection]|library|collection|watch list|watchlist)"
+            "(download|add) [the] (movie|film) {movie_title}"
+            "(download|add) [the] [tv|television] (show|series) {show_title}"
+            "(download|add|send) [the] {title} (on|to|in|into|2) [my|our|the] [media] ((plex|duplex) [library|collection]|library|collection|watch list|watchlist)"
+          ];
+          trigger = "conversation";
+        }
+      ];
       actions =
         ha.orderedVariables [
           {
@@ -232,30 +245,83 @@ in
           }
           {
             alias = "Classify media kind via LLM if necessary";
+            "if" = [
+              {
+                alias = "media_kind is unknown";
+                condition = "template";
+                value_template = templates.unknown_media;
+              }
+            ];
+            "then" = [
+              {
+                action = "conversation.process";
+                alias = "Ask LLM to classify media";
+                data = {
+                  agent_id = entities.conversation.chatgpt2;
+                  text = templates.classifier_prompt;
+                };
+                response_variable = "llm_kind";
+              }
+              {
+                alias = "set classified media_kind variable";
+                variables = {
+                  media_kind = templates.classified_media;
+                };
+              }
+            ];
+          }
+          {
+            alias = "media_kind is STILL unknown";
+            "if" = [
+              {
+                alias = "media_kind is unknown";
+                condition = "template";
+                value_template = templates.unknown_media;
+              }
+            ];
+            "then" = [
+              {
+                alias = "Set response with error message";
+                set_conversation_response = templates.unsure_media;
+              }
+              { stop = "Unknown media kind"; }
+            ];
+          }
+          {
+            alias = "Choose between movie or show";
             choose = [
               {
-                alias = "Necessary";
+                alias = "Movie";
                 conditions = [
                   {
-                    alias = "media_kind is unknown";
+                    alias = "media_kind is movie";
                     condition = "template";
-                    value_template = templates.unknown_media;
+                    value_template = templates.movie_media;
                   }
                 ];
                 sequence = [
                   {
-                    action = "conversation.process";
-                    alias = "Ask LLM to classify media";
+                    action = "hassarr.add_overseerr_movie";
                     data = {
-                      agent_id = entities.conversation.chatgpt2;
-                      text = templates.classifier_prompt;
+                      title = templates.title_case;
                     };
-                    response_variable = "llm_kind";
                   }
+                ];
+              }
+              {
+                alias = "Show";
+                conditions = [
                   {
-                    alias = "set classified media_kind variable";
-                    variables = {
-                      media_kind = templates.classified_media;
+                    alias = "media_kind is show";
+                    condition = "template";
+                    value_template = templates.show_media;
+                  }
+                ];
+                sequence = [
+                  {
+                    action = "hassarr.add_overseerr_tv_show";
+                    data = {
+                      title = templates.title_case;
                     };
                   }
                 ];
@@ -263,103 +329,22 @@ in
             ];
           }
           {
-            choose = [
-              {
-                alias = "media_kind is STILL unknown";
-                conditions = [
-                  {
-                    alias = "media_kind is unknown";
-                    condition = "template";
-                    value_template = templates.unknown_media;
-                  }
-                ];
-                sequence = [
-                  {
-                    alias = "Set response with error message";
-                    set_conversation_response = templates.unsure_media;
-                  }
-                ];
-              }
-            ];
-            default = [
-              {
-                alias = "Choose between movie or show";
-                choose = [
-                  {
-                    alias = "Movie";
-                    conditions = [
-                      {
-                        alias = "media_kind is movie";
-                        condition = "template";
-                        value_template = templates.movie_media;
-                      }
-                    ];
-                    sequence = [
-                      {
-                        action = "hassarr.add_overseerr_movie";
-                        data = {
-                          title = templates.title_case;
-                        };
-                      }
-                    ];
-                  }
-                  {
-                    alias = "Show";
-                    conditions = [
-                      {
-                        alias = "media_kind is show";
-                        condition = "template";
-                        value_template = templates.show_media;
-                      }
-                    ];
-                    sequence = [
-                      {
-                        action = "hassarr.add_overseerr_tv_show";
-                        data = {
-                          title = templates.title_case;
-                        };
-                      }
-                    ];
-                  }
-                ];
-              }
-              {
-                action = "ai_task.generate_data";
-                alias = "Ask for a joke";
-                data = {
-                  entity_id = entities.ai_task.openaiAiTask;
-                  instructions = templates.confirmation_prompt;
-                  task_name = "Media added confirmation";
-                };
-                response_variable = "witty_remark";
-              }
-              {
-                alias = "Set success response";
-                set_conversation_response = templates.media_confirmation;
-              }
-            ];
+            action = "ai_task.generate_data";
+            alias = "Ask for a joke";
+            data = {
+              entity_id = entities.ai_task.openaiAiTask;
+              instructions = templates.confirmation_prompt;
+              task_name = "Media added confirmation";
+            };
+            response_variable = "witty_remark";
+          }
+          {
+            alias = "Set success response";
+            set_conversation_response = templates.media_confirmation;
           }
         ];
-      alias = "Voice / Add media using Assist";
-      triggers = [
-        {
-          command = [
-            "(download|add|send) [the] (movie|film) {movie_title} (on|to|in|into|2) [my|our|the] [media] ((plex|duplex) [library|collection]|library|collection|watch list|watchlist)"
-            "(download|add|send) [the] [tv|television] (show|series) {show_title} (on|to|in|into|2) [my|our|the] [media] ((plex|duplex) [library|collection]|library|collection|watch list|watchlist)"
-            "(download|add) [the] (movie|film) {movie_title}"
-            "(download|add) [the] [tv|television] (show|series) {show_title}"
-            "(download|add|send) [the] {title} (on|to|in|into|2) [my|our|the] [media] ((plex|duplex) [library|collection]|library|collection|watch list|watchlist)"
-          ];
-          trigger = "conversation";
-        }
-      ];
     }
     {
-      actions = [
-        (announce templates.battery_level {
-          preannounce = false;
-        })
-      ];
       alias = "Voice / Announce battery level via button";
       triggers = [
         (quintuplePress devices.roomLightswitch)
@@ -367,11 +352,13 @@ in
         (quintuplePress devices.kitchenTableButton)
         (quintuplePress devices.bedButton)
       ];
+      actions = [
+        (announce templates.battery_level {
+          preannounce = false;
+        })
+      ];
     }
     {
-      actions = [
-        (announce templates.power_alarm { preannounce = true; })
-      ];
       alias = "Voice / Power system Alarm announcement";
       triggers = [
         {
@@ -398,18 +385,13 @@ in
           trigger = "state";
         }
       ];
+      actions = [
+        (announce templates.power_alarm { preannounce = true; })
+      ];
     }
     {
-      actions = [
-        {
-          action = "script.check_print";
-          response_variable = "verdict";
-        }
-        { set_conversation_response = templates.print_answer; }
-      ];
       alias = "Voice / Print check by voice";
       description = "Answers spoken questions about the running print with a camera-based verdict.";
-      max_exceeded = "silent";
       triggers = [
         {
           command = [
@@ -426,6 +408,14 @@ in
           trigger = "conversation";
         }
       ];
+      actions = [
+        {
+          action = "script.check_print";
+          response_variable = "verdict";
+        }
+        { set_conversation_response = templates.print_answer; }
+      ];
+      max_exceeded = "silent";
     }
   ];
 }

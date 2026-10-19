@@ -5,6 +5,18 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      alias = "System / Weather report";
+      triggers = [
+        {
+          command = [
+            "what's the weather"
+            "what is the weather"
+            "how's the weather"
+            "how is the weather"
+          ];
+          trigger = "conversation";
+        }
+      ];
       actions = [
         {
           action = "weather.get_forecasts";
@@ -50,20 +62,15 @@ in
       ++ [
         { set_conversation_response = templates.message; }
       ];
-      alias = "System / Weather report";
-      triggers = [
-        {
-          command = [
-            "what's the weather"
-            "what is the weather"
-            "how's the weather"
-            "how is the weather"
-          ];
-          trigger = "conversation";
-        }
-      ];
     }
     {
+      alias = "System / Enable fully loaded after startup";
+      triggers = [
+        {
+          event = "start";
+          trigger = "homeassistant";
+        }
+      ];
       actions = [
         (call "input_boolean.turn_off" entities.input_boolean.fullyLoaded { })
         {
@@ -73,16 +80,8 @@ in
         }
         (call "input_boolean.turn_on" entities.input_boolean.fullyLoaded { })
       ];
-      alias = "System / Enable fully loaded after startup";
-      triggers = [
-        {
-          event = "start";
-          trigger = "homeassistant";
-        }
-      ];
     }
     {
-      actions = [ (call "input_boolean.turn_off" entities.input_boolean.fullyLoaded { }) ];
       alias = "System / Disable fully loaded on shutdown";
       triggers = [
         {
@@ -90,6 +89,7 @@ in
           trigger = "homeassistant";
         }
       ];
+      actions = [ (call "input_boolean.turn_off" entities.input_boolean.fullyLoaded { }) ];
     }
   ];
 }

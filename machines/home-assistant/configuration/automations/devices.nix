@@ -15,14 +15,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
-      actions = [ (announce templates.announcement { }) ];
       alias = "Devices / Print error notification";
-      conditions = [
-        {
-          condition = "template";
-          value_template = templates.has_announcement;
-        }
-      ];
       description = "Announces actionable printer errors, suppressing known informational HMS codes.";
       triggers = [
         {
@@ -38,11 +31,27 @@ in
           trigger = "state";
         }
       ];
+      conditions = [
+        {
+          condition = "template";
+          value_template = templates.has_announcement;
+        }
+      ];
+      actions = [ (announce templates.announcement { }) ];
       variables = {
         announcement = templates.printer_errors;
       };
     }
     {
+      alias = "Devices / Print finished notification";
+      description = "Announces print completion and has the print_watcher AI task guess the printed object from a finished-print snapshot.";
+      triggers = [
+        {
+          entity_id = [ entities.sensor.balconyH2CPrintStatus ];
+          to = [ "finish" ];
+          trigger = "state";
+        }
+      ];
       actions = printerSnapshot "print_finished_snapshot.jpg" ++ [
         {
           action = "ai_task.generate_data";
@@ -61,21 +70,11 @@ in
         }
         (announce templates.print_finished { })
       ];
-      alias = "Devices / Print finished notification";
-      description = "Announces print completion and has the print_watcher AI task guess the printed object from a finished-print snapshot.";
-      triggers = [
-        {
-          entity_id = [ entities.sensor.balconyH2CPrintStatus ];
-          to = [ "finish" ];
-          trigger = "state";
-        }
-      ];
       variables = {
         chamber_light_was_off = templates.chamber_was_off;
       };
     }
     {
-      actions = [ (announce "The Zigbee router is offline" { }) ];
       alias = "Devices / Zigbee router offline";
       triggers = [
         {
@@ -84,11 +83,10 @@ in
           trigger = "state";
         }
       ];
+      actions = [ (announce "The Zigbee router is offline" { }) ];
     }
     {
-      actions = [ (announce "The Zigbee router is back online." { }) ];
       alias = "Devices / Zigbee is back online";
-      conditions = [ (state entities.input_boolean.fullyLoaded "on") ];
       triggers = [
         {
           trigger = "state";
@@ -96,8 +94,23 @@ in
           to = "on";
         }
       ];
+      conditions = [ (state entities.input_boolean.fullyLoaded "on") ];
+      actions = [ (announce "The Zigbee router is back online." { }) ];
     }
     {
+      alias = "Devices / Water leak detected";
+      triggers = [
+        {
+          trigger = "state";
+          entity_id = entities.binary_sensor.leakSensorAMoisture;
+          to = "on";
+        }
+        {
+          trigger = "state";
+          entity_id = entities.binary_sensor.leakSensorBMoisture;
+          to = "on";
+        }
+      ];
       actions = [
         (call "switch.turn_off" entities.switch.hotWaterValve { })
         (call "switch.turn_off" entities.switch.coldWaterValve { })
@@ -128,24 +141,8 @@ in
           };
         }
       ];
-      alias = "Devices / Water leak detected";
-      triggers = [
-        {
-          trigger = "state";
-          entity_id = entities.binary_sensor.leakSensorAMoisture;
-          to = "on";
-        }
-        {
-          trigger = "state";
-          entity_id = entities.binary_sensor.leakSensorBMoisture;
-          to = "on";
-        }
-      ];
     }
     {
-      actions = [
-        (announce templates.device_offline { })
-      ];
       alias = "Devices / Zigbee device offline notification";
       triggers = [
         (zha devices.bedButton "device_offline" "device_offline")
@@ -156,9 +153,11 @@ in
         (zha devices.kitchenLightswitch "device_offline" "device_offline")
         (zha devices.kitchenTableButton "device_offline" "device_offline")
       ];
+      actions = [
+        (announce templates.device_offline { })
+      ];
     }
     {
-      actions = [ (call "switch.turn_off" entities.switch.dysonNightMode { }) ];
       alias = "Devices / Turn off Dyson Night mode";
       triggers = [
         {
@@ -166,8 +165,58 @@ in
           trigger = "time";
         }
       ];
+      actions = [ (call "switch.turn_off" entities.switch.dysonNightMode { }) ];
     }
     {
+      alias = "Devices / 3D print Live Activity";
+      description = "Mirrors the H2C print on the iPhone Lock Screen / Dynamic Island as a companion-app Live Activity. Updates on status/stage changes and every 5 minutes while printing; the countdown ticks on-device via chronometer so no per-second pushes are needed (iOS throttles frequent updates).";
+      triggers = [
+        {
+          entity_id = entities.sensor.balconyH2CPrintStatus;
+          id = "update";
+          to = [
+            "prepare"
+            "running"
+            "pause"
+          ];
+          trigger = "state";
+        }
+        {
+          entity_id = entities.sensor.balconyH2CCurrentStage;
+          id = "update";
+          trigger = "state";
+        }
+        {
+          id = "update";
+          minutes = "/5";
+          trigger = "time_pattern";
+        }
+        {
+          entity_id = entities.sensor.balconyH2CPrintStatus;
+          id = "end";
+          to = [
+            "finish"
+            "failed"
+          ];
+          trigger = "state";
+        }
+      ];
+      conditions = [
+        {
+          condition = "or";
+          conditions = [
+            {
+              condition = "trigger";
+              id = "end";
+            }
+            (state entities.sensor.balconyH2CPrintStatus [
+              "prepare"
+              "running"
+              "pause"
+            ])
+          ];
+        }
+      ];
       actions = [
         {
           choose = [
@@ -250,56 +299,6 @@ in
           ];
         }
       ];
-      alias = "Devices / 3D print Live Activity";
-      conditions = [
-        {
-          condition = "or";
-          conditions = [
-            {
-              condition = "trigger";
-              id = "end";
-            }
-            (state entities.sensor.balconyH2CPrintStatus [
-              "prepare"
-              "running"
-              "pause"
-            ])
-          ];
-        }
-      ];
-      description = "Mirrors the H2C print on the iPhone Lock Screen / Dynamic Island as a companion-app Live Activity. Updates on status/stage changes and every 5 minutes while printing; the countdown ticks on-device via chronometer so no per-second pushes are needed (iOS throttles frequent updates).";
-      mode = "restart";
-      triggers = [
-        {
-          entity_id = entities.sensor.balconyH2CPrintStatus;
-          id = "update";
-          to = [
-            "prepare"
-            "running"
-            "pause"
-          ];
-          trigger = "state";
-        }
-        {
-          entity_id = entities.sensor.balconyH2CCurrentStage;
-          id = "update";
-          trigger = "state";
-        }
-        {
-          id = "update";
-          minutes = "/5";
-          trigger = "time_pattern";
-        }
-        {
-          entity_id = entities.sensor.balconyH2CPrintStatus;
-          id = "end";
-          to = [
-            "finish"
-            "failed"
-          ];
-          trigger = "state";
-        }
-      ];
       variables = {
         inherit (templates) end_ts;
         inherit (templates) layer;
@@ -308,6 +307,7 @@ in
         inherit (templates) progress;
         inherit (templates) task;
       };
+      mode = "restart";
     }
   ];
 }

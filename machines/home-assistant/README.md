@@ -24,11 +24,15 @@ device; long, held and release events are not interchangeable. Helpers return
 native trigger attrsets, so a functional trigger ID can be added with
 `(ha.singlePress ha.devices.bedButton) // { id = "bed"; }` when needed.
 
-Definitions pass through checked Nix constructors for automation, script, action,
-condition and helper shapes. Bodies stay native attrsets and lists. Dependent
+`constructors.nix` holds the internal checks for automation, script, action,
+condition and helper shapes; `lib.nix` retains its 22 public exports. Automation
+fields follow alias, description, triggers, conditions, actions, variables, then
+execution options, omitting absent fields. Bodies stay native attrsets and lists. Dependent
 variables use `orderedVariables`, which emits one action per binding in list
-order. Raw template programs are centralized in `templates.nix`; declarations use
-named references. `template-literal.nix` serializes embedded values as JSON inside
+order. `templates.nix` merges seven domain modules under `templates/`: system,
+printer, power, weather, media, GPT and climate. The flat registry retains all 74
+names and rejects duplicate exports through `merge-template-domains.nix`.
+Declarations use named references. `template-literal.nix` serializes embedded values as JSON inside
 a Jinja string and decodes them with HA's `from_json`. `safe-fields.jinja` handles
 missing fields in provider responses, including native HA event/state objects.
 
@@ -110,6 +114,37 @@ including unsupported gestures, malformed/unknown devices and checked-body
 boundaries. AC and expert-query scripts guard their inputs before calling services;
 unavailable weather and provider responses produce explicit fallback text.
 
+`packages/home-assistant/readability.py` executes the media flow with HA's pinned
+native script engine and local recording service stubs. It compares the flattened
+`if`/guard-stop flow with the pre-refactor control flow for explicit and inferred
+movie/show requests, rejected requests, unknown/malformed classifications,
+confirmation fallbacks and service failures. Calls, their order, returned data,
+bound variables and conversation messages must match; trace structure may differ.
+The 39 media scenarios include HA rejecting non-mapping service responses before
+fallback templates run. Six power runs cover successful and failed delivery.
+Power tests change sensors during speech and assert Telegram receives the message
+captured before speech, including service-failure ordering.
+
+The compact `fixtures/readability.json` records the `ed89082` baseline using source
+fingerprints and named template references, without duplicating the whole config.
+It pins all 73 other template sources exactly, including the confirmation prompt.
+Only weather source whitespace and voice control-flow structure are allowed to
+differ. Weather AST and scope must match, and 2,564 paired strict HA renders cover
+the original 2,560 branch/boundary/unknown cases plus negative temperatures;
+18 raw prompt renders retain their baseline fingerprints. All configuration
+outside those two allowances must match its baseline fingerprint. Review any
+intentional behavior change before updating these fixtures. Source-order checks
+cover all 45 automations, and Nix tests retain constructor/button negatives and
+pin the public exports and duplicate rejection. The QA output includes a derived
+`template-scope-inventory.json` with the actual program names and use paths.
+
+Run this scoped check locally without remote builders:
+
+```sh
+nix build --offline --no-write-lock-file --no-link --print-out-paths \
+  --builders '' --max-jobs 1 --cores 1 -L .#checks.x86_64-linux.home-assistant-config
+```
+
 These are schema, conservative scope and representative behavior checks. They
 are not static typing or formal verification of arbitrary Jinja, device
 conditions, service data, private registry targets or integration behavior.
@@ -119,6 +154,7 @@ their actual native types. Unrecognized template scopes fail the audit and need
 an explicit extension. Private inventories and physical behavior still require
 runtime acceptance.
 
-The check neither starts HA nor talks to hardware or integrations. A complete
+The check never starts HA or talks to hardware or network integrations. Script
+execution uses only local recording service handlers. A complete
 Pi OS build and physical acceptance require an aarch64 builder and the target
 hardware.
