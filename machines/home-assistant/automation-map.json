@@ -1,0 +1,359 @@
+[
+  {
+    "id": "1735822501432",
+    "entity_id": "automation.overhead_lights_toggle",
+    "old_alias": "Overhead lights toggle",
+    "alias": "Lighting / Overhead lights toggle",
+    "enabled": true
+  },
+  {
+    "id": "1735822817931",
+    "entity_id": "automation.kitchen_lights_toggle",
+    "old_alias": "Kitchen lights toggle",
+    "alias": "Lighting / Kitchen lights toggle",
+    "enabled": true
+  },
+  {
+    "id": "1735822879704",
+    "entity_id": "automation.bed_light_toggle",
+    "old_alias": "Bed light toggle",
+    "alias": "Lighting / Bed light toggle",
+    "enabled": true
+  },
+  {
+    "id": "1735948041970",
+    "entity_id": "automation.print_error_notification",
+    "old_alias": "Print error notification",
+    "alias": "Devices / Print error notification",
+    "enabled": true
+  },
+  {
+    "id": "1735974440260",
+    "entity_id": "automation.moment_of_silence_announcement",
+    "old_alias": "Moment of silence announcement",
+    "alias": "Voice / Moment of silence announcement",
+    "enabled": true
+  },
+  {
+    "id": "1736031167938",
+    "entity_id": "automation.new_automation",
+    "old_alias": "Print finished notification",
+    "alias": "Devices / Print finished notification",
+    "enabled": true
+  },
+  {
+    "id": "1736341453854",
+    "entity_id": "automation.turn_on_ac_if_settings_change",
+    "old_alias": "Turn on AC if settings change",
+    "alias": "Devices / Turn on AC if settings change",
+    "enabled": false
+  },
+  {
+    "id": "1736777638584",
+    "entity_id": "automation.party_light_toggle",
+    "old_alias": "Party light toggle",
+    "alias": "Lighting / Party light toggle",
+    "enabled": true
+  },
+  {
+    "id": "1736777817476",
+    "entity_id": "automation.room_lights_full_brightness",
+    "old_alias": "Room lights full brightness",
+    "alias": "Lighting / Room lights full brightness",
+    "enabled": true
+  },
+  {
+    "id": "1736777871135",
+    "entity_id": "automation.kitchen_lights_full_brightness",
+    "old_alias": "Kitchen lights full brightness",
+    "alias": "Lighting / Kitchen lights full brightness",
+    "enabled": true
+  },
+  {
+    "id": "1739949582133",
+    "entity_id": "automation.zigbee_router_offline",
+    "old_alias": "Zigbee router offline",
+    "alias": "Devices / Zigbee router offline",
+    "enabled": true
+  },
+  {
+    "id": "1739949635477",
+    "entity_id": "automation.zigbee_is_back_online",
+    "old_alias": "Zigbee is back online",
+    "alias": "Devices / Zigbee is back online",
+    "enabled": true
+  },
+  {
+    "id": "1740237487651",
+    "entity_id": "automation.switch_to_reaper_assistant",
+    "old_alias": "Switch to local assistant",
+    "alias": "Voice / Switch to local assistant",
+    "enabled": true
+  },
+  {
+    "id": "1740237609917",
+    "entity_id": "automation.change_voice_assistant_to_remote",
+    "old_alias": "Switch to remote assistant",
+    "alias": "Voice / Switch to remote assistant",
+    "enabled": true
+  },
+  {
+    "id": "1740514715257",
+    "entity_id": "automation.voice_assistant_changed_to_local_announcement",
+    "old_alias": "Voice assistant changed to Local announcement",
+    "alias": "Voice / Voice assistant changed to Local announcement",
+    "enabled": true
+  },
+  {
+    "id": "1740514774923",
+    "entity_id": "automation.voice_assistant_changed_to_remote_announcement",
+    "old_alias": "Voice assistant changed to Remote announcement",
+    "alias": "Voice / Voice assistant changed to Remote announcement",
+    "enabled": true
+  },
+  {
+    "id": "1740515216770",
+    "entity_id": "automation.water_leak_detected",
+    "old_alias": "Water leak detected",
+    "alias": "Devices / Water leak detected",
+    "enabled": true
+  },
+  {
+    "id": "1740518034489",
+    "entity_id": "automation.turn_off_reaper_at_night",
+    "old_alias": "Turn off reaper at night",
+    "alias": "Power / Turn off reaper at night",
+    "enabled": false
+  },
+  {
+    "id": "1740518221778",
+    "entity_id": "automation.turn_on_reaper",
+    "old_alias": "Turn on reaper in the morning",
+    "alias": "Power / Turn on reaper in the morning",
+    "enabled": true
+  },
+  {
+    "id": "1740518420448",
+    "entity_id": "automation.lower_voice_volume_at_night",
+    "old_alias": "Lower voice volume at night",
+    "alias": "Voice / Lower voice volume at night",
+    "enabled": true
+  },
+  {
+    "id": "1740518452668",
+    "entity_id": "automation.set_voice_volume_back_to_full_in_the_morning",
+    "old_alias": "Set voice volume back to full in the morning",
+    "alias": "Voice / Set voice volume back to full in the morning",
+    "enabled": true
+  },
+  {
+    "id": "1741877005352",
+    "entity_id": "automation.turn_off_soundbar_when_tv_tusn_off",
+    "old_alias": "Turn off soundbar when TV turns off",
+    "alias": "Media / Turn off soundbar when TV turns off",
+    "enabled": false
+  },
+  {
+    "id": "1741995459539",
+    "entity_id": "automation.goodnight",
+    "old_alias": "Goodnight",
+    "alias": "Media / Goodnight",
+    "enabled": true
+  },
+  {
+    "id": "1742134027344",
+    "entity_id": "automation.internet_provider_change_announcement",
+    "old_alias": "Internet provider change announcement",
+    "alias": "Voice / Internet provider change announcement",
+    "enabled": true
+  },
+  {
+    "id": "1742200304139",
+    "entity_id": "automation.zigbee_device_offline_notification",
+    "old_alias": "Zigbee device offline notification",
+    "alias": "Devices / Zigbee device offline notification",
+    "enabled": true
+  },
+  {
+    "id": "1743802438397",
+    "entity_id": "automation.turn_on_alternative_speed_when_plex_is_streaming",
+    "old_alias": "Turn on download throttling when Plex is streaming",
+    "alias": "Media / Turn on download throttling when Plex is streaming",
+    "enabled": false
+  },
+  {
+    "id": "1743802518371",
+    "entity_id": "automation.turn_off_alternative_speed_if_plex_is_not_streaming",
+    "old_alias": "Turn off download throttling if Plex is not streaming",
+    "alias": "Media / Turn off download throttling if Plex is not streaming",
+    "enabled": false
+  },
+  {
+    "id": "1744026803586",
+    "entity_id": "automation.ask_to_activate_movie_scene",
+    "old_alias": "Ask to activate Movie scene",
+    "alias": "Media / Ask to activate Movie scene",
+    "enabled": true
+  },
+  {
+    "id": "1744987485407",
+    "entity_id": "automation.activate_movie_scene_on_table_button_long_press",
+    "old_alias": "Activate Movie scene on Table button Long press",
+    "alias": "Media / Activate Movie scene on Table button Long press",
+    "enabled": true
+  },
+  {
+    "id": "1746203147558",
+    "entity_id": "automation.add_movie_using_assist",
+    "old_alias": "Add media using Assist",
+    "alias": "Voice / Add media using Assist",
+    "enabled": true
+  },
+  {
+    "id": "1749302876683",
+    "entity_id": "automation.assist_quick_weather_report",
+    "old_alias": "Weather report",
+    "alias": "System / Weather report",
+    "enabled": true
+  },
+  {
+    "id": "1749390846354",
+    "entity_id": "automation.cute_lights_toggle",
+    "old_alias": "Cute lights toggle",
+    "alias": "Lighting / Cute lights toggle",
+    "enabled": true
+  },
+  {
+    "id": "1749471372840",
+    "entity_id": "automation.turn_on_plant_light",
+    "old_alias": "Turn on plant light",
+    "alias": "Lighting / Turn on plant light",
+    "enabled": true
+  },
+  {
+    "id": "1749471809764",
+    "entity_id": "automation.turn_off_plant_light",
+    "old_alias": "Turn off plant light",
+    "alias": "Lighting / Turn off plant light",
+    "enabled": true
+  },
+  {
+    "id": "1749902052905",
+    "entity_id": "automation.enable_fully_loaded",
+    "old_alias": "Enable fully loaded after startup",
+    "alias": "System / Enable fully loaded after startup",
+    "enabled": true
+  },
+  {
+    "id": "1749902102800",
+    "entity_id": "automation.disable_fully_loaded_on_shutdown",
+    "old_alias": "Disable fully loaded on shutdown",
+    "alias": "System / Disable fully loaded on shutdown",
+    "enabled": true
+  },
+  {
+    "id": "1752228037308",
+    "entity_id": "automation.reaper_windows_button",
+    "old_alias": "Reaper Windows Button",
+    "alias": "Power / Reaper Windows Button",
+    "enabled": true
+  },
+  {
+    "id": "1752329832392",
+    "entity_id": "automation.button_pusher_helper",
+    "old_alias": "Button Pusher helper",
+    "alias": "Devices / Button Pusher helper",
+    "enabled": false
+  },
+  {
+    "id": "1755457211035",
+    "entity_id": "automation.lava_lamp_toggle",
+    "old_alias": "Lava lamp toggle",
+    "alias": "Lighting / Lava lamp toggle",
+    "enabled": true
+  },
+  {
+    "id": "1761754817178",
+    "entity_id": "automation.city_power_is_off",
+    "old_alias": "City power is off",
+    "alias": "Power / City power is off",
+    "enabled": true
+  },
+  {
+    "id": "1763747070957",
+    "entity_id": "automation.low_battery",
+    "old_alias": "Low battery",
+    "alias": "Power / Low battery",
+    "enabled": true
+  },
+  {
+    "id": "1763821630644",
+    "entity_id": "automation.announce_battery_level_via_button",
+    "old_alias": "Announce battery level via button",
+    "alias": "Voice / Announce battery level via button",
+    "enabled": true
+  },
+  {
+    "id": "1765384948992",
+    "entity_id": "automation.flash_light_when_room_assistant_starts_listening",
+    "old_alias": "Flash light when Room assistant starts listening",
+    "alias": "Lighting / Flash light when Room assistant starts listening",
+    "enabled": true
+  },
+  {
+    "id": "1765823486412",
+    "entity_id": "automation.low_battery_remaining_time",
+    "old_alias": "Low battery remaining time",
+    "alias": "Power / Low battery remaining time",
+    "enabled": true
+  },
+  {
+    "id": "1766322149528",
+    "entity_id": "automation.hoard_is_offline",
+    "old_alias": "Hoard is offline",
+    "alias": "Power / Hoard is offline",
+    "enabled": true
+  },
+  {
+    "id": "1766322208678",
+    "entity_id": "automation.hoard_is_back_online",
+    "old_alias": "Hoard is back online",
+    "alias": "Power / Hoard is back online",
+    "enabled": true
+  },
+  {
+    "id": "1768472043250",
+    "entity_id": "automation.city_power_back_on",
+    "old_alias": "City power back on",
+    "alias": "Power / City power back on",
+    "enabled": true
+  },
+  {
+    "id": "1781467492529",
+    "entity_id": "automation.turn_off_dyson_night_mide",
+    "old_alias": "Turn off Dyson Night mode",
+    "alias": "Devices / Turn off Dyson Night mode",
+    "enabled": true
+  },
+  {
+    "id": "1787041307832",
+    "entity_id": "automation.power_system_alarm_announcement",
+    "old_alias": "Power system Alarm announcement",
+    "alias": "Voice / Power system Alarm announcement",
+    "enabled": true
+  },
+  {
+    "id": "1787590347448",
+    "entity_id": "automation.print_check_by_voice",
+    "old_alias": "Print check by voice",
+    "alias": "Voice / Print check by voice",
+    "enabled": true
+  },
+  {
+    "id": "1790439678498",
+    "entity_id": "automation.3d_print_live_activity",
+    "old_alias": "3D print Live Activity",
+    "alias": "Devices / 3D print Live Activity",
+    "enabled": true
+  }
+]

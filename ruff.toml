@@ -1,3 +1,7 @@
+# Preserve the installed, user-owned guard source verbatim. The migration QA
+# compiles it and checks its public flow/validation behavior separately.
+extend-exclude = ["machines/home-assistant/yasno-address-guard"]
+
 [lint]
 select = [
   "E4",  # pycodestyle: import placement

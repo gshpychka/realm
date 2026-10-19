@@ -1,0 +1,20 @@
+--- a/tests/test_datastructures.py
++++ b/tests/test_datastructures.py
+@@ -554,9 +554,14 @@
+     assert limiter.waiting_requests == 0
+     # The exact end order depends on scheduling, but the start order is what matters.
+     assert results[:2] == ["start-0", "start-1"]
+-    assert results[2:4] == ["end-0", "end-1"]
+-    assert results[4] == "start-2"
+-    assert results[5] == "end-2"
++    assert sorted(results) == ["end-0", "end-1", "end-2", "start-0", "start-1", "start-2"]
++    for uid in range(3):
++        assert results.index(f"start-{uid}") < results.index(f"end-{uid}")
++    active = 0
++    for event in results:
++        active += 1 if event.startswith("start-") else -1
++        assert 0 <= active <= 2
++    assert active == 0
+ 
+ 
+ async def test_request_limiter_cascading_priority():

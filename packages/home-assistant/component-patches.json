@@ -1,0 +1,11 @@
+{
+  "dyson_local": [
+    {
+      "file": "dyson-vacuum-api.patch",
+      "target": "vacuum.py",
+      "source_sha256": "65d50472b477a63e11526ad2de53b920f956ae486961b07cacae1a75261aadc0",
+      "result_sha256": "be7cf6983b858869a9fb45a18674278b38799728b882c9cb16488960b92762b8",
+      "reason": "Use VacuumActivity/activity and preserve status/battery attributes without removed HA constants/flags; remove two references to MACHINE_OFF, which is absent from the pinned bundled VacuumState enum. The baseline has no vacuum entities; active fan code is unchanged."
+    }
+  ]
+}

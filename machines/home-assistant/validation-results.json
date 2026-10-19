@@ -1,0 +1,197 @@
+{
+  "date": "2026-10-19",
+  "scope": "Branch-only implementation and offline/read-only verification; no live HA edits/actions, restart, install, activation, cutover or push.",
+  "base_commit": "19e1b4785751087c24b923a609f28bf04060c860",
+  "execution": {
+    "host": "hoard",
+    "local_system": "x86_64-linux",
+    "max_jobs": 1,
+    "cores": 1,
+    "builders": "",
+    "global_flake_check_run": false
+  },
+  "access": {
+    "strict_tpm_ssh": "passed from this worker",
+    "admin_mcp_direct_read": "initialize, 77 tools and successful ha_get_system_health from this worker",
+    "native_ha_mcp_tools_attached": 0,
+    "native_registration_fix": "access-preflight.json records ACP session/new.params.mcpServers forwarding; no client/HA configuration changed.",
+    "main_telegram": "OpenClaw"
+  },
+  "coverage": {
+    "config_entries": 92,
+    "coverage_statuses": {
+      "declarative-yaml": 1,
+      "os-service-replacement": 2,
+      "protected-runtime-state": 72,
+      "preserved-inactive": 17
+    },
+    "automations": 51,
+    "active_scripts": 4,
+    "retained_disabled_scripts": 4,
+    "scenes": 2,
+    "yaml_helpers": {
+      "input_boolean": 1,
+      "input_button": 1,
+      "timer": 2
+    },
+    "custom_components": 20,
+    "addon_equivalents_or_dispositions": 10,
+    "entity_registry_rows": 1864,
+    "disabled_entity_rows": 1058,
+    "device_and_composite_map_rows": 190,
+    "voice_pipelines": 5
+  },
+  "checks": {
+    "offline_nix_build": {
+      "status": "passed",
+      "command": "nix build --no-link -L .#checks.x86_64-linux.home-assistant-config --max-jobs 1 --cores 1 --builders ''",
+      "ha_version": "2026.10.2",
+      "schema_counts": {
+        "automations": 51,
+        "scripts": 8,
+        "scenes": 2
+      },
+      "custom_modules_imported": 116,
+      "custom_manifest_requirements_checked": 21,
+      "network_connections_allowed": false,
+      "ha_started": false,
+      "integration_setup_called": false,
+      "dyson_vacuum_activity_contract": "passed with inert values against the installed patched source",
+      "mqtt": "Synthetic two-client hashing, protected files, conflict/overwrite/concurrent-creation rejection and broker --test-config passed; no listener started.",
+      "mcp": "Clean-environment early --version returned ha-mcp 8.7.0."
+    },
+    "mcp_package_check": {
+      "status": "passed",
+      "applicable_upstream_runtime_constraints": 36,
+      "http_server_settings_imports": "passed",
+      "strict_best_practices_gate": "effective with exact upstream skills gitlink, synthetic settings and denied networking",
+      "ha_action_or_acknowledgement_requested": false
+    },
+    "native_dependency_tests": {
+      "pymodbus_3_15_0": {
+        "passed": 1738,
+        "change": "Test fixture isolation only; no runtime patch."
+      },
+      "zigpy_2_3_0": {
+        "passed": 1278,
+        "change": "Test scheduling assertions use causality/capacity rather than tied-timer completion order; no runtime patch."
+      }
+    },
+    "semantic_identity_and_contracts": {
+      "status": "passed",
+      "command": "python3 scripts/home-assistant/verify.py --inventory <protected-inventory> --private-secrets <protected-secrets.yaml> --prepared-state <new-offline-tree>",
+      "checks": "Original automation/script/scene semantics, enabled/disabled flags, identifier/dependency coverage, allowed config-entry rewrites only, preserved unrelated credentials/options, source hashes, known-credential scan, guard contracts, fake Argon bus and mocked consistent-backup success/failure restoration.",
+      "real_service_control_or_hardware_io": false
+    },
+    "development_shell": {
+      "status": "passed",
+      "command": "nix develop .#home-assistant-migration --max-jobs 1 --cores 1 --builders '' --command <tool checks>",
+      "tools": [
+        "Python/PyYAML",
+        "mosquitto_passwd",
+        "age 1.3.2"
+      ],
+      "activation_hooks": false
+    },
+    "pi_target_evaluation": {
+      "status": "passed",
+      "system": "aarch64-linux",
+      "os_release": "26.05",
+      "ha_core": "2026.10.2",
+      "timezone": "Europe/Kyiv",
+      "tcp_ports": [
+        22,
+        1883,
+        8123,
+        9583,
+        21064,
+        32100
+      ],
+      "udp_ports": [
+        1900,
+        5353,
+        5540,
+        41641
+      ],
+      "ha_start_condition": "/var/lib/hass/.migration-ready"
+    },
+    "pi_target_build": {
+      "status": "blocked-platform-mismatch",
+      "command": "nix build --no-link -L .#nixosConfigurations.home-assistant.config.system.build.toplevel --max-jobs 1 --cores 1 --builders ''",
+      "exit_code": 1,
+      "actual_error": "Reason: platform mismatch; Required system: 'aarch64-linux'; Current system: 'x86_64-linux'",
+      "arm_emulation_or_remote_builder_configured": false,
+      "full_target_build_proven": false
+    },
+    "official_arm64_wheels": {
+      "status": "passed-static-verification",
+      "uv_build": "0.12.17 SHA and ELF AArch64 verified",
+      "pydantic_monty": "0.0.18 SHA and ELF AArch64 verified",
+      "python_dotenv": "1.2.4 pure Python SHA verified",
+      "arm64_code_executed": false
+    },
+    "matter_image": {
+      "status": "passed-metadata-only",
+      "runtime": "Matter.js 1.4.0 matching HAOS app 9.2.0",
+      "index_and_arm64_descriptor": "Verified against upstream registry metadata; pinned in matter-image.json.",
+      "image_user": "1000",
+      "image_pulled_or_run": false
+    },
+    "changed_code_lint_format": {
+      "status": "passed",
+      "tools": [
+        "Ruff check and format for all migration helpers",
+        "nixfmt",
+        "statix",
+        "deadnix",
+        "taplo for changed TOML",
+        "git diff --check"
+      ],
+      "guard_source": "Preserved verbatim and explicitly excluded from formatter/linter rewriting.",
+      "patch_context_whitespace": "Scoped .gitattributes permits the required empty context-line space in unified diff files."
+    },
+    "whole_repository_lint": {
+      "status": "pre-existing-failures",
+      "ruff": [
+        "modules/system/nixos/arr-sync.py (UP041/B905)",
+        "packages/voice-broker/tests/test_aec.py, test_alignment.py, test_echo.py, test_gated.py, test_idle.py, test_pacer.py (I001)"
+      ],
+      "statix": "machines/hoard/arr-stack/settings.nix:22 (empty function pattern)",
+      "deadnix": "modules/system/nixos/voice-broker.nix:16 (unused gw)",
+      "listed_files_changed_by_this_branch": false
+    },
+    "flake_lock_preservation": {
+      "status": "passed",
+      "original_nonroot_nodes": "Exactly preserved.",
+      "original_root_input_pointers": "Exactly preserved.",
+      "new_input": "nixos-raspberrypi with its separate pinned dependency graph."
+    },
+    "protected_inspection_handover": {
+      "status": "prepared-and-encryption-roundtrip-verified",
+      "encrypted_artifact": "/tmp/ha-migration-inspection-handover-final-v10-20261019.age",
+      "encrypted_mode": "0600",
+      "plaintext_directories_mode": "0700",
+      "credential_files_mode": "0600",
+      "recipients": "Existing owner and OpenClaw public age recipients. Existing key used only for decrypt-to-/dev/null verification.",
+      "mqtt_hash_users": 1,
+      "complete_mqtt_client_inventory": false,
+      "standalone_admin_token_provisioned": false,
+      "readiness_marker_created": false,
+      "ready": false,
+      "consistent_recovery_backup": false,
+      "required_operator_inputs": 13
+    }
+  },
+  "limits": [
+    "Full ARM64 target build remains unproved because of the actual local platform mismatch.",
+    "Pi boot/firmware/NVMe/Argon cooling/Bluetooth/IPv6/radios, restore and provider behavior require future separately authorized acceptance.",
+    "Inspection state lacks auth/databases/Matter fabrics/private SSH authority and other protected recovery state; it is not a disaster-recovery backup.",
+    "Two missing speaker references affect existing active announcements; two other absent references are in disabled definitions. No replacement was guessed.",
+    "Plex setup_error and the disabled conversation.voice_broker_home pipeline dependency are preserved baseline issues.",
+    "Asusrouter/Dyson/Victron currently import but emit future Core deprecation notices."
+  ],
+  "security_incident": {
+    "description": "An existing soundbar credential and residential guard fields appeared in an early broad tool output. Values are not repeated here and are excluded from committed declarations.",
+    "follow_up": "Credential rotation requires a separate authorized live operation; not performed by this branch."
+  }
+}

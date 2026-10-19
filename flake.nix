@@ -73,6 +73,9 @@
       url = "github:NixOS/nixos-hardware/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Pi 5 vendor kernel, RP1/Bluetooth firmware and generation-aware bootloader.
+    # Keep its tested kernel/firmware package set independent of the fleet.
+    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
     # bun.nix's schema varies between versions, so the infra shell's CLI that
     # writes it and the checks' fetcher that reads it share this input; pinned
     # to the head of nix-community/bun2nix#110, which accepts the lockfile
@@ -136,6 +139,18 @@
 
           ./modules/system/nixos
           ./machines/harbor
+        ];
+      };
+
+      nixosConfigurations.home-assistant = inputs.nixos-raspberrypi.lib.nixosSystem {
+        # Use the Pi input's tested OS/kernel module set. HA, MCP and Tailscale
+        # use the scoped fleet package set; Matter uses its pinned upstream image.
+        specialArgs = { inherit inputs; };
+        modules = [
+          inputs.nixos-raspberrypi.nixosModules.raspberry-pi-5.base
+          inputs.nixos-raspberrypi.nixosModules.raspberry-pi-5.bluetooth
+          ./modules/common
+          ./machines/home-assistant
         ];
       };
 
@@ -314,6 +329,10 @@
         lib.recursiveUpdate (lib.recursiveUpdate nixosChecks lintChecks) {
           aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
           x86_64-linux = {
+            home-assistant-config = import ./packages/home-assistant/check.nix {
+              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
+            };
             iso = self.nixosConfigurations.iso.config.system.build.isoImage;
             nixos-switch = import ./tests/nixos-switch.nix {
               inherit inputs;
@@ -391,6 +410,13 @@
               infra = import ./infra/shell.nix {
                 inherit nixpkgs system;
                 inherit (inputs) bun2nix;
+              };
+              home-assistant-migration = pkgs.mkShell {
+                packages = [
+                  (pkgs.python3.withPackages (ps: [ ps.pyyaml ]))
+                  pkgs.mosquitto
+                  pkgs.age
+                ];
               };
             };
         in

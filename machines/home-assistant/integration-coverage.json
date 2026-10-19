@@ -1,0 +1,931 @@
+[
+  {
+    "entry_id": "01JG4H5H718MVV48CQ31JB2WKC",
+    "domain": "sun",
+    "source": "import",
+    "disabled_by": null,
+    "status": "declarative-yaml",
+    "reason": "Loaded by default_config; retain its existing entry and identity.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4H5HHGW34BP3R20RJ09CVZ",
+    "domain": "hassio",
+    "source": "system",
+    "disabled_by": null,
+    "status": "os-service-replacement",
+    "reason": "Native OS services replace Supervisor; its UI/API/update entities do not exist on NixOS.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4H5HK5QB7N37TPJ8R6N7M8",
+    "domain": "raspberry_pi",
+    "source": "system",
+    "disabled_by": null,
+    "status": "os-service-replacement",
+    "reason": "HAOS management entry is omitted; native RPi5 firmware/kernel and monitoring replace it.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4H5N13A28PW4QPJZGF2M41",
+    "domain": "bluetooth",
+    "source": "integration_discovery",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4H5N148NRTNPQEYYHTV92B",
+    "domain": "go2rtc",
+    "source": "system",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Core-managed go2rtc executable is supplied by the native HA module; preserve the entry. Camera operation requires target testing.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4H5N6G4S1P61C4Z89DCM2K",
+    "domain": "thread",
+    "source": "zeroconf",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4H7B1821EAJN6CBNR4XVQS",
+    "domain": "shopping_list",
+    "source": "onboarding",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4J6B39BBJFG7F5XQ3TMDMF",
+    "domain": "openai_conversation",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4KQ5GF25GDWVTKDNW5G69Y",
+    "domain": "dlna_dmr",
+    "source": "ignore",
+    "disabled_by": null,
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "native_options": {
+      "listen_port": 32100
+    },
+    "required_tcp_ports": [
+      32100
+    ],
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JG4MTDE5VRK05B3AEXCAM0XX",
+    "domain": "ukraine_alarm",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4N8VPFVEJ1YHF3XEGCMMP3",
+    "domain": "hacs",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4P429JNY9S534T1JBNDE4P",
+    "domain": "androidtv_remote",
+    "source": "zeroconf",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JG4QGYT0669G71Q9GDF6M1QQ",
+    "domain": "hue",
+    "source": "ignore",
+    "disabled_by": null,
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JG4R69PJNRT5HNYQMEMN3JZQ",
+    "domain": "lametric",
+    "source": "ssdp",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JG4RDY4RGRMDHYZ42WHR51VB",
+    "domain": "apple_tv",
+    "source": "zeroconf",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGKAK5TSP59VGSHDTD4R1JT8",
+    "domain": "smlight",
+    "source": "zeroconf",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGKDZXNNB43CVZ22AH287Q8A",
+    "domain": "zha",
+    "source": "zeroconf",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGKJJKABTYH5S724RVX821H4",
+    "domain": "cloud",
+    "source": "system",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGKN66KR8DBQVKZRNYD1WVMW",
+    "domain": "wake_on_lan",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGKNPQ1TJT7AW8782BSDS0WZ",
+    "domain": "homekit",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve bridge identity, pairing, filter and configured port. The firewall consumes required_tcp_ports from this coverage row instead of assuming the default bridge port.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "required_tcp_ports": [
+      21064
+    ],
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGKP7DEKCRJK8JJFVT7FT75M",
+    "domain": "mobile_app",
+    "source": "registration",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGKTQCXM9V8HR9RJA7ABRWBW",
+    "domain": "elevenlabs",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGPVDF952M4HXBBHB650XB4Y",
+    "domain": "asuswrt",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JGSQHY2RPR23NZDTCJ37BP6T",
+    "domain": "mobile_app",
+    "source": "registration",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JHQN4PSZV7V3GZVYWZRE7C8X",
+    "domain": "systemmonitor",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JJS2Y3VBD5WGDRBFW68X753Y",
+    "domain": "glances",
+    "source": "user",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JKWNMC96GCDBPA6N7AYWQS7Y",
+    "domain": "esphome",
+    "source": "zeroconf",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JMQ3DJ3KEGYBDPNC5HR3R1GS",
+    "domain": "ping",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JMVHQHWQN1Y5NHMSY1WXBV9X",
+    "domain": "upnp",
+    "source": "ignore",
+    "disabled_by": null,
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JMY7853W2ASX1F8DS8S5TJR2",
+    "domain": "mqtt",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve identity/options; offline rewrite broker to 127.0.0.1:1883 and provision equivalent native broker credentials. Supervisor-generated authentication is not portable.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JP7Y0C17E6H3YBRDG7KHTXXY",
+    "domain": "openweathermap",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JP81QFK6RP5KMPZTSTHP3KGR",
+    "domain": "template",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JP8GVYQ0RQSJ1TV9N9B2A8VC",
+    "domain": "kodi",
+    "source": "ignore",
+    "disabled_by": null,
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JPFMAVTMR00SG383NG10E7KN",
+    "domain": "template",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JQH2NRHYQSMC4E3M4VSMD8Q7",
+    "domain": "esphome",
+    "source": "zeroconf",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JQYB2JK9FJVPB8JKR0GM7H2V",
+    "domain": "backup",
+    "source": "system",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JR394KXDB985WRM19MPPMSNA",
+    "domain": "openai_whisper_cloud",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JS5DF70FFNFGW0CXKHD3H285",
+    "domain": "xiaomi_ble",
+    "source": "bluetooth",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JWBKYGVXEQ1GDV07M0ZCB7S6",
+    "domain": "ollama",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JWBPJH2K1YA6F4YBAGCNRDWJ",
+    "domain": "wyoming",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JWBXC57YMXYJ1QEK1BPAFT7J",
+    "domain": "radarr",
+    "source": "user",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JWBXD9GWEJ1G9EQCQR4P441Q",
+    "domain": "sonarr",
+    "source": "user",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JX55PG60QKY0NYVC19MBHESG",
+    "domain": "time_date",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JX6471EVNTGHZRX9A22BVEA6",
+    "domain": "cast",
+    "source": "ignore",
+    "disabled_by": null,
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JX64ZKAARBD4RR5QJGMYMNWY",
+    "domain": "sabnzbd",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JX6522FBWYTFZJMD6CK1VV90",
+    "domain": "smartthings",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JX7XPDQW6MZY9K7WGP7X9N3H",
+    "domain": "switch_as_x",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JX7XR0Q13VFK8AE1EDNCWKA7",
+    "domain": "switch_as_x",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JXMH7YM9M2X0H4W5FETKQ0MA",
+    "domain": "homeeasy_local",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JXMMJ9F5Q38FPKPYCGA30GSC",
+    "domain": "xiaomi_ble",
+    "source": "bluetooth",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JXT16MF3T4WX7TCQBKR2MJ23",
+    "domain": "ping",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JXT17GN9ZVA513D6EQCE2845",
+    "domain": "ping",
+    "source": "user",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JXT17YEVVTXXMNQ55EY3YJG6",
+    "domain": "ping",
+    "source": "user",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JXT18C9RQS9CPFTADVZGJ0FD",
+    "domain": "ping",
+    "source": "user",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JXT18VYVKYPFB3D94EZJWRNA",
+    "domain": "ping",
+    "source": "user",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JXTD3YP73MCNR5FQMFG05G30",
+    "domain": "template",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JZJFCP2Y0G6QMTJABAC6K5YB",
+    "domain": "tautulli",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01JZJG2T1JPW393VFZ29H9KK0F",
+    "domain": "playstation_network",
+    "source": "dhcp",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01JZJGX1CKPSD0XRCDHY015YZV",
+    "domain": "asusrouter",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01K10JW6F77KX8YW4W1GBCYDSY",
+    "domain": "upnp",
+    "source": "ssdp",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01K4JWMWWWEQX635W69X89Q5YT",
+    "domain": "openai_whisper_cloud",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01K6X1RV90QR9ZAEEVZYZXNHA7",
+    "domain": "samsungtv",
+    "source": "ignore",
+    "disabled_by": null,
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01K8RBH3DPZ7S53ANE1JF4BZ52",
+    "domain": "yasno_outages",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KA3ZKBA51N5A3X41KD3J8QH5",
+    "domain": "plex",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "setup_error"
+  },
+  {
+    "entry_id": "01KANADPTQ566Q13CXQF06JD33",
+    "domain": "ping",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KANZJ87D5ACY65C2ECD7RKSZ",
+    "domain": "min_max",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KBNN45DSDJCPRDBZZYT4GZ64",
+    "domain": "hassarr",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KC4KP2ZXJWFAK9YESCZ6P3VS",
+    "domain": "openai_tts",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KCH7N23D0T66VBGFKP94JAMS",
+    "domain": "xbox",
+    "source": "ignore",
+    "disabled_by": null,
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01KF0H7V06DYP5Y6NX9YZMHVHG",
+    "domain": "telegram_bot",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KF1P97WZJD1TGPBQ5SBXWHZA",
+    "domain": "wake_on_lan",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KPTJ0WZD68PB7RA7NTVZ1Y4N",
+    "domain": "victron",
+    "source": "user",
+    "disabled_by": "user",
+    "status": "preserved-inactive",
+    "reason": "Preserve discovery-ignore and disabled_by exactly; do not enable during migration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "not_loaded"
+  },
+  {
+    "entry_id": "01KREN1N1Y99SVW564E7T8R0TB",
+    "domain": "samsungtv",
+    "source": "zeroconf",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KREPG553KVSTP2K611BE8171",
+    "domain": "matter",
+    "source": "zeroconf",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve identity; offline rewrite URL to ws://127.0.0.1:5580/ws. Restore Matter fabrics independently from a consistent stopped-service backup.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KRETDHWE0R6KJX3ZTDZR7HM1",
+    "domain": "switch_as_x",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KRETEFK1DPE1BYNAT5XQ0GZ6",
+    "domain": "switch_as_x",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KRETN3A37PD27CTFG8MA5MM4",
+    "domain": "switch_as_x",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KTF922P1P6Z6TNRAF1DZNADK",
+    "domain": "dyson_local",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KTF93QHEFSV2T7XZMABK3BQA",
+    "domain": "dyson_local",
+    "source": "discovery",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KTF9PJYKJRHGNYX4RZE8KD5Q",
+    "domain": "analytics",
+    "source": "system",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01KZNV3XKAPBNE42G5BHKNHFMM",
+    "domain": "rpi_power",
+    "source": "onboarding",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M09RPQ9W702KTKDSJT2QSB0Y",
+    "domain": "victron_mqtt",
+    "source": "ssdp",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M09YPZXPNQ109XWSB4VTEHAZ",
+    "domain": "template",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M0A0DW7B6DV5BE4SN9ANDEHM",
+    "domain": "bambu_lab",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M0QXJQGFDYFK860QX0XHJVVY",
+    "domain": "min_max",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M0T7TYWA5D01X1QX0XZ4VGYS",
+    "domain": "template",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M0T83P672Q44KCWFRXVADKCF",
+    "domain": "filter",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "UI-created helper definition remains protected runtime config-entry state to retain its unique IDs and all dependencies.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M0TCKWRC8XZY60QMCQR09F0A",
+    "domain": "google",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M3FFDJNPQPYWD8PF846GBAQY",
+    "domain": "mcp_server",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M3FJ6Y51NBQ1XGTTD3X1PA1C",
+    "domain": "google_generative_ai_conversation",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M4PCCE8G9BSQ8H8RFMN7TKBN",
+    "domain": "overseerr",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  },
+  {
+    "entry_id": "01M4VEGN856XK4JR7GZXTABAQV",
+    "domain": "pyscript",
+    "source": "user",
+    "disabled_by": null,
+    "status": "protected-runtime-state",
+    "reason": "Preserve config-flow/OAuth/pairing data and registry identities through the offline handover. Installing code alone does not configure this integration.",
+    "evidence": "source/.storage/core.config_entries; haIntegrations.json",
+    "baseline_state": "loaded"
+  }
+]

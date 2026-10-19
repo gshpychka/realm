@@ -1,0 +1,50 @@
+{
+  "checked_by": "this ACP/Codex runtime, not a parent report",
+  "date": "2026-10-19",
+  "requested_model": "gpt-6.1-sol",
+  "requested_reasoning_effort": "xhigh",
+  "model_provider_auth_changes": false,
+  "ssh": {
+    "result": "success",
+    "agent_socket": "/run/tpm-ssh-agent/agent.sock",
+    "host": "homeassistant.glib.sh",
+    "user": "root",
+    "port": 22,
+    "strict_host_key_checking": true,
+    "known_hosts": "/var/lib/openclaw/.ssh/known_hosts_ha_migration",
+    "private_key_copied_or_created": false,
+    "remote_reads": [
+      "uname -s",
+      "id -u"
+    ]
+  },
+  "admin_mcp": {
+    "attached_native_ha_tools": 0,
+    "direct_authorized_transport": "streamable-http",
+    "host": "homeassistant.glib.sh",
+    "port": 9583,
+    "credential_source": "existing inherited environment, resolved in memory; not recorded",
+    "initialize": "success",
+    "tools_list_count": 77,
+    "ha_get_system_health_transport_success": true,
+    "ha_get_system_health_payload_success": true,
+    "action_calls": 0,
+    "minimal_native_registration_fix": {
+      "scope": "ACP client/worker only; no HA change",
+      "field": "session/new.params.mcpServers",
+      "transport": "type=http when advertised by the agent",
+      "source": "Forward the existing OpenClaw home-assistant-admin resolved URL and headers in private memory; no new secret or guessed suffix.",
+      "verification": "New worker must expose the tools and complete a read-only health call. Registration was not changed or tested in this task.",
+      "specification": "https://github.com/agentclientprotocol/agent-client-protocol/blob/main/docs/protocol/v1/session-setup.mdx"
+    },
+    "private_export_path_matches_existing_route_and_app_option": true
+  },
+  "repository": {
+    "base_commit": "19e1b4785751087c24b923a609f28bf04060c860",
+    "branch": "feat/home-assistant-nixos",
+    "main_seen_at_preflight": "29189cacdbbeb1b8073cab83b4c82e675b2c2607",
+    "main_reset_rebased_or_stashed": false,
+    "initial_index_locks": [],
+    "concurrent_writer_check": "host process names/cwds showed only this ACP worker ancestry in this checkout"
+  }
+}

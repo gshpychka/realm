@@ -1,0 +1,952 @@
+[
+  {
+    "old": "000b3c42aa335de3e81c929bc3fbc0c2",
+    "new": "000b3c42aa335de3e81c929bc3fbc0c2",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "00fd40915b7c420701ffa943d304ab41",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "030bcc5795262226c4d494d54ca38a64",
+    "new": "030bcc5795262226c4d494d54ca38a64",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "037feb50ff4e7f8eedda794c89d4e257",
+    "new": "037feb50ff4e7f8eedda794c89d4e257",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "03b9cc7e343604396bb64815efa78500",
+    "new": "03b9cc7e343604396bb64815efa78500",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "04bbbd258f64dcd8ae872f900db34f13",
+    "new": "04bbbd258f64dcd8ae872f900db34f13",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "06254194f041c4f2941c001484d1fd39",
+    "new": "06254194f041c4f2941c001484d1fd39",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "076292071ab2eaa286df63c01babaeb2",
+    "new": "076292071ab2eaa286df63c01babaeb2",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "08ad01c46c47130567963b891025e66e",
+    "new": "08ad01c46c47130567963b891025e66e",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "09d204dd6b0e76f098dddb74febd2495",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "0b7957d1dc17a369c17719d2ee99d1da",
+    "new": "0b7957d1dc17a369c17719d2ee99d1da",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "0d712082c9f3f03e04b4f2cba89a0445",
+    "new": "0d712082c9f3f03e04b4f2cba89a0445",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1101f29f77ae4d5946e97859aa4f3a7a",
+    "new": "1101f29f77ae4d5946e97859aa4f3a7a",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "116f56c09315e01306d1e86c534acf8a",
+    "new": "116f56c09315e01306d1e86c534acf8a",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1294f726dc7e39b44e901a643da33dd5",
+    "new": "1294f726dc7e39b44e901a643da33dd5",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "16435dfe6c11d620d8d6ed422679a651",
+    "new": "16435dfe6c11d620d8d6ed422679a651",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "18b8d04ee6f711a3824716eb18a40fff",
+    "new": "18b8d04ee6f711a3824716eb18a40fff",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1934b52923c293b268f3c9620e874156",
+    "new": "1934b52923c293b268f3c9620e874156",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1a8a1da41e0241dee79012aac6a5a479",
+    "new": "1a8a1da41e0241dee79012aac6a5a479",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1c45b3316a1ea19a94f7e7264de97a1c",
+    "new": "1c45b3316a1ea19a94f7e7264de97a1c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1c836056e03cc47a5763b96cc3454889",
+    "new": "1c836056e03cc47a5763b96cc3454889",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1d00276e255caabb5022f68e024e1ada",
+    "new": "1d00276e255caabb5022f68e024e1ada",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1d3813a22ecc82e896340c9065c48c78",
+    "new": "1d3813a22ecc82e896340c9065c48c78",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1d6d18c0607f109486576f159ae0d7c0",
+    "new": "1d6d18c0607f109486576f159ae0d7c0",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1d9055cf9aeacc635e524dd680f8bb6e",
+    "new": "1d9055cf9aeacc635e524dd680f8bb6e",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1dd9734461c80f5ce5cf7863c7007dfb",
+    "new": "1dd9734461c80f5ce5cf7863c7007dfb",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1e81c687ab17f5e486bf08374e21e21e",
+    "new": "1e81c687ab17f5e486bf08374e21e21e",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "1fe5e4e908459e75953b4aa70bfa0273",
+    "new": "1fe5e4e908459e75953b4aa70bfa0273",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "20c327860fbd13c14362b00f2081b78d",
+    "new": "20c327860fbd13c14362b00f2081b78d",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "20f170152942c76968642a3c4c6586c0",
+    "new": "20f170152942c76968642a3c4c6586c0",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "225b0bfeb53b8af22a64745f61e37667",
+    "new": "225b0bfeb53b8af22a64745f61e37667",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "22b760082f553e7176df69d0030d5575",
+    "new": "22b760082f553e7176df69d0030d5575",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "22cbc8d9521be8ca7ef728e6df02fb7c",
+    "new": "22cbc8d9521be8ca7ef728e6df02fb7c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "241ac625c54a9bd661e2c35987b77f9f",
+    "new": "241ac625c54a9bd661e2c35987b77f9f",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "248b83641488947492702145de47606c",
+    "new": "248b83641488947492702145de47606c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "248f4ddf2747877234986e0a6cf05fd8",
+    "new": "248f4ddf2747877234986e0a6cf05fd8",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "25631ee475b0f5a5301c50f7df7074f8",
+    "new": "25631ee475b0f5a5301c50f7df7074f8",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "25e2ee745cad69a08d764da394ed2571",
+    "new": "25e2ee745cad69a08d764da394ed2571",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "26583b2a8b8ba20f9cb0da9e2464bc14",
+    "new": "26583b2a8b8ba20f9cb0da9e2464bc14",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "2717c0d008b07772cb321697a4bd596c",
+    "new": "2717c0d008b07772cb321697a4bd596c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "28a14bb28b1e947d9a98f310e1453300",
+    "new": "28a14bb28b1e947d9a98f310e1453300",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "29a92c2c64a9188ddeb4780e1a3521a2",
+    "new": "29a92c2c64a9188ddeb4780e1a3521a2",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "2a40df15f6cca70ea4dd17b242100ccd",
+    "new": "2a40df15f6cca70ea4dd17b242100ccd",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "2a625be01bc1b6c6ba96df216ef6c805",
+    "new": "2a625be01bc1b6c6ba96df216ef6c805",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "2ba10a3c2a4a754044e1d4104b0d62f6",
+    "new": "2ba10a3c2a4a754044e1d4104b0d62f6",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "2e18140a3196f34013f1d2543e4ee344",
+    "new": "2e18140a3196f34013f1d2543e4ee344",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "2f71ab6f29ad7b89d7067ae6da4afe76",
+    "new": "2f71ab6f29ad7b89d7067ae6da4afe76",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "2feb9f9afb8c735993afb46a29980cd9",
+    "new": "2feb9f9afb8c735993afb46a29980cd9",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "304e60a3991be4372ac265bead8326f4",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "32a98a0f0a11f93b7c8ebd86eb05caeb",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "34c6421bd16a7f85b802b118479e56f5",
+    "new": "34c6421bd16a7f85b802b118479e56f5",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "3919126ad4535239bd99b09edd3383be",
+    "new": "3919126ad4535239bd99b09edd3383be",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "397405560dc27257f40454a69a7c5f12",
+    "new": "397405560dc27257f40454a69a7c5f12",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "3b5f97b9b163eaf638a01324e7cabd9d",
+    "new": "3b5f97b9b163eaf638a01324e7cabd9d",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "3cedfc698a21ae8dbde5bfa9087bc339",
+    "new": "3cedfc698a21ae8dbde5bfa9087bc339",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "3ffa5e1c4c74607725f3c6cb70d267bc",
+    "new": "3ffa5e1c4c74607725f3c6cb70d267bc",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "42d5010af7a6c7cdf66537bbbce0a7f8",
+    "new": "42d5010af7a6c7cdf66537bbbce0a7f8",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "42e3bba7413d36c537b101258aef365b",
+    "new": "42e3bba7413d36c537b101258aef365b",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "44b61697fb77c61b63f3c602d8adc905",
+    "new": "44b61697fb77c61b63f3c602d8adc905",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "454d1265a759db5e5da54066aa12f1c2",
+    "new": "454d1265a759db5e5da54066aa12f1c2",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "45f46875a3cb38779fe4af6f9495cad2",
+    "new": "45f46875a3cb38779fe4af6f9495cad2",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "46e37317138360b33d094d5dcaad4671",
+    "new": "46e37317138360b33d094d5dcaad4671",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "471b703c125baf16674242fc134a8eb8",
+    "new": "471b703c125baf16674242fc134a8eb8",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "484bf9a8030c508432e14e0a9de1d0b5",
+    "new": "484bf9a8030c508432e14e0a9de1d0b5",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "4a1e28d9cc6122f6a156e548cbbac4ce",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "4b3d15da6011e267ca6b2f7fb5e7f298",
+    "new": "4b3d15da6011e267ca6b2f7fb5e7f298",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "4c0cfef44f9f9855a55531610f58de5a",
+    "new": "4c0cfef44f9f9855a55531610f58de5a",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "4cc2e8b8a913a99196a877cb0f181e8d",
+    "new": "4cc2e8b8a913a99196a877cb0f181e8d",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "4ce5be7bb77d82bb8f4dbe96165e5dd6",
+    "new": "4ce5be7bb77d82bb8f4dbe96165e5dd6",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "509308a00a0dba896fe955f85dc9eaf6",
+    "new": "509308a00a0dba896fe955f85dc9eaf6",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "51b3c5c297dcfe64e89641f4b899e16c",
+    "new": "51b3c5c297dcfe64e89641f4b899e16c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "535c24c86b8f3477e031c5f6707d8464",
+    "new": "535c24c86b8f3477e031c5f6707d8464",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "57a19124691d23a75510acb5b4f70903",
+    "new": "57a19124691d23a75510acb5b4f70903",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "57ca918903951bbcb099cdc0dd766a18",
+    "new": "57ca918903951bbcb099cdc0dd766a18",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "5cf345ec1f1028f7b85a9d886bce9222",
+    "new": "5cf345ec1f1028f7b85a9d886bce9222",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "60dcd40338fd9d63712128c6331038b5",
+    "new": "60dcd40338fd9d63712128c6331038b5",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "60e41fc3a2858a76ce0ffb1f67f9957d",
+    "new": "60e41fc3a2858a76ce0ffb1f67f9957d",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "6216143f0f7f9efcc4023a7d59810b78",
+    "new": "6216143f0f7f9efcc4023a7d59810b78",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "65403f513538c2f7ca4a15808c608eff",
+    "new": "65403f513538c2f7ca4a15808c608eff",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "65593e98dd376b06c945a14eb536ee68",
+    "new": "65593e98dd376b06c945a14eb536ee68",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "6682bf0629be50ff5779c8d5b37c3f34",
+    "new": "6682bf0629be50ff5779c8d5b37c3f34",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "6711f762ca5f27d9aca0a0cfcdab92ba",
+    "new": "6711f762ca5f27d9aca0a0cfcdab92ba",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "6cfb4e8f3b78212cb5a5c37e730bc245",
+    "new": "6cfb4e8f3b78212cb5a5c37e730bc245",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "700a10b7da0ae63ccde662d18351a665",
+    "new": "700a10b7da0ae63ccde662d18351a665",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "70f12d431cf502faeefdc782b45c0719",
+    "new": "70f12d431cf502faeefdc782b45c0719",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "71095443aa5e2561f5813197d3a8d040",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "7277fcc5c629715ed2a063e07e888320",
+    "new": "7277fcc5c629715ed2a063e07e888320",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "73011c811d74d3602269f740ab19f003",
+    "new": "73011c811d74d3602269f740ab19f003",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "73f0dc076aedb97970282da8d5d124a5",
+    "new": "73f0dc076aedb97970282da8d5d124a5",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "74298a5b1b8fe1593fa4641b185fbbd3",
+    "new": "74298a5b1b8fe1593fa4641b185fbbd3",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "747c12091b28229f3e546ffbf9f60779",
+    "new": "747c12091b28229f3e546ffbf9f60779",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "75765b65211e58c14dc174b9009f04e5",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "7624f34f7dfb863a8a0cb577f18d94ef",
+    "new": "7624f34f7dfb863a8a0cb577f18d94ef",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "791e21dcf586e917db2a83ba1490bff7",
+    "new": "791e21dcf586e917db2a83ba1490bff7",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "79573ed20e6520df0ff0f7273d16a2da",
+    "new": "79573ed20e6520df0ff0f7273d16a2da",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "7d75a987c8709f5ca514f1d820703461",
+    "new": "7d75a987c8709f5ca514f1d820703461",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "7dbea7b33df4f14fc7d48e2340163350",
+    "new": "7dbea7b33df4f14fc7d48e2340163350",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "824ef077a2bcfd8937e66c3a718b0bba",
+    "new": "824ef077a2bcfd8937e66c3a718b0bba",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "83f0f73b9edcaf19b5e76a067388c39e",
+    "new": "83f0f73b9edcaf19b5e76a067388c39e",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "853249dfe9c920e12a525dfc9b7051c8",
+    "new": "853249dfe9c920e12a525dfc9b7051c8",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "858dfc9bdcf585fc39211dd0f292333c",
+    "new": "858dfc9bdcf585fc39211dd0f292333c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "86d679344655e6d50f173bd708a31403",
+    "new": "86d679344655e6d50f173bd708a31403",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "86fd078193966bdc506b8f816805b58d",
+    "new": "86fd078193966bdc506b8f816805b58d",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "89d3153c81fbeafb8bb51b1e9564f2a9",
+    "new": "89d3153c81fbeafb8bb51b1e9564f2a9",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "8c471be089779dc10503bee6c89cb97b",
+    "new": "8c471be089779dc10503bee6c89cb97b",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "8d925bdfd18f03ad086a21c77bae328c",
+    "new": "8d925bdfd18f03ad086a21c77bae328c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "8ee4083b1e0a9381c0760435ddbf14aa",
+    "new": "8ee4083b1e0a9381c0760435ddbf14aa",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "8efb394ebbd4ae703cfabf370d22b8a9",
+    "new": "8efb394ebbd4ae703cfabf370d22b8a9",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "8feed229b05c383f440f531055d4cc52",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "912701653a70ed74a5bca6ab1355d143",
+    "new": "912701653a70ed74a5bca6ab1355d143",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "914499d2c654d1da4fe4310217f0830c",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "91a70f29aaede298705d97c543fc2732",
+    "new": "91a70f29aaede298705d97c543fc2732",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "91ade0918548000c28fcd9dffcfb49a2",
+    "new": "91ade0918548000c28fcd9dffcfb49a2",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "921f6e4ad890462d5332be8baa898d69",
+    "new": "921f6e4ad890462d5332be8baa898d69",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "9290a2568e3df21ba0fd2d663249c0ca",
+    "new": "9290a2568e3df21ba0fd2d663249c0ca",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "945310f041b250be48abedcb69a2d03c",
+    "new": "945310f041b250be48abedcb69a2d03c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "94d1c5cb4856ce1e9595d5f30ff134ab",
+    "new": "94d1c5cb4856ce1e9595d5f30ff134ab",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "952d8e1f5ad28064a1cae1a7eb64d569",
+    "new": "952d8e1f5ad28064a1cae1a7eb64d569",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "96f3586661a96731f236fb1870d52e99",
+    "new": "96f3586661a96731f236fb1870d52e99",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "97a97fd239fdc39f1c776b004e7ecdb4",
+    "new": "97a97fd239fdc39f1c776b004e7ecdb4",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "981f2b38971379641b47e8e3f6616556",
+    "new": "981f2b38971379641b47e8e3f6616556",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "98ee80449863adcd69045ffb0a4cf217",
+    "new": "98ee80449863adcd69045ffb0a4cf217",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "997058d70c58927bdc5bf0f15c77d2ef",
+    "new": "997058d70c58927bdc5bf0f15c77d2ef",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "99aa3ee09eb97f7a50f71c4ebcd85577",
+    "new": "99aa3ee09eb97f7a50f71c4ebcd85577",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "9ce15646fd004c6714ab0d74c6f65e2f",
+    "new": "9ce15646fd004c6714ab0d74c6f65e2f",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "9da9d8453e25102b1f414a26814860ac",
+    "new": "9da9d8453e25102b1f414a26814860ac",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "9ebe0859ab6ab6890ee20b5314821824",
+    "new": "9ebe0859ab6ab6890ee20b5314821824",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "9f8032d675f36245b338f0e113683ce6",
+    "new": "9f8032d675f36245b338f0e113683ce6",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "a1d842cc6c0bf4d2d8a5b71f61421368",
+    "new": "a1d842cc6c0bf4d2d8a5b71f61421368",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "a2aa0e987da81cf742880a3afff5542b",
+    "new": "a2aa0e987da81cf742880a3afff5542b",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "a838d145be7aff215cd0e1ff5f645d28",
+    "new": "a838d145be7aff215cd0e1ff5f645d28",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "a984417044e67f72825ca065793adb88",
+    "new": "a984417044e67f72825ca065793adb88",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "aa958720bdcdb4df2da99717a5f04a90",
+    "new": "aa958720bdcdb4df2da99717a5f04a90",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "aac5996f22544c0b685fcae35ec713b3",
+    "new": "aac5996f22544c0b685fcae35ec713b3",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "ab663c9a583bb68c285b9ab258763a72",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "b07d9c53b79f87d0c1daf6a4bc7985b5",
+    "new": "b07d9c53b79f87d0c1daf6a4bc7985b5",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "b3138a16c5828a1d1f8a284235bd49e4",
+    "new": "b3138a16c5828a1d1f8a284235bd49e4",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "b340009692ca9640e540ebd8549e5e0c",
+    "new": "b340009692ca9640e540ebd8549e5e0c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "b61bda36a6712492e1bae56e1713eb0c",
+    "new": "b61bda36a6712492e1bae56e1713eb0c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "b6e43e1f8602625dc77f4bab6c7c3889",
+    "new": "b6e43e1f8602625dc77f4bab6c7c3889",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "b7dcbe7bc18e13496d5990cd3e8b8562",
+    "new": "b7dcbe7bc18e13496d5990cd3e8b8562",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "b92da2c73071d36e329927a71f305ba1",
+    "new": "b92da2c73071d36e329927a71f305ba1",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "bde2823c5bd05613e9d70bd5d5415013",
+    "new": "bde2823c5bd05613e9d70bd5d5415013",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "be8298271c21bd1b4211f9a0d211ec45",
+    "new": "be8298271c21bd1b4211f9a0d211ec45",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "bef6d5a0461276cebba9818626c6b66a",
+    "new": "bef6d5a0461276cebba9818626c6b66a",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "bf947da65ebed1b01004991f1693c66d",
+    "new": "bf947da65ebed1b01004991f1693c66d",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "bfe311e9a33b8a1ad0f87a9078f1fead",
+    "new": "bfe311e9a33b8a1ad0f87a9078f1fead",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "c29d83ddd68a3d690854dca882016a7b",
+    "new": "c29d83ddd68a3d690854dca882016a7b",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "c59077111d5c334ab9d19268ceb56511",
+    "new": "c59077111d5c334ab9d19268ceb56511",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "c64d8e84b5baa3d5d7ded9bc8538be0e",
+    "new": "c64d8e84b5baa3d5d7ded9bc8538be0e",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "c6c5c956bf6dbe61a9ecbc44a926a4e6",
+    "new": "c6c5c956bf6dbe61a9ecbc44a926a4e6",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "c99ccda327d3778472e80ec622f0f0ef",
+    "new": "c99ccda327d3778472e80ec622f0f0ef",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "cdb4b5992b8d738294e64bbba5e763da",
+    "new": "cdb4b5992b8d738294e64bbba5e763da",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "cdc96e7fdd6c57639409ffe371d0b8c1",
+    "new": "cdc96e7fdd6c57639409ffe371d0b8c1",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "cdf197f79533291524cdace1b97420ca",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "cec352ae3d73cb667117f8140fadd207",
+    "new": "cec352ae3d73cb667117f8140fadd207",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "ceff9a257900558732d01e0b17961480",
+    "new": "ceff9a257900558732d01e0b17961480",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "d0f48983ac52382161ecab3815c4f548",
+    "new": "d0f48983ac52382161ecab3815c4f548",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "d382fc25e43b20d66d28923f6d8703f0",
+    "new": "d382fc25e43b20d66d28923f6d8703f0",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "d4c2eba4d4059e2e0114be944749dbce",
+    "new": "d4c2eba4d4059e2e0114be944749dbce",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "d7f71ba6e41eaa5f4e1673b72cac5de5",
+    "new": "d7f71ba6e41eaa5f4e1673b72cac5de5",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "d8d5947924e868f2d38e4f48ff785762",
+    "new": "d8d5947924e868f2d38e4f48ff785762",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "da8587764b78b8fdda4cdf845107dabc",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "dca3261dd5523622547a78bc019ad702",
+    "new": "dca3261dd5523622547a78bc019ad702",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "de7a9cabfcd19d6b1724f7eaae3993bd",
+    "new": "de7a9cabfcd19d6b1724f7eaae3993bd",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "deb9aa0ad596b7d7fd520f2e628b1120",
+    "new": "deb9aa0ad596b7d7fd520f2e628b1120",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "df5c8ea1666ecfadccb338daa5cd41fb",
+    "new": "df5c8ea1666ecfadccb338daa5cd41fb",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "df6679cd7129c7f053267829045e3697",
+    "new": "df6679cd7129c7f053267829045e3697",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "e04d63f6fbae46315b2dc79884dfd295",
+    "new": "e04d63f6fbae46315b2dc79884dfd295",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "e1d498584ba0a05b11560d0b3b07e1c7",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "e2a9b5f6b3842bc75aa39038200b8a79",
+    "new": "e2a9b5f6b3842bc75aa39038200b8a79",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "e3155405d8b7e8259c71146a6f111324",
+    "new": "e3155405d8b7e8259c71146a6f111324",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "e4f05b643d1494625aff06015ea3aaad",
+    "new": "e4f05b643d1494625aff06015ea3aaad",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "e5746e897de3d14eee9d863460887383",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "e76a9a7edf6826db63e67d7db95f4f8b",
+    "new": "e76a9a7edf6826db63e67d7db95f4f8b",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "e77cdc30d0a526b6cd8295d7c2b64c96",
+    "new": "e77cdc30d0a526b6cd8295d7c2b64c96",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "e96b17992356c46e2324bcdb0325cf13",
+    "new": "e96b17992356c46e2324bcdb0325cf13",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "ea53447f8feda6250b1bd1085f5469a4",
+    "new": "ea53447f8feda6250b1bd1085f5469a4",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "eb83283360ebd923e6e7674f4250a1bc",
+    "new": "eb83283360ebd923e6e7674f4250a1bc",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "ec49e7b66f83b7f865302bb5e022caf2",
+    "new": null,
+    "reason": "Supervisor/HAOS-only device record removed"
+  },
+  {
+    "old": "ec9ff57d171d20044e301a49f72f59b5",
+    "new": "ec9ff57d171d20044e301a49f72f59b5",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "f47135cd3efa0fff8e2b0c94149cf434",
+    "new": "f47135cd3efa0fff8e2b0c94149cf434",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "f6ba297a0d7621bd4972775636d3ea6c",
+    "new": "f6ba297a0d7621bd4972775636d3ea6c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "f7ad1b909f61f63e48cb6ee20ef71548",
+    "new": "f7ad1b909f61f63e48cb6ee20ef71548",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "f7da0bef54acfdea513d5bb1924e9209",
+    "new": "f7da0bef54acfdea513d5bb1924e9209",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "f8ce3ba45dc894e5c3a9b8f419bb1d0c",
+    "new": "f8ce3ba45dc894e5c3a9b8f419bb1d0c",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "fb1c746672e3671e403745f4cecfb3f7",
+    "new": "fb1c746672e3671e403745f4cecfb3f7",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "fb925482c6adf7fef72796da1c171ac2",
+    "new": "fb925482c6adf7fef72796da1c171ac2",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "fb9ce3a8a5822838fe78dbef59e2cfa2",
+    "new": "fb9ce3a8a5822838fe78dbef59e2cfa2",
+    "reason": "Preserve record/composite identity"
+  },
+  {
+    "old": "fdd446f5c4a1380e112a81d37f7040c5",
+    "new": "fdd446f5c4a1380e112a81d37f7040c5",
+    "reason": "Preserve record/composite identity"
+  }
+]

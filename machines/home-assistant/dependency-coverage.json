@@ -1,0 +1,1440 @@
+{
+  "scope": "All declarations, private Yasno entity bindings and all five voice pipeline definitions. No private values or provider calls.",
+  "entity_references": [
+    {
+      "entity_id": "ai_task.openai_ai_task",
+      "target": "ai_task.openai_ai_task",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.29.actions.3.default.1.data.entity_id"
+      ]
+    },
+    {
+      "entity_id": "ai_task.print_watcher",
+      "target": "ai_task.print_watcher",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.5.actions.3.data.entity_id",
+        "configuration.script.check_print.sequence.3.data.entity_id"
+      ]
+    },
+    {
+      "entity_id": "assist_satellite.listening",
+      "target": "assist_satellite.listening",
+      "status": "state-or-helper-name",
+      "consumers": [
+        "configuration.automation.42.triggers.0.trigger"
+      ]
+    },
+    {
+      "entity_id": "assist_satellite.room_assistant_assist_satellite",
+      "target": "assist_satellite.room_assistant_assist_satellite",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.29.actions.3.choose.0.sequence.1.data.entity_id"
+      ]
+    },
+    {
+      "entity_id": "binary_sensor.balcony_h2c_hms_errors",
+      "target": "binary_sensor.balcony_h2c_hms_errors",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.3.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "binary_sensor.balcony_h2c_print_error",
+      "target": "binary_sensor.balcony_h2c_print_error",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.3.triggers.1.entity_id.0",
+        "configuration.automation.3.variables.announcement",
+        "configuration.script.check_print.variables.print_error"
+      ]
+    },
+    {
+      "entity_id": "binary_sensor.city_power",
+      "target": "binary_sensor.city_power",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.39.triggers.0.entity_id.0",
+        "configuration.automation.46.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "binary_sensor.hoard",
+      "target": "binary_sensor.hoard",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.44.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "binary_sensor.ollama_status",
+      "target": "binary_sensor.ollama_status",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.12.conditions.1.conditions.0.entity_id",
+        "configuration.automation.12.triggers.0.entity_id.0",
+        "configuration.automation.13.triggers.1.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "binary_sensor.slzb_06p10_ethernet",
+      "target": "binary_sensor.slzb_06p10_ethernet",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.10.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "button.sabnzbd_pause",
+      "target": "button.sabnzbd_pause",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.25.actions.1.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "button.sabnzbd_resume",
+      "target": "button.sabnzbd_resume",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.26.actions.1.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "calendar.yasno_planned_outages",
+      "target": "calendar.yasno_planned_outages",
+      "status": "retained",
+      "consumers": [
+        "protected_yasno_guard_bindings.bindings.planned_outages"
+      ]
+    },
+    {
+      "entity_id": "calendar.yasno_probable_outages",
+      "target": "calendar.yasno_probable_outages",
+      "status": "retained",
+      "consumers": [
+        "protected_yasno_guard_bindings.bindings.probable_outages"
+      ]
+    },
+    {
+      "entity_id": "camera.balcony_h2c_camera",
+      "target": "camera.balcony_h2c_camera",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.5.actions.1.target.entity_id",
+        "configuration.script.check_print.sequence.1.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "climate.air_conditioner",
+      "target": "climate.air_conditioner",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.6.actions.0.target.entity_id.0",
+        "configuration.automation.6.actions.1.data.target_temperature",
+        "configuration.automation.6.conditions.0.entity_id",
+        "configuration.automation.6.triggers.0.entity_id.0",
+        "configuration.script.set_air_conditioner_temperature.sequence.0.target.entity_id",
+        "configuration.script.set_air_conditioner_temperature.sequence.1.data.hvac_mode",
+        "configuration.script.set_air_conditioner_temperature.sequence.1.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "conversation.chatgpt",
+      "target": "conversation.chatgpt",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.1.conversation_engine"
+      ]
+    },
+    {
+      "entity_id": "conversation.chatgpt_2",
+      "target": "conversation.chatgpt_2",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.29.actions.2.choose.0.sequence.0.data.agent_id"
+      ]
+    },
+    {
+      "entity_id": "conversation.chatgpt_expert",
+      "target": "conversation.chatgpt_expert",
+      "status": "retained",
+      "consumers": [
+        "configuration.script.ask_gpt.sequence.1.data",
+        "configuration.script.ask_gpt_with_search.sequence.0.data.agent_id"
+      ]
+    },
+    {
+      "entity_id": "conversation.chatgpt_search",
+      "target": "conversation.chatgpt_search",
+      "status": "baseline-not-in-registry",
+      "consumers": [
+        "configuration.script.ask_gpt_with_search.sequence.0.data.agent_id"
+      ]
+    },
+    {
+      "entity_id": "conversation.google_ai_conversation",
+      "target": "conversation.google_ai_conversation",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.3.conversation_engine"
+      ]
+    },
+    {
+      "entity_id": "conversation.home_assistant",
+      "target": "conversation.home_assistant",
+      "status": "builtin-conversation-agent",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.2.conversation_engine"
+      ]
+    },
+    {
+      "entity_id": "conversation.qwen",
+      "target": "conversation.qwen",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.0.conversation_engine"
+      ]
+    },
+    {
+      "entity_id": "conversation.voice_broker_home",
+      "target": "conversation.voice_broker_home",
+      "status": "baseline-disabled-reference",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.4.conversation_engine"
+      ]
+    },
+    {
+      "entity_id": "input_boolean.homeassistant_fully_loaded",
+      "target": "input_boolean.homeassistant_fully_loaded",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.11.conditions.0.entity_id",
+        "configuration.automation.34.actions.0.target.entity_id",
+        "configuration.automation.34.actions.2.target.entity_id",
+        "configuration.automation.35.actions.0.target.entity_id",
+        "configuration.automation.45.conditions.0.entity_id"
+      ]
+    },
+    {
+      "entity_id": "input_button.hoard_power",
+      "target": "input_button.hoard_power",
+      "status": "baseline-not-in-registry",
+      "consumers": [
+        "configuration.automation.37.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "input_button.reaper_windows",
+      "target": "input_button.reaper_windows",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.36.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "light.balcony_h2c_chamber_light",
+      "target": "light.balcony_h2c_chamber_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.5.actions.0.if.0.entity_id",
+        "configuration.automation.5.actions.0.then.0.target.entity_id",
+        "configuration.automation.5.actions.2.then.0.target.entity_id",
+        "configuration.automation.5.variables.chamber_light_was_off",
+        "configuration.script.check_print.sequence.0.if.0.entity_id",
+        "configuration.script.check_print.sequence.0.then.0.target.entity_id",
+        "configuration.script.check_print.sequence.2.then.0.target.entity_id",
+        "configuration.script.check_print.variables.chamber_light_was_off"
+      ]
+    },
+    {
+      "entity_id": "light.cute_lights",
+      "target": "light.cute_lights",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.31.actions.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "light.is_off",
+      "target": "light.is_off",
+      "status": "state-or-helper-name",
+      "consumers": [
+        "configuration.automation.32.conditions.0.conditions.2.condition"
+      ]
+    },
+    {
+      "entity_id": "light.is_on",
+      "target": "light.is_on",
+      "status": "state-or-helper-name",
+      "consumers": [
+        "configuration.automation.33.conditions.0.conditions.2.condition",
+        "configuration.automation.42.conditions.0.condition"
+      ]
+    },
+    {
+      "entity_id": "light.kitchen_1_light",
+      "target": "light.kitchen_1_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.scene.0.entities.light.kitchen_lights.group_entities.0"
+      ]
+    },
+    {
+      "entity_id": "light.kitchen_2_light",
+      "target": "light.kitchen_2_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.scene.0.entities.light.kitchen_lights.group_entities.1"
+      ]
+    },
+    {
+      "entity_id": "light.kitchen_3_light_2",
+      "target": "light.kitchen_3_light_2",
+      "status": "retained",
+      "consumers": [
+        "configuration.scene.0.entities.light.kitchen_lights.group_entities.2"
+      ]
+    },
+    {
+      "entity_id": "light.kitchen_lights",
+      "target": "light.kitchen_lights",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.1.actions.0.target.entity_id",
+        "configuration.automation.9.actions.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "light.lava_lamp",
+      "target": "light.lava_lamp",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.38.actions.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "light.overhead_1_light",
+      "target": "light.overhead_1_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.scene.0.entities.light.room_overhead_lights.group_entities.0"
+      ]
+    },
+    {
+      "entity_id": "light.overhead_2_light",
+      "target": "light.overhead_2_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.scene.0.entities.light.room_overhead_lights.group_entities.3"
+      ]
+    },
+    {
+      "entity_id": "light.overhead_3_light",
+      "target": "light.overhead_3_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.scene.0.entities.light.room_overhead_lights.group_entities.1"
+      ]
+    },
+    {
+      "entity_id": "light.overhead_4_light",
+      "target": "light.overhead_4_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.scene.0.entities.light.room_overhead_lights.group_entities.2"
+      ]
+    },
+    {
+      "entity_id": "light.overhead_5_light",
+      "target": "light.overhead_5_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.scene.0.entities.light.room_overhead_lights.group_entities.4"
+      ]
+    },
+    {
+      "entity_id": "light.plant_light",
+      "target": "light.plant_light",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.32.actions.0.target.entity_id",
+        "configuration.automation.32.conditions.0.conditions.2.target.entity_id",
+        "configuration.automation.33.actions.0.target.entity_id",
+        "configuration.automation.33.conditions.0.conditions.2.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "light.room_overhead_lights",
+      "target": "light.room_overhead_lights",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.0.actions.0.target.entity_id",
+        "configuration.automation.16.actions.4.target.entity_id",
+        "configuration.automation.42.conditions.0.target.entity_id",
+        "configuration.automation.8.actions.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "media_player.all_hearing_god",
+      "target": "media_player.all_hearing_god",
+      "status": "baseline-not-in-registry",
+      "consumers": [
+        "configuration.automation.16.actions.3.data.media_player_entity_id"
+      ]
+    },
+    {
+      "entity_id": "media_player.home_assistant_voice_media_player",
+      "target": "media_player.home_assistant_voice_media_player",
+      "status": "baseline-not-in-registry",
+      "consumers": [
+        "configuration.automation.4.actions.0.data.entity_id"
+      ]
+    },
+    {
+      "entity_id": "media_player.plex_tv",
+      "target": "media_player.plex_tv",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.27.triggers.0.entity_id.0",
+        "configuration.automation.27.triggers.1.entity_id.0",
+        "configuration.automation.27.triggers.2.entity_id.0",
+        "configuration.automation.27.triggers.3.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "media_player.soundbar",
+      "target": "media_player.soundbar",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.21.actions.0.target.entity_id",
+        "configuration.automation.21.conditions.0.conditions.0.entity_id",
+        "configuration.automation.21.conditions.0.conditions.1.entity_id",
+        "configuration.automation.21.conditions.0.conditions.2.entity_id",
+        "configuration.script.toggle_vinyl.sequence.0.target.entity_id",
+        "configuration.script.toggle_vinyl.sequence.2.else.0.target.entity_id.0",
+        "configuration.script.toggle_vinyl.sequence.2.if.0.entity_id",
+        "configuration.script.toggle_vinyl.sequence.2.then.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "media_player.tv_qe65s95cauxua",
+      "target": "media_player.tv_qe65s95cauxua",
+      "status": "retained",
+      "consumers": [
+        "configuration.script.game_mode.sequence.0.parallel.0.then.1.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "scene.night",
+      "target": "scene.night",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.22.actions.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "scene.tv_watching",
+      "target": "scene.tv_watching",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.28.actions.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "select.air_conditioner_vertical_swing",
+      "target": "select.air_conditioner_vertical_swing",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.6.triggers.1.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "select.home_assistant_voice_09e1bb_assistant",
+      "target": "select.home_assistant_voice_09e1bb_assistant",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.12.conditions.0.conditions.0.conditions.0.entity_id",
+        "configuration.automation.13.conditions.0.conditions.0.conditions.1.entity_id"
+      ]
+    },
+    {
+      "entity_id": "select.room_assistant_assistant",
+      "target": "select.room_assistant_assistant",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.12.conditions.0.conditions.0.conditions.1.entity_id",
+        "configuration.automation.13.conditions.0.conditions.0.conditions.0.entity_id",
+        "configuration.automation.14.triggers.0.entity_id.0",
+        "configuration.automation.15.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "sensor.balcony_h2c_current_layer",
+      "target": "sensor.balcony_h2c_current_layer",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.50.variables.layer",
+        "configuration.script.check_print.sequence.3.data.instructions"
+      ]
+    },
+    {
+      "entity_id": "sensor.balcony_h2c_current_stage",
+      "target": "sensor.balcony_h2c_current_stage",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.50.actions.0.choose.0.sequence.0.data.message",
+        "configuration.automation.50.triggers.1.entity_id",
+        "configuration.script.check_print.sequence.3.data.instructions"
+      ]
+    },
+    {
+      "entity_id": "sensor.balcony_h2c_end_time",
+      "target": "sensor.balcony_h2c_end_time",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.50.variables.end_ts",
+        "configuration.script.check_print.variables.eta"
+      ]
+    },
+    {
+      "entity_id": "sensor.balcony_h2c_print_progress",
+      "target": "sensor.balcony_h2c_print_progress",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.50.variables.progress",
+        "configuration.script.check_print.sequence.3.data.instructions"
+      ]
+    },
+    {
+      "entity_id": "sensor.balcony_h2c_print_status",
+      "target": "sensor.balcony_h2c_print_status",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.5.triggers.0.entity_id.0",
+        "configuration.automation.50.conditions.0.conditions.1.entity_id",
+        "configuration.automation.50.triggers.0.entity_id",
+        "configuration.automation.50.triggers.3.entity_id",
+        "configuration.automation.50.variables.paused",
+        "configuration.script.check_print.sequence.3.data.instructions"
+      ]
+    },
+    {
+      "entity_id": "sensor.balcony_h2c_task_name",
+      "target": "sensor.balcony_h2c_task_name",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.50.variables.task",
+        "configuration.script.check_print.sequence.3.data.instructions"
+      ]
+    },
+    {
+      "entity_id": "sensor.balcony_h2c_total_layer_count",
+      "target": "sensor.balcony_h2c_total_layer_count",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.50.variables.layers",
+        "configuration.script.check_print.sequence.3.data.instructions"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_cell_imbalance",
+      "target": "sensor.battery_cell_imbalance",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.8"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_charge",
+      "target": "sensor.battery_charge",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.39.actions.0.variables.message",
+        "configuration.automation.40.actions.0.data.message",
+        "configuration.automation.40.triggers.0.entity_id.0",
+        "configuration.automation.40.triggers.1.entity_id.0",
+        "configuration.automation.40.triggers.2.entity_id.0",
+        "configuration.automation.40.triggers.3.entity_id.0",
+        "configuration.automation.41.actions.0.data.message",
+        "configuration.automation.43.actions.0.data.message",
+        "configuration.automation.46.actions.0.variables.message"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_high_cell_voltage",
+      "target": "sensor.battery_high_cell_voltage",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.9"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_high_charge_current",
+      "target": "sensor.battery_high_charge_current",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.11"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_high_charge_temperature",
+      "target": "sensor.battery_high_charge_temperature",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.12"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_high_discharge_current",
+      "target": "sensor.battery_high_discharge_current",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.13"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_high_temperature",
+      "target": "sensor.battery_high_temperature",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.10"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_low_charge_temperature",
+      "target": "sensor.battery_low_charge_temperature",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.16"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_low_temperature",
+      "target": "sensor.battery_low_temperature",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.14"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_low_voltage",
+      "target": "sensor.battery_low_voltage",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.15"
+      ]
+    },
+    {
+      "entity_id": "sensor.battery_remaining_time",
+      "target": "sensor.battery_remaining_time",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.43.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "sensor.hoard",
+      "target": "sensor.hoard",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.25.triggers.0.entity_id.0",
+        "configuration.automation.26.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "sensor.internet_provider",
+      "target": "sensor.internet_provider",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.23.actions.0.data.message",
+        "configuration.automation.23.conditions.1.conditions.0.entity_id",
+        "configuration.automation.23.conditions.1.conditions.1.entity_id",
+        "configuration.automation.23.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_high_dc_current_alarm",
+      "target": "sensor.multiplus_high_dc_current_alarm",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_high_dc_voltage_alarm",
+      "target": "sensor.multiplus_high_dc_voltage_alarm",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.5"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_high_temperature_alarm",
+      "target": "sensor.multiplus_high_temperature_alarm",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.3"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_low_battery_alarm",
+      "target": "sensor.multiplus_low_battery_alarm",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.7"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_output_power_l1",
+      "target": "sensor.multiplus_output_power_l1",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.39.actions.0.variables.message"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_overload_alarm",
+      "target": "sensor.multiplus_overload_alarm",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.1"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_ripple_alarm",
+      "target": "sensor.multiplus_ripple_alarm",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.2"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_temperature_sensor_alarm",
+      "target": "sensor.multiplus_temperature_sensor_alarm",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.4"
+      ]
+    },
+    {
+      "entity_id": "sensor.multiplus_voltage_sensor_alarm",
+      "target": "sensor.multiplus_voltage_sensor_alarm",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.48.triggers.0.entity_id.6"
+      ]
+    },
+    {
+      "entity_id": "sensor.yasno_next_planned_outage",
+      "target": "sensor.yasno_next_planned_outage",
+      "status": "retained",
+      "consumers": [
+        "protected_yasno_guard_bindings.bindings.next_planned_outage"
+      ]
+    },
+    {
+      "entity_id": "sensor.yasno_next_power",
+      "target": "sensor.yasno_next_power",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.39.actions.0.variables.message",
+        "protected_yasno_guard_bindings.bindings.next_connectivity"
+      ]
+    },
+    {
+      "entity_id": "sensor.yasno_next_probable_outage",
+      "target": "sensor.yasno_next_probable_outage",
+      "status": "retained",
+      "consumers": [
+        "protected_yasno_guard_bindings.bindings.next_probable_outage"
+      ]
+    },
+    {
+      "entity_id": "sensor.yasno_power",
+      "target": "sensor.yasno_power",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.39.actions.0.variables.message",
+        "protected_yasno_guard_bindings.bindings.electricity"
+      ]
+    },
+    {
+      "entity_id": "sensor.yasno_schedule_updated_on",
+      "target": "sensor.yasno_schedule_updated_on",
+      "status": "retained",
+      "consumers": [
+        "protected_yasno_guard_bindings.bindings.schedule_updated_on"
+      ]
+    },
+    {
+      "entity_id": "sensor.yasno_status_today",
+      "target": "sensor.yasno_status_today",
+      "status": "retained",
+      "consumers": [
+        "protected_yasno_guard_bindings.bindings.status_today"
+      ]
+    },
+    {
+      "entity_id": "sensor.yasno_status_tomorrow",
+      "target": "sensor.yasno_status_tomorrow",
+      "status": "retained",
+      "consumers": [
+        "protected_yasno_guard_bindings.bindings.status_tomorrow"
+      ]
+    },
+    {
+      "entity_id": "stt.google_ai_stt",
+      "target": "stt.google_ai_stt",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.3.stt_engine"
+      ]
+    },
+    {
+      "entity_id": "stt.groq",
+      "target": "stt.groq",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.1.stt_engine",
+        "assist_pipeline.pipelines.data.items.4.stt_engine"
+      ]
+    },
+    {
+      "entity_id": "stt.home_assistant_cloud",
+      "target": "stt.home_assistant_cloud",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.2.stt_engine"
+      ]
+    },
+    {
+      "entity_id": "stt.openai_whisper",
+      "target": "stt.openai_whisper",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.0.stt_engine"
+      ]
+    },
+    {
+      "entity_id": "stt.whisper_reaper",
+      "target": "stt.whisper_reaper",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.12.conditions.1.conditions.1.conditions.0.entity_id",
+        "configuration.automation.12.triggers.1.entity_id.0",
+        "configuration.automation.13.triggers.0.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "switch.dyson_night_mode",
+      "target": "switch.dyson_night_mode",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.47.actions.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "switch.qbittorrent_alternative_speed",
+      "target": "switch.qbittorrent_alternative_speed",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.25.actions.0.target.entity_id",
+        "configuration.automation.26.actions.0.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "switch.reaper_power",
+      "target": "switch.reaper_power",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.17.actions.0.target.entity_id",
+        "configuration.automation.17.conditions.0.entity_id",
+        "configuration.automation.18.actions.0.target.entity_id",
+        "configuration.automation.36.actions.0.choose.0.conditions.0.conditions.0.entity_id"
+      ]
+    },
+    {
+      "entity_id": "timer.movie_scene_cooldown",
+      "target": "timer.movie_scene_cooldown",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.27.actions.0.target.entity_id",
+        "configuration.automation.27.conditions.1.entity_id"
+      ]
+    },
+    {
+      "entity_id": "timer.movie_scene_offer_window",
+      "target": "timer.movie_scene_offer_window",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.27.actions.2.target.entity_id",
+        "configuration.automation.28.conditions.0.entity_id",
+        "configuration.automation.31.conditions.0.entity_id",
+        "configuration.automation.38.conditions.0.entity_id"
+      ]
+    },
+    {
+      "entity_id": "tts.elevenlabs",
+      "target": "tts.elevenlabs",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.1.tts_engine",
+        "configuration.automation.16.actions.3.target.entity_id"
+      ]
+    },
+    {
+      "entity_id": "tts.google_ai_tts",
+      "target": "tts.google_ai_tts",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.3.tts_engine"
+      ]
+    },
+    {
+      "entity_id": "tts.home_assistant_cloud",
+      "target": "tts.home_assistant_cloud",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.2.tts_engine"
+      ]
+    },
+    {
+      "entity_id": "tts.openai_tts_kokoro",
+      "target": "tts.openai_tts_kokoro",
+      "status": "retained",
+      "consumers": [
+        "assist_pipeline.pipelines.data.items.0.tts_engine",
+        "configuration.automation.12.conditions.1.conditions.1.conditions.1.entity_id",
+        "configuration.automation.12.triggers.1.entity_id.1",
+        "configuration.automation.13.triggers.2.entity_id.0"
+      ]
+    },
+    {
+      "entity_id": "weather.openweathermap",
+      "target": "weather.openweathermap",
+      "status": "retained",
+      "consumers": [
+        "configuration.automation.30.actions.0.target.entity_id",
+        "configuration.automation.30.actions.1.variables.fc",
+        "configuration.automation.30.actions.1.variables.now_cond",
+        "configuration.automation.30.actions.1.variables.now_feels",
+        "configuration.automation.30.actions.1.variables.now_precip",
+        "configuration.automation.30.actions.1.variables.now_temp",
+        "configuration.automation.32.conditions.0.conditions.1.conditions.0.conditions.2.entity_id",
+        "configuration.automation.32.triggers.1.entity_id.0",
+        "configuration.automation.33.triggers.1.entity_id.0",
+        "configuration.script.voice_weather_forecasts_full_llm_script.sequence.0.variables.weather_entity",
+        "configuration.script.voice_weather_forecasts_full_llm_script.sequence.2.target.entity_id",
+        "configuration.script.weather_prompt_for_assist_llm.sequence.0.target.entity_id",
+        "configuration.script.weather_prompt_for_assist_llm.sequence.1.variables.fc",
+        "configuration.script.weather_prompt_for_assist_llm.sequence.1.variables.now_cond",
+        "configuration.script.weather_prompt_for_assist_llm.sequence.1.variables.now_feels",
+        "configuration.script.weather_prompt_for_assist_llm.sequence.1.variables.now_temp"
+      ]
+    }
+  ],
+  "service_references": [
+    {
+      "service": "ai_task.generate_data",
+      "consumers": [
+        "configuration.automation.29.actions.3.default.1.action",
+        "configuration.automation.5.actions.3.action",
+        "configuration.script.check_print.sequence.3.action"
+      ]
+    },
+    {
+      "service": "assist_satellite.announce",
+      "consumers": [
+        "configuration.automation.10.actions.0.action",
+        "configuration.automation.11.actions.0.action",
+        "configuration.automation.14.actions.0.action",
+        "configuration.automation.15.actions.0.action",
+        "configuration.automation.16.actions.2.action",
+        "configuration.automation.23.actions.0.action",
+        "configuration.automation.24.actions.0.action",
+        "configuration.automation.27.actions.1.action",
+        "configuration.automation.3.actions.1.action",
+        "configuration.automation.32.actions.1.then.0.action",
+        "configuration.automation.33.actions.1.then.0.action",
+        "configuration.automation.39.actions.1.action",
+        "configuration.automation.4.actions.1.action",
+        "configuration.automation.40.actions.0.action",
+        "configuration.automation.41.actions.0.action",
+        "configuration.automation.43.actions.0.action",
+        "configuration.automation.44.actions.0.action",
+        "configuration.automation.45.actions.0.action",
+        "configuration.automation.46.actions.1.action",
+        "configuration.automation.48.actions.0.action",
+        "configuration.automation.5.actions.5.action",
+        "configuration.script.ask_gpt.sequence.0.action"
+      ]
+    },
+    {
+      "service": "assist_satellite.ask_question",
+      "consumers": [
+        "configuration.automation.29.actions.3.choose.0.sequence.1.action"
+      ]
+    },
+    {
+      "service": "button.press",
+      "consumers": [
+        "configuration.automation.25.actions.1.action",
+        "configuration.automation.26.actions.1.action"
+      ]
+    },
+    {
+      "service": "camera.snapshot",
+      "consumers": [
+        "configuration.automation.5.actions.1.action",
+        "configuration.script.check_print.sequence.1.action"
+      ]
+    },
+    {
+      "service": "climate.set_hvac_mode",
+      "consumers": [
+        "configuration.script.set_air_conditioner_temperature.sequence.1.action"
+      ]
+    },
+    {
+      "service": "climate.set_temperature",
+      "consumers": [
+        "configuration.script.set_air_conditioner_temperature.sequence.0.action"
+      ]
+    },
+    {
+      "service": "climate.turn_on",
+      "consumers": [
+        "configuration.automation.6.actions.0.action"
+      ]
+    },
+    {
+      "service": "conversation.process",
+      "consumers": [
+        "configuration.automation.29.actions.2.choose.0.sequence.0.action",
+        "configuration.script.ask_gpt.sequence.1.action",
+        "configuration.script.ask_gpt_with_search.sequence.0.action"
+      ]
+    },
+    {
+      "service": "hassarr.add_overseerr_movie",
+      "consumers": [
+        "configuration.automation.29.actions.3.default.0.choose.0.sequence.0.action"
+      ]
+    },
+    {
+      "service": "hassarr.add_overseerr_tv_show",
+      "consumers": [
+        "configuration.automation.29.actions.3.default.0.choose.1.sequence.0.action"
+      ]
+    },
+    {
+      "service": "input_boolean.turn_off",
+      "consumers": [
+        "configuration.automation.34.actions.0.action",
+        "configuration.automation.35.actions.0.action"
+      ]
+    },
+    {
+      "service": "input_boolean.turn_on",
+      "consumers": [
+        "configuration.automation.34.actions.2.action"
+      ]
+    },
+    {
+      "service": "lametric.message",
+      "consumers": [
+        "configuration.automation.3.actions.0.action",
+        "configuration.automation.5.actions.4.action"
+      ]
+    },
+    {
+      "service": "light.toggle",
+      "consumers": [
+        "configuration.automation.0.actions.0.action",
+        "configuration.automation.1.actions.0.action",
+        "configuration.automation.2.actions.0.action",
+        "configuration.automation.31.actions.0.action",
+        "configuration.automation.38.actions.0.action",
+        "configuration.automation.7.actions.0.action"
+      ]
+    },
+    {
+      "service": "light.turn_off",
+      "consumers": [
+        "configuration.automation.33.actions.0.action",
+        "configuration.automation.5.actions.2.then.0.action",
+        "configuration.script.check_print.sequence.2.then.0.action"
+      ]
+    },
+    {
+      "service": "light.turn_on",
+      "consumers": [
+        "configuration.automation.16.actions.4.action",
+        "configuration.automation.32.actions.0.action",
+        "configuration.automation.5.actions.0.then.0.action",
+        "configuration.automation.8.actions.0.action",
+        "configuration.automation.9.actions.0.action",
+        "configuration.script.check_print.sequence.0.then.0.action"
+      ]
+    },
+    {
+      "service": "media_player.select_source",
+      "consumers": [
+        "configuration.script.game_mode.sequence.2.sequence.0.action",
+        "configuration.script.toggle_vinyl.sequence.2.else.0.action",
+        "configuration.script.toggle_vinyl.sequence.2.then.0.action"
+      ]
+    },
+    {
+      "service": "media_player.turn_off",
+      "consumers": [
+        "configuration.automation.21.actions.0.action"
+      ]
+    },
+    {
+      "service": "media_player.turn_on",
+      "consumers": [
+        "configuration.script.game_mode.sequence.0.parallel.0.then.0.action",
+        "configuration.script.game_mode.sequence.0.parallel.0.then.1.action",
+        "configuration.script.toggle_vinyl.sequence.0.action"
+      ]
+    },
+    {
+      "service": "media_player.volume_set",
+      "consumers": [
+        "configuration.automation.19.actions.0.action",
+        "configuration.automation.20.actions.0.action"
+      ]
+    },
+    {
+      "service": "notify.mobile_app_iphone_15",
+      "consumers": [
+        "configuration.automation.50.actions.0.choose.0.sequence.0.action",
+        "configuration.automation.50.actions.0.choose.1.sequence.1.action",
+        "configuration.automation.50.actions.0.choose.1.sequence.3.action"
+      ]
+    },
+    {
+      "service": "nzbget.pause",
+      "consumers": [
+        "configuration.automation.25.actions.2.action"
+      ]
+    },
+    {
+      "service": "nzbget.resume",
+      "consumers": [
+        "configuration.automation.26.actions.2.action"
+      ]
+    },
+    {
+      "service": "nzbget.set_speed",
+      "consumers": [
+        "configuration.automation.25.actions.3.action",
+        "configuration.automation.26.actions.3.action"
+      ]
+    },
+    {
+      "service": "rest_command.ollama_preload",
+      "consumers": [
+        "configuration.automation.12.actions.0.action"
+      ]
+    },
+    {
+      "service": "scene.turn_on",
+      "consumers": [
+        "configuration.automation.22.actions.0.action",
+        "configuration.automation.28.actions.0.action"
+      ]
+    },
+    {
+      "service": "script.check_print",
+      "consumers": [
+        "configuration.automation.49.actions.0.action"
+      ]
+    },
+    {
+      "service": "script.set_air_conditioner_temperature",
+      "consumers": [
+        "configuration.automation.6.actions.1.action"
+      ]
+    },
+    {
+      "service": "shell_command.reaper_windows",
+      "consumers": [
+        "configuration.automation.36.actions.1.action",
+        "configuration.script.game_mode.sequence.2.sequence.1.action"
+      ]
+    },
+    {
+      "service": "switch.turn_off",
+      "consumers": [
+        "configuration.automation.17.actions.0.action",
+        "configuration.automation.26.actions.0.action",
+        "configuration.automation.47.actions.0.action"
+      ]
+    },
+    {
+      "service": "switch.turn_on",
+      "consumers": [
+        "configuration.automation.18.actions.0.action",
+        "configuration.automation.25.actions.0.action",
+        "configuration.script.game_mode.sequence.0.parallel.1.action"
+      ]
+    },
+    {
+      "service": "telegram_bot.send_message",
+      "consumers": [
+        "configuration.automation.39.actions.2.action",
+        "configuration.automation.46.actions.2.action"
+      ]
+    },
+    {
+      "service": "timer.start",
+      "consumers": [
+        "configuration.automation.27.actions.0.action",
+        "configuration.automation.27.actions.2.action"
+      ]
+    },
+    {
+      "service": "tts.cloud_say",
+      "consumers": [
+        "configuration.automation.4.actions.0.action"
+      ]
+    },
+    {
+      "service": "tts.speak",
+      "consumers": [
+        "configuration.automation.16.actions.3.action"
+      ]
+    },
+    {
+      "service": "weather.get_forecasts",
+      "consumers": [
+        "configuration.automation.30.actions.0.action",
+        "configuration.script.voice_weather_forecasts_full_llm_script.sequence.2.action",
+        "configuration.script.weather_prompt_for_assist_llm.sequence.0.action"
+      ]
+    }
+  ],
+  "device_references": [
+    {
+      "device_id": "03b9cc7e343604396bb64815efa78500",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.2.actions.0.target.device_id"
+      ]
+    },
+    {
+      "device_id": "1d6d18c0607f109486576f159ae0d7c0",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.0.triggers.2.device_id",
+        "configuration.automation.1.triggers.5.device_id",
+        "configuration.automation.2.triggers.1.device_id",
+        "configuration.automation.24.triggers.1.device_id",
+        "configuration.automation.8.triggers.2.device_id"
+      ]
+    },
+    {
+      "device_id": "20c327860fbd13c14362b00f2081b78d",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.16.triggers.1.device_id"
+      ]
+    },
+    {
+      "device_id": "2f71ab6f29ad7b89d7067ae6da4afe76",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.0.triggers.1.device_id",
+        "configuration.automation.1.triggers.3.device_id",
+        "configuration.automation.2.triggers.0.device_id",
+        "configuration.automation.24.triggers.0.device_id",
+        "configuration.automation.31.triggers.2.device_id",
+        "configuration.automation.38.triggers.2.device_id",
+        "configuration.automation.41.triggers.4.device_id",
+        "configuration.automation.8.triggers.1.device_id"
+      ]
+    },
+    {
+      "device_id": "4b3d15da6011e267ca6b2f7fb5e7f298",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.11.triggers.0.device_id"
+      ]
+    },
+    {
+      "device_id": "509308a00a0dba896fe955f85dc9eaf6",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.16.actions.0.device_id",
+        "configuration.automation.24.triggers.3.device_id"
+      ]
+    },
+    {
+      "device_id": "57a19124691d23a75510acb5b4f70903",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.0.triggers.3.device_id",
+        "configuration.automation.1.triggers.0.device_id",
+        "configuration.automation.24.triggers.5.device_id",
+        "configuration.automation.7.triggers.0.device_id",
+        "configuration.automation.9.triggers.0.device_id"
+      ]
+    },
+    {
+      "device_id": "60dcd40338fd9d63712128c6331038b5",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.21.triggers.0.device_id",
+        "configuration.script.game_mode.sequence.0.parallel.0.if.0.device_id",
+        "configuration.script.game_mode.sequence.0.parallel.0.then.0.target.device_id",
+        "configuration.script.game_mode.sequence.2.sequence.0.target.device_id"
+      ]
+    },
+    {
+      "device_id": "60e41fc3a2858a76ce0ffb1f67f9957d",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.7.actions.0.target.device_id"
+      ]
+    },
+    {
+      "device_id": "6711f762ca5f27d9aca0a0cfcdab92ba",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.12.actions.1.device_id",
+        "configuration.automation.13.actions.0.device_id",
+        "configuration.automation.16.actions.2.target.device_id",
+        "configuration.automation.19.actions.0.target.device_id.0",
+        "configuration.automation.20.actions.0.target.device_id.0",
+        "configuration.script.ask_gpt.sequence.0.target.device_id"
+      ]
+    },
+    {
+      "device_id": "6cfb4e8f3b78212cb5a5c37e730bc245",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.0.triggers.4.device_id",
+        "configuration.automation.1.triggers.4.device_id",
+        "configuration.automation.2.triggers.3.device_id",
+        "configuration.automation.28.triggers.0.device_id",
+        "configuration.automation.31.triggers.1.device_id",
+        "configuration.automation.38.triggers.1.device_id",
+        "configuration.automation.41.triggers.2.device_id",
+        "configuration.automation.8.triggers.3.device_id"
+      ]
+    },
+    {
+      "device_id": "73011c811d74d3602269f740ab19f003",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.3.actions.0.data.device_id",
+        "configuration.automation.5.actions.4.data.device_id"
+      ]
+    },
+    {
+      "device_id": "7d75a987c8709f5ca514f1d820703461",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.1.triggers.1.device_id",
+        "configuration.automation.24.triggers.6.device_id",
+        "configuration.automation.41.triggers.3.device_id",
+        "configuration.automation.7.triggers.1.device_id",
+        "configuration.automation.9.triggers.1.device_id"
+      ]
+    },
+    {
+      "device_id": "94d1c5cb4856ce1e9595d5f30ff134ab",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.45.triggers.0.device_id"
+      ]
+    },
+    {
+      "device_id": "bef6d5a0461276cebba9818626c6b66a",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.16.triggers.0.device_id"
+      ]
+    },
+    {
+      "device_id": "c64d8e84b5baa3d5d7ded9bc8538be0e",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.37.actions.0.device_id",
+        "configuration.automation.37.actions.2.device_id"
+      ]
+    },
+    {
+      "device_id": "d7f71ba6e41eaa5f4e1673b72cac5de5",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.0.triggers.0.device_id",
+        "configuration.automation.1.triggers.2.device_id",
+        "configuration.automation.2.triggers.2.device_id",
+        "configuration.automation.24.triggers.4.device_id",
+        "configuration.automation.31.triggers.0.device_id",
+        "configuration.automation.38.triggers.0.device_id",
+        "configuration.automation.41.triggers.0.device_id",
+        "configuration.automation.41.triggers.1.device_id",
+        "configuration.automation.8.triggers.0.device_id"
+      ]
+    },
+    {
+      "device_id": "df5c8ea1666ecfadccb338daa5cd41fb",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.16.actions.1.device_id",
+        "configuration.automation.24.triggers.2.device_id"
+      ]
+    },
+    {
+      "device_id": "e04d63f6fbae46315b2dc79884dfd295",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.18.conditions.0.device_id"
+      ]
+    },
+    {
+      "device_id": "e2a9b5f6b3842bc75aa39038200b8a79",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.12.actions.2.device_id",
+        "configuration.automation.13.actions.1.device_id",
+        "configuration.automation.19.actions.0.target.device_id.1",
+        "configuration.automation.20.actions.0.target.device_id.1"
+      ]
+    },
+    {
+      "device_id": "e3155405d8b7e8259c71146a6f111324",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.36.actions.0.choose.0.sequence.0.device_id",
+        "configuration.script.game_mode.sequence.0.parallel.1.target.device_id"
+      ]
+    },
+    {
+      "device_id": "ec9ff57d171d20044e301a49f72f59b5",
+      "in_source_registry": true,
+      "consumers": [
+        "configuration.automation.42.actions.0.device_id",
+        "configuration.automation.42.actions.1.device_id",
+        "configuration.automation.42.actions.2.device_id",
+        "configuration.automation.42.actions.3.device_id"
+      ]
+    }
+  ],
+  "pipeline_count": 5,
+  "native_entities": [
+    {
+      "entity_id": "sensor.argon_one_addon_fan_speed",
+      "declaration": "services.home-assistant.config.command_line",
+      "baseline": "transient add-on REST state"
+    }
+  ]
+}
