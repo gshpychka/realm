@@ -14,11 +14,12 @@ from importlib.metadata import version
 from pathlib import Path
 from types import SimpleNamespace
 
+import yaml
 from packaging.requirements import Requirement
 
 
 def denied(*_args, **_kwargs):
-    raise RuntimeError("network is forbidden in migration QA")
+    raise RuntimeError("network is forbidden in offline QA")
 
 
 socket.create_connection = denied
@@ -28,7 +29,7 @@ socket.socket.sendto = denied
 socket.getaddrinfo = denied
 
 
-async def validate(hass, configuration, components, component_path):
+async def validate(hass, configuration, components, component_path, inactive_scripts):
     failures = []
     from homeassistant.components.automation.config import PLATFORM_SCHEMA
     from homeassistant.components.homeassistant.scene import (
@@ -37,6 +38,7 @@ async def validate(hass, configuration, components, component_path):
     from homeassistant.components.script.config import SCRIPT_ENTITY_SCHEMA
     from homeassistant.const import Platform
     from homeassistant.helpers import config_validation as cv
+    from homeassistant.helpers.template import Template
 
     for item in configuration["automation"]:
         try:
@@ -45,7 +47,8 @@ async def validate(hass, configuration, components, component_path):
             failures.append(
                 ["automation", item["id"], type(error).__name__, str(error)]
             )
-    for name, item in configuration["script"].items():
+    assert not configuration["script"].keys() & inactive_scripts.keys()
+    for name, item in (configuration["script"] | inactive_scripts).items():
         try:
             await cv.async_validate(hass, SCRIPT_ENTITY_SCHEMA, item)
         except Exception as error:
@@ -90,6 +93,15 @@ async def validate(hass, configuration, components, component_path):
                 await cv.async_validate(hass, module.PLATFORM_SCHEMA, item)
             except Exception as error:
                 failures.append([domain, platform, type(error).__name__, str(error)])
+    for item in configuration.get("command_line", []):
+        sensor = item.get("sensor", {})
+        if sensor.get("unique_id") == "argon_one_fan_speed":
+            assert (
+                Template(sensor["value_template"], hass).async_render(
+                    {"value": "25 60.0"}, parse_result=False
+                )
+                == "25"
+            )
     checked_requirements = 0
     checked_modules = 0
     platform_modules = {platform.value for platform in Platform} | {
@@ -103,7 +115,7 @@ async def validate(hass, configuration, components, component_path):
                 component_path / "custom_components" / domain / "manifest.json"
             ).read_text()
         )
-        for text in manifest["requirements"]:
+        for text in manifest.get("requirements", []):
             requirement = Requirement(text)
             try:
                 actual = version(requirement.name)
@@ -161,6 +173,7 @@ async def validate(hass, configuration, components, component_path):
                 "ha_version": version("homeassistant"),
                 "automations": len(configuration["automation"]),
                 "scripts": len(configuration["script"]),
+                "inactive_scripts": len(inactive_scripts),
                 "scenes": len(configuration["scene"]),
                 "custom_component_imports": len(components),
                 "custom_modules_imported": checked_modules,
@@ -175,14 +188,20 @@ async def validate(hass, configuration, components, component_path):
 async def main():
     from homeassistant.core import CoreState, HomeAssistant
 
-    configuration = json.loads(Path(sys.argv[1]).read_text())
-    components = json.loads(Path(sys.argv[2]).read_text())
-    component_path = Path(sys.argv[3])
+    configuration = yaml.safe_load(Path(sys.argv[1]).read_text())
+    component_path = Path(sys.argv[2])
+    components = {
+        path.parent.name: json.loads(path.read_text())
+        for path in (component_path / "custom_components").glob("*/manifest.json")
+    }
     sys.path.insert(0, str(component_path))
     # Register HA's schema context without starting HA or setting up anything.
     hass = HomeAssistant(str(component_path))
     try:
-        result = await validate(hass, configuration, components, component_path)
+        inactive_scripts = yaml.safe_load(Path(sys.argv[3]).read_text())
+        result = await validate(
+            hass, configuration, components, component_path, inactive_scripts
+        )
         assert hass.state is CoreState.not_running
         return result
     finally:

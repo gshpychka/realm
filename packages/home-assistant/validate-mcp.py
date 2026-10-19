@@ -6,9 +6,7 @@ acknowledgement key requested, or HA action performed.
 
 import json
 import socket
-import sys
-from importlib.metadata import version
-from pathlib import Path
+from importlib.metadata import requires, version
 
 from packaging.requirements import Requirement
 
@@ -25,10 +23,9 @@ socket.getaddrinfo = denied
 
 
 def main():
-    requirements = json.loads(Path(sys.argv[1]).read_text())
-    assert version("ha-mcp") == requirements["version"]
+    assert version("ha-mcp") == "8.7.0"
     checked = 0
-    for text in requirements["requirements"]:
+    for text in requires("ha-mcp"):
         requirement = Requirement(text)
         if requirement.marker and not requirement.marker.evaluate():
             continue

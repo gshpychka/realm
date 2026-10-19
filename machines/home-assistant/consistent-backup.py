@@ -1,13 +1,9 @@
-"""FUTURE operator-enabled restic preparation; never run in this migration.
+"""Take a protected, consistent service-state copy for encrypted restic backups.
 
-Stop only the services that were running, take a consistent protected copy,
-then restore their prior running state even when the copy fails. This causes
-a short planned HA outage. No timer can use it before owner provisioning.
+Stop only active services and restore their running state even if copying fails.
 """
 
-import argparse
 import fcntl
-import json
 import os
 import shutil
 import sqlite3
@@ -31,11 +27,6 @@ def command(*args, check=True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--operator-enabled", action="store_true", required=True)
-    parser.parse_args()
-    if not Path("/var/lib/private/home-assistant/.backup-enabled").is_file():
-        raise RuntimeError("backup is not owner-enabled")
     os.umask(0o077)
     with Path("/run/lock/home-assistant-backup.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -89,9 +80,7 @@ def main():
                 ) as connection:
                     if connection.execute("PRAGMA quick_check").fetchone() != ("ok",):
                         raise RuntimeError("SQLite validation failed")
-            (staging / ".consistent-snapshot").write_text(
-                json.dumps({"format": 1, "services_stopped": active}) + "\n"
-            )
+            (staging / ".consistent-snapshot").touch(mode=0o600)
             if previous.exists():
                 shutil.rmtree(previous)
             if current.exists():

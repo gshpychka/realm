@@ -16,10 +16,8 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
   <a href="machines/iso"><img src=".github/readme/iso.svg" width="32%" alt="iso: bootable installer image, x86_64-linux"></a>
 </p>
 
-The proposed Raspberry Pi 5 [Home Assistant configuration](machines/home-assistant)
-has a [migration and rollback runbook](scripts/home-assistant/runbook.md), coverage
-maps and scoped build checks. Installation and activation require a separate
-authorized state handover; this branch does not change the running HAOS host.
+The Raspberry Pi 5 [Home Assistant host](machines/home-assistant) declares HA,
+custom integrations, automations, helpers, Matter, MQTT, cooling and encrypted backups in Nix.
 
 ## Layout
 

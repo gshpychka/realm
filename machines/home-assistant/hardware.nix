@@ -1,7 +1,6 @@
 { lib, ... }:
 {
-  # Samsung SSD 980 500GB is NVMe, not a USB/SATA boot drive. These labels
-  # describe FUTURE media; they must never be applied to the running HAOS disk.
+  # Samsung SSD 980 500GB on the Argon NVMe board.
   fileSystems."/" = {
     device = "/dev/disk/by-label/HA_NIXOS";
     fsType = "ext4";

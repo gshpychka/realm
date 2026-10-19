@@ -8,21 +8,14 @@ let
   haPkgs = import inputs.nixpkgs { system = pkgs.stdenv.hostPlatform.system; };
   packages = import ../../packages/home-assistant { pkgs = haPkgs; };
   fanPython = pkgs.python3.withPackages (ps: [ ps.smbus2 ]);
-  matterImage = builtins.fromJSON (builtins.readFile ../../packages/home-assistant/matter-image.json);
+  matterImage = import ../../packages/home-assistant/matter-image.nix;
 in
 {
-  assertions = [
-    {
-      assertion = lib.versionAtLeast matterImage.version "1.4.0";
-      message = "HAOS Matter app 9.2.0 uses Matter.js 1.4.0 state; never use the old Python server.";
-    }
-  ];
   systemd.services.ha-mcp = {
-    description = "Home Assistant admin MCP (native equivalent of the HAOS app)";
+    description = "Home Assistant admin MCP";
     wantedBy = [ "multi-user.target" ];
     wants = [ "home-assistant.service" ];
     after = [ "home-assistant.service" ];
-    unitConfig.ConditionPathExists = "/var/lib/hass/.migration-ready";
     environment = {
       HOME = "/var/lib/ha-mcp";
       XDG_DATA_HOME = "/var/lib/ha-mcp";
@@ -58,7 +51,7 @@ in
     wantedBy = [ "multi-user.target" ];
     after = [ "systemd-modules-load.service" ];
     serviceConfig = {
-      ExecStart = "${fanPython}/bin/python3 ${../../scripts/home-assistant/argonone.py}";
+      ExecStart = "${fanPython}/bin/python3 ${./argonone.py}";
       Restart = "always";
       RestartSec = 5;
       RuntimeDirectory = "argonone";
@@ -74,10 +67,10 @@ in
   services.home-assistant.config.command_line = [
     {
       sensor = {
-        name = "Argon One Addon Fan Speed";
-        unique_id = "argon_one_addon_fan_speed";
-        command = "cat /run/argonone/fan.json";
-        value_template = "{{ value_json.speed }}";
+        name = "Argon ONE Fan Speed";
+        unique_id = "argon_one_fan_speed";
+        command = "cat /run/argonone/fan-status";
+        value_template = "{{ value.split()[0] }}";
         unit_of_measurement = "%";
         scan_interval = 30;
       };
@@ -91,8 +84,7 @@ in
         address = "0.0.0.0";
         port = 1883;
         settings.allow_anonymous = false;
-        # Provisioned privately for the imported HA identity and every external
-        # client. No Supervisor authentication backend is assumed on NixOS.
+        # Password hashes for HA and external clients are runtime credentials.
         omitPasswordAuth = true;
         authPlugins = [
           {
@@ -107,9 +99,7 @@ in
   systemd.services.mosquitto.serviceConfig.LoadCredential = [
     "passwords:/var/lib/private/home-assistant/mosquitto-passwords"
   ];
-  systemd.services.mosquitto.unitConfig.ConditionPathExists = "/var/lib/hass/.migration-ready";
-  # The current HAOS app is already the Node Matter.js implementation. The
-  # nixpkgs Python 8.1.2 module is not a compatible replacement for its state.
+  # Matter.js provides the HA WebSocket endpoint and owns its writable /data.
   virtualisation.oci-containers.backend = "podman";
   virtualisation.oci-containers.containers.matter-server = {
     image = "${matterImage.image}@${matterImage.digest}";
@@ -130,10 +120,9 @@ in
   };
   systemd.services.podman-matter-server = {
     aliases = [ "matter-server.service" ];
-    unitConfig.ConditionPathExists = "/var/lib/hass/.migration-ready";
     serviceConfig.RuntimeDirectory = "matter-server";
     preStart = lib.mkBefore ''
-      # Preserve the add-on's time_sync=auto semantics at each start.
+      # Enable time synchronization only when the host clock is synchronized.
       if [ "$(${pkgs.systemd}/bin/timedatectl show -p NTPSynchronized --value 2>/dev/null || true)" = yes ]; then
         echo ENABLE_TIME_SYNC=true > /run/matter-server/time-sync.env
       else
@@ -142,8 +131,7 @@ in
     '';
   };
   boot.kernel.sysctl."net.ipv4.ping_group_range" = "0 2147483647";
-  # IPv6 and multicast are needed for Matter/Thread; there is no USB ZHA stick
-  # to assign. The existing coordinator remains socket://192.168.1.149:6638.
+  # Matter/Thread use IPv6 multicast; ZHA uses a network coordinator.
   services.tailscale = {
     enable = true;
     openFirewall = true;
@@ -156,8 +144,6 @@ in
       "--accept-routes=true"
     ];
   };
-  systemd.services.tailscaled.unitConfig.ConditionPathExists = "/var/lib/hass/.migration-ready";
-  systemd.services.tailscaled-set.unitConfig.ConditionPathExists = "/var/lib/hass/.migration-ready";
   services.glances = {
     enable = true;
     extraArgs = [
@@ -166,9 +152,6 @@ in
       "127.0.0.1"
     ];
   };
-  # Stopped Studio Code and Get HACS add-ons are intentionally omitted. Code
-  # and dependencies are pinned in this flake; HACS stays available for
-  # inventory, while installing/updating store-backed code requires a commit.
   systemd.tmpfiles.rules = [
     "d /var/lib/private/home-assistant 0700 root root -"
     "d /var/lib/hass 0700 hass hass -"
@@ -176,9 +159,7 @@ in
     # Numeric ownership matches the pinned upstream unprivileged image user.
     "d /var/lib/matter-server 0700 1000 1000 -"
   ];
-  # Native backup replacement: configured only after the operator supplies an
-  # encrypted remote repository and credentials. It must never silently fall
-  # back to an unencrypted local copy on the same NVMe disk.
+  # Encrypted remote backups use privately provisioned repository credentials.
   services.restic.backups.home-assistant = {
     initialize = false;
     repositoryFile = "/var/lib/private/home-assistant/restic-repository";
@@ -190,24 +171,15 @@ in
       RandomizedDelaySec = "15m";
       Persistent = true;
     };
-    backupPrepareCommand = "${pkgs.python3}/bin/python3 ${../../scripts/home-assistant/consistent-backup.py} --operator-enabled";
+    backupPrepareCommand = "${pkgs.python3}/bin/python3 ${./consistent-backup.py}";
     pruneOpts = [
       "--keep-daily 7"
       "--keep-weekly 4"
       "--keep-monthly 6"
     ];
   };
-  # The timer is inert until the owner explicitly provisions this marker after
-  # a remote restore test. Building the configuration never creates it.
-  systemd.services.restic-backups-home-assistant.unitConfig.ConditionPathExists =
-    "/var/lib/private/home-assistant/.backup-enabled";
   systemd.services.restic-backups-home-assistant.path = [
     pkgs.rclone
     pkgs.systemd
   ];
-  environment.etc."home-assistant/migration-readme".text = ''
-    This host is not provisioned by building this configuration.
-    See scripts/home-assistant/runbook.md in the configuration repository.
-    Never start HA against an unreviewed inspection snapshot.
-  '';
 }

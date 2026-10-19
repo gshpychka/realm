@@ -4,10 +4,6 @@
   pkgs,
   ...
 }:
-let
-  coverage = builtins.fromJSON (builtins.readFile ./integration-coverage.json);
-  integrationTCPPorts = lib.concatMap (entry: entry.required_tcp_ports or [ ]) coverage;
-in
 {
   imports = [
     ./hardware.nix
@@ -42,7 +38,11 @@ in
   services.resolved.enable = true;
   networking.firewall = {
     enable = true;
-    allowedTCPPorts = [ 8123 ] ++ integrationTCPPorts;
+    allowedTCPPorts = [
+      8123
+      21064 # HomeKit bridge
+      32100 # DLNA renderer event callbacks
+    ];
     allowedUDPPorts = [
       1900
       5353
@@ -84,7 +84,7 @@ in
       main
       openclaw
     ])
-    ++ builtins.fromJSON (builtins.readFile ./ssh-authorized-keys.json)
+    ++ import ./authorized-keys.nix
   );
   environment.systemPackages = with pkgs; [
     openssh

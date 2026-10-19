@@ -1,11 +1,8 @@
-"""Native Argon ONE I2C fan control; never executed by migration validation.
+"""Argon ONE V3 I2C fan control with a linear 55–75 Celsius profile.
 
-The V3 add-on's 55/75 Celsius linear profile is retained. Pi5 I2C routing and
-the case controller MUST pass the future physical acceptance checks. This
-does not implement the case's separate power-button/shutdown protocol.
+The separate case power-button/shutdown protocol is not implemented here.
 """
 
-import json
 import math
 import signal
 import time
@@ -28,7 +25,7 @@ def write_speed(bus, speed):
 def main():
     from smbus2 import SMBus
 
-    state = Path("/run/argonone/fan.json")
+    state = Path("/run/argonone/fan-status")
 
     def terminate(_signum, _frame):
         raise SystemExit(0)
@@ -46,9 +43,8 @@ def main():
                 speed = fan_speed(temperature)
                 write_speed(bus, speed)
                 temporary = state.with_suffix(".tmp")
-                temporary.write_text(
-                    json.dumps({"speed": speed, "temperature": temperature}) + "\n"
-                )
+                # Plain-text telemetry: speed percent, then Celsius.
+                temporary.write_text(f"{speed} {temperature}\n")
                 temporary.replace(state)
                 time.sleep(30)
         finally:

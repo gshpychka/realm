@@ -182,10 +182,10 @@ class Guard:
 
     async def rollback(self):
         tx = self.journal["pending"]
-        await self.reconfigure(tx["old_group"])
-        await self.loaded(tx["old_group"])
-        await self.handover(tx["old_group"])
-        self.journal["last_valid_group"] = tx["old_group"]
+        await self.reconfigure(tx["previous_group"])
+        await self.loaded(tx["previous_group"])
+        await self.handover(tx["previous_group"])
+        self.journal["last_valid_group"] = tx["previous_group"]
         self.journal.pop("pending")
         self.persist()
 
@@ -201,16 +201,16 @@ class Guard:
                 return {"status": "repair_required"}
         if not dry_run and not force_check and j.get("next_check") and self.now < datetime.fromisoformat(j["next_check"]):
             return {"status": "not_due", "last_valid_group": j.get("last_valid_group"), "last_success": j.get("last_success"), "next_check": j.get("next_check")}
-        old_group = None
+        previous_group = None
         try:
-            old_group = await self.group()
+            previous_group = await self.group()
             group = await self.candidate()
             if dry_run:
-                return {"status": "validated_unchanged" if group == old_group else "validated_change", "group": group, "current_group": old_group, "checked_at": self.now.isoformat(), "writes": 0}
-            if group != old_group:
+                return {"status": "validated_unchanged" if group == previous_group else "validated_change", "group": group, "current_group": previous_group, "checked_at": self.now.isoformat(), "writes": 0}
+            if group != previous_group:
                 before = {r["entity_id"]: r for r in await self.registry()}
                 metadata = {key: before[target] for key, target in self.config["bindings"].items()}
-                j["pending"] = {"old_group": old_group, "new_group": group, "metadata": metadata}
+                j["pending"] = {"previous_group": previous_group, "new_group": group, "metadata": metadata}
                 self.persist()
                 await self.reconfigure(group)
                 await self.loaded(group)

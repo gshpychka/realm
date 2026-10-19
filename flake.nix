@@ -411,13 +411,6 @@
                 inherit nixpkgs system;
                 inherit (inputs) bun2nix;
               };
-              home-assistant-migration = pkgs.mkShell {
-                packages = [
-                  (pkgs.python3.withPackages (ps: [ ps.pyyaml ]))
-                  pkgs.mosquitto
-                  pkgs.age
-                ];
-              };
             };
         in
         lib.genAttrs systems mkShell;

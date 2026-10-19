@@ -1,30 +1,56 @@
 { pkgs }:
 let
-  sources = builtins.fromJSON (builtins.readFile ./sources.json);
-  components = builtins.fromJSON (builtins.readFile ../../machines/home-assistant/components.json);
-  componentPatches = builtins.fromJSON (builtins.readFile ./component-patches.json);
-  coverage = builtins.fromJSON (
-    builtins.readFile ../../machines/home-assistant/integration-coverage.json
-  );
-  # The snapshot contains only installed public component code, scanned against
-  # the inventory's credential values. Per-file hashes and upstream revisions
-  # are recorded in components.json; no runtime state enters this derivation.
-  componentSource = pkgs.runCommand "ha-custom-components-2026-10-18" { } ''
+  sources = import ./sources.nix;
+  components = import ./components.nix;
+  customComponents = pkgs.lib.mapAttrsToList (
+    domain: component:
+    pkgs.stdenvNoCC.mkDerivation {
+      pname = "ha-component-${domain}";
+      inherit (component) version;
+      src =
+        if component.releaseAsset or false then
+          pkgs.fetchurl { inherit (component.source) url hash; }
+        else
+          pkgs.fetchFromGitHub component.source;
+      nativeBuildInputs = [ pkgs.unzip ];
+      # HACS publishes a flat release zip containing the compiled frontend.
+      unpackPhase =
+        if component.releaseAsset or false then
+          ''
+            mkdir source
+            unzip -q $src -d source
+            sourceRoot=source
+          ''
+        else
+          null;
+      prePatch = pkgs.lib.optionalString (!(component.releaseAsset or false)) ''
+        cd custom_components/${domain}
+      '';
+      patches = component.patches or [ ];
+      # Several repositories use development placeholders even in release tags.
+      # Apply the release version without changing dependencies or runtime code.
+      postPatch = ''
+        # Release zips can contain bytecode for a different Python version.
+        find . -type f -name '*.pyc' -delete
+        find . -type d -name __pycache__ -empty -delete
+        ${pkgs.jq}/bin/jq --arg version "$version" '.version = $version' manifest.json > manifest.tmp
+        mv manifest.tmp manifest.json
+      '';
+      installPhase = ''
+        mkdir -p $out/custom_components/${domain}
+        cp -r ./. $out/custom_components/${domain}/
+      '';
+      passthru = {
+        inherit domain;
+        isHomeAssistantComponent = true;
+      };
+    }
+  ) components;
+  componentSource = pkgs.runCommand "ha-custom-components" { } ''
     mkdir -p $out
-    tar -xzf ${../../machines/home-assistant/components.tar.gz} -C $out
-    ${pkgs.lib.concatStringsSep "\n" (
-      pkgs.lib.flatten (
-        pkgs.lib.mapAttrsToList (
-          domain: patches:
-          map (patch: ''
-            echo "${patch.source_sha256}  $out/${domain}/${patch.target}" | sha256sum -c -
-            chmod -R u+w "$out/${domain}"
-            ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 -d "$out/${domain}" < ${./. + "/${patch.file}"}
-            echo "${patch.result_sha256}  $out/${domain}/${patch.target}" | sha256sum -c -
-          '') patches
-        ) componentPatches
-      )
-    )}
+    ${pkgs.lib.concatMapStringsSep "\n" (component: ''
+      cp -r ${component}/custom_components/. $out/
+    '') customComponents}
   '';
   pinnedPython =
     ps: name: dependencies: imports: buildSystem:
@@ -170,30 +196,8 @@ let
 in
 {
   customComponentSource = componentSource;
-  coreComponents =
-    pkgs.lib.filter
-      (
-        name:
-        builtins.elem name core.availableComponents
-        && !builtins.elem name [
-          "hassio"
-          "raspberry_pi"
-        ]
-      )
-      (
-        pkgs.lib.unique (
-          map (entry: entry.domain) coverage
-          ++ pkgs.lib.concatMap (component: component.dependencies) (pkgs.lib.attrValues components)
-          ++ [
-            "default_config"
-            "rest"
-            "ffmpeg"
-            "shell_command"
-            "rest_command"
-            "command_line"
-          ]
-        )
-      );
+  coreComponents = import ./core-components.nix;
+  inherit customComponents;
   # 8.7 vendors FastMCP/MCP/websockets and changed to uv_build; inheriting the
   # 8.6 setuptools/external-FastMCP package would omit required dependencies.
   mcp = mcpPython.toPythonApplication (
@@ -263,8 +267,7 @@ in
           HOMEASSISTANT_TOKEN=synthetic-packaging-fixture \
           MCP_SECRET_PATH=/synthetic-packaging-fixture \
           ENABLE_MANDATORY_BPS=true ENABLE_STRICT_MANDATORY_BPS=true \
-          ${mcpPython.python.interpreter} ${../../scripts/home-assistant/validate-mcp.py} \
-          ${./mcp-requirements.json}
+          ${mcpPython.python.interpreter} ${./validate-mcp.py}
       '';
       # Its upstream integration tests require a running HA. The isolated check
       # validates native HTTP imports, dependency metadata and gate resources.
@@ -295,18 +298,4 @@ in
     };
     sdist = pkgs.fetchurl { inherit (sources.homeassistant) url hash; };
   });
-  customComponents = pkgs.lib.mapAttrsToList (
-    domain: manifest:
-    pkgs.runCommand "ha-component-${domain}-${manifest.version}"
-      {
-        passthru = {
-          inherit domain;
-          isHomeAssistantComponent = true;
-        };
-      }
-      ''
-        mkdir -p $out/custom_components
-        cp -r ${componentSource}/${domain} $out/custom_components/${domain}
-      ''
-  ) components;
 }
