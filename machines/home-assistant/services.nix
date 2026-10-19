@@ -34,7 +34,7 @@ in
       RestartSec = 10;
       UMask = "0077";
       # Upstream startup/access logs can print the credential-bearing path.
-      # Systemd still records exit status; keep those paths out of journald.
+      # Systemd records exit status while the service discards log output.
       StandardOutput = "null";
       StandardError = "null";
       ProtectSystem = "strict";

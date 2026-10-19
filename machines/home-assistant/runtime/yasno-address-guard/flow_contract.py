@@ -1,4 +1,4 @@
-"""Pure planner for the integration's public reconfigure flow; no HA internals."""
+"""Plan validated inputs for the integration's public reconfigure flow."""
 
 
 class IncompatibleFlow(ValueError):

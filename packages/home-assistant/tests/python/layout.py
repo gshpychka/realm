@@ -38,7 +38,7 @@ def validate_field_order(root, config):
 
 
 def check_layout(root):
-    """Check source responsibilities independently of previous directory layouts."""
+    """Enforce source placement by file type and directory responsibility."""
     errors = []
     for base in (PACKAGE, MACHINE):
         if not (root / base).is_dir():

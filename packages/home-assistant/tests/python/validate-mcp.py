@@ -1,7 +1,7 @@
 """Validate native MCP imports, constraints and gate resources offline.
 
-Use synthetic settings in an isolated build directory. No server is started,
-acknowledgement key requested, or HA action performed.
+Use synthetic settings in an isolated build directory, reject socket operations
+and inspect the imported entry points and packaged best-practices resources.
 """
 
 import json

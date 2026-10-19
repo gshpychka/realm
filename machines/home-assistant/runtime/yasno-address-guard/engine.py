@@ -138,7 +138,7 @@ class Guard:
             settings = dict(c["settings"])
             for _ in range(10):
                 flow_id = response.get("flow_id", flow_id)
-                # Preserve live preferences, rather than overriding later user changes.
+                # Preserve the user's current preferences from the live form.
                 if response.get("step_id") == "preferences":
                     for field in response.get("data_schema", []):
                         key = field.get("name")
@@ -266,8 +266,8 @@ class Guard:
                         options_domain=domain,
                         options=options,
                     )
-        # Renames propagate asynchronously to live entities. Verify the actual
-        # neutral references and copied options, not only registry membership.
+        # Renames propagate asynchronously to live entities. Verify registry
+        # membership, live neutral references and copied options together.
         for _ in range(30):
             current = {r["entity_id"]: r for r in await self.registry()}
             states = {

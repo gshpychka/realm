@@ -56,7 +56,7 @@ pkgs.runCommand "home-assistant-config-qa"
     ${python}/bin/python ${./.}/python/layout.py ${../../..}
     env -i HOME="$TMPDIR" PATH="$PATH" ${packages.mcp}/bin/ha-mcp --version \
       | ${pkgs.gnugrep}/bin/grep -Fx 'ha-mcp 8.7.0'
-    # Parse the native broker's auth/ACL configuration without opening a socket.
+    # The broker's test-config mode validates auth/ACL syntax with fixture files.
     mosquitto_passwd -b -c passwords fixture-user fixture-password
     printf 'topic readwrite #\n' > acl
     cat > mosquitto.conf <<EOF
@@ -71,8 +71,8 @@ pkgs.runCommand "home-assistant-config-qa"
     mkdir custom_components
     cp -r ${packages.customComponentSource}/. custom_components/
     chmod -R u+w custom_components
-    # Reproduce only HA's own wrapper environment. MCP's separate dependencies
-    # must not accidentally satisfy a missing HA/custom-component requirement.
+    # Use HA's wrapper environment to check that HA and custom components resolve
+    # their dependencies from the declared Core Python path.
     env -i HOME="$TMPDIR" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
       PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/python/validate-ha.py \
       ${configFile} "$PWD" ${templateFixtures} ${../../../machines/home-assistant}

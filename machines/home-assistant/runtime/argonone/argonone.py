@@ -1,7 +1,4 @@
-"""Argon ONE V3 I2C fan control with a linear 55–75 Celsius profile.
-
-The separate case power-button/shutdown protocol is not implemented here.
-"""
+"""Argon ONE V3 I2C fan control with a linear 55–75 Celsius profile."""
 
 import math
 import signal
@@ -17,7 +14,7 @@ def fan_speed(celsius):
 
 
 def write_speed(bus, speed):
-    # V3 uses register 0x80, unlike the older Pi4 write-byte protocol.
+    # The V3 fan-speed register is 0x80 at I2C address 0x1A.
     # adamoutler/HassOSArgonOneAddon@fb3c5c9, argonOneV3Linear/run.sh.
     bus.write_byte_data(0x1A, 0x80, speed)
 

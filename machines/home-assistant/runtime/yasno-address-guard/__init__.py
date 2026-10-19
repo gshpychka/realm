@@ -1,4 +1,4 @@
-"""User-owned Pyscript app; not part of HACS-owned integration directories."""
+"""Pyscript entry point for scheduled and on-demand Yasno address checks."""
 
 import asyncio
 import importlib.util
@@ -7,7 +7,7 @@ import pathlib
 
 @pyscript_compile
 def run_guard(ha, config, dry_run, force_check):
-    # Compiled Python executes in Pyscript's supported executor, never HA loop.
+    # Compiled Python loads and runs the engine in Pyscript's supported executor.
     path = pathlib.Path(config["app_path"]) / "engine.py"
     spec = importlib.util.spec_from_file_location("yasno_guard_engine", path)
     module = importlib.util.module_from_spec(spec)
@@ -26,8 +26,8 @@ async def yasno_address_check(dry_run=False, force_check=False, **kwargs):
             run_guard, hass, dict(pyscript.app_config), bool(dry_run), bool(force_check)
         )
     except Exception:
-        # Invalid journal is never overwritten: it might contain recovery state.
-        # HA-context/module errors need a native notification without any API token.
+        # Preserve the journal for recovery and report bootstrap failures through
+        # HA's native persistent-notification service.
         result = {
             "status": "bootstrap_error",
             "error": "app_journal_context_or_module_unavailable",

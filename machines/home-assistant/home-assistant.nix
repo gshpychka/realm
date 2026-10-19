@@ -9,8 +9,8 @@
 {
   imports = [ ./configuration ];
 
-  # The offline x86 check is a required build dependency, including when the
-  # Pi closure is built separately from flake checks. It never sets up HA.
+  # The offline x86 config/schema/behavior check is a required build dependency,
+  # including when the Pi closure is built separately from flake checks.
   system.extraDependencies = [
     (import ../../packages/home-assistant/tests {
       pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;

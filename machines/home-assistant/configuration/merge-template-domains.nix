@@ -1,4 +1,4 @@
-# Keep the household registry flat without silently shadowing public names.
+# Merge domain programs into a flat registry and reject duplicate public names.
 domains:
 builtins.foldl' (
   registry: domain:

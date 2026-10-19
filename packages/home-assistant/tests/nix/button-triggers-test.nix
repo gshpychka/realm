@@ -77,7 +77,7 @@ let
     ) gestures
   ) (builtins.attrNames fixtures);
   # Each gesture must reject malformed inputs, unknown devices and devices
-  # registered for other protocols/events; there is no generic ZHA fallback.
+  # registered for other protocols/events.
   invalidDeviceTests = lib.all (
     gesture:
     lib.all (device: rejects (ha.${gesture} device)) [

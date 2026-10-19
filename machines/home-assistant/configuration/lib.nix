@@ -32,7 +32,7 @@ let
     entity_id = entity;
     state = value;
   };
-  # Device-offline events still need the low-level ZHA constructor.
+  # The low-level ZHA constructor supplies device-offline event triggers.
   zha = device: type: subtype: {
     trigger = "device";
     domain = "zha";

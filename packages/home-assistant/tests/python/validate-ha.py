@@ -1,7 +1,7 @@
-"""Validate using HA's real schemas and dependency metadata, without setup.
+"""Validate declarations with HA's native schemas and dependency metadata.
 
-No HA service or integration setup runs. Native script tests register only local
-service stubs. Socket connections are blocked even if an import attempts one.
+Native script tests register local recording service stubs. Socket operations
+raise errors, and the schema context remains in CoreState.not_running.
 """
 
 import asyncio
@@ -105,8 +105,7 @@ async def validate(hass, configuration, components, component_path, template_fix
             except Exception as error:
                 failures.append([domain, platform, type(error).__name__, str(error)])
 
-    # Mutation fixtures must fail the real HA validators, not only our Nix
-    # shape checks. These schemas do not set up integrations or run actions.
+    # HA's native validators must reject malformed action and domain fixtures.
     timer = importlib.import_module("homeassistant.components.timer")
     for schema, invalid in [
         (
@@ -208,7 +207,7 @@ async def validate(hass, configuration, components, component_path, template_fix
 
         validate_field_order(Path(sys.argv[4]), configuration)
         await validate_service_contracts(hass, configuration)
-        # Check the API port with an inert device value; no device method runs.
+        # Check the vacuum activity API mapping against inert device-state data.
         from custom_components.dyson_local.vacuum import DYSON_STATES, DysonVacuumEntity
         from homeassistant.components.vacuum import VacuumActivity
 
@@ -221,8 +220,7 @@ async def validate(hass, configuration, components, component_path, template_fix
             assert entity.activity == activity and entity.state == activity.value
             assert entity.extra_state_attributes["battery_level"] == 61
     if failures:
-        # Only the public declarations and public package code are loaded.
-        # No private state or real credential values are present in this check.
+        # Report schema failures from the evaluated declarations and fixtures.
         print(json.dumps({"failures": failures}, indent=2))
         return 1
     print(
@@ -254,7 +252,7 @@ async def main():
         for path in (component_path / "custom_components").glob("*/manifest.json")
     }
     sys.path.insert(0, str(component_path))
-    # Register HA's schema context without starting HA or setting up anything.
+    # Create an inactive HA context for schema, template and fixture validation.
     hass = HomeAssistant(str(component_path))
     try:
         result = await validate(

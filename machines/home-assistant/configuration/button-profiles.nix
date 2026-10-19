@@ -22,9 +22,8 @@ let
   };
 in
 {
-  # Register only mappings already used by this household. In particular, a
-  # long press is not universally a held/release event, nor does every button
-  # support every press count. New mappings need evidence for that device.
+  # Register evidenced household mappings for each device's supported gestures.
+  # Press counts and long-press protocols are specific to each device.
   ${devices.roomLightswitch} = multiPressWithLong;
   ${devices.bedButton} = multiPressWithLong;
   ${devices.roomTableButton} = multiPressWithLong;

@@ -24,7 +24,7 @@ def validate_slots(slots):
 
 
 def validate_planned(api, raw, now, require_available=False):
-    """Validate dated coverage; a regular waiting response is not an outage."""
+    """Validate dated slots and status, optionally requiring today's schedule."""
     today = now.astimezone(ZoneInfo("Europe/Kyiv")).date()
     group = raw.get(api.group) if isinstance(raw, dict) else None
     if not isinstance(group, dict):

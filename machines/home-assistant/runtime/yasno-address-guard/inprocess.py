@@ -16,8 +16,8 @@ class InProcessAPI:
             value = fn(*args, **kwargs)
             return await value if inspect.isawaitable(value) else value
 
-        # HA's async author APIs are not thread-safe. The caller runs in the
-        # Pyscript executor; submit only the API operation to HA's public loop.
+        # HA's async author APIs require its event loop. Submit API operations
+        # from the Pyscript executor to that loop to preserve thread safety.
         future = asyncio.run_coroutine_threadsafe(invoke(), self.hass.loop)
         return await asyncio.wrap_future(future)
 

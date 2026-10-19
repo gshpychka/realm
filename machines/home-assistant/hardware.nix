@@ -24,8 +24,7 @@
     enable = true;
     value = "on";
   };
-  # Explicit external PCIe enablement avoids depending on HAT+ detection for
-  # the Argon NVMe board. Keep the default, supported PCIe generation.
+  # Enable external PCIe for the Argon NVMe board at the supported default speed.
   hardware.raspberry-pi.config.all.base-dt-params.pciex1 = {
     enable = true;
     value = "on";
@@ -33,7 +32,7 @@
   hardware.bluetooth.enable = true;
   hardware.bluetooth.powerOnBoot = true;
   powerManagement.cpuFreqGovernor = lib.mkDefault "ondemand";
-  # 4GB board: bound pressure without writing swap to a second unknown disk.
+  # Compressed RAM swap bounds memory pressure on the 4GB board.
   zramSwap = {
     enable = true;
     memoryPercent = 25;

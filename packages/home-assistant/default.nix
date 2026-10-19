@@ -27,8 +27,8 @@ let
         cd custom_components/${domain}
       '';
       patches = component.patches or [ ];
-      # Several repositories use development placeholders even in release tags.
-      # Apply the release version without changing dependencies or runtime code.
+      # Release manifests can contain development version placeholders.
+      # Stamp each installed manifest with the pinned release version.
       postPatch = ''
         # Release zips can contain bytecode for a different Python version.
         find . -type f -name '*.pyc' -delete
@@ -65,11 +65,11 @@ let
       build-system = buildSystem;
       inherit dependencies;
       pythonImportsCheck = imports;
-      # These are package/import checks; never run integration/provider tests.
+      # Package validation uses the declared Python import checks.
       doCheck = false;
     };
   # Official upstream wheels pin the exact native Rust extension/backend ABI
-  # for both supported Linux architectures. No credentials enter these inputs.
+  # for both supported Linux architectures.
   pinnedWheel =
     ps: name: dependencies: imports:
     let
@@ -104,13 +104,13 @@ let
   core = pkgs.home-assistant.override {
     packageOverrides = ps: previous: {
       # Upstream diagnostic tests mutate a process-wide ASCII delimiter. With
-      # one pytest worker they contaminate unrelated framer tests. Reset only
-      # that test fixture; keep every assertion and the runtime code unchanged.
+      # one pytest worker they contaminate unrelated framer tests. Reset the
+      # delimiter between tests to isolate each fixture.
       pymodbus = previous.pymodbus.overridePythonAttrs (old: {
         patches = (old.patches or [ ]) ++ [ ./patches/pymodbus/pymodbus-test-isolation.patch ];
       });
       # A released semaphore slot may start a queued task before the second
-      # equal-duration task finishes. Test capacity/causality, not timer ties.
+      # equal-duration task finishes. Test semaphore capacity and task causality.
       zigpy = previous.zigpy.overridePythonAttrs (old: {
         patches = (old.patches or [ ]) ++ [ ./patches/zigpy/zigpy-test-order.patch ];
       });
@@ -140,7 +140,7 @@ let
           tag = "v${sources.aiohttp.version}";
           inherit (sources.aiohttp) hash;
         };
-        # 3.14.5 moved its pytest options from setup.cfg into pytest.ini.
+        # The pinned release stores its pytest options in pytest.ini.
         postPatch = ''
           rm -r vendor
           patchShebangs tools
@@ -198,8 +198,8 @@ in
   customComponentSource = componentSource;
   coreComponents = import ./core-components.nix;
   inherit customComponents;
-  # 8.7 vendors FastMCP/MCP/websockets and changed to uv_build; inheriting the
-  # 8.6 setuptools/external-FastMCP package would omit required dependencies.
+  # The pinned release vendors FastMCP/MCP/websockets and uses uv_build.
+  # Declare its native dependencies against the dedicated MCP Python scope.
   mcp = mcpPython.toPythonApplication (
     mcpPython.buildPythonPackage {
       pname = "ha-mcp";
@@ -269,8 +269,8 @@ in
           ENABLE_MANDATORY_BPS=true ENABLE_STRICT_MANDATORY_BPS=true \
           ${mcpPython.python.interpreter} ${./tests/python/validate-mcp.py}
       '';
-      # Its upstream integration tests require a running HA. The isolated check
-      # validates native HTTP imports, dependency metadata and gate resources.
+      # Package validation checks native HTTP imports, dependency metadata and
+      # gate resources with synthetic settings and blocked socket connections.
       doCheck = false;
       meta = {
         description = "Home Assistant MCP server with isolated pinned native dependencies";
@@ -286,8 +286,8 @@ in
   );
   core = core.overrideAttrs (_previous: {
     version = sources.homeassistant.version;
-    # Validation is the isolated config/schema/import check below, rather than
-    # the entire upstream HA suite on the 4GB target or this small build host.
+    # The home-assistant-config check validates schemas, imports and behavior
+    # in the pinned Core environment as a dependency of the Pi system build.
     doCheck = false;
     doInstallCheck = false;
     src = pkgs.fetchFromGitHub {

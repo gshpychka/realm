@@ -1,4 +1,4 @@
-# ZHA button/offline events need device identities, unlike entity state changes.
+# ZHA button and device-offline events bind to device identities.
 {
   roomLightswitch = "d7f71ba6e41eaa5f4e1673b72cac5de5";
   bedButton = "2f71ab6f29ad7b89d7067ae6da4afe76";
@@ -8,8 +8,8 @@
   kitchenTableButton = "7d75a987c8709f5ca514f1d820703461";
   hotWaterValve = "509308a00a0dba896fe955f85dc9eaf6";
   coldWaterValve = "df5c8ea1666ecfadccb338daa5cd41fb";
-  # Unresolved targets: retain their fan-out until replacement bindings can be
-  # established. The inventory has no entities belonging to these devices.
+  # These device targets preserve voice fan-out and wake requests; their entity
+  # bindings require private-inventory verification during acceptance.
   roomVoiceTarget = "6711f762ca5f27d9aca0a0cfcdab92ba";
   kitchenVoiceTarget = "e2a9b5f6b3842bc75aa39038200b8a79";
   reaperWakeTarget = "e3155405d8b7e8259c71146a6f111324";

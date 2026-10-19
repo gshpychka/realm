@@ -213,8 +213,8 @@ def guard(host):
         assert journal == {"last_valid_group": "1.1"}
         assert len(saved) == 1
 
-        # Provider and notification failures must still produce a durable retry
-        # status instead of losing the original error in the notification call.
+        # Concurrent provider and notification failures persist the original
+        # error, delivery status and next retry time together.
         async def unavailable(*_args):
             raise RuntimeError("synthetic provider/notification failure")
 
@@ -241,8 +241,8 @@ def guard(host):
         assert result["status"] == "not_due"
         assert result["notification_failed"] is True
 
-        # Successful notification delivery clears a previous delivery failure,
-        # even if provider validation still fails and schedules another retry.
+        # Successful notification delivery clears the persisted delivery failure
+        # while a provider-validation failure schedules another retry.
         async def delivered(_message):
             pass
 
@@ -254,8 +254,7 @@ def guard(host):
         assert saved[-1]["notification_failed"] is False
         assert saved[-1]["error"] == "official_lookup_validation_or_correction_failed"
 
-        # Verification also clears a persisted delivery failure without sending
-        # an unnecessary notification.
+        # Successful verification clears the persisted delivery-failure status.
         instance.api.notification = unavailable
         result = await instance.check(force_check=True)
         assert result["notification_failed"] is True

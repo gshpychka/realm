@@ -28,7 +28,7 @@
   movie_media = mk "boolean" "{{ media_kind == 'movie' }}";
   title_case = mk "text" "{{ clean_title | title }}";
   show_media = mk "boolean" "{{ media_kind == 'show' }}";
-  # Group the confirmation instructions and examples for readability.
+  # The confirmation prompt specifies the reply's tone, content and examples.
   confirmation_prompt = mk "text" (
     builtins.concatStringsSep "" [
       "You're a witty, pop culture–savvy assistant who just helped someone successfully add a {{ media_kind }} to their Plex library. "

@@ -1,6 +1,6 @@
 """Exercise public declarations with HA's template and state-trigger engines.
 
-Only in-memory fixture states change. HA is never started and no service runs.
+Templates use in-memory fixture states; state triggers invoke recording callbacks.
 """
 
 from pathlib import Path
@@ -172,7 +172,7 @@ async def validate_behavior(hass, config):
     assert config["timer"]["movie_scene_cooldown"]["duration"] == "3:00:00"
     assert all(timer["restore"] for timer in config["timer"].values())
 
-    # No forced boot state undoes an operator's temporary disable.
+    # Omitting initial_state lets HA restore an operator's enabled-state choices.
     for item in config["automation"]:
         assert "initial_state" not in item
         assert len(item["triggers"]) == len({str(t) for t in item["triggers"]})
@@ -233,8 +233,8 @@ async def validate_behavior(hass, config):
         "id": "end",
     }
 
-    # Exercise converted device triggers, including startup/unavailable edges
-    # and attribute-only changes. These call only this local recording callback.
+    # Exercise entity state triggers, including startup/unavailable edges and
+    # attribute-only changes, through a local recording callback.
     for alias in [
         "Devices / Water leak detected",
         "Devices / Zigbee is back online",

@@ -1,8 +1,8 @@
 """Compile every template and audit fixture types and ordered variable scope.
 
-Uses the pinned HA environment, not a parallel Jinja implementation. Scope checks
-are conservative for the action forms used here; unsupported dynamic action forms
-must be reviewed before extending them. No services or integration setup run.
+Uses the pinned HA compiler and strict renderer with in-memory fixtures. Scope
+checks conservatively track bindings through the supported action forms;
+extending those forms requires an explicit scope audit.
 """
 
 import copy
@@ -37,7 +37,7 @@ def templates_in(value, path=()):
 
 
 def audit_scope(hass, configuration):
-    """Check every use, not just each unique template or declared dependencies."""
+    """Check available variable bindings at every template use in the config."""
     env = TemplateEnvironment(hass, strict=True)
     audited = Counter()
 
@@ -60,8 +60,7 @@ def audit_scope(hass, configuration):
         available = set(available)
         for index, action in enumerate(sequence):
             location = (*path, index)
-            # Branches get the current scope. A variable first bound in an
-            # optional/parallel branch is not assumed to exist afterward.
+            # Branches inherit the current scope and keep new bindings local.
             nested = {
                 "variables",
                 "if",
@@ -129,7 +128,7 @@ def audit_scope(hass, configuration):
 def output_matches(kind, result):
     number = type(result) in (int, float) and math.isfinite(result)
     # HA's native result parser can convert numeric/boolean text to a scalar.
-    # Text service fields use cv.string; mappings/lists/None are not text.
+    # Text service fields use cv.string and accept string/boolean/numeric scalars.
     return {
         "text": isinstance(result, (str, bool, int, float)),
         "nullable-text": result is None or isinstance(result, str),
@@ -586,7 +585,7 @@ async def validate_templates(hass, config, contracts, literals):
         assert "unknown" in render("battery_low")
     set_states()
 
-    # Missing and malformed provider responses never become a positive result.
+    # Missing and malformed provider responses resolve to the safe fallback.
     for response in [
         None,
         {},
@@ -717,8 +716,8 @@ async def validate_templates(hass, config, contracts, literals):
     merged = {k: v for action in media[:5] for k, v in action["variables"].items()}
     media[:5] = [{"variables": dict(sorted(merged.items()))}]
     assert_rejected(lambda: audit_scope(hass, bad), ValueError)
-    # Classification binds its response before use, and an
-    # optional branch's new response name must not leak to later actions.
+    # Classification requires its response binding before use; response names
+    # introduced inside an optional branch stay in that branch's scope.
     bad = copy.deepcopy(config)
     media = next(
         a for a in bad["automation"] if a["alias"] == "Voice / Add media using Assist"
