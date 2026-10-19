@@ -156,7 +156,21 @@ manifest digest. The universal dotenv wheel has one hash. Architecture source
 hashes are fetched on the updater host; package execution still needs the target
 architecture. Matter's version and digest live in `services.nix` beside the
 container declaration. The tag documents the selected release; the digest fixes
-the executed image.
+the executed image. `matter skip` resolves that configured tag before querying
+the registry; registry/digest failures leave the declaration untouched.
+
+Updates and `refresh` are sequential, not transactional. A failed `nix-update`
+target can leave its new version beside its previous hash; a failed refresh also
+retains successful earlier target edits and stops before later targets. Preserve
+any existing uncommitted changes before running updates. After a failure, inspect
+`git diff -- packages/home-assistant machines/home-assistant/services.nix`.
+Once network access is restored, retry the failed target with its selected
+version or `skip` to recompute hashes. Alternatively, restore only that target's
+version/hash edits from your pre-run copy, preserving unrelated work. Resume the
+remaining targets or rerun `refresh`, then review the diff and run scoped QA
+before building the target system. The `skills` command restores its complete
+pre-command `mcp.nix` on failure, including local edits, so its revision and hash
+remain paired.
 
 For the commit-pinned `hassarr` and `homeeasy_local`, select the reviewed `rev`
 and manifest `version` in their component expressions, then run

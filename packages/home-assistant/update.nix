@@ -89,19 +89,37 @@ writeShellApplication {
         ;;
       skills)
         [[ $# == 1 && $1 =~ ^[0-9a-f]{40}$ ]] || { usage >&2; exit 2; }
+        # A failed fetch must restore the complete prior file, including local edits.
+        work=$(mktemp -d)
+        cp -p packages/home-assistant/mcp.nix "$work/mcp.nix"
+        rollback_skills() {
+          cp -p "$work/mcp.nix" packages/home-assistant/mcp.nix
+          rm -rf "$work"
+        }
+        trap rollback_skills EXIT
         sed -i -E "s/rev = \"[0-9a-f]{40}\";/rev = \"$1\";/" packages/home-assistant/mcp.nix
         update mcp skip --no-src --custom-dep skills --override-filename packages/home-assistant/mcp.nix
+        trap - EXIT
+        rm -rf "$work"
         ;;
       matter)
         [[ $# == 1 && $1 =~ ^[0-9A-Za-z._-]+$ ]] || { usage >&2; exit 2; }
         image=ghcr.io/matter-js/matterjs-server
+        version=$1
+        if [[ $version == skip ]]; then
+          current=$(nix eval --raw .#nixosConfigurations.home-assistant.config.virtualisation.oci-containers.containers.matter-server.image)
+          [[ $current == "$image:"*@sha256:* ]] || { echo 'Matter needs a configured tag and digest.' >&2; exit 2; }
+          version=''${current#"$image:"}
+          version=''${version%@*}
+          [[ $version =~ ^[0-9A-Za-z._-]+$ && $version != skip ]] || { echo 'Invalid configured Matter tag.' >&2; exit 2; }
+        fi
         work=$(mktemp -d)
         trap 'rm -rf "$work"' EXIT
-        skopeo inspect --raw "docker://$image:$1" > "$work/manifest"
+        skopeo inspect --raw "docker://$image:$version" > "$work/manifest"
         digest=$(skopeo manifest-digest "$work/manifest")
         [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]]
-        sed -i -E "s|image = \"$image:[^\"]+\";|image = \"$image:$1@$digest\";|" machines/home-assistant/services.nix
-        echo "$image:$1@$digest"
+        sed -i -E "s|image = \"$image:[^\"]+\";|image = \"$image:$version@$digest\";|" machines/home-assistant/services.nix
+        echo "$image:$version@$digest"
         ;;
       refresh)
         [[ $# == 0 ]] || { usage >&2; exit 2; }
@@ -118,9 +136,7 @@ writeShellApplication {
         for name in uv-build pydantic-monty python-dotenv; do
           "$0" mcp-dependency "$name" skip
         done
-        image=$(nix eval --raw .#nixosConfigurations.home-assistant.config.virtualisation.oci-containers.containers.matter-server.image)
-        version=''${image#*:}
-        "$0" matter "''${version%@*}"
+        "$0" matter skip
         ;;
       *) usage >&2; exit 2 ;;
     esac

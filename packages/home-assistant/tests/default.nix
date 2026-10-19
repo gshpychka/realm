@@ -56,6 +56,7 @@ let
     }
   );
   constructors = import ./nix/constructors-test.nix { inherit (pkgs) lib; };
+  updaterChecks = import ./nix/updater-test.nix { inherit pkgs; };
 in
 assert constructors;
 assert import ./nix/template-files-test.nix;
@@ -70,6 +71,7 @@ pkgs.runCommand "home-assistant-config-qa"
   ''
     export HOME=$TMPDIR
     export PYTHONDONTWRITEBYTECODE=1
+    test -f ${updaterChecks}/passed
     ${python}/bin/python ${./.}/python/layout.py ${../../..}
     env -i HOME="$TMPDIR" PATH="$PATH" ${packages.mcp}/bin/ha-mcp --version \
       | ${pkgs.gnugrep}/bin/grep -Fx 'ha-mcp ${packages.mcp.version}'
