@@ -107,12 +107,12 @@ let
       # one pytest worker they contaminate unrelated framer tests. Reset only
       # that test fixture; keep every assertion and the runtime code unchanged.
       pymodbus = previous.pymodbus.overridePythonAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./pymodbus-test-isolation.patch ];
+        patches = (old.patches or [ ]) ++ [ ./patches/pymodbus/pymodbus-test-isolation.patch ];
       });
       # A released semaphore slot may start a queued task before the second
       # equal-duration task finishes. Test capacity/causality, not timer ties.
       zigpy = previous.zigpy.overridePythonAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./zigpy-test-order.patch ];
+        patches = (old.patches or [ ]) ++ [ ./patches/zigpy/zigpy-test-order.patch ];
       });
       yarl = previous.yarl.overridePythonAttrs (_: {
         version = sources.yarl.version;
@@ -267,7 +267,7 @@ in
           HOMEASSISTANT_TOKEN=synthetic-packaging-fixture \
           MCP_SECRET_PATH=/synthetic-packaging-fixture \
           ENABLE_MANDATORY_BPS=true ENABLE_STRICT_MANDATORY_BPS=true \
-          ${mcpPython.python.interpreter} ${./validate-mcp.py}
+          ${mcpPython.python.interpreter} ${./tests/python/validate-mcp.py}
       '';
       # Its upstream integration tests require a running HA. The isolated check
       # validates native HTTP imports, dependency metadata and gate resources.

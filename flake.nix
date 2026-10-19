@@ -329,7 +329,7 @@
         lib.recursiveUpdate (lib.recursiveUpdate nixosChecks lintChecks) {
           aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
           x86_64-linux = {
-            home-assistant-config = import ./packages/home-assistant/check.nix {
+            home-assistant-config = import ./packages/home-assistant/tests {
               pkgs = nixpkgs.legacyPackages.x86_64-linux;
               configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
             };

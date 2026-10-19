@@ -21,7 +21,8 @@ let
     {
       inherit output source;
     };
-  fields = output: source: mk output ((builtins.readFile ./safe-fields.jinja) + source);
+  fields =
+    output: source: mk output ((builtins.readFile ./template-macros/safe-fields.jinja) + source);
   domains = [
     (import ./templates/system.nix {
       inherit

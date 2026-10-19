@@ -22,7 +22,7 @@ def module(name, path):
 
 
 def cooling(host):
-    fan = module("argonone", host / "argonone.py")
+    fan = module("argonone", host / "runtime" / "argonone" / "argonone.py")
     assert [fan.fan_speed(value) for value in [40, 55, 55.9, 60, 74, 75, 90]] == [
         0,
         0,
@@ -83,7 +83,7 @@ def cooling(host):
 
 def backups(host):
     for corrupt in [False, True]:
-        backup = module("backup", host / "consistent-backup.py")
+        backup = module("backup", host / "runtime" / "backup" / "consistent-backup.py")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in [
@@ -148,7 +148,7 @@ def backups(host):
 
 
 def guard(host):
-    directory = host / "yasno-address-guard"
+    directory = host / "runtime" / "yasno-address-guard"
     flow = module("flow", directory / "flow_contract.py")
     settings = {
         "region": "fixture",

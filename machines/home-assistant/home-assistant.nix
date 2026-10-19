@@ -12,7 +12,7 @@
   # The offline x86 check is a required build dependency, including when the
   # Pi closure is built separately from flake checks. It never sets up HA.
   system.extraDependencies = [
-    (import ../../packages/home-assistant/check.nix {
+    (import ../../packages/home-assistant/tests {
       pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
       configuration = config.services.home-assistant.config;
     })
@@ -45,7 +45,7 @@
       ln -sfn "$CREDENTIALS_DIRECTORY/secrets.yaml" /var/lib/hass/secrets.yaml
       mkdir -p /var/lib/hass/pyscript/apps /var/lib/hass/yasno-address-guard /var/lib/hass/media
       # The app source is immutable; its transaction/recovery journal is state.
-      ln -sfn ${./yasno-address-guard} /var/lib/hass/pyscript/apps/yasno_address_guard
+      ln -sfn ${./runtime/yasno-address-guard} /var/lib/hass/pyscript/apps/yasno_address_guard
     '';
   };
 }

@@ -1,6 +1,6 @@
 { pkgs, configuration }:
 let
-  packages = import ./. { inherit pkgs; };
+  packages = import ../. { inherit pkgs; };
   core = packages.core.override {
     extraComponents = packages.coreComponents;
   };
@@ -13,8 +13,8 @@ let
     _: value: value != null
   )) configuration;
   configFile = (pkgs.formats.yaml { }).generate "configuration.yaml" filteredConfiguration;
-  templates = import ../../machines/home-assistant/configuration/templates.nix;
-  literal = import ../../machines/home-assistant/configuration/template-literal.nix;
+  templates = import ../../../machines/home-assistant/configuration/templates.nix;
+  literal = import ../../../machines/home-assistant/configuration/template-literal.nix;
   # Include syntax-looking input, both quote styles, escapes, Unicode and native
   # JSON booleans/null in the actual serialization constructor's round trip.
   literalValues = [
@@ -39,7 +39,7 @@ let
       }) literalValues;
     }
   );
-  constructors = import ./constructors-test.nix { inherit (pkgs) lib; };
+  constructors = import ./nix/constructors-test.nix { inherit (pkgs) lib; };
 in
 assert constructors;
 pkgs.runCommand "home-assistant-config-qa"
@@ -53,6 +53,7 @@ pkgs.runCommand "home-assistant-config-qa"
   ''
     export HOME=$TMPDIR
     export PYTHONDONTWRITEBYTECODE=1
+    ${python}/bin/python ${./.}/python/layout.py ${../../..}
     env -i HOME="$TMPDIR" PATH="$PATH" ${packages.mcp}/bin/ha-mcp --version \
       | ${pkgs.gnugrep}/bin/grep -Fx 'ha-mcp 8.7.0'
     # Parse the native broker's auth/ACL configuration without opening a socket.
@@ -73,9 +74,9 @@ pkgs.runCommand "home-assistant-config-qa"
     # Reproduce only HA's own wrapper environment. MCP's separate dependencies
     # must not accidentally satisfy a missing HA/custom-component requirement.
     env -i HOME="$TMPDIR" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
-      PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/validate-ha.py \
-      ${configFile} "$PWD" ${templateFixtures} ${../../machines/home-assistant}
-    ${python}/bin/python ${./test-runtime.py} ${../../machines/home-assistant}
+      PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/python/validate-ha.py \
+      ${configFile} "$PWD" ${templateFixtures} ${../../../machines/home-assistant}
+    ${python}/bin/python ${./.}/python/test-runtime.py ${../../../machines/home-assistant}
     mkdir -p $out
     cp template-scope-inventory.json $out/
   ''

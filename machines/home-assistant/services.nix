@@ -52,7 +52,7 @@ in
     wantedBy = [ "multi-user.target" ];
     after = [ "systemd-modules-load.service" ];
     serviceConfig = {
-      ExecStart = "${fanPython}/bin/python3 ${./argonone.py}";
+      ExecStart = "${fanPython}/bin/python3 ${./runtime/argonone/argonone.py}";
       Restart = "always";
       RestartSec = 5;
       RuntimeDirectory = "argonone";
@@ -172,7 +172,7 @@ in
       RandomizedDelaySec = "15m";
       Persistent = true;
     };
-    backupPrepareCommand = "${pkgs.python3}/bin/python3 ${./consistent-backup.py}";
+    backupPrepareCommand = "${pkgs.python3}/bin/python3 ${./runtime/backup/consistent-backup.py}";
     pruneOpts = [
       "--keep-daily 7"
       "--keep-weekly 4"

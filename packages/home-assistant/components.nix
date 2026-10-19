@@ -26,7 +26,7 @@
       hash = "sha256-V5RCepikTDrjZwi6MfRislpV2F9jR1MqwWxTq0GPBp4=";
     };
     patches = [
-      ./dyson-vacuum-api.patch
+      ./patches/dyson-local/dyson-vacuum-api.patch
     ];
   };
   fontawesome = {

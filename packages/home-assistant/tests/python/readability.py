@@ -19,7 +19,7 @@ from homeassistant.helpers.script import Script
 from homeassistant.helpers.template import Template, TemplateEnvironment
 from jinja2 import meta, nodes
 
-FIXTURE = Path(__file__).with_name("fixtures") / "readability.json"
+FIXTURE = Path(__file__).parent.parent / "fixtures" / "readability.json"
 MEDIA = "Voice / Add media using Assist"
 
 

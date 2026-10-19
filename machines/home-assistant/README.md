@@ -1,5 +1,15 @@
 Home Assistant on a Raspberry Pi 5 with an Argon ONE V3 case and NVMe storage.
 
+The machine root contains host and service declarations. Runtime code lives in
+`runtime/argonone/`, `runtime/backup/` and `runtime/yasno-address-guard/`, each owned
+by its service or Pyscript component. The package root at
+`packages/home-assistant/` contains package declarations and source pins;
+`patches/<integration>/` holds the integration and dependency patches.
+`packages/home-assistant/tests/default.nix` assembles offline QA, with constructor
+checks in `tests/nix/`, validators and behavior checks in `tests/python/`, and
+compact baseline data in `tests/fixtures/`. No third-party component source is
+reorganized by this layout.
+
 `configuration/` contains normal NixOS modules: automations grouped by purpose,
 voice/media/device scripts, helpers, scenes, and YAML-capable integrations. The
 45 automations, four scripts and two scenes describe the active household
@@ -33,7 +43,8 @@ order. `templates.nix` merges seven domain modules under `templates/`: system,
 printer, power, weather, media, GPT and climate. The flat registry retains all 74
 names and rejects duplicate exports through `merge-template-domains.nix`.
 Declarations use named references. `template-literal.nix` serializes embedded values as JSON inside
-a Jinja string and decodes them with HA's `from_json`. `safe-fields.jinja` handles
+a Jinja string and decodes them with HA's `from_json`.
+`configuration/template-macros/safe-fields.jinja` handles
 missing fields in provider responses, including native HA event/state objects.
 
 The existing-solutions preflight reviewed the maintained
@@ -114,7 +125,7 @@ including unsupported gestures, malformed/unknown devices and checked-body
 boundaries. AC and expert-query scripts guard their inputs before calling services;
 unavailable weather and provider responses produce explicit fallback text.
 
-`packages/home-assistant/readability.py` executes the media flow with HA's pinned
+`packages/home-assistant/tests/python/readability.py` executes the media flow with HA's pinned
 native script engine and local recording service stubs. It compares the flattened
 `if`/guard-stop flow with the pre-refactor control flow for explicit and inferred
 movie/show requests, rejected requests, unknown/malformed classifications,
@@ -125,7 +136,7 @@ fallback templates run. Six power runs cover successful and failed delivery.
 Power tests change sensors during speech and assert Telegram receives the message
 captured before speech, including service-failure ordering.
 
-The compact `fixtures/readability.json` records the `ed89082` baseline using source
+The compact `tests/fixtures/readability.json` records the `ed89082` baseline using source
 fingerprints and named template references, without duplicating the whole config.
 It pins all 73 other template sources exactly, including the confirmation prompt.
 Only weather source whitespace and voice control-flow structure are allowed to
@@ -144,6 +155,11 @@ Run this scoped check locally without remote builders:
 nix build --offline --no-write-lock-file --no-link --print-out-paths \
   --builders '' --max-jobs 1 --cores 1 -L .#checks.x86_64-linux.home-assistant-config
 ```
+
+The same check enforces the responsibility boundaries across the complete HA
+machine and package trees and rejects references to removed source paths,
+including in repository entrypoints and documentation. Python runtime tests
+load the component sources directly from their declared locations.
 
 These are schema, conservative scope and representative behavior checks. They
 are not static typing or formal verification of arbitrary Jinja, device

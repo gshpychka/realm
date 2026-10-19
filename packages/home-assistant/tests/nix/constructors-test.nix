@@ -1,6 +1,6 @@
 { lib }:
 let
-  ha = import ../../machines/home-assistant/configuration/lib.nix { inherit lib; };
+  ha = import ../../../../machines/home-assistant/configuration/lib.nix { inherit lib; };
   rejects = value: !(builtins.tryEval (builtins.deepSeq value true)).success;
   valid = {
     alias = "Fixture";

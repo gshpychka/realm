@@ -1,6 +1,6 @@
 { lib }:
 let
-  ha = import ../../machines/home-assistant/configuration/lib.nix { inherit lib; };
+  ha = import ../../../../machines/home-assistant/configuration/lib.nix { inherit lib; };
   inherit (ha) devices;
   rejects = value: !(builtins.tryEval (builtins.deepSeq value true)).success;
   # Expected protocol data is independent of the implementation's profiles.
