@@ -63,13 +63,9 @@
       };
       home-assistant-admin.url = "http://homeassistant.${config.my.domain}:9583/\${HOME_ASSISTANT_ADMIN_MCP_PATH}";
     };
-    documents = {
-      "AGENTS.md" = ./hermes-agent/workspace/AGENTS.md;
-      "notes/INTEGRATIONS.md" = ./hermes-agent/workspace/INTEGRATIONS.md;
-    };
-    # Seed the personality declaratively, but never overwrite learned USER.md
-    # or MEMORY.md at every activation.
-    hermesHomeFiles."SOUL.md" = ./hermes-agent/SOUL.md;
+    # Living documents belong to persistent agent state, outside the repo.
+    # Leave SOUL.md, workspace AGENTS.md and learned memory unmanaged so
+    # rebuilding the host never replaces the agent's edits.
   };
 
   environment.etc."hermes-agent/telegram.env.example".source = ./hermes-agent/telegram.env.example;

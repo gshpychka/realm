@@ -99,12 +99,14 @@ After rotating extra runtime-file values, restart both Hermes services.
 | `/var/lib/hermes/.hermes/.env` | Private environment refreshed atomically from current SOPS/runtime files at each service start |
 | `/var/lib/hermes/.hermes/auth.json` | Hermes' own provider login and refresh state |
 | `/var/lib/hermes/.hermes/api.env` | Generated private local API key, preserved on restart |
+| `/var/lib/hermes/.hermes/SOUL.md` | Living personality document, maintained outside this repository |
 | `/var/lib/hermes/.hermes/memories/` | Mutable learned `MEMORY.md` and `USER.md` |
 | `/var/lib/hermes/.hermes/state.db` | Session state and searchable history |
 | `/var/lib/hermes/.hermes/skills/realm/` | Declarative fleet skills; Hermes can learn other skills separately |
 | `/var/lib/hermes/.hermes/cron/` | Persistent native scheduled jobs |
 | `/var/lib/hermes/workspace/repositories/` | Coding checkouts |
 | `/var/lib/hermes/workspace/tasks/` | Scratch work and artifacts |
+| `/var/lib/hermes/workspace/AGENTS.md` | Living workspace instructions, maintained outside this repository |
 | `/var/lib/hermes/age-key.txt` | Optional independent SOPS identity |
 | `/var/lib/hermes/.codex/`, `.claude/`, `.acpx/` | Coding tools' separate login and persistent ACP session state |
 
@@ -167,8 +169,14 @@ hoard, set its `root = null` and remove its `extraUsers` entry together.
 
 Migrate personality and durable facts into Hermes' own formats after review;
 copying session databases, cron files or OpenClaw plugins will not convert
-them. `SOUL.md` and workspace instructions here are safe initial scaffolding.
-Nix deliberately does not seed learned `USER.md`/`MEMORY.md` on every switch.
+them. Living documents stay outside this repository for both agents:
+OpenClaw's main workspace is `/var/lib/openclaw/workspace/`, including its
+`SOUL.md`, `AGENTS.md` and memory; Hermes uses the paths listed above.
+Create and edit these files directly in persistent state as the owning agent
+user. Nix does not seed, replace or delete them. Removing the earlier Hermes
+document declarations preserves any copies already installed on hoard.
+Fleet integration skills remain declarative configuration in the repo;
+agent identity, user profiles, personal notes and learned memory do not.
 Back up the whole service home, coding logins, age key and local bot file as
 sensitive data while services are stopped; SQLite online backup is an option
 for live database snapshots. Restores must preserve ownership and modes.
