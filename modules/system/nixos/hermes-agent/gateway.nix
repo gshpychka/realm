@@ -83,11 +83,11 @@ in
       description = "Authenticated OpenAI-compatible API, bound to IPv4 loopback only.";
     };
     dashboard = {
-      enable = lib.mkEnableOption "the loopback dashboard (reach through an SSH tunnel)";
+      enable = lib.mkEnableOption "the Hermes dashboard backend";
       port = lib.mkOption {
         type = lib.types.port;
         default = 9119;
-        description = "Loopback dashboard port; no public proxy is installed.";
+        description = "Loopback dashboard backend port, optionally exposed through the host web gateway.";
       };
     };
   };
@@ -108,7 +108,7 @@ in
       }
       {
         assertion = service.backend.host == "127.0.0.1";
-        message = "my.hermes-agent's dashboard must stay on loopback until native OIDC authentication is configured separately.";
+        message = "my.hermes-agent's dashboard backend must stay on loopback behind the host web gateway.";
       }
     ];
 

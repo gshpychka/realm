@@ -5,7 +5,10 @@
   my.hermes-agent = {
     enable = true;
     sopsFile = ../../secrets/hoard/openclaw.yaml;
-    dashboard.enable = true;
+    dashboard = {
+      enable = true;
+      publicHost = "hermes.${config.networking.fqdn}";
+    };
     telegram.enable = true;
     # Optional, root-provisioned file for a dedicated bot and voice identity.
     # /etc/hermes-agent/telegram.env.example documents the non-secret shape.
@@ -37,6 +40,8 @@
 
   services.hermes-agent = {
     settings = {
+      # Match OpenClaw's unattended host exec policy using Hermes's own knob.
+      approvals.mode = "off";
       model = {
         default = "gpt-6.1-sol";
         provider = "openai-codex";

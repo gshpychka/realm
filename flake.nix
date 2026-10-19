@@ -48,7 +48,8 @@
     };
     hermes-agent = {
       # Upstream provides a sealed Python environment and the native NixOS module.
-      url = "github:NousResearch/hermes-agent";
+      # Resolve revisions over HTTPS Git, without a separate GitHub API request.
+      url = "git+https://github.com/NousResearch/hermes-agent?shallow=1";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };

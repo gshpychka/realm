@@ -10,14 +10,13 @@ Host policy is in `../hermes-agent.nix`; reusable fleet options are under
 Build and test from a machine with Nix and access to the flake's private inputs:
 
 ```sh
-# Let Nix resolve the new input through the normal lock workflow.
-nix flake lock
 nix flake check --all-systems --no-build
 nix build --no-link -L .#nixosConfigurations.hoard.config.system.build.toplevel
 ```
 
-The branch deliberately leaves `flake.lock` unchanged. The build includes the
-runtime, ACP wrapper and Git credential scoping checks. To test this branch
+Nix resolves the upstream revision through the generated `flake.lock`.
+Refresh it with the normal Nix commands when upgrading Hermes. The build
+includes the runtime and Git credential scoping checks. To test this branch
 before merging, use a checkout of the branch and the normal deployment:
 
 ```sh
@@ -78,14 +77,29 @@ SOPS key. Secret values never appear in Nix-generated files in the store.
    `/login` in Claude. For a supported migration, copy only the tools'
    compatible authentication files with private ownership and permissions;
    do not share writable token stores between two service identities.
-   Fleet skills clear inherited API credentials when invoking personal plans.
    `hermes-run` runs any command as the service user with the actual service
    PATH and current environment, including installed coding tools.
+   Hermes ships `claude-code` and `codex` skills that invoke those CLIs through
+   its native terminal/process tools. Git and tmux are installed for their
+   repository and interactive-session workflows. No ACP adapter is configured.
+   When using Codex's subscription instead of an inherited API key, invoke it
+   with `env -u OPENAI_API_KEY -u CODEX_API_KEY codex ...` as appropriate.
    Claude's effort and Remote Control behavior use its own defaults and any
    user/project settings; this deployment does not manage those preferences.
 5. **Encrypted files.** See `secrets/hermes/README.md` to enrol Hermes' own
    generated age recipient. Reused host SOPS values work independently of
    this optional agent-owned decryption identity.
+6. **Dashboard login.** Complete `/etc/hermes-agent/dashboard.env.example`
+   in a private local file and install it at `/var/lib/hermes/dashboard.env`,
+   owned by `hermes:hermes`, mode `0600`. Set either
+   `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH` (Hermes's native scrypt format)
+   or `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD`, plus an independent random
+   `HERMES_DASHBOARD_BASIC_AUTH_SECRET` kept stable across restarts. The
+   configured username is the host owner, `glib`. Never store these values
+   in the example, Nix settings or git. Then start `hermes-backend`.
+   The backend is skipped until the credential file exists; the gateway
+   continues independently. A SOPS-rendered environment file can replace
+   the local file through `my.hermes-agent.dashboard.credentialsFile`.
 
 For declarative Telegram secrets, encrypt a dedicated bot token in a SOPS
 source and map `TELEGRAM_BOT_TOKEN` through `my.hermes-agent.secrets`, or
@@ -110,7 +124,8 @@ After rotating extra runtime-file values, restart both Hermes services.
 | `/var/lib/hermes/workspace/tasks/` | Scratch work and artifacts |
 | `/var/lib/hermes/workspace/AGENTS.md` | Living workspace instructions, maintained outside this repository |
 | `/var/lib/hermes/age-key.txt` | Optional independent SOPS identity |
-| `/var/lib/hermes/.codex/`, `.claude/`, `.acpx/` | Coding tools' separate login and persistent ACP session state |
+| `/var/lib/hermes/.codex/`, `.claude/` | Coding tools' separate login and native session state |
+| `/var/lib/hermes/dashboard.env` | Private native dashboard password/hash and stable session-signing secret |
 
 The API binds only to `127.0.0.1:8642` and supports Hermes' OpenAI-compatible
 chat and Responses interfaces. Its 48-byte random key is generated on first
@@ -118,18 +133,16 @@ start, stored with mode `0600`, and passed through systemd, not process
 arguments. Consumers should read it locally without printing it. Stop the
 gateway before rotating/removing the file and update authorized consumers.
 
-The dashboard binds only to `127.0.0.1:9119`. Access it through an SSH tunnel:
+After deployment and credential provisioning, the dashboard is available at
+`https://hermes.hoard.glib.sh` through the same web gateway as OpenClaw.
+The backend remains on `127.0.0.1:9119`; nginx supplies TLS and WebSocket
+proxying. Hoard's existing wildcard LAN DNS and certificate cover the name.
+This adds no Cloudflare tunnel or Internet ingress.
 
-```sh
-ssh -L 9119:127.0.0.1:9119 hoard
-```
-
-Open the dashboard on the forwarded port locally. No firewall opening, DNS
-record or reverse proxy is added. A future network-facing dashboard must use
-Hermes' own OIDC authentication (the inspected upstream supports self-hosted OIDC,
-including Authelia). Setting only trusted-proxy headers does not configure
-Hermes authentication, and setting `dashboard.public_url` without an auth
-provider makes upstream refuse startup.
+Hermes's built-in password provider handles the login form, session cookies
+and WebSocket authentication. `dashboard.public_url` activates its auth gate
+even though nginx connects over loopback. It refuses to start if the native
+login is unconfigured. No custom authentication adapter is installed.
 
 The upstream module enables lingering for the Hermes user so cron dispatch
 can run in transient user scopes and survive a gateway restart. Hermes has a
@@ -150,11 +163,11 @@ explicitly added as a writable path when that integration is enabled.
 | ElevenLabs incoming notes and spoken replies | Scribe v2 / Eleven v4; voice ID is a migration input; fewer voice controls |
 | Home Assistant Assist and admin MCP | Both endpoints, including environment interpolation for credentials |
 | GitHub App git/gh identity | Same App, independent service-owned key binding, origin-scoped helper |
-| Claude Code and Codex | Persistent Claude/Codex ACP sessions via the existing acpx closure, plus native CLIs; separate logins |
+| Claude Code and Codex | Hermes's bundled CLI skills, native terminal/process tools and tmux; separate logins |
 | OneDrive read/write | Existing shared sync group/tree, no duplicate sync process |
 | Memory and skills | Hermes-native memory, SQLite session search and learned skills; curated migration, no vector-index import |
 | Scheduled jobs | Native persistent cron with a lingering user manager |
-| UI / HTTP access | SSH-forwarded dashboard plus authenticated local API |
+| UI / HTTP access | TLS dashboard at hermes.hoard.glib.sh with native login, plus authenticated local API |
 | Agent-owned SOPS files | Own generated age key and recipient enrolment scaffold |
 | Root / TPM key | Same host TPM signing identity through explicit per-user socket ACLs and PAM-authenticated sudo |
 | Owner-authorized NixOS native control | OpenClaw-only; no speculative Hermes authorization shim |
@@ -165,6 +178,10 @@ Hoard's TPM service remains owned by OpenClaw. The new
 `my.tpmSshKey.extraUsers` option grants Hermes socket access with a specific
 ACL reapplied after each agent restart; it exports no private key and grants
 no access to other users. Both accounts can use the same signing identity.
+Hermes uses the same PAM SSH-agent authentication and sudo rule as OpenClaw;
+`SSH_AUTH_SOCK` reaches its gateway, dashboard and coding subprocesses.
+Hoard also sets Hermes's native `approvals.mode = "off"` to match OpenClaw's
+unattended host-exec policy. This does not change the coding CLIs' own settings.
 Other hosts leave `my.hermes-agent.root = null` unless they deliberately
 provision an agent socket and public key. To remove Hermes' root access on
 hoard, set its `root = null` and remove its `extraUsers` entry together.
@@ -186,12 +203,14 @@ for live database snapshots. Restores must preserve ownership and modes.
 ## Functional checks and rollback
 
 After supplying the logins/bot/voice identity, verify an actual model reply,
+the dashboard login and rejection of unauthenticated API/WebSocket access,
 an owner Telegram DM, rejection from a different Telegram account, a voice
 note and voice reply, listing exposed HA entities, a read-only admin MCP
 query, `git ls-remote`, a read-only `gh api` query against an installed
 repository, an authenticated coding-tool query,
-and a temporary OneDrive file round trip. Verify `sudo -n true` as Hermes to
-exercise the TPM/PAM path. Schedule a harmless cron job,
+and a temporary OneDrive file round trip. Verify `hermes-run sudo -n true`
+and `sudo -n true` through Hermes's Telegram and dashboard terminals to
+exercise the TPM/PAM path in each runtime context. Schedule a harmless cron job,
 restart the gateway, and verify its persisted result. Only test writes and
 home-control actions with the owner's authorization. The API health check
 alone does not establish these integrations work.

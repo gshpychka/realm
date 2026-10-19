@@ -1,5 +1,6 @@
 {
   config,
+  lib,
   ...
 }:
 let
@@ -87,7 +88,21 @@ in
           config.users.users.voice-broker.name
         ];
       };
-    };
+    }
+    //
+      lib.optionalAttrs
+        (
+          config.my.hermes-agent.enable
+          && config.my.hermes-agent.dashboard.enable
+          && config.my.hermes-agent.dashboard.publicHost != null
+        )
+        {
+          hermes = {
+            port = ports.hermes;
+            auth = "native";
+            websockets = true;
+          };
+        };
     loopbackGate.clients = [
       config.services.sonarr.user
       config.services.radarr.user

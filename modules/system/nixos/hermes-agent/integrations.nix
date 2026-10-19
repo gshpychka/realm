@@ -1,6 +1,5 @@
-# Host capabilities for Hermes, kept under its own identity and state. The
-# native terminal/process tools invoke pinned ACP clients and adapters. Only
-# their package closure is shared with OpenClaw, never writable session/auth state.
+# Host capabilities for Hermes, kept under its own identity and state.
+# Coding uses Hermes's bundled Claude Code and Codex CLI skills.
 {
   config,
   lib,
@@ -13,76 +12,6 @@ let
   serviceHome = config.users.users.${cfg.user}.home;
   repositories = "${cfg.stateDir}/workspace/repositories";
   githubSecret = "hermes/github-app-private-key";
-
-  # Reuse the already locked ACP runtime closure: acpx 0.19.1, Claude's
-  # adapter 0.79.0 and Codex's adapter 1.12.0. Explicit entry points avoid
-  # acpx's built-in npx launchers and generic Linux binaries on NixOS.
-  acpRuntime = pkgs.openclawRuntimePlugins.acpx;
-  acpxEntry = "${acpRuntime}/node_modules/acpx/dist/cli.js";
-  adapterEntry =
-    agent: "${acpRuntime}/node_modules/@agentclientprotocol/${agent}-agent-acp/dist/index.js";
-  claudeAdapterPath = "/etc/hermes-agent/claude-agent-acp";
-  codexAdapterPath = "/etc/hermes-agent/codex-acp";
-  scrubProviderEnvironment = ''
-    unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN
-    unset OPENAI_API_KEY CODEX_API_KEY
-  '';
-  claudeAdapter = pkgs.writeShellApplication {
-    name = "claude-agent-acp";
-    text = ''
-      ${scrubProviderEnvironment}
-      export CLAUDE_CODE_EXECUTABLE=${lib.getExe pkgs.claude-code}
-      exec ${lib.getExe pkgs.nodejs_24} ${adapterEntry "claude"} "$@"
-    '';
-  };
-  codexAdapter = pkgs.writeShellApplication {
-    name = "codex-acp";
-    text = ''
-      ${scrubProviderEnvironment}
-      # Otherwise this adapter selects its bundled, non-Nix Linux executable.
-      export CODEX_PATH=${lib.getExe pkgs.codex}
-      exec ${lib.getExe pkgs.nodejs_24} ${acpRuntime}/node_modules/@agentclientprotocol/codex-acp/dist/index.js "$@"
-    '';
-  };
-  acpClientScript = agent: adapter: ''
-    ${scrubProviderEnvironment}
-    ${lib.optionalString (agent == "claude") "export ACPX_CLAUDE_INCLUDE_USER_SETTINGS=1"}
-    exec ${lib.getExe pkgs.nodejs_24} ${acpxEntry} \
-      --agent ${adapter} --format json --approve-all "$@"
-  '';
-  claudeAcp = pkgs.writeShellApplication {
-    name = "hermes-claude-acp";
-    text = acpClientScript "claude" claudeAdapterPath;
-  };
-  codexAcp = pkgs.writeShellApplication {
-    name = "hermes-codex-acp";
-    text = acpClientScript "codex" codexAdapterPath;
-  };
-
-  # These invoke the actual locked acpx implementation against a tiny local
-  # ACP server. No provider credentials or remote model calls enter the check.
-  acpCheck = pkgs.runCommand "hermes-acp-session-check" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-    cat > claude-client <<'EOF'
-    #!${pkgs.runtimeShell}
-    set -euo pipefail
-    ${lib.replaceStrings [ claudeAdapterPath ] [ "$HERMES_ACP_TEST_ADAPTER" ] (
-      acpClientScript "claude" claudeAdapterPath
-    )}
-    EOF
-    cat > codex-client <<'EOF'
-    #!${pkgs.runtimeShell}
-    set -euo pipefail
-    ${lib.replaceStrings [ codexAdapterPath ] [ "$HERMES_ACP_TEST_ADAPTER" ] (
-      acpClientScript "codex" codexAdapterPath
-    )}
-    EOF
-    chmod +x claude-client codex-client
-    python ${../../../../scripts/hermes-agent/tests/acp_fixture.py} \
-      --check "$PWD/claude-client" "$PWD/codex-client"
-    test -s ${adapterEntry "claude"}
-    test -s ${acpRuntime}/node_modules/@agentclientprotocol/codex-acp/dist/index.js
-    touch "$out"
-  '';
 
   mintToken = pkgs.writeShellApplication {
     name = "hermes-github-token";
@@ -295,120 +224,22 @@ in
           pkgs.git
           pkgs.jq
           pkgs.curl
+          pkgs.tmux
           config.nix.package
         ];
         nix.settings.allowed-users = [ cfg.user ];
         systemd.tmpfiles.rules = [
           "d ${repositories} 0700 ${cfg.user} ${config.users.users.${cfg.user}.group} - -"
         ];
-        system.checks = [ acpCheck ];
       })
 
       (lib.mkIf cfg.claudeCode.enable {
-        # The stable /etc command is also acpx's persisted session identity,
-        # so updating the Nix package doesn't hide all pre-existing sessions.
-        environment.etc."hermes-agent/claude-agent-acp".source = lib.getExe claudeAdapter;
-        my.hermes-agent = {
-          extraPackages = [
-            pkgs.claude-code
-            claudeAcp
-          ];
-          skills.claude-code-acp = {
-            description = "Delegate coding to Claude Code through persistent ACP sessions: start, steer, poll and cancel.";
-            text = ''
-              `hermes-claude-acp` is the pinned acpx ACP client and Claude Code
-              adapter, using your own Claude subscription login. The owner
-              signs in once with `hermes-run claude` and `/login`.
-              The wrapper clears inherited API credentials, loads your user,
-              project and local Claude settings, and approves tools as the
-              existing OpenClaw ACP integration does. Work within the owner's
-              task. Claude uses its own defaults and your user/project settings;
-              this deployment imposes no effort or Remote Control preferences.
-
-              Start or recover a named repository session:
-
-                  hermes-claude-acp --cwd <repository> sessions ensure --name <name>
-
-              Store the task in a private prompt file, then call Hermes's
-              `terminal` with `background=true` and `pty=false` for:
-
-                  hermes-claude-acp --cwd <repository> prompt -s <name> --file <prompt-file>
-
-              The returned process session_id tracks this invocation. Poll and
-              read output using `process(action="poll", session_id="...")`
-              and `process(action="log", session_id="...")`. Check the exit
-              status and the NDJSON result before reporting completion.
-              Steer or resume by running the same named prompt command again;
-              an active ACP owner queues the follow-up, preserving context.
-              `--no-wait` queues without waiting only when an owner is busy;
-              it is not a substitute for Hermes background process mode.
-
-                  hermes-claude-acp --cwd <repository> status -s <name>
-                  hermes-claude-acp --cwd <repository> sessions history <name> --limit 20
-                  hermes-claude-acp --cwd <repository> cancel -s <name>
-                  hermes-claude-acp --cwd <repository> sessions close <name>
-
-              ACP sessions and history persist under `${serviceHome}/.acpx`,
-              independently of your foreground turn. A gateway restart can
-              interrupt a running terminal process; reconnect to the persisted
-              session and inspect status/history before resubmitting a prompt.
-              Never automatically replay a task whose outcome is unknown.
-              Use one name per workstream, keep checkouts under `${repositories}`,
-              inspect diffs/tests, and tell the owner the result. There is no
-              OpenClaw sessions_spawn callback; you must poll and report it.
-            '';
-          };
-        };
+        my.hermes-agent.extraPackages = [ pkgs.claude-code ];
         services.hermes-agent.environment.DISABLE_AUTOUPDATER = "1";
       })
 
       (lib.mkIf cfg.codex.enable {
-        environment.etc."hermes-agent/codex-acp".source = lib.getExe codexAdapter;
-        my.hermes-agent = {
-          extraPackages = [
-            pkgs.codex
-            codexAcp
-          ];
-          skills.codex-acp = {
-            description = "Run persistent Codex app-server sessions through ACP; start, resume, poll, steer and cancel coding work.";
-            text = ''
-              Codex is installed on PATH and runs as the Hermes service user.
-              Authenticate once with
-              `hermes-run env -u OPENAI_API_KEY -u CODEX_API_KEY codex login`, or
-              have the owner securely migrate compatible Codex auth state to
-              `${serviceHome}/.codex`. Hermes's own provider sign-in does not
-              automatically sign the separate Codex CLI in.
-
-              `hermes-codex-acp` runs acpx's pinned Codex adapter against the
-              installed Nix Codex app-server. It clears inherited API keys to
-              use that subscription, and approves ACP tools like OpenClaw's
-              unattended coding path. Create/recover a named session:
-
-                  hermes-codex-acp --cwd <repository> --model gpt-6.1-sol sessions ensure --name <name>
-                  hermes-codex-acp --cwd <repository> set reasoning_effort xhigh -s <name>
-
-              Write a private prompt file. Run the following through Hermes
-              `terminal` with `background=true`, `pty=false`, then poll/log the
-              returned process session_id and report the actual result:
-
-                  hermes-codex-acp --cwd <repository> prompt -s <name> --file <prompt-file>
-
-              The same prompt command resumes or queues a follow-up. Inspect
-              the persistent session with `status -s <name>` and
-              `sessions history <name> --limit 20`; cancel work using
-              `cancel -s <name>`. `sessions close <name>` ends the workstream.
-              All commands take the same `--cwd <repository>`. Session state is
-              in `${serviceHome}/.acpx`; after a gateway/process interruption,
-              inspect status/history before resubmitting ambiguous work.
-
-              This gives Hermes a persistent Codex app-server coding worker;
-              OpenClaw chat binding and its native session catalog are separate.
-              The direct Codex CLI remains available for specialized commands.
-              Keep checkouts under `${repositories}` and inspect diffs/tests
-              before reporting success.
-            '';
-          };
-        };
+        my.hermes-agent.extraPackages = [ pkgs.codex ];
       })
 
       (lib.mkIf (cfg.root != null) {
