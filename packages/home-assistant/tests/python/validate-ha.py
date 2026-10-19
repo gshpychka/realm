@@ -203,10 +203,11 @@ async def validate(hass, configuration, components, component_path, template_fix
         from behavior import validate_behavior
 
         await validate_behavior(hass, configuration)
-        from readability import validate_field_order, validate_readability
+        from layout import validate_field_order
+        from service_contracts import validate_service_contracts
 
-        validate_field_order(Path(sys.argv[4]))
-        await validate_readability(hass, configuration, template_fixtures["contracts"])
+        validate_field_order(Path(sys.argv[4]), configuration)
+        await validate_service_contracts(hass, configuration)
         # Check the API port with an inert device value; no device method runs.
         from custom_components.dyson_local.vacuum import DYSON_STATES, DysonVacuumEntity
         from homeassistant.components.vacuum import VacuumActivity

@@ -28,7 +28,7 @@
   movie_media = mk "boolean" "{{ media_kind == 'movie' }}";
   title_case = mk "text" "{{ clean_title | title }}";
   show_media = mk "boolean" "{{ media_kind == 'show' }}";
-  # Fragment boundaries retain the prompt bytes while separating its instructions.
+  # Group the confirmation instructions and examples for readability.
   confirmation_prompt = mk "text" (
     builtins.concatStringsSep "" [
       "You're a witty, pop culture–savvy assistant who just helped someone successfully add a {{ media_kind }} to their Plex library. "

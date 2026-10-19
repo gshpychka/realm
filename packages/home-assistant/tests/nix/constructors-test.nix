@@ -19,7 +19,7 @@ let
   };
 in
 assert import ./button-triggers-test.nix { inherit lib; };
-assert import ./readability-test.nix { inherit lib; };
+assert import ./lib-test.nix { inherit lib; };
 assert rejects (ha.automation "opaque body");
 assert rejects (ha.automation (valid // { id = "optional-id"; }));
 assert rejects (ha.automation (valid // { actions = "opaque body"; }));

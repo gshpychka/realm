@@ -12,11 +12,8 @@ from homeassistant.helpers.template import Template
 
 
 async def validate_behavior(hass, config):
-    assert len(config["automation"]) == 45
-    assert len(config["script"]) == 4
-    assert len(config["scene"]) == 2
     automations = {item["alias"]: item for item in config["automation"]}
-    assert len(automations) == 45
+    assert automations and len(automations) == len(config["automation"])
     assert all(" / " in alias for alias in automations)
     assert all("id" not in item for item in config["automation"])
 

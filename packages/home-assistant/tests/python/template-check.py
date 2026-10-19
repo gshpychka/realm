@@ -6,6 +6,7 @@ must be reviewed before extending them. No services or integration setup run.
 """
 
 import copy
+import itertools
 import json
 import math
 from collections import Counter
@@ -159,12 +160,177 @@ def assert_rejected(callback, exceptions):
     raise AssertionError("negative fixture was accepted")
 
 
+def validate_weather(hass, contracts):
+    """Sentence tables cover threshold equality, branch priority and bad sensors."""
+    unavailable = "Current weather information is unavailable."
+    current = "It's 20 degrees and sunny."
+    feels = "Feels like 15 degrees."
+    precipitation = "There's precipitation right now."
+    rain = "Rain is likely within the next few hours."
+    warm = "It will warm up to about {} degrees in the next six hours."
+    cool = "Expect it to cool down to around {} degrees in the next six hours."
+    # Each axis declares its expected sentence independently. Warming takes
+    # priority when both forecast extremes cross the three-degree threshold.
+    axes = [
+        [
+            (20, current),
+            ("20", current),
+            (None, unavailable),
+            ("unknown", unavailable),
+            ("unavailable", unavailable),
+            ("NaN", unavailable),
+            ("inf", unavailable),
+            ({}, unavailable),
+            ([], unavailable),
+            (True, current),
+        ],
+        [(0, ""), (2, ""), (2.01, feels), (5, feels)],
+        [(0, ""), (0.1, precipitation)],
+        [(False, ""), (True, rain)],
+        [(20, ""), (23, ""), (23.01, warm.format(23)), (26, warm.format(26))],
+        [(20, ""), (17, ""), (16.99, cool.format(17)), (14, cool.format(14))],
+    ]
+    count = 0
+    for sensor, difference, precip, raining, high, low in itertools.product(*axes):
+        hass.states.async_set(
+            "weather.openweathermap", "sunny", {"temperature": sensor[0]}
+        )
+        values = {
+            "now_temp": 20,
+            "now_feels": 15,
+            "now_cond": "sunny",
+            "diff": difference[0],
+            "now_precip": precip[0],
+            "will_rain": raining[0],
+            "max_t": high[0],
+            "min_t": low[0],
+        }
+        expected = " ".join(
+            filter(
+                None,
+                [
+                    sensor[1],
+                    difference[1],
+                    precip[1],
+                    raining[1],
+                    high[1] or low[1],
+                ],
+            )
+        )
+        actual = checked_render(hass, contracts["weather_report"], values)
+        assert actual == expected, (sensor[0], values, actual, expected)
+        count += 1
+
+    # Negative temperatures use the same signed three-degree boundaries.
+    hass.states.async_set("weather.openweathermap", "snowy", {"temperature": -5})
+    for high, low, ending in [
+        (-2, -8, ""),
+        (-2, -8.01, cool.format(-8)),
+        (-1.99, -8, warm.format(-2)),
+        (-1.99, -8.01, warm.format(-2)),
+    ]:
+        values = {
+            "now_temp": -5,
+            "now_feels": -10,
+            "now_cond": "snowy",
+            "now_precip": 0,
+            "diff": 5,
+            "will_rain": False,
+            "max_t": high,
+            "min_t": low,
+        }
+        expected = " ".join(
+            filter(
+                None,
+                [
+                    "It's -5 degrees and snowy.",
+                    "Feels like -10 degrees.",
+                    ending,
+                ],
+            )
+        )
+        actual = checked_render(hass, contracts["weather_report"], values)
+        assert actual == expected, (values, actual, expected)
+        count += 1
+    return count
+
+
+def validate_confirmation_prompt(hass, contracts):
+    """Interpolated titles stay data; prompt requirements remain reviewable."""
+    prompt = TemplateEnvironment(hass, strict=True).from_string(
+        contracts["confirmation_prompt"]["source"]
+    )
+    count = 0
+    for kind, (title, titled) in itertools.product(
+        ["movie", "show", "unknown"],
+        [
+            ("The Matrix", "The Matrix"),
+            ("Breaking Bad", "Breaking Bad"),
+            ("Україна", "Україна"),
+            ('quote " and slash \\', 'Quote " And Slash \\'),
+            ("first\nsecond", "First\nSecond"),
+            ("{{ syntax }} {% data %}", "{{ Syntax }} {% Data %}"),
+        ],
+    ):
+        result = prompt.render(media_kind=kind, clean_title=title)
+        for requirement in [
+            f"successfully add a {kind} to their Plex library",
+            f"confirm the {kind} was added",
+            f'mention "{titled}" naturally',
+            "be no more than 2 sentences",
+            "avoid spoilers or summaries",
+            "not imply that the media is already available or downloaded",
+            "let the user know if you are not familiar with the media",
+            "only include remarks specifically relevant to the chosen media",
+        ]:
+            assert requirement in result, (kind, title, requirement)
+        assert result.endswith(
+            f'Now generate a similar confirmation line for "{titled}".'
+        ), (kind, title, result)
+        count += 1
+    return count
+
+
 async def validate_templates(hass, config, contracts, literals):
     device_registry.async_setup(hass)
     await device_registry.async_load(hass, load_empty=True)
     await entity_registry.async_load(hass, load_empty=True)
     used = {source for _, source in templates_in(config)}
     registered = {item["source"] for item in contracts.values()}
+    # This is the coverage inventory for current programs and their native
+    # result types. A new/renamed program needs an explicit fixture here.
+    output_groups = {
+        "boolean": (
+            "ac_ready chamber_was_off condition_change gpt_ready has_announcement movie_media "
+            "ollama_online paused print_chronometer print_ok reject_media restore_chamber "
+            "show_media unknown_media will_rain "
+        ),
+        "integer": "end_ts layer layers print_final_progress print_progress print_when progress",
+        "list": "forecast next_hours",
+        "mapping": "gpt_request slots",
+        "nullable-text": "print_error",
+        "number": "max_temp min_temp now_feels now_precip now_temp target_temperature temp_diff",
+        "number-or-unknown": "fan_speed",
+        "text": (
+            "announcement battery_level battery_low battery_time_low city_power_off "
+            "city_power_on classified_media classifier_prompt clean_title confirmation_prompt "
+            "device_offline gpt_conversation gpt_speech hvac_mode media_confirmation "
+            "media_kind message now_cond power_alarm print_answer print_color print_eta "
+            "print_final_color print_final_icon print_final_status print_final_text "
+            "print_finished print_percent print_prompt print_status print_verdict "
+            "printer_errors provider_changed raw_title raw_type task title_case unsure_media "
+            "weather_report "
+        ),
+    }
+    expected_outputs = {
+        name: output
+        for output, names in output_groups.items()
+        for name in names.split()
+    }
+    assert {
+        name: item["output"] for name, item in contracts.items()
+    } == expected_outputs
+    assert all(set(item) == {"source", "output"} for item in contracts.values())
     assert used == registered, {
         "unchecked": sorted(used - registered),
         "unused": sorted(registered - used),
@@ -175,8 +341,7 @@ async def validate_templates(hass, config, contracts, literals):
         except TemplateError as error:
             raise AssertionError(f"{name}: compile failed") from error
     audit_scope(hass, config)
-    # Derive paths from the evaluated tree, including current if/then and choose
-    # indexes. Never retain stale paths from the previous control-flow layout.
+    # Derive the program inventory and every use path from the evaluated tree.
     names = {item["source"]: name for name, item in contracts.items()}
     inventory = [
         {"program": names[source], "path": list(path)}
@@ -552,7 +717,7 @@ async def validate_templates(hass, config, contracts, literals):
     merged = {k: v for action in media[:5] for k, v in action["variables"].items()}
     media[:5] = [{"variables": dict(sorted(merged.items()))}]
     assert_rejected(lambda: audit_scope(hass, bad), ValueError)
-    # The flattened if still binds its response before classification, and an
+    # Classification binds its response before use, and an
     # optional branch's new response name must not leak to later actions.
     bad = copy.deepcopy(config)
     media = next(
@@ -571,9 +736,14 @@ async def validate_templates(hass, config, contracts, literals):
         {"variables": {"leaked_kind": contracts["classified_media"]["source"]}}
     )
     assert_rejected(lambda: audit_scope(hass, bad), ValueError)
+    weather_count = validate_weather(hass, contracts)
+    prompt_count = validate_confirmation_prompt(hass, contracts)
     # Restore a clean state fixture set for the separate behavioral tests.
     for entity in list(hass.states.async_entity_ids()):
         hass.states.async_remove(entity)
     print(
-        f"Template QA passed: {len(contracts)} programs, {sum(counts.values())} strict typed renders, {len(list(templates_in(config)))} audited uses, scope/quoting/undefined/order negatives."
+        f"Template QA passed: {len(contracts)} programs, {sum(counts.values())} strict typed renders, {len(literals)} strict literal round trips, {len(list(templates_in(config)))} audited uses, scope/quoting/undefined/order negatives."
+    )
+    print(
+        f"Weather/prompt contracts passed: {weather_count} weather cases / {weather_count} strict typed renders; {prompt_count} raw prompt renders."
     )

@@ -6,9 +6,8 @@ by its service or Pyscript component. The package root at
 `packages/home-assistant/` contains package declarations and source pins;
 `patches/<integration>/` holds the integration and dependency patches.
 `packages/home-assistant/tests/default.nix` assembles offline QA, with constructor
-checks in `tests/nix/`, validators and behavior checks in `tests/python/`, and
-compact baseline data in `tests/fixtures/`. No third-party component source is
-reorganized by this layout.
+checks in `tests/nix/` and validators and behavior checks in `tests/python/`.
+Third-party component sources keep their upstream layout.
 
 `configuration/` contains normal NixOS modules: automations grouped by purpose,
 voice/media/device scripts, helpers, scenes, and YAML-capable integrations. The
@@ -35,13 +34,15 @@ native trigger attrsets, so a functional trigger ID can be added with
 `(ha.singlePress ha.devices.bedButton) // { id = "bed"; }` when needed.
 
 `constructors.nix` holds the internal checks for automation, script, action,
-condition and helper shapes; `lib.nix` retains its 22 public exports. Automation
-fields follow alias, description, triggers, conditions, actions, variables, then
-execution options, omitting absent fields. Bodies stay native attrsets and lists. Dependent
-variables use `orderedVariables`, which emits one action per binding in list
-order. `templates.nix` merges seven domain modules under `templates/`: system,
-printer, power, weather, media, GPT and climate. The flat registry retains all 74
-names and rejects duplicate exports through `merge-template-domains.nix`.
+condition and helper shapes; `lib.nix` exposes the household configuration API.
+Automation fields follow alias, description, triggers, conditions, actions,
+variables, then execution options, omitting absent fields. Bodies stay native
+attrsets and lists. Dependent variables use `orderedVariables`, which emits one
+action per binding in list order. `templates.nix` merges seven domain modules
+under `templates/`: system,
+printer, power, weather, media, GPT and climate. Each program declares its native
+result type. The flat registry rejects duplicate exports through
+`merge-template-domains.nix`.
 Declarations use named references. `template-literal.nix` serializes embedded values as JSON inside
 a Jinja string and decodes them with HA's `from_json`.
 `configuration/template-macros/safe-fields.jinja` handles
@@ -125,29 +126,28 @@ including unsupported gestures, malformed/unknown devices and checked-body
 boundaries. AC and expert-query scripts guard their inputs before calling services;
 unavailable weather and provider responses produce explicit fallback text.
 
-`packages/home-assistant/tests/python/readability.py` executes the media flow with HA's pinned
-native script engine and local recording service stubs. It compares the flattened
-`if`/guard-stop flow with the pre-refactor control flow for explicit and inferred
-movie/show requests, rejected requests, unknown/malformed classifications,
-confirmation fallbacks and service failures. Calls, their order, returned data,
-bound variables and conversation messages must match; trace structure may differ.
-The 39 media scenarios include HA rejecting non-mapping service responses before
-fallback templates run. Six power runs cover successful and failed delivery.
-Power tests change sensors during speech and assert Telegram receives the message
-captured before speech, including service-failure ordering.
+`packages/home-assistant/tests/python/service_contracts.py` executes the current
+media and power actions with HA's pinned native script engine and local recording
+service stubs. The 39 media scenarios specify explicit and inferred movie/show
+requests, rejected requests, unknown/malformed classifications, confirmation
+fallbacks and service failures. They check service request data and order,
+conversation replies, returned data and bound variables. HA's rejection of
+non-mapping service responses is checked separately from template fallbacks.
+Each scenario runs once. Six power runs cover success and each delivery failure
+for outage and restoration notifications. Sensors change during speech;
+Telegram must receive the message captured before speech, and failures must stop
+subsequent calls.
 
-The compact `tests/fixtures/readability.json` records the `ed89082` baseline using source
-fingerprints and named template references, without duplicating the whole config.
-It pins all 73 other template sources exactly, including the confirmation prompt.
-Only weather source whitespace and voice control-flow structure are allowed to
-differ. Weather AST and scope must match, and 2,564 paired strict HA renders cover
-the original 2,560 branch/boundary/unknown cases plus negative temperatures;
-18 raw prompt renders retain their baseline fingerprints. All configuration
-outside those two allowances must match its baseline fingerprint. Review any
-intentional behavior change before updating these fixtures. Source-order checks
-cover all 45 automations, and Nix tests retain constructor/button negatives and
-pin the public exports and duplicate rejection. The QA output includes a derived
-`template-scope-inventory.json` with the actual program names and use paths.
+Weather tests use readable sentence tables for 2,564 strict HA renders across
+sensor value/type, precipitation, rain and temperature thresholds, including
+negative temperatures and warming taking priority over cooling. Eighteen raw
+confirmation-prompt renders check instructions and interpolation of quoted,
+escaped, Unicode, multiline and Jinja-looking title data. Every template has an
+explicit output-type and behavior fixture; new programs require extending that
+coverage inventory. Source-order checks cover every evaluated automation, and
+Nix tests check the public API and reject duplicate domain exports. The QA
+output includes a derived `template-scope-inventory.json` with the current
+program names and use paths.
 
 Run this scoped check locally without remote builders:
 

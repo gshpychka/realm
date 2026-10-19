@@ -8,6 +8,35 @@ PACKAGE = Path("packages/home-assistant")
 MACHINE = Path("machines/home-assistant")
 
 
+def validate_field_order(root, config):
+    order = [
+        "alias",
+        "description",
+        "triggers",
+        "conditions",
+        "actions",
+        "variables",
+        "mode",
+        "max",
+        "max_exceeded",
+    ]
+    aliases = []
+    for path in sorted((root / "configuration" / "automations").glob("*.nix")):
+        declarations = path.read_text().split(
+            "services.home-assistant.config.automation =", 1
+        )[1]
+        for body in re.findall(r"^    \{\n(.*?)^    \}", declarations, re.M | re.S):
+            fields = re.findall(r"^      (\w+) =", body, re.M)
+            assert fields and fields[0] == "alias", (path, fields)
+            assert fields == sorted(fields, key=order.index), (path, fields)
+            assert "id" not in fields
+            aliases.append(re.search(r'alias = "([^"\n]+)";', body)[1])
+    assert sorted(aliases) == sorted(a["alias"] for a in config["automation"])
+    print(
+        f"Automation source order passed: {len(aliases)} declarations; no top-level IDs."
+    )
+
+
 def check_layout(root):
     errors = []
     removed = {PACKAGE / "check.nix", MACHINE / "yasno-address-guard"}

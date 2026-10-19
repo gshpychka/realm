@@ -4,7 +4,7 @@ let
   merge = import ../../../../machines/home-assistant/configuration/merge-template-domains.nix;
   rejects = value: !(builtins.tryEval (builtins.deepSeq value true)).success;
 in
-# Constructor extraction must not add private implementation helpers to the API.
+# The public API excludes private implementation helpers.
 assert
   builtins.attrNames ha == [
     "action"
