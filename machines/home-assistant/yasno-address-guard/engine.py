@@ -41,6 +41,9 @@ class Guard:
         except Exception:
             # Status/journal remain truthful when the API itself is unavailable.
             self.journal["notification_failed"] = True
+        else:
+            self.journal["notification_failed"] = False
+        self.persist()
 
     async def registry(self):
         return await self.api.ws("config/entity_registry/list")
@@ -322,7 +325,10 @@ class Guard:
                 await self.notify(
                     "Yasno correction recovery could not complete. Existing references may be temporarily unavailable; manual repair is required. No unknown schedule is treated as an outage."
                 )
-                return {"status": "repair_required"}
+                return {
+                    "status": "repair_required",
+                    "notification_failed": j["notification_failed"],
+                }
         if (
             not dry_run
             and not force_check
@@ -334,6 +340,7 @@ class Guard:
                 "last_valid_group": j.get("last_valid_group"),
                 "last_success": j.get("last_success"),
                 "next_check": j.get("next_check"),
+                "notification_failed": j.get("notification_failed", False),
             }
         previous_group = None
         try:
@@ -370,6 +377,7 @@ class Guard:
                 last_success=self.now.isoformat(),
                 next_check=(self.now + timedelta(days=1)).isoformat(),
                 error=None,
+                notification_failed=False,
             )
             self.persist()
             return {
@@ -377,6 +385,7 @@ class Guard:
                 "last_valid_group": group,
                 "last_success": j["last_success"],
                 "next_check": j["next_check"],
+                "notification_failed": j["notification_failed"],
             }
         except Exception:
             recovered = False
@@ -409,6 +418,7 @@ class Guard:
                 else "check_failed",
                 "last_valid_group": j.get("last_valid_group"),
                 "next_check": j["next_check"],
+                "notification_failed": j.get("notification_failed", False),
             }
 
 

@@ -223,9 +223,69 @@ def guard(host):
         result = await instance.check()
         assert result["status"] == "check_failed"
         assert journal["notification_failed"] is True
+        assert saved[-1]["notification_failed"] is True
+        assert result["notification_failed"] is True
         assert journal["error"] == "official_lookup_validation_or_correction_failed"
-        assert result["next_check"] == journal["next_check"]
-        assert len(saved) == 2
+        assert result["next_check"] == saved[-1]["next_check"] == journal["next_check"]
+        assert saved[-1]["error"] == journal["error"]
+
+        # Reloaded journals must expose the failure while waiting for the retry.
+        reloaded = dict(saved[-1])
+        instance = engine.Guard(
+            SimpleNamespace(notification=unavailable),
+            {},
+            reloaded,
+            lambda value: saved.append(dict(value)),
+        )
+        result = await instance.check()
+        assert result["status"] == "not_due"
+        assert result["notification_failed"] is True
+
+        # Successful notification delivery clears a previous delivery failure,
+        # even if provider validation still fails and schedules another retry.
+        async def delivered(_message):
+            pass
+
+        instance.group = unavailable
+        instance.api.notification = delivered
+        result = await instance.check(force_check=True)
+        assert result["status"] == "check_failed"
+        assert result["notification_failed"] is False
+        assert saved[-1]["notification_failed"] is False
+        assert saved[-1]["error"] == "official_lookup_validation_or_correction_failed"
+
+        # Verification also clears a persisted delivery failure without sending
+        # an unnecessary notification.
+        instance.api.notification = unavailable
+        result = await instance.check(force_check=True)
+        assert result["notification_failed"] is True
+        assert saved[-1]["notification_failed"] is True
+
+        async def unchanged():
+            return "1.1"
+
+        instance.group = instance.candidate = unchanged
+        result = await instance.check(force_check=True)
+        assert result["status"] == "verified"
+        assert result["notification_failed"] is False
+        assert saved[-1]["notification_failed"] is False
+        assert saved[-1]["error"] is None
+        assert result["next_check"] == saved[-1]["next_check"]
+
+        # Failed rollback notifications use the same durable status contract.
+        reloaded["pending"] = {"previous_group": "1.1", "new_group": "2.2"}
+        instance.rollback = unavailable
+        result = await instance.check(force_check=True)
+        assert result["status"] == "repair_required"
+        assert result["notification_failed"] is True
+        assert saved[-1]["notification_failed"] is True
+        assert saved[-1]["pending"] == reloaded["pending"]
+
+        instance.api.notification = delivered
+        result = await instance.check(force_check=True)
+        assert result["status"] == "repair_required"
+        assert result["notification_failed"] is False
+        assert saved[-1]["notification_failed"] is False
 
     asyncio.run(recovery())
 
