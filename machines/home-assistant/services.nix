@@ -9,7 +9,6 @@
 let
   inherit (ha) templates;
   fanPython = pkgs.python3.withPackages (ps: [ ps.smbus2 ]);
-  matterImage = import ../../packages/home-assistant/matter-image.nix;
 in
 {
   systemd.services.ha-mcp = {
@@ -103,7 +102,7 @@ in
   # Matter.js provides the HA WebSocket endpoint and owns its writable /data.
   virtualisation.oci-containers.backend = "podman";
   virtualisation.oci-containers.containers.matter-server = {
-    image = "${matterImage.image}@${matterImage.digest}";
+    image = "ghcr.io/matter-js/matterjs-server:1.4.0@sha256:54232d0d3e7dff5a54759469d2753399270412b4c30c55b31750a4595e4cb236";
     user = "1000:1000";
     volumes = [ "/var/lib/matter-server:/data" ];
     extraOptions = [ "--network=host" ];

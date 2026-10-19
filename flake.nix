@@ -206,6 +206,10 @@
       # expose the ISO for easy building: `nix build .#iso`
       packages.x86_64-linux.iso = self.nixosConfigurations.iso.config.system.build.isoImage;
 
+      legacyPackages = lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (system: {
+        homeAssistant = nixpkgs.legacyPackages.${system}.callPackage ./packages/home-assistant { };
+      });
+
       packages.x86_64-linux.voice-pe-firmware = import ./scripts/voice-pe/firmware.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
       };
@@ -332,6 +336,7 @@
             home-assistant-config = import ./packages/home-assistant/tests {
               pkgs = nixpkgs.legacyPackages.x86_64-linux;
               configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
+              inherit (self.nixosConfigurations.home-assistant.config.services.home-assistant) extraComponents;
             };
             iso = self.nixosConfigurations.iso.config.system.build.isoImage;
             nixos-switch = import ./tests/nixos-switch.nix {
@@ -361,8 +366,14 @@
           piPackages = pkgs.callPackage ./packages/pi-packages { };
           flashVoicePe = pkgs.callPackage ./scripts/voice-pe/flash.nix { };
           provisionVoicePe = pkgs.callPackage ./scripts/voice-pe/provision.nix { };
+          updateHomeAssistant = pkgs.callPackage ./packages/home-assistant/update.nix { };
         in
         {
+          ${if pkgs.stdenv.hostPlatform.isLinux then "update-home-assistant" else null} = {
+            type = "app";
+            program = lib.getExe updateHomeAssistant;
+            inherit (updateHomeAssistant) meta;
+          };
           update-pi-packages = {
             type = "app";
             program = lib.getExe piPackages.updateScript;

@@ -68,7 +68,8 @@ def check_layout(root):
                         local == Path("tests/default.nix")
                         or local.parent == Path("tests/nix")
                         or (
-                            local.parent == Path(".")
+                            local.parent
+                            in (Path("."), Path("custom-components"), Path("python"))
                             and not path.name.endswith("-test.nix")
                         )
                     )

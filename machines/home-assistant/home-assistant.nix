@@ -15,6 +15,7 @@
     (import ../../packages/home-assistant/tests {
       pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
       configuration = config.services.home-assistant.config;
+      inherit (config.services.home-assistant) extraComponents;
     })
   ];
 
@@ -22,7 +23,79 @@
     enable = true;
     package = haPackages.core;
     configDir = "/var/lib/hass";
-    extraComponents = haPackages.coreComponents;
+    extraComponents = [
+      "analytics"
+      "androidtv_remote"
+      "apple_tv"
+      "asuswrt"
+      "backup"
+      "bluetooth"
+      "cast"
+      "cloud"
+      "command_line"
+      "conversation"
+      "default_config"
+      "device_automation"
+      "dlna_dmr"
+      "elevenlabs"
+      "esphome"
+      "ffmpeg"
+      "filter"
+      "frontend"
+      "glances"
+      "go2rtc"
+      "google"
+      "google_generative_ai_conversation"
+      "homekit"
+      "http"
+      "hue"
+      "kodi"
+      "lametric"
+      "lovelace"
+      "matter"
+      "mcp_server"
+      "min_max"
+      "mobile_app"
+      "mqtt"
+      "network"
+      "ollama"
+      "openai_conversation"
+      "openweathermap"
+      "overseerr"
+      "persistent_notification"
+      "ping"
+      "playstation_network"
+      "plex"
+      "radarr"
+      "repairs"
+      "rest"
+      "rest_command"
+      "rpi_power"
+      "sabnzbd"
+      "samsungtv"
+      "shell_command"
+      "shopping_list"
+      "smartthings"
+      "smlight"
+      "sonarr"
+      "sun"
+      "switch_as_x"
+      "systemmonitor"
+      "tautulli"
+      "telegram_bot"
+      "template"
+      "thread"
+      "time_date"
+      "ukraine_alarm"
+      "upnp"
+      "wake_on_lan"
+      "websocket_api"
+      "wyoming"
+      "xbox"
+      "xiaomi_ble"
+      "zeroconf"
+      "zha"
+    ];
     inherit (haPackages) customComponents;
     openFirewallForComponents = true;
   };

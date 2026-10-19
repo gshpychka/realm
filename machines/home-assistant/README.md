@@ -3,7 +3,8 @@ Home Assistant on a Raspberry Pi 5 with an Argon ONE V3 case and NVMe storage.
 The machine root contains host and service declarations. Runtime code lives in
 `runtime/argonone/`, `runtime/backup/` and `runtime/yasno-address-guard/`, each owned
 by its service or Pyscript component. The package root at
-`packages/home-assistant/` contains package declarations and source pins;
+`packages/home-assistant/` groups ordinary `callPackage` expressions: `core.nix`,
+`mcp.nix`, `custom-components/` and `python/`;
 `patches/<integration>/` holds the integration and dependency patches.
 `packages/home-assistant/tests/default.nix` assembles offline QA, with constructor
 checks in `tests/nix/` and validators and behavior checks in `tests/python/`.
@@ -74,11 +75,82 @@ the UUID is therefore needed for operation. `roomVoiceTarget`,
 unresolved device targets in the private inventory; they retain their existing
 fan-out rather than selecting replacement entities without sufficient evidence.
 
-`packages/home-assistant` pins Core, MCP, Python dependencies and 20 custom
-integrations. Sources use fixed hashes and upstream versions; HACS uses its
+`packages/home-assistant` packages Core, MCP and 20 custom integrations. The
+component expressions declare sources, dependencies and patches through nixpkgs'
+`buildHomeAssistantComponent`. A shared adjustment selects each domain, removes
+upstream bytecode and stamps its release manifest; the native builder installs
+and validates it. Samsung TV reuses the matching nixpkgs package. HACS uses its
 release zip to include its compiled frontend. The Dyson API patch and upstream
-dependency test fixes are applied during builds. HACS can inspect integrations;
-changes to store-backed integration code are made through Nix.
+dependency test fixes are applied during builds.
+
+The Core Python scope reuses nixpkgs packages. Its aio-libs and frontend overrides
+match Core 2026.10.2; `croniter` and original `passlib` satisfy exact component
+requirements. `homeeasy`, `translitua` and `novaposhta-python-client` supply
+packages absent from the locked nixpkgs. MCP has its own native Python scope:
+its vendored FastMCP requires newer `python-dotenv` and `pydantic-monty`, and its
+build requires the pinned `uv-build`. The latter two use upstream native wheels
+for the two Linux architectures. Package imports and upstream dependency metadata
+are validated in their actual Python environments.
+
+These `.nix` files are executable package definitions, with build inputs, checks,
+source fetchers and compatibility adjustments. Versions and hashes live beside
+the code they build. `update.nix` provides the thin
+`nix run .#update-home-assistant` entrypoint using the maintained
+[nix-update](https://github.com/Mic92/nix-update) and
+[Skopeo](https://github.com/containers/skopeo) tools from the locked nixpkgs.
+The preflight also reviewed
+[nvfetcher](https://github.com/berberman/nvfetcher), source-only flake inputs and
+`nix-prefetch-docker`. Direct package updates fit these expressions; nvfetcher
+would add a second source manifest and generated output, flake inputs cover Git
+sources rather than the wheel/release-asset/OCI mix, and Skopeo reads the OCI
+manifest digest directly for the native container option.
+
+Run on x86_64 or ARM64 Linux from this checkout with its locked flake inputs available. Source refreshes
+need public network access to GitHub, PyPI and GHCR; they require no API key or
+API credentials. Every version is selected explicitly; `skip` recomputes the
+hash at the current version. Commands mutate the checkout for review:
+
+```sh
+nix run .#update-home-assistant -- --help
+nix run .#update-home-assistant -- core 2026.10.2
+nix run .#update-home-assistant -- dependency aiohttp 3.14.5
+nix run .#update-home-assistant -- component pyscript 2.1.0
+nix run .#update-home-assistant -- mcp 8.7.0
+nix run .#update-home-assistant -- mcp-dependency pydantic-monty 0.0.18
+nix run .#update-home-assistant -- skills 7690c5ea14e5c842bb143dbe5725ed48fe5449db
+nix run .#update-home-assistant -- matter 1.4.0
+nix run .#update-home-assistant -- refresh
+```
+
+`refresh` recomputes every local source hash at its current pin, including Core's
+Git source and translation sdist, 19 local components, nine Core compatibility
+dependencies, MCP and its skill commit, both architecture wheels and the Matter
+manifest digest. The universal dotenv wheel has one hash. Architecture source
+hashes are fetched on the updater host; package execution still needs the target
+architecture. Matter's version and digest live in `services.nix` beside the
+container declaration. The tag documents the selected release; the digest fixes
+the executed image.
+
+For the commit-pinned `hassarr` and `homeeasy_local`, select the reviewed `rev`
+and manifest `version` in their component expressions, then run
+`nix run .#update-home-assistant -- component DOMAIN skip`. The other component
+expressions derive their upstream tag or release URL from their version. To
+force hash refresh after any source edit, use `skip`. Core updates refresh both
+sources together; update its required frontend/aio-libs versions separately after
+reviewing upstream requirements. For minor/major Core changes, also review
+nixpkgs' component dependency mapping, inherited build adjustments and patches.
+Patch application, component manifest requirements, Python import checks and the
+scoped QA below are the compatibility gates; source refresh alone proves source
+integrity.
+
+`nix flake update nixpkgs` selects a new native package set, including Samsung TV,
+the underlying HA recipe/component dependency mapping and ordinary Python tools.
+`nix flake update nixos-raspberrypi` selects the Pi OS/kernel/firmware input.
+`nix flake update` updates all flake inputs. Local version/hash literals in these
+package expressions and the Matter service remain selected by the commands
+above. Review both lock changes and local compatibility overrides together,
+retiring an override when the locked native package meets its requirement.
+HACS can inspect integrations; store-backed code changes go through Nix.
 
 HA owns its writable `/var/lib/hass` state, including config entries, credentials,
 pairings, registries, dashboards, disabled entities, and history. Config-flow

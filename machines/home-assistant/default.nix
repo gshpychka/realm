@@ -6,13 +6,11 @@
   ...
 }:
 let
-  haPkgs = import inputs.nixpkgs { system = pkgs.stdenv.hostPlatform.system; };
+  haPkgs = inputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system};
 in
 {
   _module.args.haPkgs = haPkgs;
-  _module.args.haPackages = import ../../packages/home-assistant {
-    pkgs = haPkgs;
-  };
+  _module.args.haPackages = haPkgs.callPackage ../../packages/home-assistant { };
   imports = [
     ./hardware.nix
     ./home-assistant.nix
@@ -87,13 +85,11 @@ in
       PermitRootLogin = "prohibit-password";
     };
   };
-  users.users.root.openssh.authorizedKeys.keys = lib.unique (
-    (with config.my.sshKeys; [
-      main
-      openclaw
-    ])
-    ++ import ./authorized-keys.nix
-  );
+  users.users.root.openssh.authorizedKeys.keys = lib.unique [
+    config.my.sshKeys.main
+    config.my.sshKeys.openclaw
+    "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBJOrPEgiVddcT1t+mm+xsbDnfj+nl1PBQyxzk5rQjeqPG3nkgWp/l8pIYrZojckIIOHLNERy1zYLigKGYp5crcA= calcifer@hoard"
+  ];
   environment.systemPackages = with pkgs; [
     openssh
     sqlite

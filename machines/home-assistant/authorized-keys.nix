@@ -1,4 +1,0 @@
-[
-  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB737o9Ltm1K3w9XX9SBHNW1JT4NpCPP5qg9R+SB18dG"
-  "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBJOrPEgiVddcT1t+mm+xsbDnfj+nl1PBQyxzk5rQjeqPG3nkgWp/l8pIYrZojckIIOHLNERy1zYLigKGYp5crcA= calcifer@hoard"
-]

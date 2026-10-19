@@ -1,8 +1,12 @@
-{ pkgs, configuration }:
+{
+  pkgs,
+  configuration,
+  extraComponents,
+}:
 let
-  packages = import ../. { inherit pkgs; };
+  packages = pkgs.callPackage ../. { };
   core = packages.core.override {
-    extraComponents = packages.coreComponents;
+    inherit extraComponents;
   };
   python = core.python3Packages.python.withPackages (ps: [
     (ps.toPythonModule core)
@@ -55,7 +59,7 @@ pkgs.runCommand "home-assistant-config-qa"
     export PYTHONDONTWRITEBYTECODE=1
     ${python}/bin/python ${./.}/python/layout.py ${../../..}
     env -i HOME="$TMPDIR" PATH="$PATH" ${packages.mcp}/bin/ha-mcp --version \
-      | ${pkgs.gnugrep}/bin/grep -Fx 'ha-mcp 8.7.0'
+      | ${pkgs.gnugrep}/bin/grep -Fx 'ha-mcp ${packages.mcp.version}'
     # The broker's test-config mode validates auth/ACL syntax with fixture files.
     mosquitto_passwd -b -c passwords fixture-user fixture-password
     printf 'topic readwrite #\n' > acl
@@ -69,7 +73,7 @@ pkgs.runCommand "home-assistant-config-qa"
     EOF
     mosquitto -c mosquitto.conf --test-config
     mkdir custom_components
-    cp -r ${packages.customComponentSource}/. custom_components/
+    cp -rL ${packages.customComponentSource}/. custom_components/
     chmod -R u+w custom_components
     # Use HA's wrapper environment to check that HA and custom components resolve
     # their dependencies from the declared Core Python path.
