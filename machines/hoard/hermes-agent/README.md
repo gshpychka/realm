@@ -1,7 +1,8 @@
 # Hermes on hoard
 
 Hermes runs alongside OpenClaw under its own `hermes` account, using the
-upstream NixOS module and full package through a normal unpinned flake input.
+upstream NixOS module and full package. The flake input follows upstream;
+the Nix-generated `flake.lock` pins the revision used by builds.
 Host policy is in `../hermes-agent.nix`; reusable fleet options are under
 `modules/system/nixos/hermes-agent/`. It is included in hoard's normal build.
 
@@ -16,7 +17,7 @@ nix build --no-link -L .#nixosConfigurations.hoard.config.system.build.toplevel
 
 Nix resolves the upstream revision through the generated `flake.lock`.
 Refresh it with the normal Nix commands when upgrading Hermes. The build
-includes the runtime and Git credential scoping checks. To test this branch
+includes the Git credential scoping check. To test this branch
 before merging, use a checkout of the branch and the normal deployment:
 
 ```sh
@@ -34,14 +35,14 @@ Inspect startup and exercise the local authenticated API on hoard:
 ```sh
 sudo systemctl status hermes-agent hermes-backend
 sudo journalctl -u hermes-agent -u hermes-backend -n 100 --no-pager
-hermes-run python3 /path/to/realm/scripts/hermes-agent/runtime.py ready \
-  --credential /var/lib/hermes/.hermes/api.env --port 8642
+sudo -iu hermes hermes doctor
 ```
 
-`ExecStartPost` performs that same authenticated `/health/detailed` request,
-checks the Hermes platform and `status=ok`, and fails startup on timeout or
-rejected credentials. This establishes service readiness, not model billing
-or a successful provider login. Complete the functional checks below.
+As in OpenClaw, a short `ExecStartPost` shell check establishes readiness.
+It calls the authenticated `/health/detailed` endpoint, checks the Hermes
+platform and `status=ok`, and fails startup after 120 seconds if unsuccessful.
+This does not establish a successful model login or working integrations;
+complete the functional checks below.
 
 ## Credentials and first use
 
@@ -51,34 +52,34 @@ The GitHub App key is also reused; both agents commit as the same installed
 bot. To separate the App later, configure `my.hermes-agent.github` and its
 SOPS key. Secret values never appear in Nix-generated files in the store.
 
-1. **Model login.** Run `hermes auth add openai-codex` on hoard. The
-   `hermes` wrapper switches to the service account and sets its environment.
+The native module installs Hermes and its tools in the service user's
+profile. Run administrative CLI commands with `sudo -iu hermes`; no custom
+CLI wrapper is needed. Hermes loads its own private `.env`.
+
+1. **Model login.** Run `sudo -iu hermes hermes auth add openai-codex` on hoard.
    The selected model is `gpt-6.1-sol`, matching OpenClaw. Hermes keeps its
    own mutable `auth.json`; external-login adoption is disabled. A raw copy
    of OpenClaw's auth store is not a supported migration format. Use a fresh
    login or upstream's supported import workflow. The API key remains
    available to tools and integrations; the main model uses the subscription.
-2. **Telegram.** Create a new bot with BotFather. Copy
-   `/etc/hermes-agent/telegram.env.example` to a private local file, set
-   `TELEGRAM_BOT_TOKEN`, then install it as `/var/lib/hermes/telegram.env`,
-   owned by `hermes:hermes`, mode `0600`. Restart `hermes-agent`. The existing
-   owner's numeric ID is the only allowlisted user; groups are disabled.
-   Without a bot token, the API still runs and Telegram is not connected.
-   For a single-bot cutover, stop/disable the OpenClaw Telegram channel
-   before transferring its token; two pollers cannot share one token.
+2. **Telegram.** Create a separate bot with BotFather and add its token as
+   `hermes-telegram-bot-token` in `secrets/hoard/openclaw.yaml` using SOPS,
+   before deployment. This encrypted key is a provisioning prerequisite;
+   it is not present in this scaffold. The existing owner's numeric ID is
+   the only allowlisted user; groups are disabled by native Hermes policy.
+   For a single-bot cutover, stop/disable OpenClaw's Telegram channel and
+   change the Hermes mapping to the existing `telegram-bot-token` key;
+   two pollers cannot share one token.
 3. **Speech.** Existing ElevenLabs credentials drive Scribe v2 and Eleven v4.
    Move the current voice ID into
    `services.hermes-agent.settings.tts.elevenlabs.voice_id`. Use `/voice on`
    in Telegram for spoken replies to voice notes. Detailed OpenClaw voice
    stability/similarity/speed controls do not map to Hermes' current API.
 4. **Coding subscriptions.** Sign in separately with
-   `hermes-run env -u OPENAI_API_KEY -u CODEX_API_KEY codex login` and
-   `hermes-run claude`, then
+   `sudo -iu hermes codex login` and `sudo -iu hermes claude`, then
    `/login` in Claude. For a supported migration, copy only the tools'
    compatible authentication files with private ownership and permissions;
    do not share writable token stores between two service identities.
-   `hermes-run` runs any command as the service user with the actual service
-   PATH and current environment, including installed coding tools.
    Hermes ships `claude-code` and `codex` skills that invoke those CLIs through
    its native terminal/process tools. Git and tmux are installed for their
    repository and interactive-session workflows. No ACP adapter is configured.
@@ -89,32 +90,25 @@ SOPS key. Secret values never appear in Nix-generated files in the store.
 5. **Encrypted files.** See `secrets/hermes/README.md` to enrol Hermes' own
    generated age recipient. Reused host SOPS values work independently of
    this optional agent-owned decryption identity.
-6. **Dashboard login.** Complete `/etc/hermes-agent/dashboard.env.example`
-   in a private local file and install it at `/var/lib/hermes/dashboard.env`,
-   owned by `hermes:hermes`, mode `0600`. Set either
-   `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH` (Hermes's native scrypt format)
-   or `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD`, plus an independent random
-   `HERMES_DASHBOARD_BASIC_AUTH_SECRET` kept stable across restarts. The
-   configured username is the host owner, `glib`. Never store these values
-   in the example, Nix settings or git. Then start `hermes-backend`.
-   The backend is skipped until the credential file exists; the gateway
-   continues independently. A SOPS-rendered environment file can replace
-   the local file through `my.hermes-agent.dashboard.credentialsFile`.
+6. **Dashboard login.** The username is `glib`. The password and stable
+   session-signing secret reuse the existing encrypted `gateway-token`,
+   which also authenticates the local API. Hermes's native password provider
+   handles hashing, login and browser sessions. To provision separate values,
+   add encrypted keys and override their `my.hermes-agent.secrets` mappings.
 
-For declarative Telegram secrets, encrypt a dedicated bot token in a SOPS
-source and map `TELEGRAM_BOT_TOKEN` through `my.hermes-agent.secrets`, or
-replace the optional environment file with a SOPS-rendered environment file.
-Do not put plaintext tokens into the example file, Nix settings or git.
-After rotating extra runtime-file values, restart both Hermes services.
+All these environment credentials follow OpenClaw's SOPS template pattern.
+The native Hermes module copies the private template to `.env` during NixOS
+activation, after `setupSecrets`. Apply secret changes with a rebuild or
+reactivation; restarting a service alone does not refresh that copy. Never
+put plaintext tokens in Nix settings or git.
 
 ## Interfaces and state
 
 | Location | Purpose |
 | --- | --- |
 | `/var/lib/hermes/.hermes/config.yaml` | Upstream merges Nix-owned keys while preserving other runtime settings |
-| `/var/lib/hermes/.hermes/.env` | Private environment refreshed atomically from current SOPS/runtime files at each service start |
+| `/var/lib/hermes/.hermes/.env` | Private environment prepared by upstream activation from SOPS and declared environment |
 | `/var/lib/hermes/.hermes/auth.json` | Hermes' own provider login and refresh state |
-| `/var/lib/hermes/.hermes/api.env` | Generated private local API key, preserved on restart |
 | `/var/lib/hermes/.hermes/SOUL.md` | Living personality document, maintained outside this repository |
 | `/var/lib/hermes/.hermes/memories/` | Mutable learned `MEMORY.md` and `USER.md` |
 | `/var/lib/hermes/.hermes/state.db` | Session state and searchable history |
@@ -125,13 +119,12 @@ After rotating extra runtime-file values, restart both Hermes services.
 | `/var/lib/hermes/workspace/AGENTS.md` | Living workspace instructions, maintained outside this repository |
 | `/var/lib/hermes/age-key.txt` | Optional independent SOPS identity |
 | `/var/lib/hermes/.codex/`, `.claude/` | Coding tools' separate login and native session state |
-| `/var/lib/hermes/dashboard.env` | Private native dashboard password/hash and stable session-signing secret |
 
 The API binds only to `127.0.0.1:8642` and supports Hermes' OpenAI-compatible
-chat and Responses interfaces. Its 48-byte random key is generated on first
-start, stored with mode `0600`, and passed through systemd, not process
-arguments. Consumers should read it locally without printing it. Stop the
-gateway before rotating/removing the file and update authorized consumers.
+chat and Responses interfaces. Its key is the existing SOPS `gateway-token`,
+supplied through the native environment configuration. No separate key file
+or key-generation helper is used. Update authorized consumers when rotating
+the encrypted credential, then rebuild/reactivate the host.
 
 After deployment and credential provisioning, the dashboard is available at
 `https://hermes.hoard.glib.sh` through the same web gateway as OpenClaw.
@@ -158,7 +151,7 @@ explicitly added as a writable path when that integration is enabled.
 | Existing capability | Hermes deployment |
 | --- | --- |
 | Declarative Nix package/config, service lifecycle, private state | Upstream package/module; journal logging, restart/readiness checks, resource limits |
-| Telegram owner DMs | Owner allowlist, groups disabled, separate bot placeholder |
+| Telegram owner DMs | Native owner allowlist, groups disabled; provision a separate bot in SOPS |
 | ChatGPT model subscription | Native `openai-codex` provider; independent login |
 | ElevenLabs incoming notes and spoken replies | Scribe v2 / Eleven v4; voice ID is a migration input; fewer voice controls |
 | Home Assistant Assist and admin MCP | Both endpoints, including environment interpolation for credentials |
@@ -169,15 +162,16 @@ explicitly added as a writable path when that integration is enabled.
 | Scheduled jobs | Native persistent cron with a lingering user manager |
 | UI / HTTP access | TLS dashboard at hermes.hoard.glib.sh with native login, plus authenticated local API |
 | Agent-owned SOPS files | Own generated age key and recipient enrolment scaffold |
-| Root / TPM key | Same host TPM signing identity through explicit per-user socket ACLs and PAM-authenticated sudo |
+| Root / TPM key | Same host TPM signing identity through native systemd socket/group permissions and PAM-authenticated sudo |
 | Owner-authorized NixOS native control | OpenClaw-only; no speculative Hermes authorization shim |
 | Voice PE live broker | Remains on OpenClaw; needs a real Hermes session/history/observer adapter |
 | OpenClaw Codex migration routing / queued-media patch | Application-specific behavior remains on OpenClaw |
 
 Hoard's TPM service remains owned by OpenClaw. The new
-`my.tpmSshKey.extraUsers` option grants Hermes socket access with a specific
-ACL reapplied after each agent restart; it exports no private key and grants
-no access to other users. Both accounts can use the same signing identity.
+`my.tpmSshKey.extraUsers` option adds Hermes to the socket's explicit access
+group. Native systemd socket activation creates the socket with its final
+permissions and keeps it available across daemon restarts. Both accounts
+use the same signing identity; the non-exportable private key stays in the TPM.
 Hermes uses the same PAM SSH-agent authentication and sudo rule as OpenClaw;
 `SSH_AUTH_SOCK` reaches its gateway, dashboard and coding subprocesses.
 Hoard also sets Hermes's native `approvals.mode = "off"` to match OpenClaw's
@@ -192,11 +186,11 @@ them. Living documents stay outside this repository for both agents:
 OpenClaw's main workspace is `/var/lib/openclaw/workspace/`, including its
 `SOUL.md`, `AGENTS.md` and memory; Hermes uses the paths listed above.
 Create and edit these files directly in persistent state as the owning agent
-user. Nix does not seed, replace or delete them. Removing the earlier Hermes
-document declarations preserves any copies already installed on hoard.
+user. Nix does not seed, replace or delete them. This scaffold has not been
+deployed; no live documents have been migrated.
 Fleet integration skills remain declarative configuration in the repo;
 agent identity, user profiles, personal notes and learned memory do not.
-Back up the whole service home, coding logins, age key and local bot file as
+Back up the whole service home, coding logins and age key as
 sensitive data while services are stopped; SQLite online backup is an option
 for live database snapshots. Restores must preserve ownership and modes.
 
@@ -208,18 +202,15 @@ an owner Telegram DM, rejection from a different Telegram account, a voice
 note and voice reply, listing exposed HA entities, a read-only admin MCP
 query, `git ls-remote`, a read-only `gh api` query against an installed
 repository, an authenticated coding-tool query,
-and a temporary OneDrive file round trip. Verify `hermes-run sudo -n true`
+and a temporary OneDrive file round trip. Verify
+`sudo -iu hermes env SSH_AUTH_SOCK=/run/tpm-ssh-agent/agent.sock sudo -n true`
 and `sudo -n true` through Hermes's Telegram and dashboard terminals to
-exercise the TPM/PAM path in each runtime context. Schedule a harmless cron job,
+exercise the TPM/PAM path in each runtime context. A raw login shell needs
+the socket variable explicitly; Hermes loads it from its native `.env`.
+Schedule a harmless cron job,
 restart the gateway, and verify its persisted result. Only test writes and
 home-control actions with the owner's authorization. The API health check
 alone does not establish these integrations work.
-
-For a code-only check in a development environment:
-
-```sh
-python3 -m unittest discover -s scripts/hermes-agent/tests -v
-```
 
 To roll back, stop both `hermes-agent` and `hermes-backend`, set
 `my.hermes-agent.enable = false` in the hoard module and rebuild, or use the

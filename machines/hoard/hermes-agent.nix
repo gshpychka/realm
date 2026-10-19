@@ -10,15 +10,15 @@
       publicHost = "hermes.${config.networking.fqdn}";
     };
     telegram.enable = true;
-    # Optional, root-provisioned file for a dedicated bot and voice identity.
-    # /etc/hermes-agent/telegram.env.example documents the non-secret shape.
-    environmentFiles = [ "-/var/lib/hermes/telegram.env" ];
     secrets = {
       OPENAI_API_KEY = "openai-api-key";
       ELEVENLABS_API_KEY = "elevenlabs-api-key";
       HOME_ASSISTANT_TOKEN = "home-assistant-token";
       HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
       TELEGRAM_ALLOWED_USERS = "telegram-owner-id";
+      # Provision this encrypted key for a separate bot before deployment.
+      # For a bot cutover, use telegram-bot-token after stopping OpenClaw's poller.
+      TELEGRAM_BOT_TOKEN = "hermes-telegram-bot-token";
     };
     github = config.my.openclaw.github;
     codex.enable = true;
@@ -72,6 +72,4 @@
     # Leave SOUL.md, workspace AGENTS.md and learned memory unmanaged so
     # rebuilding the host never replaces the agent's edits.
   };
-
-  environment.etc."hermes-agent/telegram.env.example".source = ./hermes-agent/telegram.env.example;
 }

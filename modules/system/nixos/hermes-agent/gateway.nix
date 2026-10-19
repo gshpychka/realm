@@ -10,38 +10,19 @@
 let
   cfg = config.my.hermes-agent;
   service = config.services.hermes-agent;
-  runtime = ../../../../scripts/hermes-agent/runtime.py;
-  credential = "${cfg.home}/api.env";
-  runtimeCommand = "${lib.getExe pkgs.python3} ${runtime}";
-  environmentScript = pkgs.writeText "hermes-environment.sh" (
-    lib.concatLines (
-      lib.mapAttrsToList (
-        name: value: "export ${lib.toShellVar name value}"
-      ) config.systemd.services.hermes-agent.environment
-    )
-  );
-  cliEnvironment = ''
-    if [ "$(${lib.getExe' pkgs.coreutils "id"} -un)" != ${lib.escapeShellArg cfg.user} ]; then
-      exec ${config.security.wrapperDir}/sudo -H -u ${lib.escapeShellArg cfg.user} "$0" "$@"
-    fi
-    cd ${lib.escapeShellArg cfg.workspace}
-    . ${environmentScript}
-  '';
-  cli = pkgs.writeShellApplication {
-    name = "hermes";
-    excludeShellChecks = [ "SC1091" ];
-    text = cliEnvironment + ''
-      exec ${lib.getExe service.package} "$@"
-    '';
-  };
-  run = pkgs.writeShellApplication {
-    name = "hermes-run";
-    excludeShellChecks = [ "SC1091" ];
-    text = cliEnvironment + ''
-      # The package's own dotenv loader supplies the same current credentials
-      # as the gateway; do not source an environment file as shell code.
-      exec ${service.package.hermesVenv}/bin/python3 -c \
-        'import os, sys; from hermes_cli.env_loader import load_hermes_dotenv; load_hermes_dotenv(); os.execvpe(sys.argv[1], sys.argv[1:], os.environ)' "$@"
+  readinessCheck = pkgs.writeShellApplication {
+    name = "hermes-gateway-readiness";
+    runtimeInputs = [
+      pkgs.curl
+      pkgs.jq
+    ];
+    text = ''
+      until printf 'header = "Authorization: Bearer %s"\n' "$API_SERVER_KEY" |
+        curl --silent --fail --noproxy '*' --config - \
+          http://127.0.0.1:${toString cfg.api.port}/health/detailed |
+        jq --exit-status '.platform == "hermes-agent" and .status == "ok"' >/dev/null; do
+        sleep 1
+      done
     '';
   };
 in
@@ -118,10 +99,11 @@ in
       inherit (cfg) user stateDir;
       group = cfg.user;
       workingDirectory = cfg.workspace;
-      # The shared interactive CLI runs as the service user; do not export
-      # its private HERMES_HOME into every user's login environment.
+      # Native per-user packages support `sudo -iu hermes hermes ...`
+      # without a CLI wrapper or a global HERMES_HOME for other accounts.
       addToSystemPackages = false;
       extraPackages = cfg.extraPackages ++ [
+        service.package
         pkgs.bashInteractive
         pkgs.coreutils
         pkgs.curl
@@ -168,9 +150,6 @@ in
         "/run/wrappers"
         "/run/current-system/sw"
       ];
-      preStart = ''
-        ${runtimeCommand} prepare --credential ${lib.escapeShellArg credential}
-      '';
       restartTriggers = [
         (pkgs.writeText "hermes-settings.json" (builtins.toJSON service.settings))
         (pkgs.writeText "hermes-documents.json" (
@@ -180,10 +159,7 @@ in
         ))
       ];
       serviceConfig = {
-        EnvironmentFile = [ "-${credential}" ];
-        ExecStartPost = [
-          "${runtimeCommand} ready --credential ${credential} --port ${toString cfg.api.port}"
-        ];
+        ExecStartPost = [ (lib.getExe readinessCheck) ];
         UMask = lib.mkForce "0077";
         MemoryMax = "3G";
         TasksMax = 512;
@@ -199,12 +175,11 @@ in
       };
     };
     systemd.services.hermes-backend = lib.mkIf cfg.dashboard.enable {
+      restartTriggers = config.systemd.services.hermes-agent.restartTriggers;
       path = lib.mkBefore [
         "/run/wrappers"
         "/run/current-system/sw"
       ];
-      after = [ "hermes-agent.service" ];
-      requires = [ "hermes-agent.service" ];
       serviceConfig = {
         UMask = lib.mkForce "0077";
         MemoryMax = "1G";
@@ -214,21 +189,10 @@ in
       };
     };
 
-    environment.systemPackages = [
-      cli
-      run
-    ];
+    # Match OpenClaw: the API credential is provisioned once in SOPS.
+    my.hermes-agent.secrets.API_SERVER_KEY = "gateway-token";
     systemd.tmpfiles.rules = [
       "d ${cfg.workspace}/tasks 0700 ${cfg.user} ${service.group} - -"
-    ];
-    system.checks = [
-      (pkgs.runCommand "hermes-runtime-check" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-        cp -r ${../../../../scripts/hermes-agent} src
-        chmod -R u+w src
-        cd src
-        python -m unittest discover -s tests -v
-        touch $out
-      '')
     ];
   };
 }

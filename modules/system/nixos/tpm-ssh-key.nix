@@ -10,28 +10,6 @@
 let
   cfg = config.my.tpmSshKey;
   unitName = "tpm-ssh-agent";
-  accessScript = socket: users: ''
-    # Type=simple starts before the daemon has necessarily bound its socket.
-    for _ in $(seq 1 100); do
-      if [ -S ${lib.escapeShellArg socket} ]; then
-        ${lib.concatMapStringsSep "\n" (
-          user: "setfacl -m ${lib.escapeShellArg "u:${user}:rw"} ${lib.escapeShellArg socket}"
-        ) users}
-        exit 0
-      fi
-      sleep 0.1
-    done
-    echo "TPM SSH agent socket did not become ready" >&2
-    exit 1
-  '';
-  grantAccess = pkgs.writeShellApplication {
-    name = "tpm-ssh-agent-grant-access";
-    runtimeInputs = [
-      pkgs.acl
-      pkgs.coreutils
-    ];
-    text = accessScript cfg.socket cfg.extraUsers;
-  };
 in
 {
   options.my.tpmSshKey = {
@@ -45,7 +23,7 @@ in
     extraUsers = lib.mkOption {
       type = lib.types.listOf lib.types.nonEmptyStr;
       default = [ ];
-      description = "Additional local users allowed to sign using this same TPM key; explicit socket ACLs, never the private key.";
+      description = "Additional local users allowed to sign using this same TPM key through its socket group.";
     };
 
     socket = lib.mkOption {
@@ -64,44 +42,33 @@ in
     # makes /dev/tpmrm0 usable by the tss group
     security.tpm2.enable = true;
 
-    system.checks = lib.optional (cfg.extraUsers != [ ]) (
-      pkgs.runCommand "tpm-ssh-agent-access-check"
-        {
-          nativeBuildInputs = [
-            pkgs.acl
-            pkgs.python3
-          ];
-        }
-        ''
-          python - <<'PY'
-          import socket
-          with socket.socket(socket.AF_UNIX) as agent:
-              agent.bind("fixture.sock")
-          PY
-          chmod 600 fixture.sock
-          ${accessScript "fixture.sock" [ "12345" ]}
-          getfacl -cpn fixture.sock > acl.txt
-          grep -qx 'user:12345:rw-' acl.txt
-          grep -qx 'other::---' acl.txt
-          # The initial primary-user permission must remain intact.
-          grep -qx 'user::rw-' acl.txt
-          touch "$out"
-        ''
-    );
+    users.groups.${unitName}.members = lib.unique ([ cfg.user ] ++ cfg.extraUsers);
+
+    # ssh-tpm-agent supports LISTEN_FDS natively. Systemd creates the socket
+    # with its final access policy before starting the daemon, and keeps it
+    # available across daemon restarts. No post-start permission repair is needed.
+    systemd.sockets.${unitName} = {
+      wantedBy = [ "sockets.target" ];
+      listenStreams = [ cfg.socket ];
+      socketConfig = {
+        SocketUser = cfg.user;
+        SocketGroup = unitName;
+        SocketMode = "0660";
+        DirectoryMode = "0711";
+        RemoveOnStop = true;
+      };
+    };
 
     systemd.services.${unitName} = {
       description = "SSH agent with this host's TPM-derived key";
       wantedBy = [ "multi-user.target" ];
+      requires = [ "${unitName}.socket" ];
+      after = [ "${unitName}.socket" ];
       serviceConfig = {
         ExecStart = "${lib.getExe' pkgs.ssh-tpm-agent "ssh-tpm-agent"} --no-load --hierarchy owner -l ${cfg.socket}";
         User = cfg.user;
         Group = config.users.users.${cfg.user}.group;
         SupplementaryGroups = [ config.security.tpm2.tssGroup ];
-        RuntimeDirectory = unitName;
-        # The socket remains private except for the explicit per-user ACLs.
-        RuntimeDirectoryMode = "0711";
-        ExecStartPost = lib.mkIf (cfg.extraUsers != [ ]) (lib.getExe grantAccess);
-        TimeoutStartSec = 20;
         UMask = "0077";
         Restart = "on-failure";
         DevicePolicy = "closed";
