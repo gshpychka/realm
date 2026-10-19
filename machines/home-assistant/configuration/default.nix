@@ -1,5 +1,5 @@
 {
-  _module.args.haDevices = import ./devices.nix;
+  _module.args.ha = import ./lib.nix;
   imports = [
     ./automations/devices.nix
     ./automations/lighting.nix

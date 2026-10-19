@@ -1,10 +1,18 @@
 {
   config,
+  inputs,
   lib,
   pkgs,
   ...
 }:
+let
+  haPkgs = import inputs.nixpkgs { system = pkgs.stdenv.hostPlatform.system; };
+in
 {
+  _module.args.haPkgs = haPkgs;
+  _module.args.haPackages = import ../../packages/home-assistant {
+    pkgs = haPkgs;
+  };
   imports = [
     ./hardware.nix
     ./home-assistant.nix

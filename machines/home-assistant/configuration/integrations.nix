@@ -1,12 +1,14 @@
+{ ha, ... }:
 {
   services.home-assistant.config = {
+    homeassistant.media_dirs.local = "/var/lib/hass/media";
     default_config = { };
     media_player = [
       {
         platform = "smartthings_soundbar";
         name = "Soundbar";
         api_key = "!secret soundbar_api_key";
-        device_id = "53930054-9a59-2383-a9fb-abfef7d05518";
+        device_id = ha.devices.soundbarCloud;
         max_volume = 30;
       }
     ];

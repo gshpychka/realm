@@ -1,22 +1,18 @@
 {
-  inputs,
+  haPackages,
   lib,
   pkgs,
   ...
 }:
-let
-  haPkgs = import inputs.nixpkgs { system = pkgs.stdenv.hostPlatform.system; };
-  packages = import ../../packages/home-assistant { pkgs = haPkgs; };
-in
 {
   imports = [ ./configuration ];
 
   services.home-assistant = {
     enable = true;
-    package = packages.core;
+    package = haPackages.core;
     configDir = "/var/lib/hass";
-    extraComponents = packages.coreComponents;
-    inherit (packages) customComponents;
+    extraComponents = haPackages.coreComponents;
+    inherit (haPackages) customComponents;
     openFirewallForComponents = true;
   };
   systemd.services.home-assistant = {
@@ -36,7 +32,7 @@ in
     path = [ pkgs.openssh ];
     preStart = lib.mkAfter ''
       ln -sfn "$CREDENTIALS_DIRECTORY/secrets.yaml" /var/lib/hass/secrets.yaml
-      mkdir -p /var/lib/hass/pyscript/apps /var/lib/hass/yasno-address-guard
+      mkdir -p /var/lib/hass/pyscript/apps /var/lib/hass/yasno-address-guard /var/lib/hass/media
       # The app source is immutable; its transaction/recovery journal is state.
       ln -sfn ${./yasno-address-guard} /var/lib/hass/pyscript/apps/yasno_address_guard
     '';

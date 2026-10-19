@@ -13,11 +13,6 @@ let
     _: value: value != null
   )) configuration;
   configFile = (pkgs.formats.yaml { }).generate "configuration.yaml" filteredConfiguration;
-  scriptDefinitions = import ../../machines/home-assistant/configuration/scripts/definitions.nix {
-    haDevices = import ../../machines/home-assistant/configuration/devices.nix;
-  };
-  inactiveScripts = builtins.removeAttrs scriptDefinitions (builtins.attrNames configuration.script);
-  inactiveScriptFile = (pkgs.formats.yaml { }).generate "inactive-scripts.yaml" inactiveScripts;
 in
 pkgs.runCommand "home-assistant-config-qa"
   {
@@ -50,8 +45,8 @@ pkgs.runCommand "home-assistant-config-qa"
     # Reproduce only HA's own wrapper environment. MCP's separate dependencies
     # must not accidentally satisfy a missing HA/custom-component requirement.
     env -i HOME="$TMPDIR" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
-      PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./validate-ha.py} \
-      ${configFile} "$PWD" ${inactiveScriptFile}
+      PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/validate-ha.py \
+      ${configFile} "$PWD"
     ${python}/bin/python ${./test-runtime.py} ${../../machines/home-assistant}
     touch $out
   ''

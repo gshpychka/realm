@@ -1,6 +1,3 @@
-# Pyscript injects decorators and service globals; offline contracts check this app.
-extend-exclude = ["machines/home-assistant/yasno-address-guard"]
-
 [lint]
 select = [
   "E4",  # pycodestyle: import placement
@@ -15,6 +12,8 @@ select = [
 ]
 
 [lint.per-file-ignores]
+# Pyscript injects decorators and service globals into its app entrypoint.
+"machines/home-assistant/yasno-address-guard/__init__.py" = ["F821"]
 # spliced into PlexKodiConnect's track loop, where stream and track are locals
 "scripts/kodi/snippets/pkc-hdr.py" = ["F821"]
 # spliced into Bingie's widget code before set_stream_details, where stream_details is a local

@@ -1,12 +1,11 @@
 {
-  inputs,
+  haPackages,
+  haPkgs,
   lib,
   pkgs,
   ...
 }:
 let
-  haPkgs = import inputs.nixpkgs { system = pkgs.stdenv.hostPlatform.system; };
-  packages = import ../../packages/home-assistant { pkgs = haPkgs; };
   fanPython = pkgs.python3.withPackages (ps: [ ps.smbus2 ]);
   matterImage = import ../../packages/home-assistant/matter-image.nix;
 in
@@ -28,7 +27,7 @@ in
       StateDirectory = "ha-mcp";
       WorkingDirectory = "/var/lib/ha-mcp";
       EnvironmentFile = "/var/lib/private/home-assistant/ha-mcp.env";
-      ExecStart = "${packages.mcp}/bin/ha-mcp-web";
+      ExecStart = "${haPackages.mcp}/bin/ha-mcp-web";
       Restart = "on-failure";
       RestartSec = 10;
       UMask = "0077";

@@ -10,6 +10,7 @@ import importlib
 import json
 import socket
 import sys
+import tempfile
 from importlib.metadata import version
 from pathlib import Path
 from types import SimpleNamespace
@@ -29,7 +30,7 @@ socket.socket.sendto = denied
 socket.getaddrinfo = denied
 
 
-async def validate(hass, configuration, components, component_path, inactive_scripts):
+async def validate(hass, configuration, components, component_path):
     failures = []
     from homeassistant.components.automation.config import PLATFORM_SCHEMA
     from homeassistant.components.homeassistant.scene import (
@@ -37,8 +38,17 @@ async def validate(hass, configuration, components, component_path, inactive_scr
     )
     from homeassistant.components.script.config import SCRIPT_ENTITY_SCHEMA
     from homeassistant.const import Platform
+    from homeassistant.core_config import CORE_CONFIG_SCHEMA
     from homeassistant.helpers import config_validation as cv
     from homeassistant.helpers.template import Template
+
+    # CORE_CONFIG_SCHEMA checks directory existence. Validate the same media
+    # mapping with temporary directories; the native service creates the real
+    # state directory before HA starts.
+    core_config = dict(configuration["homeassistant"])
+    with tempfile.TemporaryDirectory() as media_root:
+        core_config["media_dirs"] = dict.fromkeys(core_config["media_dirs"], media_root)
+        await cv.async_validate(hass, CORE_CONFIG_SCHEMA, core_config)
 
     for item in configuration["automation"]:
         try:
@@ -47,8 +57,7 @@ async def validate(hass, configuration, components, component_path, inactive_scr
             failures.append(
                 ["automation", item["id"], type(error).__name__, str(error)]
             )
-    assert not configuration["script"].keys() & inactive_scripts.keys()
-    for name, item in (configuration["script"] | inactive_scripts).items():
+    for name, item in configuration["script"].items():
         try:
             await cv.async_validate(hass, SCRIPT_ENTITY_SCHEMA, item)
         except Exception as error:
@@ -150,6 +159,9 @@ async def validate(hass, configuration, components, component_path, inactive_scr
     if not compileall.compile_dir(component_path / "custom_components", quiet=2):
         failures.append(["component", "compile"])
     if not failures:
+        from behavior import validate_behavior
+
+        await validate_behavior(hass, configuration)
         # Check the API port with an inert device value; no device method runs.
         from custom_components.dyson_local.vacuum import DYSON_STATES, DysonVacuumEntity
         from homeassistant.components.vacuum import VacuumActivity
@@ -173,7 +185,6 @@ async def validate(hass, configuration, components, component_path, inactive_scr
                 "ha_version": version("homeassistant"),
                 "automations": len(configuration["automation"]),
                 "scripts": len(configuration["script"]),
-                "inactive_scripts": len(inactive_scripts),
                 "scenes": len(configuration["scene"]),
                 "custom_component_imports": len(components),
                 "custom_modules_imported": checked_modules,
@@ -198,10 +209,7 @@ async def main():
     # Register HA's schema context without starting HA or setting up anything.
     hass = HomeAssistant(str(component_path))
     try:
-        inactive_scripts = yaml.safe_load(Path(sys.argv[3]).read_text())
-        result = await validate(
-            hass, configuration, components, component_path, inactive_scripts
-        )
+        result = await validate(hass, configuration, components, component_path)
         assert hass.state is CoreState.not_running
         return result
     finally:

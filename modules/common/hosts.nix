@@ -96,8 +96,7 @@
         mac = "E8:FF:1E:D6:89:EB";
         enableSubdomains = true;
       };
-      # Existing HA Pi5 wired adapter; reservation applies only when harbor is
-      # separately deployed. Preserve HA's current address across the OS swap.
+      # Raspberry Pi 5 wired adapter; harbor owns the DHCP reservation.
       homeassistant = {
         lanIp = "192.168.1.212";
         mac = "2C:CF:67:03:09:D1";

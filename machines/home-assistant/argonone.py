@@ -12,7 +12,7 @@ from pathlib import Path
 def fan_speed(celsius):
     if not math.isfinite(celsius) or celsius < -20 or celsius > 150:
         raise ValueError("invalid temperature")
-    # The installed add-on truncates Celsius before its integer linear curve.
+    # Integer Celsius gives a five-percent step for each degree above 55.
     return max(0, min(100, (int(celsius) - 55) * 5))
 
 

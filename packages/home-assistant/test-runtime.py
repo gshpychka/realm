@@ -213,6 +213,20 @@ def guard(host):
         assert journal == {"last_valid_group": "1.1"}
         assert len(saved) == 1
 
+        # Provider and notification failures must still produce a durable retry
+        # status instead of losing the original error in the notification call.
+        async def unavailable(*_args):
+            raise RuntimeError("synthetic provider/notification failure")
+
+        instance.group = unavailable
+        instance.api = SimpleNamespace(notification=unavailable)
+        result = await instance.check()
+        assert result["status"] == "check_failed"
+        assert journal["notification_failed"] is True
+        assert journal["error"] == "official_lookup_validation_or_correction_failed"
+        assert result["next_check"] == journal["next_check"]
+        assert len(saved) == 2
+
     asyncio.run(recovery())
 
 

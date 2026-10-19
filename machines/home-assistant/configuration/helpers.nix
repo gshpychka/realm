@@ -1,7 +1,7 @@
 {
   services.home-assistant.config = {
     input_boolean = {
-      home_assistant_fully_loaded = {
+      homeassistant_fully_loaded = {
         name = "Home Assistant Fully Loaded";
         icon = "mdi:home-assistant";
       };

@@ -1,15 +1,7 @@
-{ lib, haDevices, ... }:
-let
-  definitions = import ./definitions.nix { inherit haDevices; };
-  enabled = [
-    "ask_gpt"
-    "check_print"
-    "game_mode"
-    "set_air_conditioner_temperature"
-  ];
-in
+{ ha, ... }:
 {
-  services.home-assistant.config.script = lib.filterAttrs (
-    name: _: builtins.elem name enabled
-  ) definitions;
+  services.home-assistant.config.script =
+    (import ./devices.nix { inherit ha; })
+    // (import ./media.nix { inherit ha; })
+    // (import ./voice.nix { inherit ha; });
 }
