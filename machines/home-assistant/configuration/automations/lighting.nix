@@ -15,7 +15,7 @@ let
   ];
 in
 {
-  services.home-assistant.config.automation = [
+  services.home-assistant.config.automation = map ha.automation [
     {
       actions = [ (call "light.toggle" entities.light.roomOverheadLights { }) ];
       alias = "Lighting / Overhead lights toggle";

@@ -1,5 +1,6 @@
+{ ha, ... }:
 {
-  services.home-assistant.config = {
+  services.home-assistant.config = ha.helpers {
     input_boolean = {
       homeassistant_fully_loaded = {
         name = "Home Assistant Fully Loaded";

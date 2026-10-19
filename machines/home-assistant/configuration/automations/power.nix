@@ -1,6 +1,7 @@
 { ha, ... }:
 let
   inherit (ha)
+    templates
     entities
     call
     state
@@ -8,7 +9,7 @@ let
     ;
 in
 {
-  services.home-assistant.config.automation = [
+  services.home-assistant.config.automation = map ha.automation [
     {
       actions = [ (call "switch.turn_on" entities.switch.reaperPower { }) ];
       alias = "Power / Turn on reaper in the morning";
@@ -56,15 +57,15 @@ in
       actions = [
         {
           variables = {
-            message = "City power is off. {% set schedule = states('${entities.sensor.yasnoPower}') %} {% if schedule == 'outage' %} This is a scheduled outage. {% set restoration = as_datetime(states('${entities.sensor.yasnoNextPower}'), none) %} {% set remaining = (as_timestamp(restoration) - as_timestamp(now())) if restoration is not none else none %} {% if remaining is not none and remaining > 0 %} {% if remaining < 3600 %} Power should be back on in less than an hour. {% else %} {% set hours = (remaining / 3600) | round(0) | int %} Power should be back on in about {{ hours }} {{ 'hour' if hours == 1 else 'hours' }}. {% endif %} {% else %} No information about how long the outage will last. {% endif %} {% elif schedule == 'normal' %} This is not a scheduled outage. {% else %} The outage schedule is unavailable, so I cannot confirm whether this outage is scheduled. {% endif %} Battery is at {{states('${entities.sensor.batteryCharge}') | int('unknown') }} percent. Current power draw is {{ states('${entities.sensor.multiplusOutputPowerL1}') }} Watts.";
+            message = templates.city_power_off;
           };
         }
-        (announce "{{ message }}" { preannounce = true; })
+        (announce templates.message { preannounce = true; })
         {
           action = "telegram_bot.send_message";
           data = {
             disable_notification = true;
-            message = "{{ message }}";
+            inherit (templates) message;
           };
         }
       ];
@@ -83,10 +84,7 @@ in
     }
     {
       actions = [
-        (announce
-          "Warning: The battery level is - {{states('${entities.sensor.batteryCharge}') | int }}  percent..."
-          { preannounce = true; }
-        )
+        (announce templates.battery_low { preannounce = true; })
       ];
       alias = "Power / Low battery";
       triggers =
@@ -106,10 +104,7 @@ in
     }
     {
       actions = [
-        (announce
-          "Warning: Less than one hour of battery power remaining. Battery is at {{ states('${entities.sensor.batteryCharge}') | round(0) }} percent."
-          { preannounce = true; }
-        )
+        (announce templates.battery_time_low { preannounce = true; })
       ];
       alias = "Power / Low battery remaining time";
       triggers = [
@@ -150,15 +145,15 @@ in
       actions = [
         {
           variables = {
-            message = "Power is back on. Battery is at {{states('${entities.sensor.batteryCharge}') | int('unknown') }} percent.";
+            message = templates.city_power_on;
           };
         }
-        (announce "{{ message }}" { preannounce = true; })
+        (announce templates.message { preannounce = true; })
         {
           action = "telegram_bot.send_message";
           data = {
             disable_notification = true;
-            message = "{{ message }}";
+            inherit (templates) message;
           };
         }
       ];

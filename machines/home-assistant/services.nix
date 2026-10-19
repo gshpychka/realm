@@ -1,4 +1,5 @@
 {
+  ha,
   haPackages,
   haPkgs,
   lib,
@@ -6,6 +7,7 @@
   ...
 }:
 let
+  inherit (ha) templates;
   fanPython = pkgs.python3.withPackages (ps: [ ps.smbus2 ]);
   matterImage = import ../../packages/home-assistant/matter-image.nix;
 in
@@ -69,7 +71,7 @@ in
         name = "Argon ONE Fan Speed";
         unique_id = "argon_one_fan_speed";
         command = "cat /run/argonone/fan-status";
-        value_template = "{{ value.split()[0] }}";
+        value_template = templates.fan_speed;
         unit_of_measurement = "%";
         scan_interval = 30;
       };

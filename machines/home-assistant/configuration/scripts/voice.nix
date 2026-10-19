@@ -1,6 +1,6 @@
 { ha }:
 let
-  inherit (ha) entities;
+  inherit (ha) templates;
 in
 {
   ask_gpt = {
@@ -29,16 +29,20 @@ in
     mode = "parallel";
     sequence = [
       {
+        condition = "template";
+        value_template = templates.gpt_ready;
+      }
+      {
         action = "conversation.process";
-        data = "{{ dict(text=prompt, agent_id='${entities.conversation.chatgptExpert}', **({'conversation_id': conversation_id} if conversation_id | default('') else {})) }}";
+        data = templates.gpt_request;
         response_variable = "gpt_response";
       }
       {
         variables = {
           result = {
-            conversation_id = "{{gpt_response.conversation_id}}";
+            conversation_id = templates.gpt_conversation;
             instructions = "Make sure to say that you got the response from GPT. Preface the answer with \"Here's what GPT said: \". Use the returned conversation_id in subsequent calls to continue this conversation.";
-            response = "{{gpt_response.response.speech.plain.speech}}";
+            response = templates.gpt_speech;
           };
         };
       }

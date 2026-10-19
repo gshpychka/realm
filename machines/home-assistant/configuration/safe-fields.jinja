@@ -1,0 +1,17 @@
+{# HA's as_function preserves the native value; missing paths
+   return None without accessing an undefined attribute. #}
+{% macro dig(value, path, returns) -%}
+  {%- set ns = namespace(value=value) -%}
+  {%- for key in path -%}
+    {%- if ns.value is mapping -%}
+      {%- set ns.value = ns.value.get(key) -%}
+    {%- else -%}
+      {%- set ns.value = ns.value | attr(key) | default(none) -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- do returns(ns.value) -%}
+{%- endmacro %}
+{% set dig = dig | as_function %}
+{% macro text(value, fallback) -%}
+  {{- value if value is string and value else fallback -}}
+{%- endmacro %}

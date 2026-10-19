@@ -1,4 +1,7 @@
 { ha, ... }:
+let
+  inherit (ha) templates;
+in
 {
   services.home-assistant.config = {
     homeassistant.media_dirs.local = "/var/lib/hass/media";
@@ -22,7 +25,7 @@
         name = "Ollama status";
         unique_id = "ollama_status";
         device_class = "connectivity";
-        value_template = "{{ 'qwen3.5:9b-q8_0' in value_json.models | map(attribute='name') | list }}";
+        value_template = templates.ollama_online;
         resource = "https://reaper.glib.sh/ollama/api/tags";
       }
     ];

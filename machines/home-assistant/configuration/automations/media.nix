@@ -10,7 +10,7 @@ let
     ;
 in
 {
-  services.home-assistant.config.automation = [
+  services.home-assistant.config.automation = map ha.automation [
     {
       actions = [
         (call "scene.turn_on" entities.scene.night { transition = 1; })

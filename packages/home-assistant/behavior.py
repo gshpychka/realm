@@ -98,6 +98,15 @@ async def validate_behavior(hass, config):
         weather, {"wx": {"weather.openweathermap": {"forecast": [wet] * 6}}}
     )
     assert "Rain is likely" in values["message"] and "warm up" in values["message"]
+    for state in [None, "unknown", "unavailable"]:
+        if state is None:
+            hass.states.async_remove("weather.openweathermap")
+        else:
+            hass.states.async_set("weather.openweathermap", state)
+        values = await variables(weather, {"wx": {}})
+        assert values["fc"] == [] and values["nxt"] == []
+        assert "unavailable" in values["message"]
+        assert "0 degrees" not in values["message"]
 
     media = automation("Voice / Add media using Assist")["actions"]
     for slots, title, kind in [
@@ -117,7 +126,11 @@ async def validate_behavior(hass, config):
     assert render(rejection, {"raw_title": "The Matrix"}) is False
 
     # Native mappings preserve arbitrary prompt text and optional continuation.
-    request = config["script"]["ask_gpt"]["sequence"][0]["data"]
+    request = next(
+        action["data"]
+        for action in config["script"]["ask_gpt"]["sequence"]
+        if action.get("action") == "conversation.process"
+    )
     prompt = 'Explain "quotes", a backslash \\ and a newline\nwithout changing them.'
     for extra in [{}, {"conversation_id": "fixture-thread"}]:
         result = render(request, {"prompt": prompt, **extra})
@@ -126,6 +139,10 @@ async def validate_behavior(hass, config):
             "agent_id": "conversation.chatgpt_expert",
             **extra,
         }
+    for script in ["ask_gpt", "set_air_conditioner_temperature"]:
+        gate = config["script"][script]["sequence"][0]
+        assert gate["condition"] == "template"
+        assert render(gate["value_template"], {}) is False
 
     # The movie offer is armed after speech, and both light toggles yield to it.
     offer = automation("Media / Ask to activate Movie scene")

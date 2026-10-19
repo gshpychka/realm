@@ -1,11 +1,22 @@
 {
+  config,
   haPackages,
+  inputs,
   lib,
   pkgs,
   ...
 }:
 {
   imports = [ ./configuration ];
+
+  # The offline x86 check is a required build dependency, including when the
+  # Pi closure is built separately from flake checks. It never sets up HA.
+  system.extraDependencies = [
+    (import ../../packages/home-assistant/check.nix {
+      pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+      configuration = config.services.home-assistant.config;
+    })
+  ];
 
   services.home-assistant = {
     enable = true;

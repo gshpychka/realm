@@ -1,5 +1,6 @@
+{ lib, ... }:
 {
-  _module.args.ha = import ./lib.nix;
+  _module.args.ha = import ./lib.nix { inherit lib; };
   imports = [
     ./automations/devices.nix
     ./automations/lighting.nix

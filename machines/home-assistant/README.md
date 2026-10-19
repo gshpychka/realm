@@ -11,6 +11,21 @@ contains only ZHA event sources, the soundbar's cloud device identity, and three
 unresolved service targets. `lib.nix` shares service calls, state conditions,
 announcements, ZHA triggers and the printer snapshot sequence.
 
+Definitions pass through checked Nix constructors for automation, script, action,
+condition and helper shapes. Bodies stay native attrsets and lists. Dependent
+variables use `orderedVariables`, which emits one action per binding in list
+order. Raw template programs are centralized in `templates.nix`; declarations use
+named references. `template-literal.nix` serializes embedded values as JSON inside
+a Jinja string and decodes them with HA's `from_json`. `safe-fields.jinja` handles
+missing fields in provider responses, including native HA event/state objects.
+
+The existing-solutions preflight reviewed the maintained
+[nixpkgs HA module](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/home-automation/home-assistant.nix)
+and [HA custom template support](https://www.home-assistant.io/docs/templating/custom-templates/).
+The module provides native configuration serialization; HA provides the actual
+schema and Jinja engines. The local constructors add narrow shape/provenance
+checks around those existing tools, rather than another configuration language.
+
 Automations omit optional top-level IDs and keep descriptive aliases. Trigger
 IDs are retained where branch conditions reference them. Nix-managed definitions
 are edited in Nix.
@@ -65,10 +80,30 @@ state and SSH host keys, validates SQLite, and restores the active services even
 if copying fails. Incomplete `.next` copies require operator review. Retention is
 7 daily, 4 weekly and 6 monthly snapshots.
 
-The x86 offline config check validates native HA schemas, custom integration
+The x86 offline config check is a required dependency of the Pi system build as
+well as `checks.x86_64-linux.home-assistant-config`. It needs an x86 builder, even
+when building the Pi closure separately. It validates native HA schemas, custom integration
 imports and dependency versions, MCP resources, and cooling/backup/Yasno
 contracts. It also exercises ordered variable templates, quoted GPT prompts,
 movie timer gating, printer snapshots, alert thresholds and native state triggers
-using in-memory fixtures. It neither starts HA nor talks to hardware or integrations. A complete
+using in-memory fixtures. Every template use must match a registered program and
+an audited scope. Every program compiles with the pinned HA 2026.10.2/Jinja engine
+and renders with strict undefined handling under representative value/type,
+missing-entity, unknown/unavailable and malformed-response fixtures. Negative
+fixtures reject malformed templates, invalid bodies, broken quoting, undeclared
+variables, forward references, sorted-map dependency errors and wrong output
+types. AC and expert-query scripts guard their inputs before calling services;
+unavailable weather and provider responses produce explicit fallback text.
+
+These are schema, conservative scope and representative behavior checks. They
+are not static typing or formal verification of arbitrary Jinja, device
+conditions, service data, private registry targets or integration behavior.
+HA's native parser can turn numeric/boolean text into scalars; text contracts
+allow those scalar results, while boolean/numeric/mapping/list contracts check
+their actual native types. Unrecognized template scopes fail the audit and need
+an explicit extension. Private inventories and physical behavior still require
+runtime acceptance.
+
+The check neither starts HA nor talks to hardware or integrations. A complete
 Pi OS build and physical acceptance require an aarch64 builder and the target
 hardware.

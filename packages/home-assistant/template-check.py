@@ -1,0 +1,512 @@
+"""Compile every template and audit fixture types and ordered variable scope.
+
+Uses the pinned HA environment, not a parallel Jinja implementation. Scope checks
+are conservative for the action forms used here; unsupported dynamic action forms
+must be reviewed before extending them. No services or integration setup run.
+"""
+
+import copy
+import math
+from collections import Counter
+from collections.abc import Mapping
+
+from homeassistant.core import State
+from homeassistant.exceptions import TemplateError
+from homeassistant.helpers import device_registry, entity_registry
+from homeassistant.helpers.template import (
+    Template,
+    TemplateEnvironment,
+    is_template_string,
+)
+from homeassistant.util import dt as dt_util
+from jinja2 import meta
+
+
+def templates_in(value, path=()):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield from templates_in(item, (*path, key))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from templates_in(item, (*path, index))
+    elif isinstance(value, str) and is_template_string(value):
+        yield path, value
+
+
+def audit_scope(hass, configuration):
+    """Check every use, not just each unique template or declared dependencies."""
+    env = TemplateEnvironment(hass, strict=True)
+    audited = Counter()
+
+    def check(value, available, path):
+        for location, source in templates_in(value, path):
+            audited[source] += 1
+            names = meta.find_undeclared_variables(env.parse(source))
+            missing = names - available
+            if missing:
+                raise ValueError(
+                    f"{location}: variables used before binding: {sorted(missing)}"
+                )
+
+    def bindings(values, available, path):
+        for name, value in values.items():
+            check(value, available, (*path, name))
+            available.add(name)
+
+    def actions(sequence, available, path):
+        available = set(available)
+        for index, action in enumerate(sequence):
+            location = (*path, index)
+            # Branches get the current scope. A variable first bound in an
+            # optional/parallel branch is not assumed to exist afterward.
+            nested = {
+                "variables",
+                "if",
+                "then",
+                "else",
+                "choose",
+                "default",
+                "parallel",
+                "sequence",
+            }
+            check(
+                {k: v for k, v in action.items() if k not in nested},
+                available,
+                location,
+            )
+            if "variables" in action:
+                bindings(action["variables"], available, (*location, "variables"))
+            if "if" in action:
+                check(action["if"], available, (*location, "if"))
+            for key in ["then", "else", "default", "parallel", "sequence"]:
+                if key in action:
+                    actions(action[key], available, (*location, key))
+            for branch in action.get("choose", []):
+                check(
+                    branch["conditions"], available, (*location, "choose", "conditions")
+                )
+                actions(
+                    branch["sequence"], available, (*location, "choose", "sequence")
+                )
+            # Response variables are available only after their service call.
+            if "response_variable" in action and "action" in action:
+                available.add(action["response_variable"])
+        return available
+
+    for item in configuration["automation"]:
+        available = {"trigger", "this", "context"}
+        bindings(item.get("variables", {}), available, (item["alias"], "variables"))
+        check(item.get("conditions", []), available, (item["alias"], "conditions"))
+        check(item["triggers"], {"this"}, (item["alias"], "triggers"))
+        actions(item["actions"], available, (item["alias"], "actions"))
+    for name, item in configuration["script"].items():
+        available = {"this", "context", *item.get("fields", {})}
+        bindings(item.get("variables", {}), available, (name, "variables"))
+        actions(item["sequence"], available, (name, "sequence"))
+    # Sensor templates are rendered by HA with these documented input names.
+    check(
+        configuration.get("binary_sensor", []),
+        {"value", "value_json", "this"},
+        ("binary_sensor",),
+    )
+    check(
+        configuration.get("command_line", []),
+        {"value", "value_json", "this"},
+        ("command_line",),
+    )
+    expected = Counter(source for _, source in templates_in(configuration))
+    if audited != expected:
+        raise ValueError("Template use outside the audited HA scopes")
+
+
+def output_matches(kind, result):
+    number = type(result) in (int, float) and math.isfinite(result)
+    # HA's native result parser can convert numeric/boolean text to a scalar.
+    # Text service fields use cv.string; mappings/lists/None are not text.
+    return {
+        "text": isinstance(result, (str, bool, int, float)),
+        "nullable-text": result is None or isinstance(result, str),
+        "boolean": type(result) is bool,
+        "integer": type(result) is int,
+        "number": number,
+        "number-or-unknown": number or result == "unknown",
+        "mapping": isinstance(result, Mapping),
+        "list": isinstance(result, list),
+    }[kind]
+
+
+def checked_render(hass, contract, variables=None):
+    result = Template(contract["source"], hass).async_render(variables, strict=True)
+    assert output_matches(contract["output"], result), (
+        contract["output"],
+        type(result),
+        result,
+    )
+    return result
+
+
+def assert_rejected(callback, exceptions):
+    try:
+        callback()
+    except exceptions:
+        return
+    raise AssertionError("negative fixture was accepted")
+
+
+async def validate_templates(hass, config, contracts, literals):
+    device_registry.async_setup(hass)
+    await device_registry.async_load(hass, load_empty=True)
+    await entity_registry.async_load(hass, load_empty=True)
+    used = {source for _, source in templates_in(config)}
+    registered = {item["source"] for item in contracts.values()}
+    assert used == registered, {
+        "unchecked": sorted(used - registered),
+        "unused": sorted(registered - used),
+    }
+    for name, contract in contracts.items():
+        try:
+            Template(contract["source"], hass).ensure_valid()
+        except TemplateError as error:
+            raise AssertionError(f"{name}: compile failed") from error
+    audit_scope(hass, config)
+
+    weather = "weather.openweathermap"
+    forecast = {"temperature": 20, "condition": "sunny", "precipitation_probability": 0}
+    states = {
+        weather: ("sunny", {"temperature": 20}),
+        "light.balcony_h2c_chamber_light": ("off", {}),
+        "sensor.balcony_h2c_current_stage": ("printing", {}),
+        "sensor.balcony_h2c_print_status": ("running", {}),
+        "sensor.balcony_h2c_task_name": ("Fixture print", {}),
+        "sensor.balcony_h2c_print_progress": ("25", {}),
+        "sensor.balcony_h2c_current_layer": ("2", {}),
+        "sensor.balcony_h2c_total_layer_count": ("8", {}),
+        "sensor.balcony_h2c_end_time": ("2026-10-19T18:00:00+00:00", {}),
+        "binary_sensor.balcony_h2c_hms_errors": (
+            "on",
+            {"0-Code": "fixture", "0-Error": "Check nozzle"},
+        ),
+        "binary_sensor.balcony_h2c_print_error": ("off", {}),
+        "sensor.battery_charge": ("40", {}),
+        "sensor.yasno_power": ("normal", {}),
+        "sensor.yasno_next_power": ("unknown", {}),
+        "sensor.multiplus_output_power_l1": ("120", {}),
+        "sensor.internet_provider": ("Fixture ISP", {}),
+        "climate.air_conditioner": ("cool", {"current_temperature": 25}),
+    }
+    prompt = 'Explain "quotes", \\slashes\\, \nnewlines, Україна, {{ literal }} and {% data %}.'
+    context = {
+        "announcement": "Printer error. Check nozzle",
+        "chamber_light_was_off": True,
+        "guess": {"data": "A fixture print."},
+        "trigger": {
+            "event": {"data": {"device_id": "fixture"}},
+            "to_state": State(
+                "sensor.fixture", "finish", {"friendly_name": "Fixture alarm"}
+            ),
+            "slots": {"movie_title": "The Matrix"},
+        },
+        "device_attr": lambda device, attr: "Fixture device",
+        "end_ts": 1,
+        "paused": False,
+        "progress": 25,
+        "layer": 2,
+        "layers": 8,
+        "task": "Fixture print",
+        "ok": True,
+        "wx": {weather: {"forecast": [forecast] * 6}},
+        "fc": [forecast] * 6,
+        "nxt": [forecast] * 6,
+        "now_temp": 20,
+        "now_feels": 20,
+        "now_cond": "sunny",
+        "now_precip": 0,
+        "diff": 0,
+        "max_t": 20,
+        "min_t": 20,
+        "will_rain": False,
+        "cond_change": False,
+        "message": "Fixture message",
+        "slots": {"movie_title": "The Matrix"},
+        "raw_title": "The Matrix",
+        "raw_type": "movie",
+        "media_kind": "movie",
+        "clean_title": "The Matrix",
+        "llm_kind": {"response": {"speech": {"plain": {"speech": "show"}}}},
+        "witty_remark": {"data": "Added the fixture."},
+        "verdict": {"data": "Healthy print.", "answer": "Healthy print."},
+        "value_json": {"models": [{"name": "qwen3.5:9b-q8_0"}]},
+        "value": "25 60.0",
+        "prompt": prompt,
+        "gpt_response": {
+            "conversation_id": "fixture-thread",
+            "response": {"speech": {"plain": {"speech": "Expert fixture."}}},
+        },
+        "eta": "18:00",
+        "print_error": None,
+        "target_temperature": 22,
+    }
+    exact = {
+        "announcement": "Printer error. Check nozzle",
+        "has_announcement": True,
+        "printer_errors": "Printer error. Check nozzle",
+        "restore_chamber": True,
+        "print_finished": "Print finished. A fixture print.",
+        "chamber_was_off": True,
+        "device_offline": "Fixture device is offline",
+        "print_chronometer": True,
+        "print_percent": "25%",
+        "print_color": "#00AE42",
+        "print_progress": 25,
+        "print_when": 1,
+        "print_status": "Fixture print · printing · layer 2/8",
+        "print_ok": True,
+        "print_final_text": "Done",
+        "print_final_icon": "mdi:check-circle",
+        "print_final_color": "#00AE42",
+        "print_final_progress": 100,
+        "print_final_status": "Fixture print · Finished",
+        "end_ts": 1792432800,
+        "layer": 2,
+        "layers": 8,
+        "paused": False,
+        "progress": 25,
+        "task": "Fixture print",
+        "message": "Fixture message",
+        "battery_low": "Warning: The battery level is - 40  percent...",
+        "battery_time_low": "Warning: Less than one hour of battery power remaining. Battery is at 40 percent.",
+        "city_power_on": "Power is back on. Battery is at 40 percent.",
+        "forecast": [forecast] * 6,
+        "now_temp": 20,
+        "now_feels": 20,
+        "now_cond": "sunny",
+        "now_precip": 0,
+        "temp_diff": 0,
+        "next_hours": [forecast] * 6,
+        "max_temp": 20,
+        "min_temp": 20,
+        "will_rain": False,
+        "condition_change": False,
+        "provider_changed": "Internet provider changed to Fixture ISP",
+        "slots": {"movie_title": "The Matrix"},
+        "raw_title": "The Matrix",
+        "raw_type": "movie",
+        "media_kind": "movie",
+        "clean_title": "The Matrix",
+        "reject_media": False,
+        "unknown_media": False,
+        "classified_media": "show",
+        "movie_media": True,
+        "title_case": "The Matrix",
+        "show_media": False,
+        "media_confirmation": "Added the fixture.",
+        "battery_level": "Battery is at 40 percent.",
+        "power_alarm": "Attention - alarm triggered: Fixture alarm",
+        "print_answer": "Healthy print.",
+        "ollama_online": True,
+        "fan_speed": 25,
+        "gpt_request": {"text": prompt, "agent_id": "conversation.chatgpt_expert"},
+        "gpt_conversation": "fixture-thread",
+        "gpt_speech": "Expert fixture.",
+        "print_verdict": "Healthy print.",
+        "print_eta": "18:00",
+        "print_error": None,
+        "target_temperature": 22,
+        "hvac_mode": "cool",
+        "ac_ready": True,
+        "gpt_ready": True,
+    }
+    contains = {
+        "city_power_off": [
+            "This is not a scheduled outage.",
+            "Battery is at 40 percent.",
+        ],
+        "weather_report": ["20", "sunny"],
+        "classifier_prompt": ["The Matrix", '"movie"'],
+        "unsure_media": ["The Matrix", "not sure"],
+        "confirmation_prompt": ["The Matrix", "movie"],
+        "print_prompt": ["Fixture print", "18:00", "25 percent"],
+    }
+    assert set(exact) | set(contains) == set(contracts)
+    counts = dict.fromkeys(contracts, 0)
+
+    def render(name, values=None):
+        contract = contracts[name]
+        result = checked_render(hass, contract, context if values is None else values)
+        counts[name] += 1
+        return result
+
+    def set_states(mode=None):
+        for entity, (state, attributes) in states.items():
+            if mode == "missing":
+                hass.states.async_remove(entity)
+            else:
+                hass.states.async_set(entity, mode or state, {} if mode else attributes)
+
+    set_states()
+    for value in [None, "unknown", "unavailable", "NaN", "inf", {}, []]:
+        hass.states.async_set(
+            weather,
+            "unknown",
+            {
+                "temperature": value,
+                "apparent_temperature": value,
+                "precipitation": value,
+            },
+        )
+        for name in ["now_temp", "now_feels", "now_precip"]:
+            render(name)
+    set_states()
+    # UTC makes date-format expectations reproducible, including print ETA.
+    dt_util.set_default_time_zone(dt_util.UTC)
+    for name, expected in exact.items():
+        assert render(name) == expected, (name, render(name), expected)
+    for name, fragments in contains.items():
+        result = render(name)
+        assert all(fragment in result for fragment in fragments), (name, result)
+
+    # All programs render under absent, unknown and unavailable entity states.
+    for mode in ["missing", "unknown", "unavailable"]:
+        set_states(mode)
+        for name in contracts:
+            render(name)
+        assert render("ac_ready") is False
+        assert render("hvac_mode") == "off"
+        assert render("chamber_was_off") is False
+        assert render("ollama_online", {**context, "value_json": {}}) is False
+        assert "unavailable" in render("weather_report")
+        assert "unknown" in render("battery_low")
+    set_states()
+
+    # Missing and malformed provider responses never become a positive result.
+    for response in [
+        None,
+        {},
+        {"response": None},
+        {"response": {"speech": {}}},
+        42,
+        "unavailable",
+        {
+            "data": {},
+            "answer": [],
+            "conversation_id": 42,
+            "response": {"speech": {"plain": {"speech": []}}},
+        },
+    ]:
+        values = {
+            **context,
+            "llm_kind": response,
+            "gpt_response": response,
+            "verdict": response,
+            "guess": response,
+            "witty_remark": response,
+            "wx": response,
+            "value_json": response,
+        }
+        assert render("classified_media", values) == "unknown"
+        assert render("forecast", values) == []
+        assert render("ollama_online", values) is False
+        for name in [
+            "gpt_conversation",
+            "gpt_speech",
+            "print_verdict",
+            "print_answer",
+            "print_finished",
+            "media_confirmation",
+        ]:
+            render(name, values)
+    for value in ["", "unavailable", "garbage", "NaN 60", "inf 60", "-1 60", "101 60"]:
+        assert render("fan_speed", {**context, "value": value}) == "unknown"
+    for target in [None, "22", True, 15, 32, float("nan"), float("inf")]:
+        assert render("ac_ready", {**context, "target_temperature": target}) is False
+    assert (
+        render(
+            "ac_ready", {k: v for k, v in context.items() if k != "target_temperature"}
+        )
+        is False
+    )
+    for fc in [
+        [],
+        [None, {}, {"temperature": "unavailable", "precipitation_probability": None}],
+        [{"temperature": "19", "precipitation_probability": "80"}],
+    ]:
+        values = {**context, "nxt": fc}
+        for name in ["max_temp", "min_temp", "will_rain", "condition_change"]:
+            render(name, values)
+    for kind in ["movie", "show", "unknown", "MOVIE.", "", None]:
+        values = {
+            **context,
+            "llm_kind": {"response": {"speech": {"plain": {"speech": kind}}}},
+        }
+        assert render("classified_media", values) == (
+            kind if kind in ["movie", "show"] else "unknown"
+        )
+    for extra in [{}, {"conversation_id": "fixture-thread"}]:
+        assert render("gpt_request", {**context, **extra}) == {
+            "text": prompt,
+            "agent_id": "conversation.chatgpt_expert",
+            **extra,
+        }
+    for prompt_value in [None, "", "   ", 42, {}, []]:
+        assert render("gpt_ready", {**context, "prompt": prompt_value}) is False
+    assert (
+        render("gpt_ready", {k: v for k, v in context.items() if k != "prompt"})
+        is False
+    )
+    assert render("gpt_ready", {**context, "conversation_id": {}}) is False
+    for trigger in [{}, None, {"to_state": None}]:
+        assert render("print_ok", {**context, "trigger": trigger}) is False
+        assert (
+            render("device_offline", {**context, "trigger": trigger})
+            == "Zigbee device is offline"
+        )
+
+    # Round trips exercise the same Nix constructor used for every interpolation.
+    for fixture in literals:
+        assert (
+            Template(fixture["source"], hass).async_render(strict=True)
+            == fixture["expected"]
+        )
+    assert_rejected(lambda: Template("{{ broken", hass).ensure_valid(), TemplateError)
+    assert_rejected(
+        lambda: Template("{{ missing_name }}", hass).async_render(strict=True),
+        TemplateError,
+    )
+    assert_rejected(
+        lambda: Template("{{ 'unsafe'quote' }}", hass).ensure_valid(), TemplateError
+    )
+    assert not output_matches("boolean", "false") and not output_matches("number", True)
+    assert_rejected(
+        lambda: checked_render(hass, {"output": "boolean", "source": "{{ 'false' }}"}),
+        AssertionError,
+    )
+    assert_rejected(
+        lambda: checked_render(hass, {"output": "number", "source": "{{ true }}"}),
+        AssertionError,
+    )
+    bad = copy.deepcopy(config)
+    weather_actions = next(
+        a for a in bad["automation"] if a["alias"] == "System / Weather report"
+    )["actions"]
+    weather_actions[2], weather_actions[3] = weather_actions[3], weather_actions[2]
+    assert_rejected(lambda: audit_scope(hass, bad), ValueError)
+    bad = copy.deepcopy(config)
+    media = next(
+        a for a in bad["automation"] if a["alias"] == "Voice / Add media using Assist"
+    )["actions"]
+    media[0], media[1] = media[1], media[0]
+    assert_rejected(lambda: audit_scope(hass, bad), ValueError)
+    # Nix sorts mapping keys. Merging ordered actions into one map must fail.
+    bad = copy.deepcopy(config)
+    media = next(
+        a for a in bad["automation"] if a["alias"] == "Voice / Add media using Assist"
+    )["actions"]
+    merged = {k: v for action in media[:5] for k, v in action["variables"].items()}
+    media[:5] = [{"variables": dict(sorted(merged.items()))}]
+    assert_rejected(lambda: audit_scope(hass, bad), ValueError)
+    # Restore a clean state fixture set for the separate behavioral tests.
+    for entity in list(hass.states.async_entity_ids()):
+        hass.states.async_remove(entity)
+    print(
+        f"Template QA passed: {len(contracts)} programs, {sum(counts.values())} strict typed renders, {len(list(templates_in(config)))} audited uses, scope/quoting/undefined/order negatives."
+    )

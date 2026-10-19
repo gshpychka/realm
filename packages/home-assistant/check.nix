@@ -13,7 +13,35 @@ let
     _: value: value != null
   )) configuration;
   configFile = (pkgs.formats.yaml { }).generate "configuration.yaml" filteredConfiguration;
+  templates = import ../../machines/home-assistant/configuration/templates.nix;
+  literal = import ../../machines/home-assistant/configuration/template-literal.nix;
+  # Include syntax-looking input, both quote styles, escapes, Unicode and native
+  # JSON booleans/null in the actual serialization constructor's round trip.
+  literalValues = [
+    {
+      text = "quotes: ' \" \\ \n Україна {{ injected }} {% if true %}";
+      enabled = true;
+      absent = null;
+    }
+    [
+      "'\"\\\n"
+      false
+      null
+      3
+    ]
+  ];
+  templateFixtures = pkgs.writeText "ha-template-contracts.json" (
+    builtins.toJSON {
+      contracts = templates;
+      literals = map (value: {
+        source = "{{ ${literal value} }}";
+        expected = value;
+      }) literalValues;
+    }
+  );
+  constructors = import ./constructors-test.nix { inherit (pkgs) lib; };
 in
+assert constructors;
 pkgs.runCommand "home-assistant-config-qa"
   {
     nativeBuildInputs = [
@@ -46,7 +74,7 @@ pkgs.runCommand "home-assistant-config-qa"
     # must not accidentally satisfy a missing HA/custom-component requirement.
     env -i HOME="$TMPDIR" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
       PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/validate-ha.py \
-      ${configFile} "$PWD"
+      ${configFile} "$PWD" ${templateFixtures}
     ${python}/bin/python ${./test-runtime.py} ${../../machines/home-assistant}
     touch $out
   ''

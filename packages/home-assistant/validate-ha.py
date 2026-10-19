@@ -7,6 +7,7 @@ connections are blocked even if an imported third-party module attempts one.
 import asyncio
 import compileall
 import importlib
+import importlib.util
 import json
 import socket
 import sys
@@ -30,7 +31,7 @@ socket.socket.sendto = denied
 socket.getaddrinfo = denied
 
 
-async def validate(hass, configuration, components, component_path):
+async def validate(hass, configuration, components, component_path, template_fixtures):
     failures = []
     from homeassistant.components.automation.config import PLATFORM_SCHEMA
     from homeassistant.components.homeassistant.scene import (
@@ -41,6 +42,7 @@ async def validate(hass, configuration, components, component_path):
     from homeassistant.core_config import CORE_CONFIG_SCHEMA
     from homeassistant.helpers import config_validation as cv
     from homeassistant.helpers.template import Template
+    from probatio import Invalid
 
     # CORE_CONFIG_SCHEMA checks directory existence. Validate the same media
     # mapping with temporary directories; the native service creates the real
@@ -102,6 +104,37 @@ async def validate(hass, configuration, components, component_path):
                 await cv.async_validate(hass, module.PLATFORM_SCHEMA, item)
             except Exception as error:
                 failures.append([domain, platform, type(error).__name__, str(error)])
+
+    # Mutation fixtures must fail the real HA validators, not only our Nix
+    # shape checks. These schemas do not set up integrations or run actions.
+    timer = importlib.import_module("homeassistant.components.timer")
+    for schema, invalid in [
+        (
+            PLATFORM_SCHEMA,
+            {
+                "alias": "Invalid",
+                "triggers": [{"trigger": "homeassistant", "event": "start"}],
+                "actions": [{"action": "invalid service"}],
+            },
+        ),
+        (SCRIPT_ENTITY_SCHEMA, {"sequence": [{"unexpected_action": "invalid"}]}),
+        (
+            cv.CONDITION_SCHEMA,
+            {
+                "condition": "state",
+                "entity_id": "sensor.fixture",
+                "state": "on",
+                "unexpected": True,
+            },
+        ),
+        (timer.CONFIG_SCHEMA, {"timer": {"fixture": {"duration": "invalid duration"}}}),
+    ]:
+        try:
+            await cv.async_validate(hass, schema, invalid)
+        except Invalid:
+            pass
+        else:
+            failures.append(["negative schema fixture accepted", invalid])
     for item in configuration.get("command_line", []):
         sensor = item.get("sensor", {})
         if sensor.get("unique_id") == "argon_one_fan_speed":
@@ -159,6 +192,14 @@ async def validate(hass, configuration, components, component_path):
     if not compileall.compile_dir(component_path / "custom_components", quiet=2):
         failures.append(["component", "compile"])
     if not failures:
+        spec = importlib.util.spec_from_file_location(
+            "template_check", Path(__file__).with_name("template-check.py")
+        )
+        template_check = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(template_check)
+        await template_check.validate_templates(
+            hass, configuration, **template_fixtures
+        )
         from behavior import validate_behavior
 
         await validate_behavior(hass, configuration)
@@ -183,6 +224,7 @@ async def validate(hass, configuration, components, component_path):
         json.dumps(
             {
                 "ha_version": version("homeassistant"),
+                "jinja_version": version("Jinja2"),
                 "automations": len(configuration["automation"]),
                 "scripts": len(configuration["script"]),
                 "scenes": len(configuration["scene"]),
@@ -201,6 +243,7 @@ async def main():
 
     configuration = yaml.safe_load(Path(sys.argv[1]).read_text())
     component_path = Path(sys.argv[2])
+    template_fixtures = json.loads(Path(sys.argv[3]).read_text())
     components = {
         path.parent.name: json.loads(path.read_text())
         for path in (component_path / "custom_components").glob("*/manifest.json")
@@ -209,7 +252,9 @@ async def main():
     # Register HA's schema context without starting HA or setting up anything.
     hass = HomeAssistant(str(component_path))
     try:
-        result = await validate(hass, configuration, components, component_path)
+        result = await validate(
+            hass, configuration, components, component_path, template_fixtures
+        )
         assert hass.state is CoreState.not_running
         return result
     finally:
