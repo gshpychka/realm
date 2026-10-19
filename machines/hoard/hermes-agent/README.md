@@ -81,6 +81,8 @@ SOPS key. Secret values never appear in Nix-generated files in the store.
    Fleet skills clear inherited API credentials when invoking personal plans.
    `hermes-run` runs any command as the service user with the actual service
    PATH and current environment, including installed coding tools.
+   Claude's effort and Remote Control behavior use its own defaults and any
+   user/project settings; this deployment does not manage those preferences.
 5. **Encrypted files.** See `secrets/hermes/README.md` to enrol Hermes' own
    generated age recipient. Reused host SOPS values work independently of
    this optional agent-owned decryption identity.

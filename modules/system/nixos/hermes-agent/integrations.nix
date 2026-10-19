@@ -5,7 +5,6 @@
   config,
   lib,
   pkgs,
-  options,
   ...
 }:
 let
@@ -306,16 +305,6 @@ in
       })
 
       (lib.mkIf cfg.claudeCode.enable {
-        assertions = [
-          {
-            assertion = options ? home-manager;
-            message = "Hermes Claude Code settings require the NixOS Home Manager module.";
-          }
-          {
-            assertion = lib.versionAtLeast (lib.getVersion pkgs.claude-code) "2.1.251";
-            message = "Hermes Claude settings need per-model effort support (Claude Code >= 2.1.251).";
-          }
-        ];
         # The stable /etc command is also acpx's persisted session identity,
         # so updating the Nix package doesn't hide all pre-existing sessions.
         environment.etc."hermes-agent/claude-agent-acp".source = lib.getExe claudeAdapter;
@@ -333,10 +322,8 @@ in
               The wrapper clears inherited API credentials, loads your user,
               project and local Claude settings, and approves tools as the
               existing OpenClaw ACP integration does. Work within the owner's
-              task. Your mutable user settings default to xhigh effort,
-              including newer per-model effort settings; a project or session
-              may choose otherwise. Interactive Remote Control is enabled, but
-              headless ACP sessions are not guaranteed visible in claude.ai/code.
+              task. Claude uses its own defaults and your user/project settings;
+              this deployment imposes no effort or Remote Control preferences.
 
               Start or recover a named repository session:
 
@@ -423,67 +410,6 @@ in
           };
         };
       })
-
-      (lib.optionalAttrs (options ? home-manager) (
-        lib.mkIf cfg.claudeCode.enable {
-          home-manager.users.${cfg.user} = {
-            home = {
-              username = cfg.user;
-              homeDirectory = serviceHome;
-              stateVersion = "26.05";
-            };
-            programs.claude-code = {
-              enable = true;
-              package = pkgs.claude-code;
-              # HM merges only declared defaults into writable settings;
-              # OAuth files, sessions and undeclared settings remain intact.
-              mutableSettings = true;
-              settings = {
-                effortLevel = "xhigh";
-                modelSettings =
-                  lib.genAttrs
-                    [
-                      "claude-opus-5-5"
-                      "claude-sonnet-5-5"
-                      "claude-haiku-5-5"
-                    ]
-                    (_: {
-                      effortLevel = "xhigh";
-                    });
-                remoteControlAtStartup = true;
-              };
-            };
-          };
-
-          system.checks = [
-            (pkgs.runCommand "hermes-claude-settings-check" { nativeBuildInputs = [ pkgs.jq ]; } ''
-              errorEcho() { echo "$*" >&2; }
-              mkdir -p test-home/.claude
-              printf '%s\n' '{"theme":"dark","effortLevel":"low","modelSettings":{"claude-opus-5-5":{"autoCompactWindow":200000},"fixture-model":{"effortLevel":"low"}}}' > test-home/.claude/settings.json
-              chmod 600 test-home/.claude/settings.json
-              printf '%s\n' 'fixture-global-state' > test-home/.claude.json
-              printf '%s\n' 'fixture-credential-not-a-token' > test-home/.claude/.credentials.json
-              ${lib.replaceStrings [ serviceHome ] [ "./test-home" ]
-                config.home-manager.users.${cfg.user}.home.activation.claudeCodeSettings.data
-              }
-              jq -e '
-                .effortLevel == "xhigh" and .remoteControlAtStartup == true and
-                .modelSettings["claude-opus-5-5"].effortLevel == "xhigh" and
-                .modelSettings["claude-sonnet-5-5"].effortLevel == "xhigh" and
-                .modelSettings["claude-haiku-5-5"].effortLevel == "xhigh" and
-                .modelSettings["claude-opus-5-5"].autoCompactWindow == 200000 and
-                .modelSettings["fixture-model"].effortLevel == "low" and .theme == "dark"
-              ' test-home/.claude/settings.json
-              test ! -L test-home/.claude/settings.json
-              test -w test-home/.claude/settings.json
-              test "$(stat -c %a test-home/.claude/settings.json)" = 600
-              grep -qx fixture-global-state test-home/.claude.json
-              grep -qx fixture-credential-not-a-token test-home/.claude/.credentials.json
-              cp test-home/.claude/settings.json "$out"
-            '')
-          ];
-        }
-      ))
 
       (lib.mkIf (cfg.root != null) {
         services.hermes-agent.environment.SSH_AUTH_SOCK = cfg.root.agentSocket;
