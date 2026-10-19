@@ -1,0 +1,1 @@
+{{ task }} · {{ 'Paused' if paused else state_translated((@@JSON_BALCONY_H2_C_CURRENT_STAGE@@ | from_json)) }}{{ ' · layer ' ~ layer ~ '/' ~ layers if layers > 0 else '' }}

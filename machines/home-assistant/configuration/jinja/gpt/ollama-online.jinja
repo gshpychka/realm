@@ -1,0 +1,1 @@
+{% set models = dig(value_json | default(none), ['models']) %}{{ 'qwen3.5:9b-q8_0' in (models | select('mapping') | selectattr('name', 'defined') | map(attribute='name') | list) if models is sequence and models is not string and models is not mapping else false }}

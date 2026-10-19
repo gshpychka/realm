@@ -40,14 +40,30 @@ Automation fields follow alias, description, triggers, conditions, actions,
 variables, then execution options, omitting absent fields. Bodies stay native
 attrsets and lists. Dependent variables use `orderedVariables`, which emits one
 action per binding in list order. `templates.nix` merges seven domain modules
-under `templates/`: system,
-printer, power, weather, media, GPT and climate. Each program declares its native
-result type. The flat registry rejects duplicate exports through
-`merge-template-domains.nix`.
-Declarations use named references. `template-literal.nix` serializes embedded values as JSON inside
-a Jinja string and decodes them with HA's `from_json`.
-`configuration/template-macros/safe-fields.jinja` handles
-missing fields in provider responses, including native HA event/state objects.
+under `templates/`: system, printer, power, weather, media, GPT and climate.
+These Nix modules declare the source file, native result type, constant bindings
+and any shared helpers for each program. The 74 programs live in dedicated
+semantic `.jinja` files under `configuration/jinja/<domain>/`; shared macros live
+in `configuration/jinja/shared/`. Declarations use named references.
+`merge-template-domains.nix` rejects duplicate exports, and `template-files.nix`
+loads sources with `builtins.readFile`. Its complete file inventory rejects
+unregistered or missing files, duplicate program files and unused or missing
+bindings. Adding a program requires its file, Nix metadata and behavior fixture.
+
+Constant placeholders have the form `@@JSON_NAME@@`, used as
+`(@@JSON_NAME@@ | from_json)` in the `.jinja` file. The loader serializes each
+binding twice as JSON, so quotes, escapes, Unicode, newlines and template-looking
+text remain data. The authored Jinja expression decodes the embedded JSON with
+HA's `from_json`. No Jinja source is generated in Nix strings.
+`configuration/jinja/shared/safe-fields.jinja` handles missing fields in provider
+responses, including native HA event/state objects. Helpers are prepended in
+their declared order without adding whitespace. Files retain their intentional
+trailing-newline behavior; editing prompt whitespace can change spoken output.
+Negative and serialization templates live separately in
+`packages/home-assistant/tests/fixtures/templates/*.jinja`. Clearly marked
+delimiter-looking input data remains in test declarations. The layout check
+rejects inline Jinja programs throughout the first-party HA Nix and Python trees;
+upstream patch context is outside that scan.
 
 The existing-solutions preflight reviewed the maintained
 [nixpkgs HA module](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/home-automation/home-assistant.nix)
@@ -219,7 +235,8 @@ explicit output-type and behavior fixture; new programs require extending that
 coverage inventory. Source-order checks cover every evaluated automation, and
 Nix tests check the public API and reject duplicate domain exports. The QA
 output includes a derived `template-scope-inventory.json` with the current
-program names and use paths.
+program names, source files and use paths, plus `template-file-inventory.json`
+covering every registered program and shared helper file.
 
 Run this scoped check locally without remote builders:
 

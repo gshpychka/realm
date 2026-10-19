@@ -8,6 +8,20 @@ PACKAGE = Path("packages/home-assistant")
 MACHINE = Path("machines/home-assistant")
 
 
+def inline_jinja(path):
+    """Delimiters are allowed as scanner tokens or clearly marked input data."""
+    errors = []
+    previous = ""
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        if not line.lstrip().startswith("#") and re.search(r"\{(?:\{|%|#)", line):
+            # The constructor's delimiter detector contains tokens, not programs.
+            tokens = re.sub(r"""["']\{(?:\{|%|#)["']""", "", line)
+            if re.search(r"\{(?:\{|%|#)", tokens) and "# jinja-data:" not in previous:
+                errors.append(f"{path}:{number}: Jinja programs belong in .jinja files")
+        previous = line
+    return errors
+
+
 def validate_field_order(root, config):
     order = [
         "alias",
@@ -77,9 +91,14 @@ def check_layout(root):
                     valid = (
                         local.parent == Path(".") or local.parts[0] == "configuration"
                     ) and not path.name.endswith("-test.nix")
+                    valid = valid and "jinja" not in local.parts
             elif suffix == ".jinja":
-                valid = base == MACHINE and local.parent == Path(
-                    "configuration/template-macros"
+                valid = (
+                    base == MACHINE
+                    and len(local.parts) == 4
+                    and local.parts[:2] == ("configuration", "jinja")
+                ) or (
+                    base == PACKAGE and local.parent == Path("tests/fixtures/templates")
                 )
             elif suffix == ".json":
                 valid = base == PACKAGE and local.parent == Path("tests/fixtures")
@@ -87,6 +106,8 @@ def check_layout(root):
                 continue
             if not valid:
                 errors.append(f"{relative}: file belongs outside this responsibility")
+            if suffix in (".nix", ".py"):
+                errors.extend(inline_jinja(path))
 
     return errors
 
@@ -95,5 +116,5 @@ if __name__ == "__main__":
     failures = check_layout(Path(sys.argv[1]).resolve())
     assert not failures, "\n".join(failures)
     print(
-        "HA layout passed: declarations, tests, runtime components, patches and template macros separated."
+        "HA layout passed: declarations, tests, runtime components, patches and Jinja files separated; no inline Jinja programs."
     )

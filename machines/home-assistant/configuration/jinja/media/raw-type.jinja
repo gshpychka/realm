@@ -1,0 +1,1 @@
+{{ 'movie' if slots.get('movie_title') else 'show' if slots.get('show_title') else ((slots.get('media_type') or '') | string | lower | trim) }}

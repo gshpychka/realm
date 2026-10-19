@@ -1,0 +1,1 @@
+{% set device = dig(trigger | default(none), ['event', 'data', 'device_id']) %}{{ (device_attr(device, 'name_by_user') or device_attr(device, 'name') or 'Zigbee device') if device else 'Zigbee device' }} is offline

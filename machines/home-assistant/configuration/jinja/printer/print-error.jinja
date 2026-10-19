@@ -1,0 +1,1 @@
+{% set err = state_attr((@@JSON_BALCONY_H2_C_PRINT_ERROR@@ | from_json), 'error') %}{{ err if err is string else none }}

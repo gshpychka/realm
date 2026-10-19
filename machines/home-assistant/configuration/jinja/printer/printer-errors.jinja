@@ -1,0 +1,15 @@
+{%- set error_blacklist = (@@JSON_IGNORED_PRINTER_ERRORS@@ | from_json) -%}
+{%- set entity = states[(@@JSON_BALCONY_H2_C_HMS_ERRORS@@ | from_json)] -%}
+{%- set attrs = entity.attributes if entity is not none else {} -%}
+{%- set ns = namespace(parts=[]) -%}
+{%- for prefix in attrs.keys() | select('search', '-Code$') | map('regex_replace', '-Code$', '') | list -%}
+  {%- if attrs[prefix ~ '-Code'] not in error_blacklist and attrs.get(prefix ~ '-Error') -%}
+    {%- set ns.parts = ns.parts + [attrs[prefix ~ '-Error']] -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- set hms = ns.parts | join(' ') -%}
+{%- set print_code = state_attr((@@JSON_BALCONY_H2_C_PRINT_ERROR@@ | from_json), 'code') -%}
+{%- set print_err = state_attr((@@JSON_BALCONY_H2_C_PRINT_ERROR@@ | from_json), 'error') -%}
+{%- set print_err = print_err if print_code not in error_blacklist else none -%}
+{%- set details = hms or print_err -%}
+{{ 'Printer error. ' ~ details if details else '' }}

@@ -1,0 +1,8 @@
+{%- set title = raw_title | string -%}
+{%- set first = (title.split(' ', 1)[0] if title else '') | lower -%}
+{%- if raw_type in ['movie', 'film'] -%} movie
+{%- elif raw_type in ['show', 'series', 'tv', 'tv show', 'tv series'] -%} show
+{%- elif first in ['movie', 'film'] -%} movie
+{%- elif first in ['show', 'series', 'tv', 'television'] -%} show
+{%- else -%} unknown
+{%- endif -%}

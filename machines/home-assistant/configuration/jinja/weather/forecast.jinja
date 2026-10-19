@@ -1,0 +1,1 @@
+{% set fc = dig(wx | default(none), [(@@JSON_OPENWEATHERMAP@@ | from_json), 'forecast']) %}{{ fc if fc is sequence and fc is not string and fc is not mapping else [] }}

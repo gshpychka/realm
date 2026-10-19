@@ -2,6 +2,7 @@
 let
   ha = import ../../../../machines/home-assistant/configuration/lib.nix { inherit lib; };
   inherit (ha) devices;
+  unchecked = builtins.readFile ../fixtures/templates/unchecked.jinja;
   rejects = value: !(builtins.tryEval (builtins.deepSeq value true)).success;
   # Expected protocol data is independent of the implementation's profiles.
   multiPress = {
@@ -88,7 +89,7 @@ let
       { device_id = devices.bedButton; }
       ""
       "unregistered-button"
-      "{{ unchecked }}"
+      unchecked
       ha.entities.light.bedLight
       devices.hotWaterValve
       devices.roomVoiceTarget
@@ -120,10 +121,8 @@ assert
 assert rejects (ha.automation (valid // { id = "optional-id"; }));
 assert rejects (
   ha.automation (
-    valid // { triggers = [ ((ha.singlePress devices.bedButton) // { id = "{{ unchecked }}"; }) ]; }
+    valid // { triggers = [ ((ha.singlePress devices.bedButton) // { id = unchecked; }) ]; }
   )
 );
-assert rejects (
-  ha.automation (valid // { actions = [ (ha.call "light.toggle" "{{ unchecked }}" { }) ]; })
-);
+assert rejects (ha.automation (valid // { actions = [ (ha.call "light.toggle" unchecked { }) ]; }));
 builtins.deepSeq (ha.automation valid) true

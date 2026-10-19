@@ -1,0 +1,1 @@
+{{ nxt | select('mapping') | selectattr('precipitation_probability', 'defined') | selectattr('precipitation_probability', 'is_number') | map(attribute='precipitation_probability') | map('float') | select('>=', 30) | list | count > 0 }}

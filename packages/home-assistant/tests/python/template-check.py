@@ -268,6 +268,7 @@ def validate_confirmation_prompt(hass, contracts):
             ("Україна", "Україна"),
             ('quote " and slash \\', 'Quote " And Slash \\'),
             ("first\nsecond", "First\nSecond"),
+            # jinja-data: titles containing delimiters stay literal input.
             ("{{ syntax }} {% data %}", "{{ Syntax }} {% Data %}"),
         ],
     ):
@@ -329,7 +330,10 @@ async def validate_templates(hass, config, contracts, literals):
     assert {
         name: item["output"] for name, item in contracts.items()
     } == expected_outputs
-    assert all(set(item) == {"source", "output"} for item in contracts.values())
+    assert all(
+        set(item) == {"source", "output", "file", "helpers"}
+        for item in contracts.values()
+    )
     assert used == registered, {
         "unchecked": sorted(used - registered),
         "unused": sorted(registered - used),
@@ -343,11 +347,26 @@ async def validate_templates(hass, config, contracts, literals):
     # Derive the program inventory and every use path from the evaluated tree.
     names = {item["source"]: name for name, item in contracts.items()}
     inventory = [
-        {"program": names[source], "path": list(path)}
+        {
+            "program": names[source],
+            "file": contracts[names[source]]["file"],
+            "path": list(path),
+        }
         for path, source in templates_in(config)
     ]
     Path("template-scope-inventory.json").write_text(
         json.dumps(inventory, indent=2) + "\n"
+    )
+
+    file_inventory = sorted(
+        {
+            file
+            for contract in contracts.values()
+            for file in [contract["file"], *contract["helpers"]]
+        }
+    )
+    Path("template-file-inventory.json").write_text(
+        json.dumps(file_inventory, indent=2) + "\n"
     )
 
     weather = "weather.openweathermap"
@@ -374,6 +393,7 @@ async def validate_templates(hass, config, contracts, literals):
         "sensor.internet_provider": ("Fixture ISP", {}),
         "climate.air_conditioner": ("cool", {"current_temperature": 25}),
     }
+    # jinja-data: quoted prompt data must never become source.
     prompt = 'Explain "quotes", \\slashes\\, \nnewlines, Україна, {{ literal }} and {% data %}.'
     context = {
         "announcement": "Printer error. Check nozzle",
@@ -679,21 +699,33 @@ async def validate_templates(hass, config, contracts, literals):
             Template(fixture["source"], hass).async_render(strict=True)
             == fixture["expected"]
         )
-    assert_rejected(lambda: Template("{{ broken", hass).ensure_valid(), TemplateError)
+
+    def fixture(name):
+        return (
+            Path(__file__).parents[1] / "fixtures/templates" / f"{name}.jinja"
+        ).read_text()
+
     assert_rejected(
-        lambda: Template("{{ missing_name }}", hass).async_render(strict=True),
+        lambda: Template(fixture("malformed"), hass).ensure_valid(), TemplateError
+    )
+    assert_rejected(
+        lambda: Template(fixture("undefined"), hass).async_render(strict=True),
         TemplateError,
     )
     assert_rejected(
-        lambda: Template("{{ 'unsafe'quote' }}", hass).ensure_valid(), TemplateError
+        lambda: Template(fixture("broken-quoting"), hass).ensure_valid(), TemplateError
     )
     assert not output_matches("boolean", "false") and not output_matches("number", True)
     assert_rejected(
-        lambda: checked_render(hass, {"output": "boolean", "source": "{{ 'false' }}"}),
+        lambda: checked_render(
+            hass, {"output": "boolean", "source": fixture("wrong-boolean")}
+        ),
         AssertionError,
     )
     assert_rejected(
-        lambda: checked_render(hass, {"output": "number", "source": "{{ true }}"}),
+        lambda: checked_render(
+            hass, {"output": "number", "source": fixture("wrong-number")}
+        ),
         AssertionError,
     )
     bad = copy.deepcopy(config)
@@ -741,7 +773,7 @@ async def validate_templates(hass, config, contracts, literals):
     for entity in list(hass.states.async_entity_ids()):
         hass.states.async_remove(entity)
     print(
-        f"Template QA passed: {len(contracts)} programs, {sum(counts.values())} strict typed renders, {len(literals)} strict literal round trips, {len(list(templates_in(config)))} audited uses, scope/quoting/undefined/order negatives."
+        f"Template QA passed: {len(contracts)} programs / {len(file_inventory)} source files, {sum(counts.values())} strict typed renders, {len(literals)} strict literal round trips, {len(list(templates_in(config)))} audited uses, scope/quoting/undefined/order negatives."
     )
     print(
         f"Weather/prompt contracts passed: {weather_count} weather cases / {weather_count} strict typed renders; {prompt_count} raw prompt renders."

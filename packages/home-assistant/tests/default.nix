@@ -18,12 +18,14 @@ let
   )) configuration;
   configFile = (pkgs.formats.yaml { }).generate "configuration.yaml" filteredConfiguration;
   templates = import ../../../machines/home-assistant/configuration/templates.nix;
-  literal = import ../../../machines/home-assistant/configuration/template-literal.nix;
+  templateFiles = import ../../../machines/home-assistant/configuration/template-files.nix;
   # Include syntax-looking input, both quote styles, escapes, Unicode and native
   # JSON booleans/null in the actual serialization constructor's round trip.
   literalValues = [
     {
+      # jinja-data: delimiter-looking input exercises JSON serialization.
       text = "quotes: ' \" \\ \n Україна {{ injected }} {% if true %}";
+      placeholders = "@@JSON_VALUE@@ @@JSON_UNBOUND@@";
       enabled = true;
       absent = null;
     }
@@ -38,7 +40,9 @@ let
     builtins.toJSON {
       contracts = templates;
       literals = map (value: {
-        source = "{{ ${literal value} }}";
+        source = templateFiles.bind (builtins.readFile ./fixtures/templates/literal-round-trip.jinja) {
+          VALUE = value;
+        };
         expected = value;
       }) literalValues;
     }
@@ -46,6 +50,7 @@ let
   constructors = import ./nix/constructors-test.nix { inherit (pkgs) lib; };
 in
 assert constructors;
+assert import ./nix/template-files-test.nix;
 pkgs.runCommand "home-assistant-config-qa"
   {
     nativeBuildInputs = [
@@ -82,5 +87,5 @@ pkgs.runCommand "home-assistant-config-qa"
       ${configFile} "$PWD" ${templateFixtures} ${../../../machines/home-assistant}
     ${python}/bin/python ${./.}/python/test-runtime.py ${../../../machines/home-assistant}
     mkdir -p $out
-    cp template-scope-inventory.json $out/
+    cp template-scope-inventory.json template-file-inventory.json $out/
   ''

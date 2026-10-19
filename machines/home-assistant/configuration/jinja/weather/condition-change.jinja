@@ -1,0 +1,1 @@
+{{ nxt | select('mapping') | selectattr('condition', 'defined') | selectattr('condition', '!=', now_cond) | list | count > 0 }}

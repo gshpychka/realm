@@ -1,0 +1,1 @@
+{% set parts = (value | default('') | string).split() %}{{ parts[0] | int if parts and is_number(parts[0]) and 0 <= parts[0] | float <= 100 else 'unknown' }}

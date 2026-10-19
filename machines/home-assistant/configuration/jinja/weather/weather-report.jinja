@@ -1,0 +1,23 @@
+{%- set ns = namespace(t='') -%}
+{# current #}
+{%- if is_number(state_attr((@@JSON_OPENWEATHERMAP@@ | from_json), 'temperature')) -%}
+  {%- set ns.t = ns.t ~ "It's " ~ (now_temp | round(0)) ~ " degrees and " ~ now_cond ~ ". " -%}
+{%- else -%}
+  {%- set ns.t = 'Current weather information is unavailable. ' -%}
+{%- endif -%}
+{%- if diff > 2 -%}
+  {%- set ns.t = ns.t ~ "Feels like " ~ (now_feels | round(0)) ~ " degrees. " -%}
+{%- endif -%}
+{%- if now_precip > 0 -%}
+  {%- set ns.t = ns.t ~ "There's precipitation right now. " -%}
+{%- endif -%}
+{# next 6 h #}
+{%- if will_rain -%}
+  {%- set ns.t = ns.t ~ "Rain is likely within the next few hours. " -%}
+{%- endif -%}
+{%- if (max_t - now_temp) > 3 -%}
+  {%- set ns.t = ns.t ~ "It will warm up to about " ~ (max_t | round(0)) ~ " degrees in the next six hours. " -%}
+{%- elif (now_temp - min_t) > 3 -%}
+  {%- set ns.t = ns.t ~ "Expect it to cool down to around " ~ (min_t | round(0)) ~ " degrees in the next six hours. " -%}
+{%- endif -%}
+{{ ns.t | trim }}

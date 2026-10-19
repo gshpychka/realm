@@ -1,0 +1,1 @@
+Attention - alarm triggered: {{ dig(trigger | default(none), ['to_state', 'attributes', 'friendly_name']) | default('Power system', true) }}

@@ -1,0 +1,1 @@
+{% set t = state_attr((@@JSON_OPENWEATHERMAP@@ | from_json), 'apparent_temperature') %}{{ t | float if is_number(t) else now_temp }}

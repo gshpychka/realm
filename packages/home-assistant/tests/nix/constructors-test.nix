@@ -1,6 +1,7 @@
 { lib }:
 let
   ha = import ../../../../machines/home-assistant/configuration/lib.nix { inherit lib; };
+  unchecked = builtins.readFile ../fixtures/templates/unchecked.jinja;
   rejects = value: !(builtins.tryEval (builtins.deepSeq value true)).success;
   valid = {
     alias = "Fixture";
@@ -34,7 +35,7 @@ assert rejects (ha.action { action = "not a service"; });
 assert rejects (ha.action { variables = "opaque body"; });
 assert rejects (
   ha.action {
-    "if" = [ "{{ unchecked }}" ];
+    "if" = [ unchecked ];
     "then" = [ ];
   }
 );
