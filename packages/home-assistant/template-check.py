@@ -474,6 +474,11 @@ async def validate_templates(hass, config, contracts, literals):
             "agent_id": "conversation.chatgpt_expert",
             **extra,
         }
+    assert render("gpt_ready", {**context, "conversation_id": None}) is True
+    assert render("gpt_request", {**context, "conversation_id": None}) == {
+        "text": prompt,
+        "agent_id": "conversation.chatgpt_expert",
+    }
     for prompt_value in [None, "", "   ", 42, {}, []]:
         assert render("gpt_ready", {**context, "prompt": prompt_value}) is False
     assert (
