@@ -6,12 +6,16 @@ let
     areas
     call
     state
-    zha
+    singlePress
+    doublePress
+    triplePress
+    longPress
+    quadruplePress
     ;
-  longPress = [
-    (zha devices.roomLightswitch "remote_button_long_press" "button")
-    (zha devices.roomTableButton "remote_button_long_press" "button")
-    (zha devices.bedButton "remote_button_long_press" "button")
+  lightTogglePresses = [
+    (longPress devices.roomLightswitch)
+    (longPress devices.roomTableButton)
+    (longPress devices.bedButton)
   ];
 in
 {
@@ -20,40 +24,40 @@ in
       actions = [ (call "light.toggle" entities.light.roomOverheadLights { }) ];
       alias = "Lighting / Overhead lights toggle";
       triggers = [
-        (zha devices.roomLightswitch "remote_button_short_press" "remote_button_short_press")
-        (zha devices.bedButton "remote_button_triple_press" "remote_button_triple_press")
-        (zha devices.bedShelfButton "remote_button_double_press" "button_1")
-        (zha devices.kitchenLightswitch "remote_button_quadruple_press" "remote_button_quadruple_press")
-        (zha devices.roomTableButton "remote_button_short_press" "remote_button_short_press")
+        (singlePress devices.roomLightswitch)
+        (triplePress devices.bedButton)
+        (doublePress devices.bedShelfButton)
+        (quadruplePress devices.kitchenLightswitch)
+        (singlePress devices.roomTableButton)
       ];
     }
     {
       actions = [ (call "light.toggle" entities.light.kitchenLights { }) ];
       alias = "Lighting / Kitchen lights toggle";
       triggers = [
-        (zha devices.kitchenLightswitch "remote_button_short_press" "remote_button_short_press")
-        (zha devices.kitchenTableButton "remote_button_short_press" "remote_button_short_press")
-        (zha devices.roomLightswitch "remote_button_quadruple_press" "remote_button_quadruple_press")
-        (zha devices.bedButton "remote_button_quadruple_press" "remote_button_quadruple_press")
-        (zha devices.roomTableButton "remote_button_quadruple_press" "remote_button_quadruple_press")
+        (singlePress devices.kitchenLightswitch)
+        (singlePress devices.kitchenTableButton)
+        (quadruplePress devices.roomLightswitch)
+        (quadruplePress devices.bedButton)
+        (quadruplePress devices.roomTableButton)
       ];
     }
     {
       actions = [ (call "light.toggle" entities.light.bedLight { }) ];
       alias = "Lighting / Bed light toggle";
       triggers = [
-        (zha devices.bedButton "remote_button_short_press" "remote_button_short_press")
-        (zha devices.bedShelfButton "remote_button_short_press" "button_1")
-        (zha devices.roomLightswitch "remote_button_triple_press" "remote_button_triple_press")
-        (zha devices.roomTableButton "remote_button_triple_press" "remote_button_triple_press")
+        (singlePress devices.bedButton)
+        (singlePress devices.bedShelfButton)
+        (triplePress devices.roomLightswitch)
+        (triplePress devices.roomTableButton)
       ];
     }
     {
       actions = [ (call "light.toggle" entities.light.partyLight { }) ];
       alias = "Lighting / Party light toggle";
       triggers = [
-        (zha devices.kitchenLightswitch "remote_button_triple_press" "remote_button_triple_press")
-        (zha devices.kitchenTableButton "remote_button_triple_press" "remote_button_triple_press")
+        (triplePress devices.kitchenLightswitch)
+        (triplePress devices.kitchenTableButton)
       ];
     }
     {
@@ -65,10 +69,10 @@ in
       ];
       alias = "Lighting / Room lights full brightness";
       triggers = [
-        (zha devices.roomLightswitch "remote_button_double_press" "remote_button_double_press")
-        (zha devices.bedButton "remote_button_double_press" "remote_button_double_press")
-        (zha devices.bedShelfButton "remote_button_double_press" "button_1")
-        (zha devices.roomTableButton "remote_button_double_press" "remote_button_double_press")
+        (doublePress devices.roomLightswitch)
+        (doublePress devices.bedButton)
+        (doublePress devices.bedShelfButton)
+        (doublePress devices.roomTableButton)
       ];
     }
     {
@@ -80,15 +84,15 @@ in
       ];
       alias = "Lighting / Kitchen lights full brightness";
       triggers = [
-        (zha devices.kitchenLightswitch "remote_button_double_press" "remote_button_double_press")
-        (zha devices.kitchenTableButton "remote_button_double_press" "remote_button_double_press")
+        (doublePress devices.kitchenLightswitch)
+        (doublePress devices.kitchenTableButton)
       ];
     }
     {
       actions = [ (call "light.toggle" entities.light.cuteLights { }) ];
       alias = "Lighting / Cute lights toggle";
       conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
-      triggers = longPress;
+      triggers = lightTogglePresses;
     }
     {
       actions = [
@@ -124,7 +128,7 @@ in
       actions = [ (call "light.toggle" entities.light.lavaLamp { }) ];
       alias = "Lighting / Lava lamp toggle";
       conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
-      triggers = longPress;
+      triggers = lightTogglePresses;
     }
     {
       actions = [

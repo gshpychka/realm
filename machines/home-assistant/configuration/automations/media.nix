@@ -5,7 +5,7 @@ let
     devices
     call
     state
-    zha
+    longPress
     announce
     ;
 in
@@ -66,7 +66,7 @@ in
       alias = "Media / Activate Movie scene on Table button Long press";
       conditions = [ (state entities.timer.movieSceneOfferWindow "active") ];
       description = "Long press activates the movie scene only while the offer window timer is running; otherwise the same press falls through to the light toggles.";
-      triggers = [ (zha devices.roomTableButton "remote_button_long_press" "button") ];
+      triggers = [ (longPress devices.roomTableButton) ];
     }
   ];
 }

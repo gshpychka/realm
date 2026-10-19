@@ -6,7 +6,7 @@ let
     devices
     call
     state
-    zha
+    quintuplePress
     announce
     ;
   assistants = [
@@ -362,10 +362,10 @@ in
       ];
       alias = "Voice / Announce battery level via button";
       triggers = [
-        (zha devices.roomLightswitch "remote_button_quintuple_press" "remote_button_quintuple_press")
-        (zha devices.roomTableButton "remote_button_quintuple_press" "remote_button_quintuple_press")
-        (zha devices.kitchenTableButton "remote_button_quintuple_press" "remote_button_quintuple_press")
-        (zha devices.bedButton "remote_button_quintuple_press" "remote_button_quintuple_press")
+        (quintuplePress devices.roomLightswitch)
+        (quintuplePress devices.roomTableButton)
+        (quintuplePress devices.kitchenTableButton)
+        (quintuplePress devices.bedButton)
       ];
     }
     {

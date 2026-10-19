@@ -9,7 +9,20 @@ enabled state. Definitions and features change through Nix.
 `entities.nix` names the entity references used by the declarations. `devices.nix`
 contains only ZHA event sources, the soundbar's cloud device identity, and three
 unresolved service targets. `lib.nix` shares service calls, state conditions,
-announcements, ZHA triggers and the printer snapshot sequence.
+announcements, semantic button triggers, ZHA offline triggers and the printer
+snapshot sequence.
+
+Button automations use `ha.singlePress ha.devices.roomLightswitch`,
+`ha.doublePress ha.devices.bedShelfButton`, `ha.triplePress ha.devices.bedButton`
+or `ha.longPress ha.devices.roomTableButton`. `quadruplePress` and
+`quintuplePress` cover the existing higher press counts. `button-profiles.nix`
+registers each device's evidenced gesture mappings once: most press-count events
+repeat the event type as subtype, shelf-button events use `button_1`, and the
+three existing long-press sources use `button`. Unknown devices and unsupported
+gestures fail Nix evaluation. Add new mappings only with evidence for that
+device; long, held and release events are not interchangeable. Helpers return
+native trigger attrsets, so a functional trigger ID can be added with
+`(ha.singlePress ha.devices.bedButton) // { id = "bed"; }` when needed.
 
 Definitions pass through checked Nix constructors for automation, script, action,
 condition and helper shapes. Bodies stay native attrsets and lists. Dependent
@@ -92,7 +105,9 @@ and renders with strict undefined handling under representative value/type,
 missing-entity, unknown/unavailable and malformed-response fixtures. Negative
 fixtures reject malformed templates, invalid bodies, broken quoting, undeclared
 variables, forward references, sorted-map dependency errors and wrong output
-types. AC and expert-query scripts guard their inputs before calling services;
+types. Nix tests check all six button helpers against every device profile,
+including unsupported gestures, malformed/unknown devices and checked-body
+boundaries. AC and expert-query scripts guard their inputs before calling services;
 unavailable weather and provider responses produce explicit fallback text.
 
 These are schema, conservative scope and representative behavior checks. They

@@ -2,6 +2,7 @@
 let
   entities = import ./entities.nix;
   devices = import ./devices.nix;
+  buttonProfiles = import ./button-profiles.nix { inherit devices; };
   templateContracts = import ./templates.nix;
   templates = builtins.mapAttrs (_: contract: contract.source) templateContracts;
   sources = builtins.attrValues templates;
@@ -169,6 +170,27 @@ let
     entity_id = entity;
     state = value;
   };
+  # Device-offline events still need the low-level ZHA constructor.
+  zha = device: type: subtype: {
+    trigger = "device";
+    domain = "zha";
+    device_id = device;
+    inherit type subtype;
+  };
+  buttonPress =
+    gesture: device:
+    ensure "${gesture} trigger (unknown button or unsupported gesture)"
+      (
+        builtins.isString device
+        && builtins.hasAttr device buttonProfiles
+        && builtins.hasAttr gesture buttonProfiles.${device}
+      )
+      (
+        let
+          event = buttonProfiles.${device}.${gesture};
+        in
+        checked "button trigger body" (zha device event.type event.subtype)
+      );
 in
 {
   inherit
@@ -184,6 +206,7 @@ in
     helpers
     action
     condition
+    zha
     ;
 
   # A list preserves dependency order; each HA action binds exactly one name.
@@ -198,13 +221,13 @@ in
       }
     ) bindings;
 
-  # Button presses and device-offline events have no equivalent entity state.
-  zha = device: type: subtype: {
-    trigger = "device";
-    domain = "zha";
-    device_id = device;
-    inherit type subtype;
-  };
+  # Callers name the gesture and device; protocol details live in one registry.
+  singlePress = buttonPress "singlePress";
+  doublePress = buttonPress "doublePress";
+  triplePress = buttonPress "triplePress";
+  longPress = buttonPress "longPress";
+  quadruplePress = buttonPress "quadruplePress";
+  quintuplePress = buttonPress "quintuplePress";
 
   announce = message: options: {
     action = "assist_satellite.announce";
