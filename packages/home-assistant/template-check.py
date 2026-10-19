@@ -365,6 +365,33 @@ async def validate_templates(hass, config, contracts, literals):
         result = render(name)
         assert all(fragment in result for fragment in fragments), (name, result)
 
+    # Check both sides of notification branches and the scheduled-outage ETA.
+    failed = {**context, "ok": False, "paused": True, "layers": 0}
+    for name, expected in {
+        "print_chronometer": False,
+        "print_color": "#FFB300",
+        "print_status": "Fixture print · Paused",
+        "print_final_text": "Failed",
+        "print_final_icon": "mdi:alert-circle",
+        "print_final_color": "#E53935",
+        "print_final_progress": 25,
+        "print_final_status": "Fixture print · Failed",
+    }.items():
+        assert render(name, failed) == expected
+    hass.states.async_set("sensor.yasno_power", "outage")
+    fixed_now = dt_util.parse_datetime("2026-10-19T17:00:00+00:00")
+    for restoration, expected in [
+        ("2026-10-19T17:30:00+00:00", "less than an hour"),
+        ("2026-10-19T18:00:00+00:00", "about 1 hour."),
+        ("2026-10-19T20:00:00+00:00", "about 3 hours."),
+        ("2026-10-19T16:00:00+00:00", "No information about how long"),
+        ("unavailable", "No information about how long"),
+    ]:
+        hass.states.async_set("sensor.yasno_next_power", restoration)
+        result = render("city_power_off", {**context, "now": lambda: fixed_now})
+        assert "This is a scheduled outage." in result and expected in result
+    set_states()
+
     # All programs render under absent, unknown and unavailable entity states.
     for mode in ["missing", "unknown", "unavailable"]:
         set_states(mode)
