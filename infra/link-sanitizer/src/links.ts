@@ -2,8 +2,7 @@ import { compileSanitizer } from "@url-sanitize/core";
 import { mergedCatalog } from "@url-sanitize/merged";
 import type { MessageEntity } from "./telegram.ts";
 
-// Extend the existing catalog, not its parsing/filtering implementation.
-// igsh/ig_rid/igshid are already upstream; evidence is in README.md.
+// Add Instagram share parameters missing from the upstream catalog.
 const sanitize = compileSanitizer({
   ...mergedCatalog,
   rules: [
