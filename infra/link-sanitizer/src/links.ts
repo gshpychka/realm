@@ -1,5 +1,22 @@
-import { sanitize } from "@url-sanitize/merged";
+import { compileSanitizer } from "@url-sanitize/core";
+import { mergedCatalog } from "@url-sanitize/merged";
 import type { MessageEntity } from "./telegram.ts";
+
+// Extend the existing catalog, not its parsing/filtering implementation.
+// igsh/ig_rid/igshid are already upstream; evidence is in README.md.
+const sanitize = compileSanitizer({
+  ...mergedCatalog,
+  rules: [
+    ...mergedCatalog.rules,
+    {
+      kind: "strip-param",
+      source: "custom",
+      provider: "instagram",
+      urlPattern: "^https?://(?:[a-z0-9-]+\\.)*instagram\\.com(?::[0-9]+)?(?:/|$)",
+      paramPattern: "^(?:psln|stkn|click_source)$",
+    },
+  ],
+});
 
 const schemePattern = /^[a-z][a-z\d+.-]*:\/\//i;
 

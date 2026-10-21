@@ -35,3 +35,15 @@ check installs from.
 [alchemy-run/distilled#650](https://github.com/alchemy-run/distilled/pull/650),
 which resolves SSO sessions from `AWS_CONFIG_FILE`, where the infra shell keeps
 the AWS profiles.
+
+## Instagram rules
+
+The existing catalog already covers igsh, ig_rid and igshid. A native
+strip-param catalog rule adds psln (reported sharing metadata), stkn and
+click_source on Instagram hosts only; no custom URL filtering is implemented.
+The core package is already used by merged; it is declared directly to use its
+supported compileSanitizer API.
+
+Sources: [uBlock Origin](https://github.com/uBlockOrigin/uAssets/blob/e2c4b4814331e8dd7bdd697371d7b547416ce80e/filters/privacy-removeparam.txt)
+(stkn, click_source) and [AdGuard](https://github.com/AdguardTeam/AdguardFilters/blob/d7b15053e842619462b4080947b6b8007ab0d782/TrackParamFilter/sections/specific.txt)
+(click_source).
