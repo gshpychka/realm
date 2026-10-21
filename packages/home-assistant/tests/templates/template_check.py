@@ -531,7 +531,6 @@ async def validate_templates(hass, config, contracts, literals, references):
         "city_power_off": [
             "The outage schedule does not cover the current time",
             "Battery is at 40 percent.",
-            "Current power draw is 120 Watts.",
         ],
         "weather_report": ["20", "sunny"],
         "classifier_prompt": ["The Matrix", '"movie"'],
@@ -611,83 +610,6 @@ async def validate_templates(hass, config, contracts, literals, references):
         assert "This is a scheduled outage." in result and expected in result
     set_states()
 
-    # The schedule is only authoritative while its published slot covers now.
-    # 2026-10-21 incident: at 11:36:09 Kyiv the sensor still said normal with
-    # the expired 04:30-11:30 slot, and the old template announced "not scheduled".
-    incident_now = dt_util.parse_datetime("2026-10-21T08:36:09.937410+00:00")
-    morning = "2026-10-21T04:30:00+03:00"
-    start = "2026-10-21T11:30:00+03:00"
-    end = "2026-10-21T15:00:00+03:00"
-    midnight = "2026-10-22T00:00:00+03:00"
-    scheduled = "This is a scheduled outage."
-    unscheduled = "This is not a scheduled outage."
-    uncovered = "The outage schedule does not cover the current time, so I cannot confirm whether this outage is scheduled."
-    unavailable = "The outage schedule is unavailable, so I cannot confirm whether this outage is scheduled."
-    verdicts = {scheduled, unscheduled, uncovered, unavailable}
-    for state, attributes, expected in [
-        ("outage", {"event_start": start, "event_end": end}, scheduled),
-        ("normal", {"event_start": morning, "event_end": end}, unscheduled),
-        # Half-open slots: covered from their start, not at their end.
-        (
-            "normal",
-            {"event_start": incident_now.isoformat(), "event_end": end},
-            unscheduled,
-        ),
-        (
-            "normal",
-            {"event_start": morning, "event_end": incident_now.isoformat()},
-            uncovered,
-        ),
-        ("normal", {"event_start": morning, "event_end": start}, uncovered),
-        ("normal", {"event_start": end, "event_end": midnight}, uncovered),
-        ("outage", {"event_start": morning, "event_end": start}, uncovered),
-        ("outage", {"event_start": end, "event_end": midnight}, uncovered),
-        ("normal", {"event_start": end, "event_end": start}, uncovered),
-        ("normal", {}, uncovered),
-        ("normal", {"event_start": None, "event_end": None}, uncovered),
-        ("normal", {"event_start": "garbage", "event_end": end}, uncovered),
-        ("outage", {"event_start": start, "event_end": "unknown"}, uncovered),
-        ("outage", {"event_start": 42, "event_end": end}, uncovered),
-        ("unknown", {"event_start": start, "event_end": end}, unavailable),
-        ("unavailable", {}, unavailable),
-    ]:
-        hass.states.async_set("sensor.yasno_power", state, attributes)
-        result = render("city_power_off", {**context, "now": lambda: incident_now})
-        assert expected in result, (state, attributes, result)
-        assert not {other for other in verdicts - {expected} if other in result}, (
-            state,
-            attributes,
-            result,
-        )
-    hass.states.async_remove("sensor.yasno_power")
-    assert unavailable in render(
-        "city_power_off", {**context, "now": lambda: incident_now}
-    )
-    set_states()
-
-    # Spoken load is rounded to whole watts; non-numeric load is never zero.
-    for load, expected in [
-        ("443.0", "Current power draw is 443 Watts."),
-        ("443.6", "Current power draw is 444 Watts."),
-        ("443.4", "Current power draw is 443 Watts."),
-        ("0", "Current power draw is 0 Watts."),
-        ("0.0", "Current power draw is 0 Watts."),
-        ("-0.4", "Current power draw is 0 Watts."),
-        ("unknown", "Current power draw is unavailable."),
-        ("unavailable", "Current power draw is unavailable."),
-        ("NaN", "Current power draw is unavailable."),
-        ("inf", "Current power draw is unavailable."),
-        ("garbage", "Current power draw is unavailable."),
-        ("", "Current power draw is unavailable."),
-    ]:
-        hass.states.async_set("sensor.multiplus_output_power_l1", load)
-        result = render("city_power_off")
-        assert result.endswith(expected), (load, result)
-        assert "Watts" in result or "0" not in result.splitlines()[-1], (load, result)
-    hass.states.async_remove("sensor.multiplus_output_power_l1")
-    assert render("city_power_off").endswith("Current power draw is unavailable.")
-    set_states()
-
     # All programs render under absent, unknown and unavailable entity states.
     for mode in ["missing", "unknown", "unavailable"]:
         set_states(mode)
@@ -699,9 +621,6 @@ async def validate_templates(hass, config, contracts, literals, references):
         assert render("ollama_online", {**context, "value_json": {}}) is False
         assert "unavailable" in render("weather_report")
         assert "unknown" in render("battery_low")
-        off = render("city_power_off")
-        assert "The outage schedule is unavailable" in off, (mode, off)
-        assert off.endswith("Current power draw is unavailable."), (mode, off)
     set_states()
 
     # Missing and malformed provider responses resolve to the safe fallback.

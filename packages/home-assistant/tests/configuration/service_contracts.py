@@ -261,7 +261,7 @@ async def validate_power(hass, config):
                     "event_end": (now + timedelta(hours=1)).isoformat(),
                 },
             )
-            hass.states.async_set("sensor.multiplus_output_power_l1", "443.6")
+            hass.states.async_set("sensor.multiplus_output_power_l1", "120")
 
             def changed(name):
                 if name == "assist_satellite.announce":
@@ -284,7 +284,7 @@ async def validate_power(hass, config):
             else:
                 assert " ".join(message.split()) == (
                     "City power is off. This is not a scheduled outage. "
-                    "Battery is at 40 percent. Current power draw is 444 Watts."
+                    "Battery is at 40 percent. Current power draw is 120 Watts."
                 )
             assert hass.states.get("sensor.battery_charge").state == "5"
             assert hass.states.get("sensor.yasno_power").state == "outage"

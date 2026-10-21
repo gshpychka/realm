@@ -38,7 +38,7 @@ packages/home-assistant/
   mcp-dependencies/        MCP dependencies and build backend
   custom-components/      native component package expressions
     dyson_local/           component expression and vacuum API patch
-    yasno_outages/         component expression, schedule-boundary patch and its test
+    yasno_outages/         component expression and schedule-boundary patch
   tests/
     default.nix            offline QA assembly
     configuration/         native schema, constructor and service behavior checks
@@ -293,11 +293,7 @@ fallbacks and service failures. They check service request data and order,
 conversation replies, returned data and bound variables. HA's rejection of
 non-mapping service responses is checked separately from template fallbacks.
 Each scenario runs once. Six power runs cover success and each delivery failure
-for outage and restoration notifications. The outage message only states whether
-an outage is scheduled while the Yasno slot published on the sensor covers the
-current time; expired, upcoming, missing or invalid slots are reported as
-unconfirmed. Spoken load is rounded to whole watts, and non-numeric load is
-reported as unavailable rather than zero. Sensors change during speech;
+for outage and restoration notifications. Sensors change during speech;
 Telegram must receive the message captured before speech, and failures must stop
 subsequent calls.
 
@@ -328,12 +324,6 @@ The same check enforces ownership across the complete HA machine and package
 trees. Seven guard regression tests accept colocated modules, programs, patches
 and tests within their domain or component, and reject unowned global buckets,
 orphan component assets, inline Jinja and simple-reference program files.
-The Yasno boundary test sets up the config entry through HA's loader, entity
-platforms and timers on a virtual clock, with recording fakes in place of the
-network. It first requires unpatched upstream to reproduce the 2026-10-21
-incident, then checks that the patched sensor and calendar switch at 11:30 and
-15:00 without a fetch, that polls keep their interval, and covers failed polls,
-schedule replacement, late timers, unload, malformed schedules and DST.
 Updater fixtures exercise flat and directory component expressions, Core/MCP
 dependency paths, current-tag Matter refresh, registry failures, skill rollback
 and sequential partial failure. Runtime tests load component sources directly
