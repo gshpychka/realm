@@ -5,11 +5,13 @@ responses, ordering, captured variables and failure propagation.
 """
 
 import copy
+from datetime import timedelta
 
 from homeassistant.core import Context, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.script import Script
+from homeassistant.util import dt as dt_util
 
 MEDIA = "Voice / Add media using Assist"
 
@@ -249,8 +251,17 @@ async def validate_power(hass, config):
         ]
         for fail in [None, "assist_satellite.announce", "telegram_bot.send_message"]:
             hass.states.async_set("sensor.battery_charge", "40")
-            hass.states.async_set("sensor.yasno_power", "normal")
-            hass.states.async_set("sensor.multiplus_output_power_l1", "120")
+            # The published slot must cover now for the schedule to be trusted.
+            now = dt_util.now()
+            hass.states.async_set(
+                "sensor.yasno_power",
+                "normal",
+                {
+                    "event_start": (now - timedelta(hours=1)).isoformat(),
+                    "event_end": (now + timedelta(hours=1)).isoformat(),
+                },
+            )
+            hass.states.async_set("sensor.multiplus_output_power_l1", "443.6")
 
             def changed(name):
                 if name == "assist_satellite.announce":
@@ -273,7 +284,7 @@ async def validate_power(hass, config):
             else:
                 assert " ".join(message.split()) == (
                     "City power is off. This is not a scheduled outage. "
-                    "Battery is at 40 percent. Current power draw is 120 Watts."
+                    "Battery is at 40 percent. Current power draw is 444 Watts."
                 )
             assert hass.states.get("sensor.battery_charge").state == "5"
             assert hass.states.get("sensor.yasno_power").state == "outage"

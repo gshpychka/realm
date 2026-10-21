@@ -1,15 +1,23 @@
-{%- set schedule = states((@@JSON_YASNO_POWER@@ | from_json)) -%}
+{%- set power = (@@JSON_YASNO_POWER@@ | from_json) -%}
+{%- set schedule = states(power) -%}
+{#- The state is only authoritative while its own slot covers now: between
+    polls the integration can still publish an expired or upcoming slot. -#}
+{%- set slot_start = as_timestamp(state_attr(power, 'event_start'), none) -%}
+{%- set slot_end = as_timestamp(state_attr(power, 'event_end'), none) -%}
+{%- set covered = slot_start is not none and slot_end is not none and slot_start <= as_timestamp(now()) < slot_end -%}
 {%- set restoration = as_datetime(states((@@JSON_YASNO_NEXT_POWER@@ | from_json)), none) -%}
 {%- set remaining = (as_timestamp(restoration) - as_timestamp(now())) if restoration is not none else none -%}
 {%- set hours = (remaining / 3600) | round(0) | int if remaining is not none else 0 -%}
+{%- set load = states((@@JSON_MULTIPLUS_OUTPUT_POWER_L1@@ | from_json)) -%}
 City power is off.
-{% if schedule == 'outage' %}
+{% if schedule == 'outage' and covered %}
   This is a scheduled outage.
   {% if remaining is not none and remaining > 0 %}
     {% if remaining < 3600 %}Power should be back on in less than an hour.
     {% else %}Power should be back on in about {{ hours }} {{ 'hour' if hours == 1 else 'hours' }}.{% endif %}
   {% else %}No information about how long the outage will last.{% endif %}
-{% elif schedule == 'normal' %}This is not a scheduled outage.
+{% elif schedule == 'normal' and covered %}This is not a scheduled outage.
+{% elif schedule in ['outage', 'normal'] %}The outage schedule does not cover the current time, so I cannot confirm whether this outage is scheduled.
 {% else %}The outage schedule is unavailable, so I cannot confirm whether this outage is scheduled.{% endif %}
 Battery is at {{ states((@@JSON_BATTERY_CHARGE@@ | from_json)) | int('unknown') }} percent.
-Current power draw is {{ states((@@JSON_MULTIPLUS_OUTPUT_POWER_L1@@ | from_json)) }} Watts.
+{% if is_number(load) %}Current power draw is {{ load | float | round(0) | int }} Watts.{% else %}Current power draw is unavailable.{% endif %}

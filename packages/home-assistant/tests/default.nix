@@ -96,6 +96,17 @@ pkgs.runCommand "home-assistant-config-qa"
     env -i HOME="$TMPDIR" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
       PYTHONPATH="${core.pythonPath}" ${python}/bin/python ${./.}/configuration/validate-ha.py \
       ${configFile} "$PWD" ${templateFixtures} ${../../../machines/home-assistant}
+    # The boundary fixture must reproduce the incident on unpatched upstream
+    # before it checks the patched component that is actually deployed.
+    for mode in upstream patched; do
+      component=custom_components/yasno_outages
+      if [ "$mode" = upstream ]; then
+        component=${packages.componentPackages.yasno_outages.src}/custom_components/yasno_outages
+      fi
+      env -i HOME="$TMPDIR" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 \
+        PYTHONPATH="${core.pythonPath}" ${python}/bin/python \
+        ${../custom-components/yasno_outages/schedule-boundaries-test.py} "$component" "$mode"
+    done
     ${python}/bin/python ${./.}/runtime/check.py ${../../../machines/home-assistant}
     mkdir -p $out
     cp template-scope-inventory.json template-file-inventory.json $out/
