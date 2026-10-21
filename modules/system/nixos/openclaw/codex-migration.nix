@@ -86,7 +86,7 @@ in
             subagents.allowAgents = [
               mainAgent
               agentId
-            ];
+            ] ++ lib.optional cfg.claudeCode.enable "claude";
           };
 
           # Its workspace is unpinned: <agents.defaults.workspace>/codex-migration,
