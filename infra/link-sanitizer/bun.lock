@@ -7,8 +7,8 @@
       "dependencies": {
         "@effect/platform-bun": "^4.0.4",
         "@effect/platform-node": "^4.0.4",
-        "@url-sanitize/core": "2.0.2",
-        "@url-sanitize/merged": "^2.0.2",
+        "@url-sanitize/core": "2.0.3",
+        "@url-sanitize/merged": "^2.0.3",
         "alchemy": "2.0.0-beta.83",
         "effect": "^4.0.4",
       },
@@ -288,17 +288,17 @@
 
     "@types/ws": ["@types/ws@8.18.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w=="],
 
-    "@url-sanitize/adguard": ["@url-sanitize/adguard@2.0.2", "", { "dependencies": { "@url-sanitize/core": "2.0.2" } }, "sha512-xvYL+hQiiGWT5zfQMIK+lOzV+8sqI5sB11yRxxS6JY9ot87uq57VPR9JrWcL1hx1kZDFcbXDT8jEfPEq7Q22aQ=="],
+    "@url-sanitize/adguard": ["@url-sanitize/adguard@2.0.3", "", { "dependencies": { "@url-sanitize/core": "2.0.3" } }, "sha512-GEaTwM0hiRD4OLzLYLTT7ofIMbU77pZqOsUHHbcrNFjlZrZP82ypYbq8fqS/lG49AvczuM1m0b0sxFn8N0x6qA=="],
 
-    "@url-sanitize/brave": ["@url-sanitize/brave@2.0.2", "", { "dependencies": { "@url-sanitize/core": "2.0.2" } }, "sha512-ONKPfsedLXDGZUtY0Ud7hqD7AhCHbFy39bft0cyYrcaMnFbQ4RHE6dhu+Pnc++8t6WVcU2ZlvBNy9aq51GQIhg=="],
+    "@url-sanitize/brave": ["@url-sanitize/brave@2.0.3", "", { "dependencies": { "@url-sanitize/core": "2.0.3" } }, "sha512-7qIIv00rRKu4D2zzBkZMEsCGsIA041LlBpmm4Mq6NvyvdQfrR/dGTWuZOSu7YHWB2F3YoQgkQjgFk/0RtUJfnQ=="],
 
-    "@url-sanitize/clearurls": ["@url-sanitize/clearurls@2.0.2", "", { "dependencies": { "@url-sanitize/core": "2.0.2" } }, "sha512-38SgAzySG4wSp9eZ7LPuKzt6SsdyKiSXiEQtltmJ4ojIrAxUvpUrZh9mDhmU78zTKnd7TBQCKrY8UWqqKNB7lA=="],
+    "@url-sanitize/clearurls": ["@url-sanitize/clearurls@2.0.3", "", { "dependencies": { "@url-sanitize/core": "2.0.3" } }, "sha512-YSD8iqKY0YgWhoSR/sYfeenUy6BdQ4mq9XOr4imua6OQWW4MyJxe6RNo0c1KJdlJSK8Q6HuKFvSOm5oY1MFG9A=="],
 
-    "@url-sanitize/core": ["@url-sanitize/core@2.0.2", "", {}, "sha512-/kHuG6odzpIImNW11U+b4Gf4OPFGPDXfLU67HFpOvWRnk5Ett0BE9oS7Ngp9UG+Qx0TF9k6gd3KI05EXxkKRyA=="],
+    "@url-sanitize/core": ["@url-sanitize/core@2.0.3", "", {}, "sha512-xFjMR8baHFf0Xf6ocb8hkdnIk3yDqnATw6nUkWOB3oK7/njgd3b0TW+Tph+R0U6q9KQ2mgW5xQFZFuDv3HPBMg=="],
 
-    "@url-sanitize/firefox": ["@url-sanitize/firefox@2.0.2", "", { "dependencies": { "@url-sanitize/core": "2.0.2" } }, "sha512-W45AMnmAS+1fWWi2SCZn/FUUKB7wrpRhz7669AoFu8UWAo7lC53jbt4pRlHjcvmu0zndcxVR0MJp08KcruPFMg=="],
+    "@url-sanitize/firefox": ["@url-sanitize/firefox@2.0.3", "", { "dependencies": { "@url-sanitize/core": "2.0.3" } }, "sha512-W9T1gNVjUvIZKu1F/rAaXHalVGZgMXji6fdnIbEehB/uvVu2j6+B5bFM7Pjhr5WDTdXZg9ZIUZPstnMaCUHttg=="],
 
-    "@url-sanitize/merged": ["@url-sanitize/merged@2.0.2", "", { "dependencies": { "@url-sanitize/adguard": "2.0.2", "@url-sanitize/brave": "2.0.2", "@url-sanitize/clearurls": "2.0.2", "@url-sanitize/core": "2.0.2", "@url-sanitize/firefox": "2.0.2" } }, "sha512-2jvt0t1RCG3NOXdFAZLwC+piZmv+1SHRc/QK934xydPiE7nAchCEuHmHX6fgoyc5u8CWho6tVqaztUqWmzt8Fw=="],
+    "@url-sanitize/merged": ["@url-sanitize/merged@2.0.3", "", { "dependencies": { "@url-sanitize/adguard": "2.0.3", "@url-sanitize/brave": "2.0.3", "@url-sanitize/clearurls": "2.0.3", "@url-sanitize/core": "2.0.3", "@url-sanitize/firefox": "2.0.3" } }, "sha512-BypKecjm/NCyz+PAQVRZgpcVa8s0ohBYX7UZcar9gZViAbIMGSXXwcZKCtRG8+Ie9vW7CCb5f3p4e3sFzZ91ww=="],
 
     "alchemy": ["alchemy@2.0.0-beta.83", "", { "dependencies": { "@alchemy.run/cloudflare-runtime": "2.0.0-beta.83", "@alchemy.run/floci": "2.0.0-beta.83", "@alchemy.run/node-utils": "2.0.0-beta.83", "@alchemy.run/sigil": "0.1.0-alpha.1", "@distilled.cloud/acme": "1.0.0-rc.15", "@distilled.cloud/aws": "1.0.0-rc.15", "@distilled.cloud/axiom": "1.0.0-rc.15", "@distilled.cloud/cloudflare": "1.0.0-rc.15", "@distilled.cloud/core": "1.0.0-rc.15", "@distilled.cloud/doppler": "1.0.0-rc.15", "@distilled.cloud/fly-io": "1.0.0-rc.15", "@distilled.cloud/gcp": "1.0.0-rc.15", "@distilled.cloud/hetzner": "1.0.0-rc.15", "@distilled.cloud/iceberg": "1.0.0-rc.15", "@distilled.cloud/infisical": "1.0.0-rc.15", "@distilled.cloud/neon": "1.0.0-rc.15", "@distilled.cloud/planetscale": "1.0.0-rc.15", "@distilled.cloud/prisma": "1.0.0-rc.15", "@distilled.cloud/railway": "1.0.0-rc.15", "@distilled.cloud/stripe": "1.0.0-rc.15", "@distilled.cloud/turso": "1.0.0-rc.15", "@distilled.cloud/zerossl": "1.0.0-rc.15", "@effect/sql-d1": "^4.0.0", "@effect/sql-sqlite-do": "^4.0.0", "@libsql/client": "^0.17.0", "@neon/functions": "0.11.0", "@octokit/rest": "^22.0.1", "@octokit/webhooks": "^14.2.0", "@prisma/dev": "^0.20.0", "@types/aws-lambda": "^8.10.152", "capnweb": "^0.12.0", "fflate": "^0.8.3", "libsodium-wrappers": "^0.8.3", "pathe": "^2.0.3", "picomatch": "^4.0.4", "rolldown": "1.2.5", "tinyglobby": "^0.2.17", "yaml": "^2.9.0" }, "peerDependencies": { "@alchemy.run/frontend-frameworks": "2.0.0-beta.83", "@aws/durable-execution-sdk-js": "^2.1.0", "@effect/platform-bun": "^4.0.0", "@effect/platform-node": "^4.0.0", "@effect/sql-libsql": "^4.0.0", "@effect/sql-mysql2": "^4.0.0", "@effect/sql-pg": "^4.0.0", "@effect/vitest": "^4.0.0", "@prisma/orm-postgres": "^8.0.0-rc.11", "@vercel/nft": "^1.10.2", "drizzle-kit": "1.0.0-rc.5-ab785fc", "drizzle-orm": "1.0.0-rc.5-ab785fc", "effect": "^4.0.0", "mongodb": "^6.10.0", "mysql2": "^3.24.2", "pg": "^8.22.0", "prisma": "^8.0.0-rc.15", "vite": "^8.0.7", "ws": "^8.21.0" }, "optionalPeers": ["@alchemy.run/frontend-frameworks", "@aws/durable-execution-sdk-js", "@effect/platform-bun", "@effect/platform-node", "@effect/sql-libsql", "@effect/sql-mysql2", "@effect/sql-pg", "@effect/vitest", "@prisma/orm-postgres", "@vercel/nft", "drizzle-kit", "drizzle-orm", "mongodb", "mysql2", "pg", "prisma", "vite", "ws"], "bin": { "alchemy": "./bin/cli.js" } }, "sha512-t0N4FwLU1JxLnKZGdsBNdqiycWDM5HEYmmIguMImplE07Vh+FPpMR8ypk3K3TY5Tg0sFFppXFVwtwiDp6xlX9w=="],
 

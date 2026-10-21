@@ -12,7 +12,7 @@ const sanitize = compileSanitizer({
       source: "custom",
       provider: "instagram",
       urlPattern: "^https?://(?:[a-z0-9-]+\\.)*instagram\\.com(?::[0-9]+)?(?:/|$)",
-      paramPattern: "^(?:psln|stkn|click_source)$",
+      paramPattern: "^psln$",
     },
   ],
 });
