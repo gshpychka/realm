@@ -34,7 +34,7 @@ in
           let
             # display a vendor-specific icon for git repos
             generateGitHostIconModule = host: symbol: color: {
-              when = "${pkgs.git}/bin/git config --get remote.origin.url | grep -q ${host}";
+              when = "${lib.getExe pkgs.git} config --get remote.origin.url | grep -q ${host}";
               require_repo = true;
               command = "";
               style = color;
@@ -48,7 +48,7 @@ in
             repo_name = {
               description = "Name of the current git repository";
               command =
-                "basename \"$(${pkgs.git}/bin/git config --get remote.origin.url)\"" + "| sed 's/\\.git$//'";
+                "basename \"$(${lib.getExe pkgs.git} config --get remote.origin.url)\"" + "| sed 's/\\.git$//'";
               # no space after
               format = "[$symbol($output)]($style)";
               when = true;
@@ -57,7 +57,7 @@ in
             git_directory = {
               description = "directory relative to the root of the git repo";
               # strip the last slash
-              command = "${pkgs.git}/bin/git rev-parse --show-prefix | sed 's:/*$::'";
+              command = "${lib.getExe pkgs.git} rev-parse --show-prefix | sed 's:/*$::'";
               when = true;
               require_repo = true;
               format = "[$symbol($output) ]($style)";
@@ -138,10 +138,10 @@ in
     programs.fzf = {
       enable = true;
       fileWidget = {
-        command = "${pkgs.fd}/bin/fd --type f --strip-cwd-prefix";
+        command = "${lib.getExe pkgs.fd} --type f --strip-cwd-prefix";
       };
       changeDirWidget = {
-        command = "${pkgs.fd}/bin/fd --type d --strip-cwd-prefix";
+        command = "${lib.getExe pkgs.fd} --type d --strip-cwd-prefix";
       };
       defaultOptions = [
         "--border sharp"
@@ -270,14 +270,14 @@ in
             # empty command line - default(-ish) behavior
             selected=$(
               fc -rl 1 |
-              ${pkgs.gawk}/bin/awk '
+              ${lib.getExe pkgs.gawk} '
                 {
                   # remove line number
                   $1="";
                   # print without leading space
                   print substr($0,2)
                 }' |
-              ${pkgs.fzf}/bin/fzf --tac --no-sort
+              ${lib.getExe pkgs.fzf} --tac --no-sort
             )
           else
             # command line has text - filter by prefix before fuzzy search
@@ -285,7 +285,7 @@ in
             
             selected=$(
               fc -rl 1 |
-              ${pkgs.gawk}/bin/awk -v prefix="$prefix" '
+              ${lib.getExe pkgs.gawk} -v prefix="$prefix" '
                 {
                   # remove line number
                   $1="";
@@ -295,7 +295,7 @@ in
                   if (substr(line,1,length(prefix))==prefix) 
                     print line
                 }' |
-              ${pkgs.fzf}/bin/fzf \
+              ${lib.getExe pkgs.fzf} \
                   --tac \
                   --no-sort \
                   --query=''${prefix#* }
