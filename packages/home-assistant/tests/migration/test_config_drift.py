@@ -222,7 +222,10 @@ template: !include_dir_list templates
             }
         )
         _, report = self.audit()
-        self.assertEqual(len(report["source_files"]), 7)
+        self.assertEqual(len(report["source_files"]), 8)
+        self.assertRegex(
+            report["source_files"]["scripts/secrets.yaml"], r"^[a-f0-9]{64}$"
+        )
 
     def test_unresolved_tags_cycles_traversal_duplicates_and_packages_fail_closed(self):
         cases = [

@@ -410,6 +410,16 @@ host fingerprint through a trusted Reaper connection/console, then
 `ssh-keygen -F reaper.glib.sh -f "$WORK/outbound_known_hosts"` must find it.
 Do not test shutdown/reboot while discovering credentials.
 
+Record the exact two file paths **inside Core's container**, including when they
+are outside `/config`, so the final stopped capture can refresh them:
+
+```sh
+read -r -p 'Exact Core-container outbound private-key path: ' OUTBOUND_KEY_PATH
+read -r -p 'Exact Core-container outbound known-hosts path: ' OUTBOUND_HOSTS_PATH
+jq -n --arg key "$OUTBOUND_KEY_PATH" --arg hosts "$OUTBOUND_HOSTS_PATH" \
+  '{key:$key,known_hosts:$hosts}' > "$WORK/outbound-sources.json"
+```
+
 Preflight reports private entry field paths containing Supervisor DNS or old
 absolute paths without printing values. `/media`, `/share`, `/ssl` mounts are
 captured/restored as `media`, `haos-share`, `haos-ssl` below `/var/lib/hass`.
@@ -521,6 +531,23 @@ used when its entry is still group-only; a captured address entry needs neither.
 
 ```sh
 FINAL_SNAPSHOT="$WORK/final-unpacked/homeassistant"
+cp -a "$WORK/outbound_key" "$WORK/outbound-key-before-final"
+cp -a "$WORK/outbound_known_hosts" "$WORK/outbound-hosts-before-final"
+for field in key known_hosts; do
+  source_path=$(jq -er --arg field "$field" '.[$field]' "$WORK/outbound-sources.json")
+  [[ $source_path =~ ^/[A-Za-z0-9_./-]+$ ]]
+  [[ ! $source_path =~ (^|/)\.\.(/|$) ]]
+  if [[ $field == key ]]; then destination=outbound_key; else destination=outbound_known_hosts; fi
+  # Docker cp works with stopped containers. Only the validated plain path
+  # enters this fixed remote command; private file bytes stay in protected WORK.
+  ssh "${SSH_SOURCE[@]}" "root@$SOURCE" "docker cp -L '$CORE:$source_path' -" \
+    | "$TOOLS" tool tar -xOf - > "$WORK/$destination.final"
+  chmod 600 "$WORK/$destination.final"
+  mv -T "$WORK/$destination.final" "$WORK/$destination"
+done
+ssh-keygen -y -P '' -f "$WORK/outbound_key" > "$WORK/outbound-current.pub"
+ssh-keygen -F reaper.glib.sh -f "$WORK/outbound_known_hosts" \
+  > "$WORK/outbound-current-host-records"
 preflight_status=0
 "$TOOLS" preflight "$FINAL_SNAPSHOT" > "$WORK/final-preflight.json" || preflight_status=$?
 test "$preflight_status" -le 1
@@ -537,6 +564,16 @@ YASNO_ENTRY_ID=$("$TOOLS" tool yq -r '.yasno_address_guard.entry_id' "$WORK/cred
 cp -a "$FINAL_SNAPSHOT/secrets.yaml" "$WORK/final-secrets-input.yaml"
 chmod 600 "$WORK/final-secrets-input.yaml"
 ```
+
+Compare the final outbound host-key fingerprints with the trusted Reaper
+identity from section 5; never accept a changed key from the copied file alone.
+The native bundle now uses the source's exact current outbound files, including
+changes since rehearsal. If either copy/validation fails, recover source with
+section 13 and correct the recorded path or credential; do not install the
+older staged key as a fallback.
+The [Docker copy contract](https://docs.docker.com/reference/cli/docker/container/cp/)
+supports stopped containers, tar streaming and explicit symlink following; it
+does not make transient `/proc`, `/sys`, `/dev` or container tmpfs files persistent.
 
 Use the final capture's secrets, including credentials changed after rehearsal.
 If the soundbar uses a different `!secret` name, repeat section 4's exact mapping
@@ -579,7 +616,8 @@ final ledger and prove recovery with:
   "$WORK/outbound_known_hosts" "$WORK/mqtt-ha.json" "$WORK/glances.json" \
   "$WORK/final-reconcile.json" "$WORK/ha-token" \
   "$WORK/mqtt-client-ledger.json" "$WORK/endpoint-plan.json" "$WORK/haos-emergency-kit" \
-  "$WORK/drift-final-accounted" "$WORK/drift-final-decisions.json" "$WORK/runtime-decisions.md"
+  "$WORK/drift-final-accounted" "$WORK/drift-final-decisions.json" "$WORK/runtime-decisions.md" \
+  "$WORK/outbound-sources.json"
 ```
 
 Require exit 0 and include the validated report in the encrypted recovery proof.
