@@ -196,7 +196,7 @@ in
         })
       ];
 
-      initContent = ''
+      initContent = /* bash */ ''
         bindkey '^E' autosuggest-accept
 
         # delete past insert start in insert mode
