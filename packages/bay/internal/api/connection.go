@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
@@ -14,6 +15,8 @@ import (
 
 // SessionIDHeader binds a connection to a record, rather than a reusable name.
 const SessionIDHeader = "Bay-Session-ID"
+
+const SessionGenerationHeader = "Bay-Session-Generation"
 
 // ConnectionErrorTrailer reports an unsuccessful bridge after streaming started.
 // The byte stream itself belongs entirely to the program's protocol.
@@ -38,7 +41,20 @@ func connectHandler(svc Service) http.HandlerFunc {
 			wire.Fail(w, fmt.Errorf("%w: %s is required", fault.Invalid, SessionIDHeader))
 			return
 		}
-		connection, err := svc.Connect(r.Context(), r.PathValue("name"), id)
+		var generations []uint64
+		if value, present := r.Header[http.CanonicalHeaderKey(SessionGenerationHeader)]; present {
+			if len(value) != 1 {
+				wire.Fail(w, fmt.Errorf("%w: one execution generation is required", fault.Invalid))
+				return
+			}
+			generation, err := strconv.ParseUint(value[0], 10, 64)
+			if err != nil {
+				wire.Fail(w, fmt.Errorf("%w: invalid execution generation", fault.Invalid))
+				return
+			}
+			generations = []uint64{generation}
+		}
+		connection, err := svc.Connect(r.Context(), r.PathValue("name"), id, generations...)
 		if err != nil {
 			wire.Fail(w, err)
 			return
@@ -48,6 +64,9 @@ func connectHandler(svc Service) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Connection", "close")
 		w.Header().Set(SessionIDHeader, id)
+		if len(generations) > 0 {
+			w.Header().Set(SessionGenerationHeader, strconv.FormatUint(generations[0], 10))
+		}
 		w.Header().Set("Trailer", ConnectionErrorTrailer)
 		w.WriteHeader(http.StatusOK)
 		if err := control.Flush(); err != nil {
@@ -90,7 +109,7 @@ func (w flushedWriter) Write(p []byte) (int, error) {
 
 // Connect opens a full-duplex byte stream to a configured program. CloseWrite
 // finishes request input while retaining the response; Close disconnects both.
-func (c *Client) Connect(ctx context.Context, name, id string) (Connection, error) {
+func (c *Client) Connect(ctx context.Context, name, id string, generation ...uint64) (Connection, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: connecting requires the session ID", fault.Invalid)
 	}
@@ -105,6 +124,9 @@ func (c *Client) Connect(ctx context.Context, name, id string) (Connection, erro
 		return nil, err
 	}
 	req.Header.Set(SessionIDHeader, id)
+	if len(generation) > 0 {
+		req.Header.Set(SessionGenerationHeader, strconv.FormatUint(generation[0], 10))
+	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 	response, err := c.c.HTTP.Do(req)
 	if err != nil {
@@ -119,11 +141,11 @@ func (c *Client) Connect(ctx context.Context, name, id string) (Connection, erro
 		input.Close()
 		return nil, err
 	}
-	if response.Header.Get(SessionIDHeader) != id {
+	if response.Header.Get(SessionIDHeader) != id || (len(generation) > 0 && response.Header.Get(SessionGenerationHeader) != strconv.FormatUint(generation[0], 10)) {
 		response.Body.Close()
 		cancel()
 		input.Close()
-		return nil, errors.New("the connection returned a different session ID")
+		return nil, errors.New("the connection returned a different session identity")
 	}
 	return &clientConnection{input: input, response: response, cancel: cancel}, nil
 }

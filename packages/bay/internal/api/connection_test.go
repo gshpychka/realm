@@ -22,7 +22,7 @@ type connectionService struct {
 	open func(context.Context, string, string) (io.ReadWriteCloser, error)
 }
 
-func (s connectionService) Connect(ctx context.Context, name, id string) (io.ReadWriteCloser, error) {
+func (s connectionService) Connect(ctx context.Context, name, id string, generation ...uint64) (io.ReadWriteCloser, error) {
 	return s.open(ctx, name, id)
 }
 

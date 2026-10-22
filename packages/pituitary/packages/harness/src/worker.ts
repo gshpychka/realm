@@ -19,6 +19,15 @@ import {
 import { connect, createServer, type Socket } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { encodeJsonLine, type RpcExtensionUIRequest, type RpcSessionState } from "@pituitary/rpc";
+import {
+  type DomainRequest,
+  type DomainResult,
+  domainRequestId,
+  validateAssignment,
+  validateDelivery,
+  validateDomainCommand,
+  type WorkerAssignment,
+} from "./domain-protocol.ts";
 import { createNativeEngine } from "./pi-engine.ts";
 import {
   type AgentManifest,
@@ -65,6 +74,12 @@ interface LedgerEntry {
   id: string;
   payload: string;
   response?: Extract<ServerRecord, { type: "result" }>;
+}
+
+interface DomainEntry {
+  request: DomainRequest;
+  payload: string;
+  result?: DomainResult;
 }
 
 const LEDGER_CAPACITY = 4096;
@@ -157,13 +172,19 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
 
   const metadataPath = join(stateDirectory, "worker.json");
   const rolePath = join(stateDirectory, "role.json");
+  const assignmentPath = join(stateDirectory, "assignment.json");
+  const domainPath = join(stateDirectory, "domain.json");
   const ledgerPath = join(stateDirectory, "commands.json");
   let engine: WorkerEngine | undefined;
   let role: AgentManifest | undefined;
+  let assignment: WorkerAssignment | undefined;
+  let apiKeys: Record<string, string> = Object.create(null);
+  let provisioned = false;
   let initialization: Promise<void> | undefined;
   const sockets = new Set<Socket>();
   const connections = new Set<Socket>();
   let controller: Socket | null = null;
+  let supervisor: Socket | null = null;
   let sequence = 0;
   let closing: Promise<void> | null = null;
   let stopped!: () => void;
@@ -175,6 +196,19 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
   const displayIds = new Map<string, string>();
   const dialogDeadlines = new Map<string, number>();
   const ledger = new Map<string, LedgerEntry>();
+  const domainEntries = new Map<string, DomainEntry>();
+  const domainWaiters = new Map<string, Set<{ resolve(value: unknown): void; reject(error: Error): void }>>();
+  const saveDomain = () => {
+    const entries = [...domainEntries.values()];
+    if (
+      entries.length > LEDGER_CAPACITY ||
+      Buffer.byteLength(JSON.stringify(entries)) +
+        entries.filter((entry) => !entry.result).length * 256 * 1024 >
+        LEDGER_MAX_BYTES
+    )
+      throw new Error("worker domain receipt capacity is full; start a new attempt");
+    atomicJson(domainPath, entries);
+  };
   const ledgerBytes = () =>
     Buffer.byteLength(JSON.stringify([...ledger.values()])) +
     1 +
@@ -194,6 +228,60 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
   };
   const publish = (record: ServerRecord) => {
     for (const socket of sockets) send(socket, record);
+  };
+  const domain = (
+    assistantEntryId: string,
+    toolCallId: string,
+    input: import("./domain-protocol.ts").DomainCommand,
+    signal?: AbortSignal,
+  ): Promise<unknown> => {
+    if (!assignment) return Promise.reject(new Error("worker has no orchestration assignment"));
+    if (signal?.aborted || closing) return Promise.reject(new Error("domain request interrupted"));
+    const command = validateDomainCommand(input);
+    const id = domainRequestId(assignment, assistantEntryId, toolCallId);
+    const payload = canonical(command);
+    const existing = domainEntries.get(id);
+    if (existing && existing.payload !== payload)
+      return Promise.reject(new Error("domain command ID was reused with another payload"));
+    const entry: DomainEntry = existing ?? {
+      request: { type: "domain_request", id, assistantEntryId, toolCallId, command },
+      payload,
+    };
+    if (entry.result)
+      return entry.result.success
+        ? Promise.resolve(entry.result.data)
+        : Promise.reject(new Error(entry.result.error));
+    if (!existing) {
+      domainEntries.set(id, entry);
+      try {
+        saveDomain();
+      } catch (error) {
+        domainEntries.delete(id);
+        throw error;
+      }
+    }
+    const waiting = new Promise<unknown>((resolve, reject) => {
+      const waiters = domainWaiters.get(id) ?? new Set();
+      const finish = {
+        resolve: (value: unknown) => {
+          signal?.removeEventListener("abort", abort);
+          waiters.delete(finish);
+          resolve(value);
+        },
+        reject: (error: Error) => {
+          signal?.removeEventListener("abort", abort);
+          waiters.delete(finish);
+          reject(error);
+        },
+      };
+      const abort = () =>
+        finish.reject(new Error("domain request interrupted; its durable outcome is retained"));
+      waiters.add(finish);
+      domainWaiters.set(id, waiters);
+      signal?.addEventListener("abort", abort, { once: true });
+    });
+    if (supervisor) send(supervisor, entry.request);
+    return waiting;
   };
   const uiClose = (id: string) => {
     dialogDeadlines.delete(id);
@@ -249,6 +337,10 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
       sockets.clear();
       if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
       try {
+        for (const waiters of domainWaiters.values())
+          for (const waiter of [...waiters])
+            waiter.reject(new Error("worker stopped; domain request retained for reconciliation"));
+        domainWaiters.clear();
         await initialization?.catch(() => {});
         await engine?.close();
         await Promise.allSettled([...pending.values()]);
@@ -267,6 +359,12 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
     if (existsSync(metadataPath)) previous = JSON.parse(readFileSync(metadataPath, "utf8")) as WorkerIdentity;
     if (previous && previous.cwd !== resolve(options.cwd))
       throw new Error("worker state belongs to another directory");
+    if (existsSync(assignmentPath)) {
+      assignment = validateAssignment(JSON.parse(readFileSync(assignmentPath, "utf8")));
+      if (previous?.assignment && canonical(previous.assignment) !== canonical(assignment))
+        throw new Error("saved worker assignment changed; explicit recovery is required");
+    } else if (previous?.assignment)
+      throw new Error("saved worker assignment is missing; explicit recovery is required");
     if (existsSync(rolePath)) {
       if (statSync(rolePath).size > 2 * 1024 * 1024)
         throw new Error("saved agent manifest exceeds its limit");
@@ -314,6 +412,30 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
         ledger.set(entry.id, entry);
       }
     }
+    if (existsSync(domainPath)) {
+      if (statSync(domainPath).size > LEDGER_MAX_BYTES)
+        throw new Error("worker domain ledger exceeds its limit");
+      const entries = JSON.parse(readFileSync(domainPath, "utf8")) as DomainEntry[];
+      if (!Array.isArray(entries) || entries.length > LEDGER_CAPACITY || !assignment)
+        throw new Error("invalid worker domain ledger");
+      for (const entry of entries) {
+        if (
+          !entry.request ||
+          entry.request.type !== "domain_request" ||
+          typeof entry.request.assistantEntryId !== "string" ||
+          typeof entry.request.toolCallId !== "string" ||
+          entry.request.id !==
+            domainRequestId(assignment, entry.request.assistantEntryId, entry.request.toolCallId) ||
+          canonical(validateDomainCommand(entry.request.command)) !== entry.payload ||
+          (entry.result &&
+            (entry.result.type !== "domain_result" ||
+              entry.result.id !== entry.request.id ||
+              typeof entry.result.success !== "boolean"))
+        )
+          throw new Error("invalid worker domain receipt");
+        domainEntries.set(entry.request.id, entry);
+      }
+    }
     identity = {
       version: WORKER_PROTOCOL_VERSION,
       incarnation: randomUUID(),
@@ -321,6 +443,7 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
       cwd: resolve(options.cwd),
       sessionId: previous?.sessionId ?? randomUUID(),
       ...(role ? { roleDigest: agentManifestDigest(role) } : {}),
+      ...(assignment ? { assignment } : {}),
     };
     const initializeEngine = (): Promise<void> => {
       if (initialization) return initialization;
@@ -333,6 +456,25 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
           model: role ? (role.model ?? previous?.model) : options.model,
           instructions: role?.instructions ?? options.instructions,
           role,
+          assignment,
+          apiKeys: assignment ? apiKeys : undefined,
+          domain: assignment ? domain : undefined,
+          recoverDomain: assignment
+            ? async (assistantEntryId, toolCallId, command) => {
+                const entry = domainEntries.get(
+                  domainRequestId(assignment as WorkerAssignment, assistantEntryId, toolCallId),
+                );
+                if (!entry) return null;
+                if (entry.payload !== canonical(validateDomainCommand(command)))
+                  throw new Error("saved native domain call changed its payload");
+                try {
+                  await domain(assistantEntryId, toolCallId, command);
+                } catch (error) {
+                  if (!entry.result) throw error;
+                }
+                return entry.result ?? null;
+              }
+            : undefined,
           configDirectory: options.configDirectory,
           authFile: options.authFile,
           onEvent: (event) => {
@@ -368,7 +510,9 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
       })();
       return initialization;
     };
-    if (role || !options.roleRequired) await initializeEngine();
+    // Credentials are deliberately RAM-only. A managed restart is re-provisioned and
+    // initialized by its supervisor before the SDK can discover or use any auth.
+    if (!role && !options.roleRequired) await initializeEngine();
     if (existsSync(socketPath)) {
       const info = lstatSync(socketPath);
       if (!info.isSocket() || info.uid !== process.getuid?.())
@@ -405,7 +549,10 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
       // Initialization has its own immutable durable binding. Repeating it reconciles a crash
       // between saving the role and saving a transport receipt without an uncertain outcome.
       const recorded =
-        !isReadCommand(command) && command.type !== "shutdown" && command.type !== "initialize";
+        !isReadCommand(command) &&
+        command.type !== "shutdown" &&
+        command.type !== "initialize" &&
+        command.type !== "deliver";
       if (recorded) {
         if (ledger.size >= LEDGER_CAPACITY)
           throw new Error("worker command ledger is full; start a new worker state directory");
@@ -426,8 +573,21 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
           if (command.type === "initialize") {
             const manifest = validateAgentManifest(command.manifest);
             const digest = agentManifestDigest(manifest);
+            const requested =
+              command.assignment === undefined ? undefined : validateAssignment(command.assignment);
             if (role && agentManifestDigest(role) !== digest)
               throw new Error("this worker is already bound to another agent role; start a new attempt");
+            if (assignment && (!requested || canonical(assignment) !== canonical(requested)))
+              throw new Error("this worker is bound to another attempt assignment");
+            if (requested && !assignment) {
+              if (engine || previous?.sessionFile)
+                throw new Error("an existing conversation cannot be assigned to another attempt");
+              assignment = requested;
+              atomicJson(assignmentPath, assignment);
+              identity = { ...identity, assignment };
+            }
+            if (assignment && !provisioned)
+              throw new Error("provision credentials before initializing this assigned worker");
             if (!role) {
               if (engine || !options.roleRequired)
                 throw new Error(
@@ -438,12 +598,26 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
               identity = { ...identity, roleDigest: digest };
             }
             await initializeEngine();
-            data = { roleDigest: digest, sessionId: identity.sessionId, sessionFile: identity.sessionFile };
+            data = {
+              roleDigest: digest,
+              sessionId: identity.sessionId,
+              sessionFile: identity.sessionFile,
+              assignment,
+              capabilities: engine?.snapshot ? ["atomic-snapshot"] : [],
+            };
           } else if (command.type !== "shutdown" && !engine) {
             throw new Error("this worker requires an agent role; initialize it before sending commands");
           } else if (command.type === "get_snapshot") {
             if (!engine?.snapshot) throw new Error("this worker engine does not support an atomic snapshot");
             data = { ...engine.snapshot(), sequence };
+          } else if (command.type === "get_delivery") {
+            if (!engine?.deliveryStatus)
+              throw new Error("this worker engine does not support inbox delivery");
+            data = engine.deliveryStatus(command.batchId);
+          } else if (command.type === "deliver") {
+            if (!engine?.deliver || !assignment) throw new Error("this worker has no managed inbox");
+            data = await engine.deliver(validateDelivery(command));
+            await remember();
           } else if (command.type !== "shutdown") {
             await initialization;
             data = await engine?.call({ ...command, id: command.id ?? id });
@@ -489,6 +663,7 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
         sockets.delete(socket);
         connections.delete(socket);
         if (controller === socket) controller = null;
+        if (supervisor === socket) supervisor = null;
       });
       socket.on("data", (chunk: Buffer) => {
         if (rejected) return;
@@ -508,13 +683,17 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
               if (
                 record.type !== "hello" ||
                 record.version !== WORKER_PROTOCOL_VERSION ||
-                typeof record.control !== "boolean"
+                typeof record.control !== "boolean" ||
+                (record.supervisor !== undefined && typeof record.supervisor !== "boolean")
               ) {
                 throw new Error(`worker protocol ${WORKER_PROTOCOL_VERSION} handshake required`);
               }
               if (record.control && controller && !controller.destroyed)
                 throw new Error("another client controls this worker; detach it before taking control");
+              if (record.supervisor && !record.control)
+                throw new Error("a supervisor must hold the worker control lease");
               if (record.control) controller = socket;
+              if (record.supervisor) supervisor = socket;
               accepted = true;
               clearTimeout(timer);
               sockets.add(socket);
@@ -531,9 +710,77 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
                   "dialogs",
                   "single-controller",
                   "immutable-role",
+                  "orchestration",
                   ...(engine?.snapshot || (!engine && !options.engineFactory) ? ["atomic-snapshot"] : []),
                 ],
               });
+              if (supervisor === socket)
+                for (const entry of domainEntries.values()) if (!entry.result) send(socket, entry.request);
+              continue;
+            }
+            if (record.type === "credentials") {
+              if (supervisor !== socket) throw new Error("only the supervisor may provision credentials");
+              if (
+                typeof record.id !== "string" ||
+                !record.id ||
+                record.id.length > 256 ||
+                !record.apiKeys ||
+                typeof record.apiKeys !== "object" ||
+                Array.isArray(record.apiKeys) ||
+                Object.keys(record.apiKeys).length > 32 ||
+                Object.entries(record.apiKeys).some(
+                  ([provider, key]) =>
+                    !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(provider) ||
+                    typeof key !== "string" ||
+                    !key ||
+                    Buffer.byteLength(key) > 64 * 1024,
+                )
+              )
+                throw new Error("invalid credential provision");
+              const provision = Object.assign(Object.create(null), record.apiKeys) as Record<string, string>;
+              const id = record.id;
+              void (async () => {
+                await engine?.provision?.(provision);
+                apiKeys = provision;
+                provisioned = true;
+                send(socket, { type: "result", id, success: true });
+              })().catch(() =>
+                send(socket, {
+                  type: "result",
+                  id,
+                  success: false,
+                  error: "credential provision failed",
+                }),
+              );
+              continue;
+            }
+            if (record.type === "domain_result") {
+              const result = record;
+              if (supervisor !== socket) throw new Error("only the supervisor may answer domain requests");
+              const entry = domainEntries.get(record.id);
+              if (
+                !entry ||
+                typeof record.success !== "boolean" ||
+                (!record.success && typeof record.error !== "string") ||
+                Object.keys(record).some(
+                  (key) => !["type", "id", "success", result.success ? "data" : "error"].includes(key),
+                ) ||
+                Buffer.byteLength(JSON.stringify(record)) > 256 * 1024
+              )
+                throw new Error("invalid domain result");
+              if (entry.result && canonical(entry.result) !== canonical(record))
+                throw new Error("domain result changed for an existing receipt");
+              const previousResult = entry.result;
+              entry.result = record;
+              try {
+                saveDomain();
+              } catch (error) {
+                entry.result = previousResult;
+                throw error;
+              }
+              for (const waiter of [...(domainWaiters.get(record.id) ?? [])])
+                record.success ? waiter.resolve(record.data) : waiter.reject(new Error(record.error));
+              domainWaiters.delete(record.id);
               continue;
             }
             if (record.type === "answer") {
@@ -555,6 +802,18 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
             )
               throw new Error("invalid worker command");
             const { id, command } = record;
+            if (
+              (command.type === "deliver" || (command.type === "initialize" && command.assignment)) &&
+              supervisor !== socket
+            ) {
+              send(socket, {
+                type: "result",
+                id,
+                success: false,
+                error: "this command requires the supervisor lease",
+              });
+              continue;
+            }
             if (controller !== socket && command.type !== "shutdown" && !isReadCommand(command)) {
               send(socket, {
                 type: "result",

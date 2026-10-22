@@ -20,4 +20,16 @@ const quit = () => {
   void client.close().then(() => process.exit(0));
 };
 process.on("SIGTERM", quit);
-root.render(<App link={client} workspace={{ cwd: "/work", local: false, label: "builder" }} onQuit={quit} />);
+const archived = process.env.PITUITARY_FIXTURE_ARCHIVED === "1";
+root.render(
+  <App
+    link={client}
+    workspace={{
+      cwd: "/work",
+      local: false,
+      label: archived ? "builder · archived" : "builder",
+      readonly: archived,
+    }}
+    onQuit={quit}
+  />,
+);

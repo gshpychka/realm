@@ -39,7 +39,7 @@ var commands = []subcommand{
 	},
 	{
 		name:    "connect",
-		args:    "NAME --id SESSION_ID",
+		args:    "NAME --id SESSION_ID [--generation GENERATION]",
 		summary: "connect stdin/stdout to a program's configured endpoint; disconnect leaves it running",
 		run:     (*cli).connect,
 	},
@@ -93,7 +93,7 @@ var commands = []subcommand{
 	},
 	{
 		name:    "send",
-		args:    "[--thread N] [--subject S] [--json] TO [MESSAGE...]",
+		args:    "[--thread N] [--subject S] [--client-id KEY] [--to-id ID] [--json] TO [MESSAGE...]",
 		summary: "send a message as the operator; MESSAGE comes from stdin when omitted or -",
 		run:     (*cli).send,
 	},

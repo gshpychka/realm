@@ -7,6 +7,22 @@ import {
   type RpcExtensionUIRequest,
   type RpcExtensionUIResponse,
 } from "@pituitary/rpc";
+import type {
+  DomainCommand,
+  DomainRequest,
+  DomainResult,
+  InboxDelivery,
+  WorkerAssignment,
+} from "./domain-protocol.ts";
+
+export type {
+  DomainCommand,
+  DomainRequest,
+  DomainResult,
+  InboxDelivery,
+  InboxMessage,
+  WorkerAssignment,
+} from "./domain-protocol.ts";
 
 export const WORKER_PROTOCOL_VERSION = 1;
 /** A bounded live connection is disposable; the worker and its transcript are not. */
@@ -26,6 +42,8 @@ export interface AgentManifest {
   tools: AgentTool[];
   delegatesTo: string[];
   credentials: string[];
+  /** Older saved roles omit limits; new declarations make their grants explicit. */
+  limits?: { maxChildren: number; maxDepth: number };
 }
 
 export function validateAgentManifest(value: unknown): AgentManifest {
@@ -43,10 +61,26 @@ export function validateAgentManifest(value: unknown): AgentManifest {
     "tools",
     "delegatesTo",
     "credentials",
+    "limits",
   ];
   if (Object.keys(object).some((key) => !keys.includes(key)))
     throw new Error("agent manifest contains an unknown field");
   const name = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
+  let limits: AgentManifest["limits"];
+  if (object.limits !== undefined) {
+    if (!object.limits || typeof object.limits !== "object" || Array.isArray(object.limits))
+      throw new Error("agent limits must be an object");
+    const declaration = object.limits as Record<string, unknown>;
+    if (
+      Object.keys(declaration).some((key) => !["maxChildren", "maxDepth"].includes(key)) ||
+      !Number.isSafeInteger(declaration.maxChildren) ||
+      (declaration.maxChildren as number) < 0 ||
+      !Number.isSafeInteger(declaration.maxDepth) ||
+      (declaration.maxDepth as number) < 0
+    )
+      throw new Error("agent limits must be non-negative safe integers");
+    limits = { maxChildren: declaration.maxChildren as number, maxDepth: declaration.maxDepth as number };
+  }
   if (object.schemaVersion !== 1) throw new Error("unsupported agent manifest version");
   if (typeof object.name !== "string" || !name.test(object.name))
     throw new Error("agent manifest has an invalid name");
@@ -75,6 +109,7 @@ export function validateAgentManifest(value: unknown): AgentManifest {
     tools: list("tools", (item) => (AGENT_TOOLS as readonly string[]).includes(item)) as AgentTool[],
     delegatesTo: list("delegatesTo", (item) => name.test(item)),
     credentials: list("credentials", (item) => /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(item)),
+    ...(limits ? { limits } : {}),
   };
 }
 
@@ -104,6 +139,8 @@ export class WorkerRecordDecoder {
 }
 
 export interface WorkerIdentity {
+  /** A host projection of saved conversation state, with no live execution lease. */
+  archived?: boolean;
   version: typeof WORKER_PROTOCOL_VERSION;
   incarnation: string;
   pid: number;
@@ -113,26 +150,33 @@ export interface WorkerIdentity {
   roleDigest?: string;
   /** A role using the configured default still pins the model resolved for this attempt. */
   model?: string;
+  assignment?: WorkerAssignment;
 }
 
 export interface WorkerHello {
   type: "hello";
   version: number;
   control: boolean;
+  supervisor?: boolean;
 }
 
 export type WorkerCommand =
   | RpcCommand
   | { type: "shutdown" }
   | { type: "get_snapshot" }
-  | { type: "initialize"; manifest: AgentManifest };
+  | { type: "get_delivery"; batchId: string }
+  | { type: "initialize"; manifest: AgentManifest; assignment?: WorkerAssignment }
+  | InboxDelivery;
 
 export type ClientRecord =
   | WorkerHello
   | { type: "command"; id: string; command: WorkerCommand }
-  | { type: "answer"; response: RpcExtensionUIResponse };
+  | { type: "answer"; response: RpcExtensionUIResponse }
+  | DomainResult
+  | { type: "credentials"; id: string; apiKeys: Record<string, string> };
 
 export type ServerRecord =
+  | DomainRequest
   | {
       type: "welcome";
       worker: WorkerIdentity;
@@ -151,6 +195,7 @@ export type ServerRecord =
 const READ_COMMANDS = new Set<WorkerCommand["type"]>([
   "get_state",
   "get_snapshot",
+  "get_delivery",
   "get_messages",
   "get_session_stats",
   "get_available_models",
@@ -184,6 +229,9 @@ export interface WorkerEngine {
   snapshot?(): Omit<AgentSnapshot, "sequence">;
   respond(response: RpcExtensionUIResponse): void;
   close(): Promise<void>;
+  deliver?(delivery: InboxDelivery): Promise<{ entryId: string; duplicate: boolean }>;
+  deliveryStatus?(batchId: string): { entryId: string | null; payloadHash?: string };
+  provision?(apiKeys: Readonly<Record<string, string>>): Promise<void>;
 }
 
 export interface WorkerEngineContext {
@@ -194,6 +242,19 @@ export interface WorkerEngineContext {
   model?: string;
   instructions?: string;
   role?: AgentManifest;
+  assignment?: WorkerAssignment;
+  apiKeys?: Readonly<Record<string, string>>;
+  domain?(
+    assistantEntryId: string,
+    toolCallId: string,
+    command: DomainCommand,
+    signal?: AbortSignal,
+  ): Promise<unknown>;
+  recoverDomain?(
+    assistantEntryId: string,
+    toolCallId: string,
+    command: DomainCommand,
+  ): Promise<DomainResult | null>;
   configDirectory?: string;
   authFile?: string;
   onEvent(event: PiEvent): void;

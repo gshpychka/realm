@@ -431,7 +431,8 @@ inputs.nixpkgs.lib.nixos.runTest {
           mcp = json.loads(guest("one", "cat /etc/bay/mcp.json"))["mcpServers"]["bay"]
           call = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "whoami", "arguments": {}}})
           reply = json.loads(host.succeed(f"echo '{call}' | incus exec --project bay one -- {mcp['command']} {' '.join(mcp['args'])}"))
-          assert reply["result"]["structuredContent"] == {"name": "one"}, reply
+          identity = json.loads(bay("show one --json"))
+          assert reply["result"]["structuredContent"] == {field: identity[field] for field in ["name", "id", "generation"]}, reply
 
       with subtest("a session cannot read a thread it is not part of"):
           private = json.loads(bay("send -json -subject private two secret"))

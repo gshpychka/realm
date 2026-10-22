@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
+	"github.com/gshpychka/realm/packages/bay/internal/identity"
 	"github.com/gshpychka/realm/packages/bay/internal/machines"
 	"github.com/gshpychka/realm/packages/bay/internal/records"
 )
@@ -147,7 +148,7 @@ func TestEndIdentityPreconditionLeavesReplacementRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { connection.Close() })
-	err = svc.End(context.Background(), "one", nil, first.ID)
+	err = svc.End(context.Background(), "one", nil, identity.Precondition{ID: first.ID})
 	wantKind(t, err, fault.Conflict)
 	select {
 	case <-connection.(*programConnection).done:
@@ -157,7 +158,7 @@ func TestEndIdentityPreconditionLeavesReplacementRunning(t *testing.T) {
 	if !instances.instances["one"].program {
 		t.Fatal("stale end stopped the replacement")
 	}
-	if err := svc.End(context.Background(), "one", nil, replacement.ID); err != nil {
+	if err := svc.End(context.Background(), "one", nil, identity.Precondition{ID: replacement.ID}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -174,7 +175,7 @@ func TestSuspendIdentityPreconditionLeavesReplacementRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { connection.Close() })
-	wantKind(t, svc.Suspend(context.Background(), "one", first.ID), fault.Conflict)
+	wantKind(t, svc.Suspend(context.Background(), "one", identity.Precondition{ID: first.ID}), fault.Conflict)
 	select {
 	case <-connection.(*programConnection).done:
 		t.Fatal("stale suspend disconnected the replacement's client")
@@ -183,7 +184,7 @@ func TestSuspendIdentityPreconditionLeavesReplacementRunning(t *testing.T) {
 	if !instances.instances["one"].running || !instances.instances["one"].program {
 		t.Fatal("stale suspend stopped the replacement")
 	}
-	if err := svc.Suspend(context.Background(), "one", replacement.ID); err != nil {
+	if err := svc.Suspend(context.Background(), "one", identity.Precondition{ID: replacement.ID}); err != nil {
 		t.Fatal(err)
 	}
 	select {

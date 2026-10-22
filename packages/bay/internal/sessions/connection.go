@@ -7,12 +7,13 @@ import (
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
 	"github.com/gshpychka/realm/packages/bay/internal/guest"
+	"github.com/gshpychka/realm/packages/bay/internal/identity"
 )
 
 // Connect opens the configured program endpoint, never an arbitrary guest command.
 // The configured limit bounds operator bridges. Closing them leaves the program
 // running; lifecycle changes close them before touching its instance.
-func (s *Service) Connect(ctx context.Context, name, id string) (io.ReadWriteCloser, error) {
+func (s *Service) Connect(ctx context.Context, name, id string, generation ...uint64) (io.ReadWriteCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -28,8 +29,12 @@ func (s *Service) Connect(ctx context.Context, name, id string) (io.ReadWriteClo
 	if err != nil {
 		return nil, err
 	}
-	if rec.ID != id {
-		return nil, fmt.Errorf("%w: session %s has a different ID", fault.Conflict, name)
+	expected := identity.Precondition{ID: id}
+	if len(generation) > 0 {
+		expected.Generation = &generation[0]
+	}
+	if err := checkExpected(rec, []identity.Precondition{expected}); err != nil {
+		return nil, err
 	}
 	program, err := s.program(rec)
 	if err != nil {

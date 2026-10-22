@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -46,12 +47,22 @@ type Thread struct {
 
 // Message is one message in a thread, from one participant to another.
 type Message struct {
-	ID     int64     `json:"id"`
-	Thread int64     `json:"thread"`
-	From   string    `json:"from"`
-	To     string    `json:"to"`
-	Body   string    `json:"body"`
-	Sent   time.Time `json:"sent"`
+	ID             int64     `json:"id"`
+	Thread         int64     `json:"thread"`
+	From           string    `json:"from"`
+	To             string    `json:"to"`
+	Body           string    `json:"body"`
+	Sent           time.Time `json:"sent"`
+	FromID         string    `json:"fromId"`
+	ToID           string    `json:"toId"`
+	FromGeneration uint64    `json:"fromGeneration"`
+}
+
+// Feed is a bounded, non-marking forward page. Next is opaque and belongs to one message database.
+type Feed struct {
+	Messages []Message `json:"messages"`
+	Next     string    `json:"next"`
+	More     bool      `json:"more"`
 }
 
 // Conversation is a thread with its messages, oldest first.
@@ -66,11 +77,21 @@ type Conversation struct {
 // Send is a message to send; Thread 0 starts a new thread titled Subject, or the first line of Body when Subject is
 // empty.
 type Send struct {
-	To      string `json:"to"`
-	Thread  int64  `json:"thread,omitempty"`
-	Subject string `json:"subject,omitempty"`
+	To       string `json:"to"`
+	ToID     string `json:"toId,omitempty"`
+	ClientID string `json:"clientId,omitempty"`
+	Thread   int64  `json:"thread,omitempty"`
+	Subject  string `json:"subject,omitempty"`
 	// Body holds at most MaxBody bytes.
 	Body string `json:"body"`
+}
+
+// Relay is an operator-authorized send by the named session's exact current execution. The gateway derives its
+// sender from the session record; clients cannot supply a different sender name or identity.
+type Relay struct {
+	ID         string  `json:"id"`
+	Generation *uint64 `json:"generation"`
+	Send
 }
 
 // Service is messaging as the operator sees it: every thread, and sending as the operator.
@@ -81,11 +102,26 @@ type Service interface {
 	// when before is positive, and marks only the returned messages read.
 	Conversation(ctx context.Context, thread, before int64) (Conversation, error)
 	Send(ctx context.Context, s Send) (Message, error)
+	Feed(ctx context.Context, after string) (Feed, error)
+	Relay(ctx context.Context, name string, r Relay) (Message, error)
 }
 
 // Handler serves svc.
 func Handler(svc Service) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /feed", func(w http.ResponseWriter, r *http.Request) {
+		page, err := svc.Feed(r.Context(), r.URL.Query().Get("after"))
+		respond(w, page, err)
+	})
+	mux.HandleFunc("POST /sessions/{name}/messages", func(w http.ResponseWriter, r *http.Request) {
+		var relay Relay
+		if err := wire.Read(r, &relay); err != nil {
+			wire.Fail(w, err)
+			return
+		}
+		m, err := svc.Relay(r.Context(), r.PathValue("name"), relay)
+		respond(w, m, err)
+	})
 	mux.HandleFunc("GET /threads", func(w http.ResponseWriter, r *http.Request) {
 		threads, err := svc.Threads(r.Context())
 		respond(w, threads, err)
@@ -156,5 +192,21 @@ func (c *Client) Conversation(ctx context.Context, thread, before int64) (Conver
 func (c *Client) Send(ctx context.Context, s Send) (Message, error) {
 	var m Message
 	err := c.c.Do(ctx, http.MethodPost, "/messages", s, &m)
+	return m, err
+}
+
+func (c *Client) Feed(ctx context.Context, after string) (Feed, error) {
+	var page Feed
+	path := "/feed"
+	if after != "" {
+		path += "?after=" + url.QueryEscape(after)
+	}
+	err := c.c.Do(ctx, http.MethodGet, path, nil, &page)
+	return page, err
+}
+
+func (c *Client) Relay(ctx context.Context, name string, r Relay) (Message, error) {
+	var m Message
+	err := c.c.Do(ctx, http.MethodPost, "/sessions/"+url.PathEscape(name)+"/messages", r, &m)
 	return m, err
 }

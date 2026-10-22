@@ -28,6 +28,10 @@ let
     model = "anthropic/example-model";
     delegatesTo = [ "reviewer" ];
     credentials = [ "source-control" ];
+    limits = {
+      maxChildren = 1;
+      maxDepth = 1;
+    };
   } { };
   reviewer = agent "reviewer" {
     description = "Review one result.";
@@ -56,6 +60,10 @@ let
     ];
     delegatesTo = [ "reviewer" ];
     credentials = [ "source-control" ];
+    limits = {
+      maxChildren = 1;
+      maxDepth = 1;
+    };
   };
   checks = {
     manifest = builder.manifest == expected;
@@ -82,7 +90,9 @@ let
       builder.program.history == [
         ".local/state/pituitary/worker.json"
         ".local/state/pituitary/role.json"
+        ".local/state/pituitary/assignment.json"
         ".local/state/pituitary/commands.json"
+        ".local/state/pituitary/domain.json"
         ".local/state/pituitary/sessions"
         ".local/state/pituitary/agent"
       ];
@@ -95,6 +105,7 @@ let
         "reviewer"
       ];
     };
+    negativeDepth = rejects { limits.maxDepth = -1; };
     malformedName = !(builtins.tryEval (agent "../escape" { } { }).manifest).success;
   };
   failed = lib.attrNames (lib.filterAttrs (_: passed: !passed) checks);

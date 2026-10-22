@@ -238,8 +238,16 @@ func TestProxyServesAnMCPClient(t *testing.T) {
 		t.Fatalf("ListTools returned %+v, %v", tools, err)
 	}
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: sessionapi.Whoami})
-	if err != nil || res.IsError || fmt.Sprint(res.StructuredContent) != "map[name:alpha]" {
+	if err != nil || res.IsError {
 		t.Fatalf("whoami returned %+v, %v", res, err)
+	}
+	encoded, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var who sessionapi.WhoamiOutput
+	if err := json.Unmarshal(encoded, &who); err != nil || who != (sessionapi.WhoamiOutput{Name: "alpha", ID: "id-alpha", Generation: 1}) {
+		t.Fatalf("whoami identity = %+v, %v", who, err)
 	}
 	res, err = session.CallTool(ctx, &mcp.CallToolParams{Name: sessionapi.Send, Arguments: sessionapi.SendInput{To: "ghost", Body: "hi"}})
 	if err != nil || !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "not found") {

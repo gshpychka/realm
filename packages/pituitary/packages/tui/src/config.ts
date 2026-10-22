@@ -144,8 +144,8 @@ export function resumeCommand(sessionFile: string): string {
 }
 
 /** Include isolated state so the hint works again from the operator's parent shell. */
-export function attachCommand(name: string, stateDirectory?: string): string {
-  return `pituitary attach ${shellWord(name)}${stateDirectory ? ` --state ${shellWord(stateDirectory)}` : ""}`;
+export function attachCommand(name: string, stateDirectory?: string, taskId?: string): string {
+  return `pituitary attach ${shellWord(name)}${stateDirectory ? ` --state ${shellWord(stateDirectory)}` : ""}${taskId ? ` --task ${shellWord(taskId)}` : ""}`;
 }
 
 function shellWord(value: string): string {

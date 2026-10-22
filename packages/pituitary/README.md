@@ -103,7 +103,7 @@ reloading needs explicit cleanup and session handling first.
 | path | contents |
 | --- | --- |
 | `packages/rpc` | JSONL framing, the RPC transport, the event reducer, and scripted event builders |
-| `packages/harness` | persistent native workers, local run records, connection protocol, and managed CLI |
+| `packages/harness` | durable run/task engine, host runtime, native workers, Bay execution, and managed CLI |
 | `packages/fake-pi` | an RPC agent with scripted replies, used by every test |
 | `packages/tui` | the OpenTUI React frontend |
 | `packages/spatial` | panes on a lattice, walked between and zoomed out over |
@@ -123,6 +123,14 @@ nix run /path/to/realm#pituitary -- --continue     # any pi argument passes thro
 An explicit `--mode text|json|rpc`, like `--print`, `--help`, or `--version`, runs pi directly.
 
 ### Managed runs
+
+Managed commands use one persistent host runtime. The NixOS module starts it as the
+configured operator. CLI commands start it when needed; for source development, you can
+also run it in the foreground in another terminal:
+
+```sh
+just harness serve
+```
 
 ```sh
 pituitary run --name review                    # opens a persistent native conversation
@@ -152,11 +160,13 @@ pituitary agents
 pituitary run --agent reviewer --repo gshpychka/realm@main --name isolated-review
 pituitary recover isolated-review             # reconcile an interrupted launch
 pituitary agents --catalog ./agents.json --json
+pituitary attach isolated-review --task TASK_ID
 ```
 
 `--catalog FILE` or `PITUITARY_CATALOG` selects a resolved catalog without evaluating
 repository code. A run freezes its role, machine revision, Bay endpoint, and session
-identity. Attaching and inspecting use that saved target. `recover` can reconcile an
+identity, and the reachable definitions it can delegate to. Attaching and inspecting use
+that saved target. `recover` can reconcile an
 interrupted launch and initialize its existing running worker; it never relaunches an
 ended session or replaces a missing worker. `stop` records the desired stopped state
 before contacting the worker, so a late observation cannot revive it. For Bay runs it
@@ -164,13 +174,26 @@ then suspends the identified VM, preserving its workspace. Result export is not 
 implemented; an explicit Bay `end` or `rm` can discard workspace changes that have not
 been copied out.
 
+New runs read the selected catalog again, so source role edits take effect without
+restarting the runtime or rebuilding an image. Existing runs keep their frozen
+definitions. After a child finishes, attaching to its task opens the saved conversation
+as a read-only archive; it does not resume the VM or start another model turn.
+
+The host stores runs, tasks, attempts, command receipts, and a concrete effect outbox in
+one SQLite database. A coordinator uses `delegate`, `inspect`, `message`, `yield`, and
+`submit` tools. Delegation returns after committing the child task; yielding releases the
+model loop until a relevant message or report arrives. A child can address `parent` or
+another task ID and correlate its answer with `replyTo`. Reports are retained before
+the parent is notified and are explicitly unverified. Code artifact export and result
+integration remain later milestones.
+
 Role initialization fixes the model, instructions, and tool selection for the worker's
 conversation. A read-only role cannot bypass its tool selection through the operator's
 `!` shell command. Tool restrictions do not sandbox commands when the role permits Bash.
-Named credential delivery is not implemented: agents requesting a nonempty `credentials`
-list are rejected before launch. Fresh guests still need provider access supplied
-separately. Automatic delegation, a background scheduler, and result integration remain
-later milestones.
+Named API-key profiles are delivered through the private worker connection and held in
+memory by the SDK. Roles name permitted profiles; they cannot supply host paths or key
+values. OAuth refresh and a provider broker are not implemented. VM memory checkpoints
+can retain in-memory credentials.
 
 `--state DIR` or `PITUITARY_STATE_DIR` selects an isolated run store. Its default is
 `$XDG_STATE_HOME/pituitary` or `~/.local/state/pituitary`. Credentials stay outside saved
@@ -179,6 +202,9 @@ credential and model-preference sources.
 
 From the checkout, `just harness run --name review` and `just harness attach review`
 execute source without a system rebuild. The dev shell keeps managed state in `.pi/runs`.
+Restarting the frontend or host runtime preserves a live worker. A changed execution
+generation or worker incarnation interrupts its attempt; recovery does not substitute a
+new conversation or silently replay uncertain work.
 
 ### Declaring agent machines
 
@@ -192,7 +218,21 @@ The host module registers agents, their real NixOS machines, and their Bay progr
   services.pituitary = {
     enable = true;
     operator = "alice";
+    credentialProfiles.primary = {
+      provider = "anthropic";
+      file = "/run/secrets/pituitary-api-key";
+    };
+    limits = { maxTasks = 8; maxLiveAttempts = 2; maxDepth = 1; };
     agents = {
+      coordinator = {
+        pituitary.agent = {
+          instructions = "Delegate one review, answer its questions, and submit a report.";
+          model = "anthropic/your-chosen-model";
+          delegatesTo = [ "reviewer" ];
+          credentials = [ "primary" ];
+          limits = { maxChildren = 1; maxDepth = 1; };
+        };
+      };
       reviewer = { pkgs, ... }: {
         environment.systemPackages = [ pkgs.ripgrep pkgs.go ];
         pituitary.agent = {
@@ -200,6 +240,7 @@ The host module registers agents, their real NixOS machines, and their Bay progr
           instructions = "Find concrete defects in the supplied result.";
           model = "anthropic/your-chosen-model";
           tools = [ "read" "grep" ];
+          credentials = [ "primary" ];
         };
       };
       builder = {
@@ -215,9 +256,11 @@ The host module registers agents, their real NixOS machines, and their Bay progr
 ```
 
 Each entry accepts ordinary NixOS imports, packages, and services. The module enables
-Bay, installs the client defaults and `/etc/pituitary/agents.json`, and validates
-delegation references. `delegatesTo` describes future dispatch authority; no autonomous
-delegation is started by declaring it. Configure Bay storage, networking, and capacity
+Bay and the host runtime, installs client defaults and `/etc/pituitary/agents.json`, and
+validates delegation and credential references. Credential files must already exist at
+runtime and be readable by the operator; their contents never enter the Nix store.
+`delegatesTo` grants bounded dispatch authority, and role ceilings intersect with the
+run's remaining limits. Declaring an agent does not launch it. Configure Bay storage, networking, and capacity
 for the host before enabling the service. This change does not enable Bay on reaper.
 
 Equal machines share an image and, with equal resource allocations, an immutable warm

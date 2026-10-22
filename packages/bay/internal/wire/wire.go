@@ -24,6 +24,7 @@ var statuses = map[error]int{
 
 type failure struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 }
 
 // Write responds with status and v encoded as JSON.
@@ -39,7 +40,7 @@ func Fail(w http.ResponseWriter, err error) {
 	if !ok {
 		status = http.StatusInternalServerError
 	}
-	Write(w, status, failure{Error: err.Error()})
+	Write(w, status, failure{Error: err.Error(), Code: fault.Code(err)})
 }
 
 // Read decodes one JSON object into v, rejecting unknown fields, trailing values
@@ -84,11 +85,16 @@ func read(r *http.Request, v any, optional bool) error {
 type statusError struct {
 	status  int
 	message string
+	code    string
 }
 
-func (e *statusError) Error() string { return e.message }
+func (e *statusError) Error() string     { return e.message }
+func (e *statusError) FaultCode() string { return e.code }
 
 func (e *statusError) Unwrap() error {
+	if e.status == http.StatusConflict && e.code == fault.CapacityExhaustedCode {
+		return fault.Capacity
+	}
 	for kind, status := range statuses {
 		if status == e.status {
 			return kind
@@ -159,6 +165,7 @@ func ResponseError(resp *http.Response) error {
 	var f failure
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&f); err != nil || f.Error == "" {
 		f.Error = resp.Status
+		f.Code = ""
 	}
-	return &statusError{status: resp.StatusCode, message: f.Error}
+	return &statusError{status: resp.StatusCode, message: f.Error, code: f.Code}
 }

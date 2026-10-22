@@ -1,17 +1,20 @@
-import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
+import { InMemoryCredentialStore, Type } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   type AgentSessionEvent,
   createAgentSession,
   DefaultResourceLoader,
+  defineTool,
   type ExtensionUIContext,
   getAgentDir,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   Theme,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type {
   AgentSnapshot,
@@ -21,7 +24,13 @@ import type {
   RpcExtensionUIResponse,
   RpcSessionState,
 } from "@pituitary/rpc";
-import type { WorkerEngine, WorkerEngineContext } from "./protocol.ts";
+import {
+  type DomainCommand,
+  type InboxDelivery,
+  validateDelivery,
+  validateDomainCommand,
+} from "./domain-protocol.ts";
+import { canonical, type WorkerEngine, type WorkerEngineContext } from "./protocol.ts";
 
 type UiPayload<T = RpcExtensionUIRequest> = T extends RpcExtensionUIRequest ? Omit<T, "id" | "type"> : never;
 
@@ -42,9 +51,14 @@ export async function createNativeEngine(context: WorkerEngineContext): Promise<
     defaultThinkingLevel: defaults.getDefaultThinkingLevel(),
     modelThinkingLevels: defaults.getAllModelThinkingLevels(),
   });
+  const credentials = context.assignment ? new InMemoryCredentialStore() : undefined;
+  if (credentials)
+    for (const [provider, key] of Object.entries(context.apiKeys ?? {}))
+      await credentials.modify(provider, async () => ({ type: "api_key", key }));
   const models = await ModelRuntime.create({
+    credentials,
     authPath: context.authFile ?? process.env.PITUITARY_AUTH_FILE ?? join(configDirectory, "auth.json"),
-    modelsPath: join(configDirectory, "models.json"),
+    modelsPath: context.assignment ? null : join(configDirectory, "models.json"),
     modelsStorePath: join(agentDirectory, "models-store.json"),
     allowModelNetwork: false,
   });
@@ -75,6 +89,8 @@ export async function createNativeEngine(context: WorkerEngineContext): Promise<
   const manager = SessionManager.open(sessionPath, sessionsDirectory, context.cwd);
   if (context.sessionId && manager.getSessionId() !== context.sessionId)
     throw new Error("the saved native conversation identity changed; explicit recovery is required");
+  if (context.assignment) await reconcileDomainTools(manager, context);
+  const orchestration = createOrchestrationTools(context);
   const { session } = await createAgentSession({
     cwd: context.cwd,
     agentDir: agentDirectory,
@@ -83,8 +99,12 @@ export async function createNativeEngine(context: WorkerEngineContext): Promise<
     settingsManager: settings,
     resourceLoader: loader,
     model,
-    tools: context.role?.tools,
+    tools: context.role
+      ? [...context.role.tools, ...orchestration.tools.map((tool) => tool.name)]
+      : undefined,
+    customTools: orchestration.tools,
   });
+  if (orchestration.tools.length) installOrchestrationGuards(session, orchestration.terminalCalls);
   const dialogs = new Map<string, (response: RpcExtensionUIResponse) => void>();
   const request = (payload: UiPayload): string => {
     const id = randomUUID();
@@ -215,7 +235,21 @@ export async function createNativeEngine(context: WorkerEngineContext): Promise<
   });
   const unsubscribe = session.subscribe((event) => context.onEvent(wireEvent(event)));
   const active = new Set<Promise<unknown>>();
+  const inbox = createNativeInbox(session, active, context.onEvent);
   return {
+    ...inbox,
+    provision: async (next) => {
+      if (!credentials) throw new Error("this worker does not use supervisor credentials");
+      for (const current of await credentials.list())
+        if (!Object.hasOwn(next, current.providerId)) {
+          await credentials.delete(current.providerId);
+          await models.removeRuntimeApiKey(current.providerId);
+        }
+      for (const [provider, key] of Object.entries(next)) {
+        await credentials.modify(provider, async () => ({ type: "api_key", key }));
+        await models.setRuntimeApiKey(provider, key);
+      }
+    },
     snapshot: () => snapshotNativeSession(session),
     call: async (command) => {
       if (context.role) {
@@ -246,6 +280,306 @@ export async function createNativeEngine(context: WorkerEngineContext): Promise<
         await Promise.allSettled([...active]);
       }
     },
+  };
+}
+
+/** Durable custom messages acknowledge native persistence before their model turn finishes. */
+export function createNativeInbox(
+  session: AgentSession,
+  active: Set<Promise<unknown>>,
+  onEvent: WorkerEngineContext["onEvent"],
+): Required<Pick<WorkerEngine, "deliver" | "deliveryStatus">> {
+  const manager = session.sessionManager;
+  const sessionPath = session.sessionFile;
+  if (!sessionPath) throw new Error("an inbox requires a persistent native conversation");
+
+  let delivering = false;
+  const deliveryStatus = (batchId: string): { entryId: string | null; payloadHash?: string } => {
+    const entry = manager
+      .getEntries()
+      .find(
+        (entry) =>
+          entry.type === "custom_message" &&
+          entry.customType === "pituitary.delivery" &&
+          (entry.details as { batchId?: unknown } | undefined)?.batchId === batchId,
+      );
+    return entry?.type === "custom_message"
+      ? { entryId: entry.id, payloadHash: (entry.details as { payloadHash: string }).payloadHash }
+      : { entryId: null };
+  };
+  const syncTranscript = () => {
+    const file = openSync(sessionPath, "r");
+    try {
+      fsyncSync(file);
+    } finally {
+      closeSync(file);
+    }
+  };
+
+  return {
+    deliveryStatus,
+    deliver: async (input) => {
+      const delivery = validateDelivery(input);
+      const payloadHash = createHash("sha256").update(canonical(delivery)).digest("hex");
+      const previous = deliveryStatus(delivery.batchId);
+      if (previous.entryId) {
+        if (previous.payloadHash !== payloadHash)
+          throw new Error("inbox batch ID was reused with another payload");
+        syncTranscript();
+        return { entryId: previous.entryId, duplicate: true };
+      }
+      if (session.isStreaming || session.isCompacting || delivering)
+        throw new Error("worker is busy; retain inbox delivery until it settles");
+      delivering = true;
+      const message = {
+        customType: "pituitary.delivery",
+        display: true,
+        content: delivery.messages
+          .map(
+            (message) =>
+              `[Message ${message.id} from ${message.from}${message.taskId ? ` · task ${message.taskId}` : ""}${message.replyTo ? ` · reply to ${message.replyTo}` : ""}]\n${message.body}`,
+          )
+          .join("\n\n"),
+        details: {
+          batchId: delivery.batchId,
+          payloadHash,
+          messageIds: delivery.messages.map((message) => message.id),
+        },
+      };
+      try {
+        if (!delivery.wake) {
+          await session.sendCustomMessage(message, { triggerTurn: false });
+        } else {
+          // Pi emits to public listeners immediately before persisting message_end.
+          // The next microtask observes the entry after that synchronous append.
+          await new Promise<void>((resolve, reject) => {
+            let accepted = false;
+            const off = session.subscribe((event) => {
+              if (
+                event.type !== "message_end" ||
+                event.message.role !== "custom" ||
+                (event.message.details as { batchId?: unknown } | undefined)?.batchId !== delivery.batchId
+              )
+                return;
+              queueMicrotask(() => {
+                if (!deliveryStatus(delivery.batchId).entryId) return;
+                accepted = true;
+                off();
+                resolve();
+              });
+            });
+            const running = session.sendCustomMessage(message, { triggerTurn: true });
+            active.add(running);
+            void running
+              .then(
+                () => {
+                  if (!accepted) {
+                    off();
+                    reject(new Error("delivery did not create a native conversation entry"));
+                  }
+                },
+                (error) => {
+                  off();
+                  if (!accepted) reject(error);
+                  else
+                    onEvent({
+                      type: "extension_error",
+                      extensionPath: "orchestrator",
+                      event: "delivery",
+                      error: describe(error),
+                    });
+                },
+              )
+              .finally(() => active.delete(running));
+          });
+        }
+        const saved = deliveryStatus(delivery.batchId);
+        if (!saved.entryId) throw new Error("inbox delivery is missing from native history");
+        syncTranscript();
+        return { entryId: saved.entryId, duplicate: false };
+      } finally {
+        delivering = false;
+      }
+    },
+  };
+}
+
+/** Repair only effects with durable host receipts; a native shell is never replayed. */
+async function reconcileDomainTools(manager: SessionManager, context: WorkerEngineContext): Promise<void> {
+  const pending: Array<{ entryId: string; call: import("@earendil-works/pi-ai").ToolCall }> = [];
+  for (const entry of manager.getBranch()) {
+    if (entry.type !== "message") continue;
+    if (entry.message.role === "assistant")
+      for (const part of entry.message.content) {
+        if (part.type === "toolCall") pending.push({ entryId: entry.id, call: part });
+      }
+    if (entry.message.role === "toolResult") {
+      const toolCallId = entry.message.toolCallId;
+      const index = pending.findLastIndex((item) => item.call.id === toolCallId);
+      if (index >= 0) pending.splice(index, 1);
+    }
+  }
+  if (pending.some(({ call }) => !["delegate", "inspect", "message", "submit", "yield"].includes(call.name)))
+    throw new Error(
+      "a native tool outcome is uncertain after interruption; start an explicitly authorized recovery attempt",
+    );
+  for (const { entryId, call } of pending) {
+    const command = validateDomainCommand({ ...call.arguments, type: call.name });
+    const receipt = await context.recoverDomain?.(entryId, call.id, command);
+    const error =
+      receipt && !receipt.success
+        ? receipt.error
+        : "Tool execution was interrupted before its durable request was recorded. No action has been replayed.";
+    manager.appendMessage({
+      role: "toolResult",
+      toolCallId: call.id,
+      toolName: call.name,
+      content: [
+        { type: "text", text: receipt?.success ? (JSON.stringify(receipt.data) ?? "Accepted") : error },
+      ],
+      details: { recovered: true, requestId: receipt?.id ?? null },
+      isError: !receipt?.success,
+      timestamp: Date.now(),
+    });
+  }
+}
+
+/** The SDK owns tool execution and conversation history; the host owns domain effects. */
+export function createOrchestrationTools(
+  context: Pick<WorkerEngineContext, "assignment" | "role" | "domain">,
+): { tools: ToolDefinition[]; terminalCalls: Set<string> } {
+  const terminalCalls = new Set<string>();
+  if (!context.assignment || !context.role || !context.domain) return { tools: [], terminalCalls };
+  const domain = context.domain;
+  const execute = async (
+    toolCallId: string,
+    command: DomainCommand,
+    signal: AbortSignal | undefined,
+    ctx: import("@earendil-works/pi-coding-agent").ExtensionContext,
+  ) => {
+    const validated = validateDomainCommand(command);
+    const assistant = ctx.sessionManager
+      .getBranch()
+      .findLast(
+        (entry) =>
+          entry.type === "message" &&
+          entry.message.role === "assistant" &&
+          entry.message.content.some((part) => part.type === "toolCall" && part.id === toolCallId),
+      );
+    if (!assistant) throw new Error("domain tool is missing its native assistant entry");
+    const data = await domain(assistant.id, toolCallId, validated, signal);
+    const terminal = command.type === "yield" || command.type === "submit";
+    if (terminal) terminalCalls.add(`${assistant.id}:${toolCallId}`);
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(data) ?? "Accepted" }],
+      details: data,
+      ...(terminal ? { terminate: true } : {}),
+    };
+  };
+  const options = { additionalProperties: false };
+  const id = Type.String({ minLength: 1, maxLength: 256 });
+  const tools: ToolDefinition[] = [
+    defineTool({
+      name: "inspect",
+      label: "Inspect task",
+      description:
+        "Inspect a related task or this task. Questions and result changes arrive automatically; yield instead of polling.",
+      promptSnippet: "Inspect related work and result references",
+      parameters: Type.Object({ taskId: Type.Optional(id) }, options),
+      executionMode: "sequential",
+      execute: (call, params, signal, _update, ctx) =>
+        execute(call, { type: "inspect", ...params }, signal, ctx),
+    }),
+    defineTool({
+      name: "message",
+      label: "Message",
+      description:
+        "Send a question, answer or note to a related task, parent, or operator. A reply names the message it answers.",
+      promptSnippet: "Send attributed messages to collaborators",
+      parameters: Type.Object(
+        { to: id, body: Type.String({ minLength: 1, maxLength: 65536 }), replyTo: Type.Optional(id) },
+        options,
+      ),
+      executionMode: "sequential",
+      execute: (call, params, signal, _update, ctx) =>
+        execute(call, { type: "message", ...params }, signal, ctx),
+    }),
+    defineTool({
+      name: "submit",
+      label: "Submit report",
+      description:
+        "Submit an immutable report for this attempt. Use this tool alone in its batch; submitting ends the current turn and proposes the result for acceptance.",
+      promptSnippet: "Submit a durable result report",
+      parameters: Type.Object({ summary: Type.String({ minLength: 1, maxLength: 65536 }) }, options),
+      executionMode: "sequential",
+      execute: (call, params, signal, _update, ctx) =>
+        execute(call, { type: "submit", ...params }, signal, ctx),
+    }),
+    defineTool({
+      name: "yield",
+      label: "Yield",
+      description:
+        "Pause until a relevant message or task change arrives. Use this tool alone in its batch. It ends the current turn, retaining the session and workspace.",
+      promptSnippet: "Yield while waiting for collaborators",
+      parameters: Type.Object(
+        { reason: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })) },
+        options,
+      ),
+      executionMode: "sequential",
+      execute: (call, params, signal, _update, ctx) =>
+        execute(call, { type: "yield", ...params }, signal, ctx),
+    }),
+  ];
+  if (context.role.delegatesTo.length)
+    tools.unshift(
+      defineTool({
+        name: "delegate",
+        label: "Delegate",
+        description:
+          "Delegate a concrete objective to an allowed agent. Returns immediately after work is queued; questions and results arrive as messages. Yield when blocked.",
+        promptSnippet: "Delegate work to declared agents",
+        parameters: Type.Object(
+          {
+            agent: Type.Union(context.role.delegatesTo.map((name) => Type.Literal(name))),
+            objective: Type.String({ minLength: 1, maxLength: 65536 }),
+            acceptance: Type.Optional(
+              Type.Array(Type.String({ minLength: 1, maxLength: 4096 }), { maxItems: 32 }),
+            ),
+          },
+          options,
+        ),
+        executionMode: "sequential",
+        execute: (call, params, signal, _update, ctx) =>
+          execute(call, { type: "delegate", ...params }, signal, ctx),
+      }),
+    );
+  return { tools, terminalCalls };
+}
+
+export function installOrchestrationGuards(session: AgentSession, terminalCalls: Set<string>): void {
+  const before = session.agent.beforeToolCall;
+  session.agent.beforeToolCall = async (context, signal) => {
+    const calls = context.assistantMessage.content.filter((part) => part.type === "toolCall");
+    if (calls.length > 1 && calls.some((call) => call.name === "yield" || call.name === "submit"))
+      return {
+        block: true,
+        reason:
+          "yield and submit must each be the only tool call in their batch; no calls in this batch were executed",
+      };
+    return before?.(context, signal);
+  };
+  const finish = session.agent.finishTurn;
+  session.agent.finishTurn = async (turn, signal) => {
+    const decision = await finish?.(turn, signal);
+    const assistant = session.sessionManager
+      .getBranch()
+      .findLast((entry) => entry.type === "message" && entry.message.role === "assistant");
+    const terminal =
+      assistant &&
+      turn.message.content.some(
+        (part) => part.type === "toolCall" && terminalCalls.delete(`${assistant.id}:${part.id}`),
+      );
+    return terminal ? { action: "end" } : decision || undefined;
   };
 }
 

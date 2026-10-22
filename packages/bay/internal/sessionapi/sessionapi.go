@@ -20,14 +20,18 @@ const (
 )
 
 type WhoamiOutput struct {
-	Name string `json:"name"`
+	Name       string `json:"name"`
+	ID         string `json:"id"`
+	Generation uint64 `json:"generation"`
 }
 
 type SendInput struct {
-	To      string `json:"to" jsonschema:"the session to message, by name, or operator"`
-	Body    string `json:"body"`
-	Thread  int64  `json:"thread,omitempty" jsonschema:"the thread to reply in; omit it to start a thread"`
-	Subject string `json:"subject,omitempty" jsonschema:"the subject of a new thread"`
+	To       string `json:"to" jsonschema:"the session to message, by name, or operator"`
+	ToID     string `json:"toId,omitempty" jsonschema:"require this exact recipient record ID"`
+	ClientID string `json:"clientId,omitempty" jsonschema:"a stable unique key for retrying this exact message without duplicates"`
+	Body     string `json:"body"`
+	Thread   int64  `json:"thread,omitempty" jsonschema:"the thread to reply in; omit it to start a thread"`
+	Subject  string `json:"subject,omitempty" jsonschema:"the subject of a new thread"`
 }
 
 type SendOutput struct {

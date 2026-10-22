@@ -69,16 +69,25 @@ function startAgent(args: readonly string[]): PiRpcClient {
 
 let client: AgentLink;
 let workspace: AppProps["workspace"];
+let archived = false;
 if (managedRun) {
   const runtime = new Runtime({ stateDirectory: process.env.PITUITARY_STATE_DIR as string });
   try {
-    const run = runtime.store.get(managedRun);
-    const attached = await runtime.connect(run, true);
+    const detail = await runtime.inspect(managedRun);
+    const task = detail.tasks.find(
+      (item) => item.id === (process.env.PITUITARY_TASK_ID ?? detail.run.rootTaskId),
+    );
+    if (!task) throw new Error("No such task in this run");
+    const attempt = detail.attempts.find((item) => item.id === task.currentAttemptId);
+    if (!attempt) throw new Error("Task has no current attempt");
+    const attached = await runtime.attach(detail.run.id, task.id);
     client = attached;
+    archived = attached.identity.archived === true;
     workspace = {
       cwd: attached.identity.cwd,
-      local: run.execution.kind === "local",
-      ...(run.execution.kind === "bay" ? { label: run.execution.agent.manifest.name } : {}),
+      local: attempt.execution.kind === "local" && !archived,
+      readonly: archived,
+      label: [task.role, archived ? "archived" : undefined].filter(Boolean).join(" · ") || undefined,
     };
   } finally {
     runtime.close();
@@ -132,7 +141,7 @@ const quit = () => {
       const name = process.env.PITUITARY_RUN_NAME;
       process.stdout.write(
         name
-          ? `Detached from run ${name}. To reconnect: ${attachCommand(name, process.env.PITUITARY_STATE_DIR)}\n`
+          ? `Detached from run ${name}. To reconnect: ${attachCommand(name, process.env.PITUITARY_STATE_DIR, process.env.PITUITARY_TASK_ID)}\n`
           : "Detached from worker.\n",
       );
     } else if (sessionFile && existsSync(sessionFile))
@@ -202,4 +211,10 @@ const render = (startWith: AppProps["startWith"] = {}) =>
 
 process.on("SIGTERM", () => quit());
 process.on("SIGHUP", () => quit());
-render({ resume: agent.resume, prompt: agent.prompt });
+render({
+  resume: agent.resume,
+  prompt: agent.prompt,
+  notice: archived
+    ? "Archived conversation · read only. The conversation and workspace are retained."
+    : undefined,
+});

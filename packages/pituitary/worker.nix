@@ -35,6 +35,7 @@ let
       ./packages/harness/src/worker.ts
       ./packages/harness/src/pi-engine.ts
       ./packages/harness/src/protocol.ts
+      ./packages/harness/src/domain-protocol.ts
       (runtimeFiles ./packages/rpc)
     ];
   };
@@ -73,7 +74,7 @@ let
     '';
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-Ulv0vzzXNHVdE6HGwA9U3TgbYvHJQM7Ko2enB87oIog=";
+    outputHash = "sha256-L0XJHiZbb5+7Ytg4jnvvZisiieVO4JUqiI4SqvnF/pg=";
   };
 in
 stdenvNoCC.mkDerivation {

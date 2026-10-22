@@ -82,6 +82,8 @@ func (c *cli) send(ctx context.Context, args []string) error {
 	fs := newFlags()
 	thread := fs.Int64("thread", 0, "")
 	subject := fs.String("subject", "", "")
+	clientID := fs.String("client-id", "", "")
+	toID := fs.String("to-id", "", "")
 	asJSON := fs.Bool("json", false, "")
 	// Flags end at TO: every word after it belongs to the message.
 	if err := parseFlags(fs, args); err != nil {
@@ -101,7 +103,7 @@ func (c *cli) send(ctx context.Context, args []string) error {
 	if body == "" {
 		return usageError("empty message")
 	}
-	sent, err := c.client.Messages().Send(ctx, messages.Send{To: to, Thread: *thread, Subject: *subject, Body: body})
+	sent, err := c.client.Messages().Send(ctx, messages.Send{To: to, ToID: *toID, ClientID: *clientID, Thread: *thread, Subject: *subject, Body: body})
 	if err != nil {
 		return err
 	}

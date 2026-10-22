@@ -7,16 +7,17 @@ import { loadCatalog } from "./catalog.ts";
 import { Runtime } from "./runtime.ts";
 import type { Run } from "./store.ts";
 
-const VERBS = ["run", "attach", "runs", "agents", "inspect", "recover", "stop"] as const;
+const VERBS = ["run", "attach", "runs", "agents", "inspect", "recover", "stop", "serve"] as const;
 type Verb = (typeof VERBS)[number];
 const HELP = `Usage:
   pituitary run [--agent ROLE] [--repo OWNER/NAME@REF] [--name NAME] [--cwd DIR] [--detach] [OBJECTIVE]
   pituitary agents [--json] [--catalog FILE]
-  pituitary attach RUN
+  pituitary attach RUN [--task TASK]
   pituitary runs [--json]
   pituitary inspect RUN [--json]
   pituitary recover RUN
   pituitary stop RUN
+  pituitary serve [--catalog FILE]
 
 Runs keep their worker alive when the terminal closes. Stop ends the worker explicitly.
 All commands accept --state DIR (or PITUITARY_STATE_DIR) for an isolated workspace.
@@ -39,7 +40,9 @@ export type Command = {
     }
   | { verb: "runs"; json: boolean }
   | { verb: "agents"; json: boolean; catalogFile?: string }
-  | { verb: Exclude<Verb, "run" | "runs" | "agents">; name: string; json: boolean }
+  | { verb: "serve"; catalogFile?: string }
+  | { verb: "attach"; name: string; json: boolean; taskId?: string }
+  | { verb: Exclude<Verb, "run" | "runs" | "agents" | "attach" | "serve">; name: string; json: boolean }
 );
 
 type Help = { help: true; state: string };
@@ -64,6 +67,7 @@ export function parseCommand(
   let help = false;
   let agent: string | undefined;
   let catalogFile: string | undefined;
+  let taskId: string | undefined;
   const repos: string[] = [];
   const words: string[] = [];
   const seen = new Set<string>();
@@ -94,7 +98,8 @@ export function parseCommand(
     if (
       arg === "--state" ||
       (["--cwd", "--name", "--agent", "--repo"].includes(arg) && verb === "run") ||
-      (arg === "--catalog" && ["run", "agents"].includes(verb))
+      (arg === "--catalog" && ["run", "agents", "serve"].includes(verb)) ||
+      (arg === "--task" && verb === "attach")
     ) {
       const value = remaining.next().value;
       if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
@@ -104,6 +109,7 @@ export function parseCommand(
       if (arg === "--agent") agent = value;
       if (arg === "--repo") repos.push(value);
       if (arg === "--catalog") catalogFile = resolve(value);
+      if (arg === "--task") taskId = value;
       continue;
     }
     throw new Error(`Unknown option ${arg} for ${verb}`);
@@ -132,9 +138,13 @@ export function parseCommand(
     if (words.length) throw new Error("agents does not take a run name");
     return { verb, state, json, catalogFile, help: false };
   }
+  if (verb === "serve") {
+    if (words.length) throw new Error("serve does not take a run name");
+    return { verb, state, catalogFile, help: false };
+  }
   const target = words[0];
   if (words.length !== 1 || !target) throw new Error(`${verb} requires exactly one run name or ID`);
-  return { verb, state, name: target, json, help: false };
+  return { verb, state, name: target, json, ...(verb === "attach" && taskId ? { taskId } : {}), help: false };
 }
 
 export async function main(args = process.argv.slice(2)): Promise<void> {
@@ -155,6 +165,11 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         process.stdout.write(`${name.padEnd(18)} ${plain(agent.manifest.description)}\n`);
     return;
   }
+  if (command.verb === "serve") {
+    const { serveRuntime } = await import("./supervisor.ts");
+    await serveRuntime({ stateDirectory: command.state, catalogFile: command.catalogFile });
+    return;
+  }
   const runtime = new Runtime({
     stateDirectory: command.state,
     catalogFile: command.verb === "run" ? command.catalogFile : undefined,
@@ -171,51 +186,57 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       if (command.detach) process.stdout.write(`${run.name}\n`);
       else await attach(run, command.state);
     } else if (command.verb === "attach") {
-      const run = await runtime.inspect(command.name);
-      if (!["ready", "busy"].includes(run.status))
-        throw new Error(`Run ${run.name} is ${run.status}${run.error ? `: ${run.error}` : ""}`);
-      await attach(run, command.state);
+      const detail = await runtime.inspect(command.name);
+      await attach(detail.run, command.state, command.taskId);
     } else if (command.verb === "runs") {
-      const runs = await Promise.all(runtime.store.list().map((run) => runtime.inspect(run.id)));
+      const runs = await Promise.all((await runtime.list()).map((run) => runtime.inspect(run.id)));
       if (command.json) process.stdout.write(`${JSON.stringify(runs, null, 2)}\n`);
       else if (!runs.length) process.stdout.write("No managed runs. Start one with pituitary run.\n");
       else
-        for (const run of runs)
-          process.stdout.write(`${run.name.padEnd(18)} ${run.status.padEnd(12)} ${plain(run.cwd)}\n`);
-    } else if (command.verb === "inspect") {
-      const run = await runtime.inspect(command.name);
-      const events = runtime.store.events(run.id);
-      if (command.json) process.stdout.write(`${JSON.stringify({ ...run, events }, null, 2)}\n`);
-      else {
-        process.stdout.write(`${run.name} · ${run.status}\n${plain(run.cwd)}\n`);
-        if (run.sessionId) process.stdout.write(`Conversation: ${run.sessionId}\n`);
-        if (run.execution.kind === "bay")
+        for (const detail of runs) {
+          const root = detail.tasks.find((task) => task.id === detail.run.rootTaskId);
           process.stdout.write(
-            `Agent: ${run.execution.agent.manifest.name}\nBay session: ${run.execution.sessionName}\n`,
+            `${detail.run.name.padEnd(18)} ${(root?.status ?? detail.run.desired).padEnd(12)} ${plain(detail.run.cwd)}\n`,
           );
-        if (run.promptStatus) process.stdout.write(`Initial prompt: ${run.promptStatus}\n`);
-        if (run.error) process.stdout.write(`Attention: ${plain(run.error)}\n`);
-        process.stdout.write(`History: ${events.length} recorded transitions\n`);
+        }
+    } else if (command.verb === "inspect") {
+      const detail = await runtime.inspect(command.name);
+      const run = detail.run;
+      if (command.json) process.stdout.write(`${JSON.stringify(detail, null, 2)}\n`);
+      else {
+        process.stdout.write(`${run.name} · ${run.desired}\n${plain(run.cwd)}\n${plain(run.objective)}\n`);
+        for (const task of detail.tasks) {
+          const attempt = detail.attempts.find((item) => item.id === task.currentAttemptId);
+          process.stdout.write(
+            `${task.id}  ${task.role ?? "solo"}  ${task.status} / ${attempt?.status ?? "unknown"}\n`,
+          );
+          if (attempt?.error) process.stdout.write(`  Attention: ${plain(attempt.error)}\n`);
+          if (task.report)
+            process.stdout.write(
+              `  Report (unverified, SHA-256 ${task.report.digest}):\n${plain(task.report.text)
+                .split("\n")
+                .map((line) => `    ${line}`)
+                .join("\n")}\n`,
+            );
+        }
+        process.stdout.write(`History: ${detail.events.length} recorded transitions\n`);
       }
     } else if (command.verb === "recover") {
       const run = await runtime.recover(command.name);
       process.stdout.write(`Recovered ${run.name}.\n`);
     } else {
       const run = await runtime.stop(command.name);
-      process.stdout.write(
-        run.execution.kind === "bay"
-          ? `Stopped ${run.name}. Bay retains session ${run.execution.sessionName} and its workspace.\n`
-          : `Stopped ${run.name}. Conversation history is in ${plain(run.directory)}.\n`,
-      );
+      process.stdout.write(`Stopping ${run.name}. Conversations and workspaces are retained.\n`);
     }
   } finally {
     runtime.close();
   }
 }
 
-async function attach(run: Run, state: string): Promise<void> {
-  if (run.execution.kind === "local") process.env.PITUITARY_WORKER_SOCKET = run.socket;
-  else delete process.env.PITUITARY_WORKER_SOCKET;
+async function attach(run: Run, state: string, taskId?: string): Promise<void> {
+  delete process.env.PITUITARY_WORKER_SOCKET;
+  if (taskId) process.env.PITUITARY_TASK_ID = taskId;
+  else delete process.env.PITUITARY_TASK_ID;
   process.env.PITUITARY_RUN_ID = run.id;
   process.env.PITUITARY_RUN_NAME = run.name;
   process.env.PITUITARY_STATE_DIR = resolve(state);

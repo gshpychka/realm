@@ -3,10 +3,16 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,7 +26,7 @@ import (
 const subjectRunes = 80
 
 // Transactions take the write lock at BEGIN (_txlock=immediate), where busy_timeout waits for it.
-const dsnOptions = "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_txlock=immediate"
+const dsnOptions = "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=foreign_keys(1)&_txlock=immediate"
 
 // sent and read_at count nanoseconds since the Unix epoch; read_at is NULL until the recipient reads the message.
 const schema = `
@@ -47,11 +53,27 @@ CREATE TABLE IF NOT EXISTS messages (
 	read_at   INTEGER
 );
 CREATE INDEX IF NOT EXISTS messages_thread ON messages (thread);
+CREATE TABLE IF NOT EXISTS store_identity (
+	id INTEGER PRIMARY KEY CHECK (id = 1),
+	uuid TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS message_generations (
+	message INTEGER PRIMARY KEY REFERENCES messages(id),
+	generation INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS send_receipts (
+	sender_id TEXT NOT NULL,
+	client_id TEXT NOT NULL,
+	request_hash TEXT NOT NULL,
+	message INTEGER NOT NULL REFERENCES messages(id),
+	PRIMARY KEY(sender_id, client_id)
+);
 `
 
 // Store keeps threads, the participants in each and their messages.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	uuid string
 }
 
 // Open opens the database at path, creating it and its tables when they are missing.
@@ -64,7 +86,23 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("open message store: %w", err)
 	}
-	return &Store{db: db}, nil
+	var seed [16]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		db.Close()
+		return nil, err
+	}
+	seed[6] = (seed[6] & 15) | 64
+	seed[8] = (seed[8] & 63) | 128
+	id := fmt.Sprintf("%x-%x-%x-%x-%x", seed[:4], seed[4:6], seed[6:8], seed[8:10], seed[10:])
+	if _, err := db.Exec(`INSERT OR IGNORE INTO store_identity(id,uuid) VALUES(1,?)`, id); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := db.QueryRow(`SELECT uuid FROM store_identity WHERE id=1`).Scan(&id); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &Store{db: db, uuid: id}, nil
 }
 
 // Close releases the database.
@@ -78,29 +116,49 @@ func (s *Store) Close() error {
 // participant's name under another ID is a fault.Conflict. Sender and recipient are participants of the thread
 // afterwards.
 func (s *Store) Send(ctx context.Context, from, to gateway.Participant, thread int64, subject, body string) (messages.Message, error) {
-	if err := validate(from, to, body); err != nil {
-		return messages.Message{}, err
+	delivery, err := s.Deliver(ctx, from, to, messages.Send{To: to.Name, Thread: thread, Subject: subject, Body: body})
+	return delivery.Message, err
+}
+
+// Deliver atomically creates a message and its receipt. Repeated keys retain their original recipient identity,
+// thread and execution provenance, even when the name or the sender's current execution has since changed.
+func (s *Store) Deliver(ctx context.Context, from, to gateway.Participant, send messages.Send) (gateway.Delivery, error) {
+	if err := validate(from, to, send.Body); err != nil {
+		return gateway.Delivery{}, err
 	}
-	return inTx(ctx, s.db, func(tx *sql.Tx) (messages.Message, error) {
+	if err := validateClientID(send.ClientID); err != nil {
+		return gateway.Delivery{}, err
+	}
+	return inTx(ctx, s.db, func(tx *sql.Tx) (gateway.Delivery, error) {
+		if previous, err := receipt(ctx, tx, from, send); err != nil || previous != nil {
+			if previous != nil {
+				return gateway.Delivery{Message: *previous}, err
+			}
+			return gateway.Delivery{}, err
+		}
+		if send.ToID != "" && send.ToID != to.ID {
+			return gateway.Delivery{}, fmt.Errorf("%w: recipient %s has a different ID", fault.Conflict, send.To)
+		}
+		thread, subject, body := send.Thread, send.Subject, send.Body
 		if thread == 0 {
 			res, err := tx.ExecContext(ctx, `INSERT INTO threads (subject) VALUES (?)`, subjectOf(subject, body))
 			if err != nil {
-				return messages.Message{}, err
+				return gateway.Delivery{}, err
 			}
 			if thread, err = res.LastInsertId(); err != nil {
-				return messages.Message{}, err
+				return gateway.Delivery{}, err
 			}
 		} else {
 			if err := authorize(ctx, tx, thread, from); err != nil {
-				return messages.Message{}, err
+				return gateway.Delivery{}, err
 			}
 			if err := checkName(ctx, tx, thread, to); err != nil {
-				return messages.Message{}, err
+				return gateway.Delivery{}, err
 			}
 		}
 		for _, p := range []gateway.Participant{from, to} {
 			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO participants (thread, id, name) VALUES (?, ?, ?)`, thread, p.ID, p.Name); err != nil {
-				return messages.Message{}, err
+				return gateway.Delivery{}, err
 			}
 		}
 		sent := time.Now().UnixNano()
@@ -108,14 +166,135 @@ func (s *Store) Send(ctx context.Context, from, to gateway.Participant, thread i
 			`INSERT INTO messages (thread, from_id, from_name, to_id, to_name, body, sent) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			thread, from.ID, from.Name, to.ID, to.Name, body, sent)
 		if err != nil {
-			return messages.Message{}, err
+			return gateway.Delivery{}, err
 		}
 		id, err := res.LastInsertId()
 		if err != nil {
-			return messages.Message{}, err
+			return gateway.Delivery{}, err
 		}
-		return messages.Message{ID: id, Thread: thread, From: from.Name, To: to.Name, Body: body, Sent: toTime(sent)}, nil
+		if _, err := tx.ExecContext(ctx, `INSERT INTO message_generations(message,generation) VALUES(?,?)`, id, from.Generation); err != nil {
+			return gateway.Delivery{}, err
+		}
+		if send.ClientID != "" {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO send_receipts(sender_id,client_id,request_hash,message) VALUES(?,?,?,?)`, from.ID, send.ClientID, requestHash(send), id); err != nil {
+				return gateway.Delivery{}, err
+			}
+		}
+		return gateway.Delivery{Created: true, Message: messages.Message{ID: id, Thread: thread, From: from.Name, FromID: from.ID, FromGeneration: from.Generation, To: to.Name, ToID: to.ID, Body: body, Sent: toTime(sent)}}, nil
 	})
+}
+
+func validateClientID(id string) error {
+	if len(id) > 128 {
+		return fmt.Errorf("%w: clientId is at most 128 bytes", fault.Invalid)
+	}
+	for _, r := range id {
+		if r < 33 || r > 126 {
+			return fmt.Errorf("%w: clientId must use printable ASCII without spaces", fault.Invalid)
+		}
+	}
+	return nil
+}
+
+func requestHash(send messages.Send) string {
+	data, _ := json.Marshal(send)
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
+}
+
+type rowQuery interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+const messageColumns = `m.id,m.thread,m.from_id,m.from_name,m.to_id,m.to_name,m.body,m.sent,COALESCE(g.generation,0)`
+const messageJoin = `messages m LEFT JOIN message_generations g ON g.message=m.id`
+
+func receipt(ctx context.Context, q rowQuery, from gateway.Participant, send messages.Send) (*messages.Message, error) {
+	if send.ClientID == "" {
+		return nil, nil
+	}
+	var hash string
+	var m messages.Message
+	var sent int64
+	err := q.QueryRowContext(ctx, `SELECT r.request_hash,`+messageColumns+` FROM send_receipts r JOIN messages m ON m.id=r.message LEFT JOIN message_generations g ON g.message=m.id WHERE r.sender_id=? AND r.client_id=?`, from.ID, send.ClientID).Scan(&hash, &m.ID, &m.Thread, &m.FromID, &m.From, &m.ToID, &m.To, &m.Body, &sent, &m.FromGeneration)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if hash != requestHash(send) {
+		return nil, fmt.Errorf("%w: clientId was already used for another message", fault.Conflict)
+	}
+	m.Sent = toTime(sent)
+	return &m, nil
+}
+
+func (s *Store) Receipt(ctx context.Context, from gateway.Participant, send messages.Send) (*messages.Message, error) {
+	if err := validateClientID(send.ClientID); err != nil {
+		return nil, err
+	}
+	return receipt(ctx, s.db, from, send)
+}
+
+// Feed observes all mail for the operator without changing anybody's unread state. The cursor advances only
+// through returned rows; byte-limited pages never skip the first row that did not fit.
+func (s *Store) Feed(ctx context.Context, viewer gateway.Participant, after string) (messages.Feed, error) {
+	if viewer.ID != messages.Operator {
+		return messages.Feed{}, fmt.Errorf("%w: only the operator observes every message", fault.Forbidden)
+	}
+	var last int64
+	if after != "" {
+		if len(after) > 256 {
+			return messages.Feed{}, fmt.Errorf("%w: invalid message cursor", fault.Invalid)
+		}
+		data, err := base64.RawURLEncoding.DecodeString(after)
+		parts := strings.Split(string(data), ":")
+		if err != nil || len(parts) != 3 || parts[0] != "1" {
+			return messages.Feed{}, fmt.Errorf("%w: invalid message cursor", fault.Invalid)
+		}
+		if parts[1] != s.uuid {
+			return messages.Feed{}, fmt.Errorf("%w: message cursor belongs to another database", fault.Conflict)
+		}
+		last, err = strconv.ParseInt(parts[2], 10, 64)
+		if err != nil || last < 0 {
+			return messages.Feed{}, fmt.Errorf("%w: invalid message cursor", fault.Invalid)
+		}
+		var newest int64
+		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),0) FROM messages`).Scan(&newest); err != nil {
+			return messages.Feed{}, err
+		}
+		if last > newest {
+			return messages.Feed{}, fmt.Errorf("%w: message cursor is ahead of this database", fault.Conflict)
+		}
+	}
+	page := messages.Feed{Messages: []messages.Message{}}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+messageColumns+` FROM `+messageJoin+` WHERE m.id>? ORDER BY m.id ASC LIMIT 129`, last)
+	if err != nil {
+		return messages.Feed{}, err
+	}
+	defer rows.Close()
+	budget := messages.MaxConversation
+	for rows.Next() {
+		var m messages.Message
+		var sent int64
+		if err := rows.Scan(&m.ID, &m.Thread, &m.FromID, &m.From, &m.ToID, &m.To, &m.Body, &sent, &m.FromGeneration); err != nil {
+			return messages.Feed{}, err
+		}
+		if len(page.Messages) >= 128 || len(m.Body) > budget {
+			page.More = true
+			break
+		}
+		m.Sent = toTime(sent)
+		page.Messages = append(page.Messages, m)
+		budget -= len(m.Body)
+		last = m.ID
+	}
+	if err := rows.Err(); err != nil {
+		return messages.Feed{}, err
+	}
+	page.Next = base64.RawURLEncoding.EncodeToString([]byte("1:" + s.uuid + ":" + strconv.FormatInt(last, 10)))
+	return page, nil
 }
 
 // Inbox returns the threads holding messages to viewer that viewer has not read, most recently updated first.
@@ -314,13 +493,13 @@ func participantNames(ctx context.Context, tx *sql.Tx, thread int64) ([]string, 
 // latestMessages returns the thread's newest message and as many before it as fit in messages.MaxConversation body
 // bytes, oldest first.
 func latestMessages(ctx context.Context, tx *sql.Tx, thread, before int64) ([]messages.Message, error) {
-	query := `SELECT id, from_name, to_name, body, sent FROM messages WHERE thread = ?`
+	query := `SELECT ` + messageColumns + ` FROM ` + messageJoin + ` WHERE m.thread = ?`
 	args := []any{thread}
 	if before > 0 {
-		query += ` AND id < ?`
+		query += ` AND m.id < ?`
 		args = append(args, before)
 	}
-	rows, err := tx.QueryContext(ctx, query+` ORDER BY id DESC`, args...)
+	rows, err := tx.QueryContext(ctx, query+` ORDER BY m.id DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +509,7 @@ func latestMessages(ctx context.Context, tx *sql.Tx, thread, before int64) ([]me
 	for rows.Next() {
 		m := messages.Message{Thread: thread}
 		var sent int64
-		if err := rows.Scan(&m.ID, &m.From, &m.To, &m.Body, &sent); err != nil {
+		if err := rows.Scan(&m.ID, &m.Thread, &m.FromID, &m.From, &m.ToID, &m.To, &m.Body, &sent, &m.FromGeneration); err != nil {
 			return nil, err
 		}
 		if len(msgs) > 0 && len(m.Body) > budget {

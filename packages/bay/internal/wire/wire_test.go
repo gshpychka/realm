@@ -2,6 +2,7 @@ package wire_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -60,6 +61,43 @@ func TestClientReturnsFailuresAsTheirFaultKind(t *testing.T) {
 			}
 			if err.Error() != sent.Error() {
 				t.Errorf("Do returned the text %q, want %q", err, sent)
+			}
+		})
+	}
+}
+
+func TestCapacityFailureHasStableCodeAndRetainsConflictCompatibility(t *testing.T) {
+	sent := fmt.Errorf("%w: 2 of 2 sessions are running", fault.Capacity)
+	response := httptest.NewRecorder()
+	wire.Fail(response, sent)
+	var body struct {
+		Error string `json:"error"`
+		Code  string `json:"code"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusConflict || body.Code != fault.CapacityExhaustedCode || body.Error != "conflict: 2 of 2 sessions are running" {
+		t.Fatalf("capacity response: %d %+v", response.Code, body)
+	}
+	err := server(t, sent).Do(context.Background(), http.MethodPost, "/start", struct{}{}, nil)
+	if !errors.Is(err, fault.Capacity) || !errors.Is(err, fault.Conflict) || fault.Kind(err) != fault.Conflict {
+		t.Fatalf("capacity identity lost across HTTP: %v", err)
+	}
+	ordinary := httptest.NewRecorder()
+	wire.Fail(ordinary, fmt.Errorf("%w: session already exists", fault.Conflict))
+	if strings.Contains(ordinary.Body.String(), `"code"`) {
+		t.Fatalf("ordinary conflict received admission semantics: %s", ordinary.Body.String())
+	}
+}
+
+func TestLaunchRejectionCodePreservesItsOriginalFaultKindAcrossHTTP(t *testing.T) {
+	for _, kind := range []error{fault.Invalid, fault.Conflict} {
+		t.Run(kind.Error(), func(t *testing.T) {
+			sent := fault.WithCode(fmt.Errorf("%w: the frozen launch declaration changed", kind), fault.LaunchRejectedCode)
+			err := server(t, sent).Do(context.Background(), http.MethodPost, "/start", struct{}{}, nil)
+			if !errors.Is(err, kind) || fault.Code(err) != fault.LaunchRejectedCode || err.Error() != sent.Error() {
+				t.Fatalf("launch rejection lost its original semantics: %v, code %q", err, fault.Code(err))
 			}
 		})
 	}

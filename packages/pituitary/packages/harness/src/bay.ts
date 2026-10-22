@@ -6,18 +6,38 @@ import { WorkerClient } from "./worker-client.ts";
 
 export interface BaySession {
   id: string;
+  generation: number;
   name: string;
   state: "running" | "suspended" | "ended";
   program: string;
   machine: string;
   machineRevision: string;
   snapshots?: string[];
+  repos?: Array<{ owner: string; name: string; commit: string; branch?: string }>;
+}
+
+export interface BayMessage {
+  id: number;
+  thread: number;
+  from: string;
+  fromId: string;
+  fromGeneration: number;
+  to: string;
+  toId: string;
+  body: string;
+  sent: string;
+}
+export interface MailPage {
+  messages: BayMessage[];
+  next: string;
+  more: boolean;
 }
 
 export class BayError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -28,6 +48,7 @@ export class Bay {
   constructor(
     readonly socket: string,
     readonly command = process.env.PITUITARY_BAY_COMMAND ?? "bay",
+    private readonly environment: NodeJS.ProcessEnv = process.env,
   ) {}
 
   start(name: string, agent: AgentDefinition, repos: readonly string[]): Promise<BaySession> {
@@ -42,14 +63,45 @@ export class Bay {
     return this.call("GET", name);
   }
 
-  async suspend(name: string, id: string): Promise<void> {
-    await this.call("POST", name, "/suspend", { id });
+  async suspend(name: string, id: string, generation: number): Promise<void> {
+    await this.call("POST", name, "/suspend", { id, generation });
   }
 
-  async connect(name: string, id: string, control = true, timeout = 10_000): Promise<WorkerClient> {
-    const child = spawn(this.command, ["connect", name, "--id", id], {
+  async send(
+    name: string,
+    input: {
+      id: string;
+      generation: number;
+      to: string;
+      toId?: string;
+      clientId: string;
+      body: string;
+      thread?: number;
+    },
+  ): Promise<unknown> {
+    return this.call("POST", name, "/messages", input);
+  }
+
+  async feed(after?: string): Promise<MailPage> {
+    return this.json(
+      "GET",
+      "/v1/messages/feed" + (after ? "?after=" + encodeURIComponent(after) : ""),
+      undefined,
+      5000,
+      2 * 1024 * 1024,
+    );
+  }
+
+  async connect(
+    name: string,
+    id: string,
+    options: { control?: boolean; timeout?: number; generation?: number; supervisor?: boolean } = {},
+  ): Promise<WorkerClient> {
+    const argv = ["connect", name, "--id", id];
+    if (options.generation !== undefined) argv.push("--generation", String(options.generation));
+    const child = spawn(this.command, argv, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, BAY_SOCKET: this.socket },
+      env: { ...this.environment, BAY_SOCKET: this.socket },
     });
     const stream = Duplex.from({ readable: child.stdout, writable: child.stdin });
     let error = "";
@@ -64,15 +116,27 @@ export class Bay {
     stream.once("close", () => {
       child.kill("SIGTERM");
     });
-    return new WorkerClient(stream, control, timeout).connected();
+    return new WorkerClient(stream, options.control !== false, options.timeout ?? 10_000, {
+      supervisor: options.supervisor,
+    }).connected();
   }
 
   private call<T>(method: string, name: string, suffix = "", body?: unknown): Promise<T> {
+    return this.json(method, `/v1/sessions/${encodeURIComponent(name)}${suffix}`, body);
+  }
+
+  private json<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    timeout = 180_000,
+    maxBytes = 1024 * 1024,
+  ): Promise<T> {
     return new Promise((resolve, reject) => {
       const req = request(
         {
           socketPath: this.socket,
-          path: `/v1/sessions/${encodeURIComponent(name)}${suffix}`,
+          path,
           method,
           headers: body === undefined ? {} : { "Content-Type": "application/json" },
         },
@@ -81,8 +145,8 @@ export class Bay {
           let bytes = 0;
           response.on("data", (chunk: Buffer) => {
             bytes += chunk.length;
-            if (bytes > 1024 * 1024) {
-              response.destroy(new Error("Bay response exceeds 1 MiB"));
+            if (bytes > maxBytes) {
+              response.destroy(new Error("Bay response exceeds its byte limit"));
               return;
             }
             chunks.push(chunk);
@@ -93,7 +157,13 @@ export class Bay {
               const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
               const status = response.statusCode ?? 500;
               if (status < 200 || status >= 300)
-                reject(new BayError(status, data.error ?? `Bay returned ${status}`));
+                reject(
+                  new BayError(
+                    status,
+                    data.error ?? `Bay returned ${status}`,
+                    typeof data.code === "string" ? data.code : undefined,
+                  ),
+                );
               else resolve(data as T);
             } catch (error) {
               reject(error);
@@ -101,7 +171,7 @@ export class Bay {
           });
         },
       );
-      req.setTimeout(180_000, () =>
+      req.setTimeout(timeout, () =>
         req.destroy(new Error("Bay request timed out; its outcome may be pending")),
       );
       req.once("error", reject);
@@ -112,12 +182,15 @@ export class Bay {
 
 export function assertBaySession(
   session: BaySession,
-  expected: { name: string; id?: string | null; agent: AgentDefinition },
+  expected: { name: string; id?: string | null; generation?: number | null; agent: AgentDefinition },
 ): void {
   if (
     !session.id ||
     session.name !== expected.name ||
     (expected.id && session.id !== expected.id) ||
+    (expected.generation !== undefined &&
+      expected.generation !== null &&
+      session.generation !== expected.generation) ||
     session.program !== expected.agent.program ||
     session.machine !== expected.agent.machine ||
     session.machineRevision !== expected.agent.machineRevision

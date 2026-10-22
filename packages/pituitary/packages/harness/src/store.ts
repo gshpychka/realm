@@ -1,76 +1,147 @@
 import { Database } from "bun:sqlite";
-import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, lstatSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { AgentDefinition } from "./catalog.ts";
+import type { AgentCatalog, AgentDefinition } from "./catalog.ts";
 
-export type RunStatus = "starting" | "ready" | "busy" | "stopping" | "stopped" | "unreachable" | "failed";
+export interface RunLimits {
+  maxTasks: number;
+  maxLiveAttempts: number;
+  maxDepth: number;
+  deadlineMs: number;
+  reportBytes: number;
+}
+export const DEFAULT_RUN_LIMITS: Readonly<RunLimits> = {
+  maxTasks: 16,
+  maxLiveAttempts: 4,
+  maxDepth: 2,
+  deadlineMs: 60 * 60 * 1000,
+  reportBytes: 64 * 1024,
+};
+/** One authorized objective. Execution identity belongs to its attempts. */
+export interface Run {
+  id: string;
+  name: string;
+  cwd: string;
+  objective: string;
+  created: string;
+  desired: "running" | "stopped";
+  rootTaskId: string;
+  catalog: AgentCatalog | null;
+  limits: RunLimits;
+  deadline: number;
+  repos: readonly string[];
+}
+export type TaskStatus = "queued" | "running" | "waiting" | "submitted" | "failed" | "cancelled";
+export interface Report {
+  id: string;
+  attemptId: string;
+  digest: string;
+  text: string;
+  at: string;
+}
+export interface Task {
+  id: string;
+  runId: string;
+  parentTaskId: string | null;
+  role: string | null;
+  objective: string;
+  acceptance: readonly string[];
+  status: TaskStatus;
+  currentAttemptId: string;
+  waitFor: readonly string[];
+  report: Report | null;
+}
+export type AttemptStatus =
+  | "queued"
+  | "starting"
+  | "ready"
+  | "busy"
+  | "waiting"
+  | "stopping"
+  | "stopped"
+  | "unreachable"
+  | "interrupted"
+  | "failed";
+export type RunStatus = AttemptStatus;
 export type PromptStatus = "pending" | "dispatching" | "accepted" | "uncertain" | null;
-
 export interface BayExecution {
   kind: "bay";
   socket: string;
   command: string;
   sessionName: string;
   recordId: string | null;
+  generation: number | null;
   agent: AgentDefinition;
   repos: readonly string[];
 }
-export type RunExecution = { kind: "local" } | BayExecution;
-
-/** A run describes work. The worker and its native conversation have separate lifetimes. */
-export interface Run {
+export type RunExecution = { kind: "local"; socket: string } | BayExecution;
+export interface Attempt {
   id: string;
-  name: string;
-  cwd: string;
+  taskId: string;
+  number: number;
+  depth: number;
   directory: string;
   socket: string;
-  status: RunStatus;
+  status: AttemptStatus;
   desired: "running" | "stopped";
-  created: string;
   sessionId: string | null;
+  incarnation: string | null;
+  epoch: number;
   pid: number | null;
-  prompt: string | null;
   promptStatus: PromptStatus;
   error: string | null;
   execution: RunExecution;
+  grant: { orchestration: boolean; maxChildren: number; maxDepth: number };
 }
-
 export interface RunEvent {
   sequence: number;
   runId: string;
+  taskId: string | null;
+  attemptId: string | null;
   type: string;
   at: string;
   data: Record<string, unknown>;
 }
-
-type RunChanges = Partial<
-  Pick<Run, "status" | "desired" | "sessionId" | "pid" | "promptStatus" | "error" | "execution">
->;
+export interface Effect {
+  id: string;
+  runId: string;
+  attemptId: string;
+  epoch: number;
+  kind: "launch" | "reconnect" | "prompt" | "deliver" | "send" | "stop";
+  payload: Record<string, unknown>;
+  state: "pending" | "dispatching" | "done" | "uncertain" | "cancelled" | "failed";
+  tries: number;
+  notBefore: number;
+  error: string | null;
+}
+export interface RunDetail {
+  run: Run;
+  tasks: Task[];
+  attempts: Attempt[];
+  events: RunEvent[];
+}
 
 export function privateDirectory(path: string): void {
   mkdirSync(path, { recursive: true, mode: 0o700 });
   const stat = lstatSync(path);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) {
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid()))
     throw new Error(`Expected a directory owned by the current operator: ${path}`);
-  }
   chmodSync(path, 0o700);
 }
-
-/** Keep Unix socket names short even with a deeply nested checkout or macOS TMPDIR. */
 export function socketDirectory(root: string): string {
   const namespace = createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16);
-  const directory = `/tmp/pituitary-runs-${process.getuid?.() ?? "operator"}/${namespace}`;
-  privateDirectory(`/tmp/pituitary-runs-${process.getuid?.() ?? "operator"}`);
+  const parent = `/tmp/pituitary-runs-${process.getuid?.() ?? "operator"}`;
+  privateDirectory(parent);
+  const directory = join(parent, namespace);
   privateDirectory(directory);
   return directory;
 }
 
-/** Durable run records and a causal journal; native Pi files remain transcript authority. */
+/** The host runtime is the only writer. Pi files remain transcript authority. */
 export class RunStore {
   private readonly db: Database;
   readonly root: string;
-
   constructor(root: string) {
     this.root = resolve(root);
     privateDirectory(this.root);
@@ -80,196 +151,254 @@ export class RunStore {
     this.db = new Database(path, { create: true, strict: true });
     chmodSync(path, 0o600);
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;");
-    const version =
-      this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version ?? 0;
-    if (version > 3) {
+    if (this.version() > 4) {
       this.db.close();
-      throw new Error(`Run database version ${version} requires a newer Pituitary`);
+      throw new Error("Run database requires a newer Pituitary");
     }
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS runs (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, cwd TEXT NOT NULL,
-        directory TEXT NOT NULL, socket TEXT NOT NULL, status TEXT NOT NULL,
-        created TEXT NOT NULL, session_id TEXT, pid INTEGER, prompt TEXT,
-        prompt_status TEXT, error TEXT
-      );
-      CREATE TABLE IF NOT EXISTS events (
-        sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
-        type TEXT NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS events_run ON events(run_id, sequence);
-    `);
-    this.db
-      .transaction(() => {
-        const current =
-          this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version ?? 0;
-        if (current < 2)
-          this.db.exec('ALTER TABLE runs ADD COLUMN execution TEXT NOT NULL DEFAULT \'{"kind":"local"}\';');
-        if (current < 3)
-          this.db.exec(
-            "ALTER TABLE runs ADD COLUMN desired TEXT NOT NULL DEFAULT 'running'; UPDATE runs SET desired='stopped' WHERE status='stopped'; PRAGMA user_version=3;",
-          );
-      })
-      .immediate();
+    this.transaction(() => {
+      if (this.version() === 4) return;
+      const legacy = this.db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='runs'").get();
+      if (legacy) this.db.exec("ALTER TABLE runs RENAME TO legacy_runs;");
+      this.db.exec(`
+        CREATE TABLE runs (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, data TEXT NOT NULL);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, data TEXT NOT NULL);
+        CREATE INDEX tasks_run ON tasks(run_id);
+        CREATE TABLE attempts (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, data TEXT NOT NULL);
+        CREATE INDEX attempts_task ON attempts(task_id);
+        CREATE TABLE commands (principal TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, receipt TEXT NOT NULL, PRIMARY KEY(principal,id));
+        CREATE TABLE effects (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, attempt_id TEXT NOT NULL, data TEXT NOT NULL);
+        CREATE INDEX effects_run ON effects(run_id);
+        CREATE TABLE cursors (key TEXT PRIMARY KEY,value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, type TEXT NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS events_run ON events(run_id,sequence);
+        ALTER TABLE events ADD COLUMN task_id TEXT;
+        ALTER TABLE events ADD COLUMN attempt_id TEXT;
+      `);
+      if (legacy) {
+        for (const row of this.db.query<Record<string, unknown>, []>("SELECT * FROM legacy_runs").all())
+          this.migrate(row);
+        this.db.exec("DROP TABLE legacy_runs;");
+      }
+      this.db.exec("PRAGMA user_version=4;");
+    });
+    this.db.exec("CREATE TABLE IF NOT EXISTS cursors (key TEXT PRIMARY KEY,value TEXT NOT NULL)");
   }
-
-  create(input: {
-    name?: string;
-    cwd: string;
-    prompt?: string;
-    bay?: Omit<BayExecution, "kind" | "sessionName" | "recordId">;
-  }): Run {
-    const id = randomUUID();
-    const name = input.name ?? id.slice(0, 8);
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(name)) {
-      throw new Error(
-        "A run name must be 1–64 letters, numbers, dots, underscores, or dashes, starting with a letter or number",
-      );
-    }
-    const cwd = realpathSync(input.cwd);
-    if (!statSync(cwd).isDirectory()) throw new Error(`Working directory is not a directory: ${cwd}`);
-    const run: Run = {
-      id,
-      name,
-      cwd,
-      directory: join(this.root, "runs", id),
-      socket: join(socketDirectory(this.root), `${id}.sock`),
-      status: "starting",
-      desired: "running",
-      created: new Date().toISOString(),
-      sessionId: null,
-      pid: null,
-      prompt: input.prompt ?? null,
-      promptStatus: input.prompt ? "pending" : null,
-      error: null,
-      execution: input.bay
-        ? { ...input.bay, kind: "bay", sessionName: `pituitary-${id}`, recordId: null }
-        : { kind: "local" },
-    };
-    this.db
-      .transaction(() => {
-        if (this.find(name))
-          throw new Error(`Run ${name} already exists; attach to it or choose another name`);
-        try {
-          this.db
-            .query(`INSERT INTO runs
-              (id, name, cwd, directory, socket, status, created, session_id, pid, prompt, prompt_status, error, execution, desired)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .run(
-              run.id,
-              run.name,
-              run.cwd,
-              run.directory,
-              run.socket,
-              run.status,
-              run.created,
-              run.sessionId,
-              run.pid,
-              run.prompt,
-              run.promptStatus,
-              run.error,
-              JSON.stringify(run.execution),
-              run.desired,
-            );
-        } catch (error) {
-          if (this.find(name))
-            throw new Error(`Run ${name} already exists; attach to it or choose another name`);
-          throw error;
-        }
-        this.append(run.id, "run_created", { cwd, name, prompt: run.prompt, execution: run.execution });
-      })
-      .immediate();
-    return run;
+  transaction<T>(operation: () => T): T {
+    return this.db.transaction(operation).immediate();
   }
-
-  find(name: string): Run | null {
+  findRun(name: string): Run | null {
     const row = this.db
-      .query<Record<string, unknown>, [string, string]>("SELECT * FROM runs WHERE id = ? OR name = ?")
+      .query<{ data: string }, [string, string]>("SELECT data FROM runs WHERE id=? OR name=?")
       .get(name, name);
-    return row ? decode(row) : null;
+    return row ? (JSON.parse(row.data) as Run) : null;
   }
-
-  get(name: string): Run {
-    const run = this.find(name);
+  getRun(name: string): Run {
+    const run = this.findRun(name);
     if (!run) throw new Error(`No run named ${name}`);
     return run;
   }
-
-  list(): Run[] {
-    return this.db
-      .query<Record<string, unknown>, []>("SELECT * FROM runs ORDER BY created, id")
-      .all()
-      .map(decode);
+  listRuns(): Run[] {
+    return this.all<Run>("runs");
   }
-
-  update(id: string, changes: RunChanges | ((current: Run) => RunChanges | null), type: string): Run {
-    return this.db
-      .transaction(() => {
-        const current = this.get(id);
-        const patch = typeof changes === "function" ? changes(current) : changes;
-        if (patch === null) return current;
-        const run = { ...current, ...patch };
-        this.db
-          .query(
-            "UPDATE runs SET status=?, session_id=?, pid=?, prompt_status=?, error=?, execution=?, desired=? WHERE id=?",
-          )
-          .run(
-            run.status,
-            run.sessionId,
-            run.pid,
-            run.promptStatus,
-            run.error,
-            JSON.stringify(run.execution),
-            run.desired,
-            run.id,
-          );
-        this.append(id, type, patch);
-        return run;
-      })
-      .immediate();
+  putRun(run: Run): void {
+    this.db
+      .query("INSERT INTO runs(id,name,data) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data")
+      .run(run.id, run.name, JSON.stringify(run));
   }
-
-  events(id: string, after = 0): RunEvent[] {
-    return this.db
-      .query<{ sequence: number; run_id: string; type: string; at: string; data: string }, [string, number]>(
-        "SELECT * FROM events WHERE run_id = ? AND sequence > ? ORDER BY sequence",
+  getTask(id: string): Task {
+    return this.entity<Task>("tasks", id);
+  }
+  listTasks(runId: string): Task[] {
+    return this.all<Task>("tasks", "run_id", runId);
+  }
+  putTask(task: Task): void {
+    this.db
+      .query(
+        "INSERT INTO tasks(id,run_id,data) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
       )
-      .all(id, after)
+      .run(task.id, task.runId, JSON.stringify(task));
+  }
+  getAttempt(id: string): Attempt {
+    return this.entity<Attempt>("attempts", id);
+  }
+  listAttempts(taskId?: string): Attempt[] {
+    return this.all<Attempt>("attempts", taskId ? "task_id" : undefined, taskId);
+  }
+  putAttempt(attempt: Attempt): void {
+    this.db
+      .query(
+        "INSERT INTO attempts(id,task_id,data) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+      )
+      .run(attempt.id, attempt.taskId, JSON.stringify(attempt));
+  }
+  receipt(principal: string, id: string): { payload: string; result: unknown } | null {
+    const row = this.db
+      .query<{ payload: string; receipt: string }, [string, string]>(
+        "SELECT payload,receipt FROM commands WHERE principal=? AND id=?",
+      )
+      .get(principal, id);
+    return row ? { payload: row.payload, result: JSON.parse(row.receipt) as unknown } : null;
+  }
+  putReceipt(principal: string, id: string, payload: string, result: unknown): void {
+    this.db
+      .query("INSERT INTO commands(principal,id,payload,receipt) VALUES (?,?,?,?)")
+      .run(principal, id, payload, JSON.stringify(result));
+  }
+  getEffect(id: string): Effect {
+    return this.entity<Effect>("effects", id);
+  }
+  listEffects(runId?: string): Effect[] {
+    return this.all<Effect>("effects", runId ? "run_id" : undefined, runId);
+  }
+  putEffect(effect: Effect): void {
+    this.db
+      .query(
+        "INSERT INTO effects(id,run_id,attempt_id,data) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+      )
+      .run(effect.id, effect.runId, effect.attemptId, JSON.stringify(effect));
+  }
+  getCursor(key: string): string | null {
+    return (
+      this.db.query<{ value: string }, [string]>("SELECT value FROM cursors WHERE key=?").get(key)?.value ??
+      null
+    );
+  }
+  setCursor(key: string, value: string): void {
+    this.db
+      .query(
+        "INSERT INTO cursors(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      )
+      .run(key, value);
+  }
+  append(
+    runId: string,
+    type: string,
+    data: Record<string, unknown> = {},
+    taskId: string | null = null,
+    attemptId: string | null = null,
+  ): void {
+    this.db
+      .query("INSERT INTO events(run_id,type,at,data,task_id,attempt_id) VALUES (?,?,?,?,?,?)")
+      .run(runId, type, new Date().toISOString(), JSON.stringify(data), taskId, attemptId);
+  }
+  events(runId: string, after = 0): RunEvent[] {
+    return this.db
+      .query<
+        {
+          sequence: number;
+          run_id: string;
+          task_id: string | null;
+          attempt_id: string | null;
+          type: string;
+          at: string;
+          data: string;
+        },
+        [string, number]
+      >("SELECT * FROM events WHERE run_id=? AND sequence>? ORDER BY sequence")
+      .all(runId, after)
       .map((event) => ({
         sequence: event.sequence,
         runId: event.run_id,
+        taskId: event.task_id,
+        attemptId: event.attempt_id,
         type: event.type,
         at: event.at,
         data: JSON.parse(event.data) as Record<string, unknown>,
       }));
   }
-
+  detail(name: string): RunDetail {
+    const run = this.getRun(name);
+    const tasks = this.listTasks(run.id);
+    const ids = new Set(tasks.map((task) => task.id));
+    return {
+      run,
+      tasks,
+      attempts: this.listAttempts().filter((attempt) => ids.has(attempt.taskId)),
+      events: this.events(run.id),
+    };
+  }
   close(): void {
     this.db.close();
   }
-
-  private append(id: string, type: string, data: Record<string, unknown>): void {
-    this.db
-      .query("INSERT INTO events (run_id, type, at, data) VALUES (?, ?, ?, ?)")
-      .run(id, type, new Date().toISOString(), JSON.stringify(data));
+  private version(): number {
+    return this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version ?? 0;
   }
-}
-
-function decode(row: Record<string, unknown>): Run {
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    cwd: String(row.cwd),
-    directory: String(row.directory),
-    socket: String(row.socket),
-    status: row.status as RunStatus,
-    desired: row.desired as Run["desired"],
-    created: String(row.created),
-    sessionId: row.session_id as string | null,
-    pid: row.pid as number | null,
-    prompt: row.prompt as string | null,
-    promptStatus: row.prompt_status as PromptStatus,
-    error: row.error as string | null,
-    execution: JSON.parse(row.execution as string) as RunExecution,
-  };
+  private entity<T>(table: "tasks" | "attempts" | "effects", id: string): T {
+    const row = this.db.query<{ data: string }, [string]>(`SELECT data FROM ${table} WHERE id=?`).get(id);
+    if (!row) throw new Error(`No ${table} record named ${id}`);
+    return JSON.parse(row.data) as T;
+  }
+  private all<T>(
+    table: "runs" | "tasks" | "attempts" | "effects",
+    column?: "run_id" | "task_id",
+    id?: string,
+  ): T[] {
+    const rows = column
+      ? this.db
+          .query<{ data: string }, [string]>(`SELECT data FROM ${table} WHERE ${column}=? ORDER BY rowid`)
+          .all(id as string)
+      : this.db.query<{ data: string }, []>(`SELECT data FROM ${table} ORDER BY rowid`).all();
+    return rows.map((row) => JSON.parse(row.data) as T);
+  }
+  private migrate(row: Record<string, unknown>): void {
+    const id = String(row.id),
+      taskId = `task-${id}`,
+      attemptId = `attempt-${id}`;
+    const execution = JSON.parse((row.execution as string | undefined) ?? '{"kind":"local"}') as RunExecution;
+    if (execution.kind === "bay") execution.generation ??= null;
+    else execution.socket = String(row.socket);
+    const desired = row.desired === "stopped" || row.status === "stopped" ? "stopped" : "running";
+    const catalog: AgentCatalog | null =
+      execution.kind === "bay"
+        ? {
+            schemaVersion: 1,
+            baySocket: execution.socket,
+            agents: { [execution.agent.manifest.name]: execution.agent },
+          }
+        : null;
+    const run: Run = {
+      id,
+      name: String(row.name),
+      cwd: String(row.cwd),
+      objective: String(row.prompt ?? ""),
+      created: String(row.created),
+      desired,
+      rootTaskId: taskId,
+      catalog,
+      limits: { ...DEFAULT_RUN_LIMITS },
+      deadline: Date.now() + DEFAULT_RUN_LIMITS.deadlineMs,
+      repos: execution.kind === "bay" ? execution.repos : [],
+    };
+    this.putRun(run);
+    this.putTask({
+      id: taskId,
+      runId: id,
+      parentTaskId: null,
+      role: execution.kind === "bay" ? execution.agent.manifest.name : null,
+      objective: run.objective,
+      acceptance: [],
+      status: desired === "stopped" ? "cancelled" : "running",
+      currentAttemptId: attemptId,
+      waitFor: [],
+      report: null,
+    });
+    this.putAttempt({
+      id: attemptId,
+      taskId,
+      number: 1,
+      depth: 0,
+      directory: String(row.directory),
+      socket: join(socketDirectory(this.root), `${attemptId}.sock`),
+      status: row.status as AttemptStatus,
+      desired,
+      sessionId: row.session_id as string | null,
+      incarnation: null,
+      epoch: 1,
+      pid: row.pid as number | null,
+      promptStatus: row.prompt_status as PromptStatus,
+      error: row.error as string | null,
+      execution,
+      grant: { orchestration: false, maxChildren: 0, maxDepth: 0 },
+    });
+  }
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/gshpychka/realm/packages/bay/internal/api"
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
+	"github.com/gshpychka/realm/packages/bay/internal/identity"
 	"github.com/gshpychka/realm/packages/bay/internal/messages"
 )
 
@@ -30,12 +31,13 @@ type fakeService struct {
 	snapped  api.Snapped
 	connect  func() io.ReadWriteCloser
 
-	calls      []string
-	gotStart   api.Start
-	gotSuspend api.Suspend
-	gotResume  api.Resume
-	gotSnap    api.Snap
-	gotEnd     api.End
+	calls         []string
+	gotStart      api.Start
+	gotSuspend    api.Suspend
+	gotResume     api.Resume
+	gotSnap       api.Snap
+	gotEnd        api.End
+	gotGeneration []uint64
 }
 
 // enter records call and holds the lock until the returned function runs.
@@ -103,7 +105,7 @@ func (f *fakeService) End(_ context.Context, name string, e api.End) error {
 	return f.failure("End")
 }
 
-func (f *fakeService) Remove(_ context.Context, name string) error {
+func (f *fakeService) Remove(_ context.Context, name string, expected ...identity.Precondition) error {
 	defer f.enter("Remove " + name)()
 	return f.failure("Remove")
 }
@@ -113,8 +115,9 @@ func (f *fakeService) Attach(_ context.Context, name string) (api.Attach, error)
 	return f.attach, f.failure("Attach")
 }
 
-func (f *fakeService) Connect(_ context.Context, name, id string) (io.ReadWriteCloser, error) {
+func (f *fakeService) Connect(_ context.Context, name, id string, generation ...uint64) (io.ReadWriteCloser, error) {
 	defer f.enter("Connect " + name + " " + id)()
+	f.gotGeneration = append([]uint64(nil), generation...)
 	if f.connect != nil {
 		return f.connect(), nil
 	}
@@ -164,6 +167,17 @@ func (f *fakeMessages) Send(_ context.Context, s messages.Send) (messages.Messag
 		thread = newThread
 	}
 	return messages.Message{ID: 1, Thread: thread, From: messages.Operator, To: s.To, Body: s.Body}, nil
+}
+
+func (f *fakeMessages) Feed(context.Context, string) (messages.Feed, error) {
+	defer f.enter("Feed")()
+	return messages.Feed{Messages: []messages.Message{}}, f.err
+}
+
+func (f *fakeMessages) Relay(_ context.Context, name string, r messages.Relay) (messages.Message, error) {
+	defer f.enter("Relay " + name)()
+	f.sent = append(f.sent, r.Send)
+	return messages.Message{ID: 1, From: name, FromID: r.ID, To: r.To, ToID: r.ToID, Body: r.Body}, f.err
 }
 
 // harness is the Bay server API on the unix socket that BAY_SOCKET names, backed by fakes.

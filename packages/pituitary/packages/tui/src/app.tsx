@@ -38,7 +38,7 @@ import { useSession } from "./use-session.ts";
 export interface AppProps {
   link: AgentLink;
   /** The worker's workspace. Local filesystem helpers run only when it shares this machine. */
-  workspace?: { cwd: string; local: boolean; label?: string };
+  workspace?: { cwd: string; local: boolean; label?: string; readonly?: boolean };
   onQuit(): void;
   /** Told the file pi keeps the session in as it changes, so any way out can offer to resume it. */
   onSessionFile?(file: string | undefined): void;
@@ -60,6 +60,14 @@ const QUIT_WINDOW_MS = 500;
 const WINDOW = 150;
 /** Actions that still work while the keyboard walks the boxes: they show the boxes otherwise, or leave. */
 const BROWSE_ACTIONS = new Set<Action>(["app.tools.browse", "app.tools.expand", "app.thinking.toggle"]);
+const ARCHIVE_ACTIONS = new Set<Action>([
+  ...BROWSE_ACTIONS,
+  "app.clear",
+  "app.exit",
+  "app.message.copy",
+  "app.suspend",
+]);
+const ARCHIVE_COMMANDS = new Set(["copy", "session", "hotkeys", "quit"]);
 /** Which way each paging key scrolls the conversation. */
 const PAGES = new Map<string, -1 | 1>([
   ["pageup", -1],
@@ -137,13 +145,19 @@ export function App({
   const offers = useOffers({ away, queued });
   const recall = useRecall(editor, view.entries, offers);
   const cwd = workspace.cwd;
-  const localCwd = workspace.local ? cwd : null;
+  const readonly = workspace.readonly === true;
+  const localCwd = workspace.local && !readonly ? cwd : null;
   const branch = useBranch(link, localCwd);
   const pull = usePullRequest(link, localCwd, branch);
   const { commands: listedCommands, reread } = useCommands(link, state?.sessionId);
   const commands = useMemo(
-    () => (workspace.local ? listedCommands : listedCommands.filter((command) => !command.localOnly)),
-    [listedCommands, workspace.local],
+    () =>
+      listedCommands.filter((command) =>
+        readonly
+          ? command.source === "builtin" && ARCHIVE_COMMANDS.has(command.name)
+          : workspace.local || !command.localOnly,
+      ),
+    [listedCommands, workspace.local, readonly],
   );
   const completions = useCompletion(editor, commands, localCwd);
   const workingRows = statusUp(view, closed) ? (closed || !TRAVELS ? 1 : 2) : 0;
@@ -200,15 +214,23 @@ export function App({
 
   const hotkeys = useCallback(() => {
     const bound = (Object.entries(keymap) as [Action, readonly string[]][]).flatMap(([action, bindings]) =>
-      bindings.length > 0 ? [`${bindings.join(", ").padEnd(16)} ${action.replace(/^app\./, "")}`] : [],
+      bindings.length > 0 && (!readonly || ARCHIVE_ACTIONS.has(action))
+        ? [`${bindings.join(", ").padEnd(16)} ${action.replace(/^app\./, "")}`]
+        : [],
     );
+    if (readonly)
+      return ["archive keys", ...bound, "/                commands", "pgup / pgdn      scroll"].join("\n");
     return ["keys", ...bound, `${"enter".padEnd(16)} send`, `${"shift+enter".padEnd(16)} new line`].join(
       "\n",
     );
-  }, [keymap]);
+  }, [keymap, readonly]);
 
   const command = useCallback(
     (name: string, args = "") => {
+      if (readonly && !ARCHIVE_COMMANDS.has(name)) {
+        session.notify("info", "This conversation is archived and read only.");
+        return;
+      }
       if (!workspace.local && BUILTINS.some((command) => command.name === name && command.localOnly)) {
         session.notify(
           "warning",
@@ -259,6 +281,7 @@ export function App({
       bridge,
       reread,
       workspace.local,
+      readonly,
     ],
   );
 
@@ -269,6 +292,10 @@ export function App({
 
   const submit = (text: string, followUp = false) => {
     if (!text.trim()) return;
+    if (readonly) {
+      flash("archived conversation · read only");
+      return;
+    }
     recall.forget();
     if (closed) {
       // With pi gone nothing can take the text, so it stays where the operator can keep it.
@@ -489,6 +516,26 @@ export function App({
     const text = editor.current?.text() ?? "";
     const action = actionFor(keymap, key);
     if (dialogKey(key, action) || customKey(key, action) || choosing) return;
+    if (readonly) {
+      if (action && ARCHIVE_ACTIONS.has(action)) {
+        if (actions[action](key, "", null)) key.preventDefault();
+      } else if (browsing) browseKey(key, action, "", null);
+      else {
+        if (key.sequence === "/")
+          setPicker({
+            title: "archived conversation",
+            items: commands.map((item) => ({
+              label: `/${item.name}`,
+              detail: item.description,
+              value: item.name,
+            })),
+            onPick: (name) => command(name),
+          });
+        else pageKey(key);
+        key.preventDefault();
+      }
+      return;
+    }
     if (browsing) {
       browseKey(key, action, text, standing);
       return;
@@ -503,6 +550,10 @@ export function App({
   useHeldKeys(editor, onKey, !away, dialog ?? custom ?? null);
 
   usePaste((event) => {
+    if (readonly) {
+      event.preventDefault();
+      return;
+    }
     if (!custom || !bridge) return;
     event.preventDefault();
     bridge.input(custom.id, `\x1b[200~${new TextDecoder().decode(event.bytes)}\x1b[201~`);
@@ -517,7 +568,7 @@ export function App({
             ref={scroll}
             entries={view.entries}
             running={view.running}
-            local={workspace.local}
+            local={workspace.local && !readonly}
             display={display}
             window={window}
             browsing={browsing}
@@ -557,22 +608,31 @@ export function App({
               setDraftRows(this.height);
             }}
           >
-            <Editor
-              ref={editor}
-              onSubmit={submit}
-              steering={view.running}
-              focused={!away}
-              seed={extensionUi.editor}
-              note={statusUp(view, closed) ? null : shownHint}
-              confirm={offers.asking}
-              onNotice={(text) => session.notify("warning", text)}
-              onEscapes={(count) => setEscapes(count === 1 ? "esc" : "esc esc")}
-              onChange={(text, cursor) => {
-                completions.follow(text, cursor);
-                offers.edited(text);
-                recall.edited(text);
-              }}
-            />
+            {readonly ? (
+              <box paddingLeft={1} paddingTop={1} height={2}>
+                <text fg={theme.dim} truncate wrapMode="none">
+                  {shownHint ||
+                    `Archived · read only · ${keyHint(keymap, "app.message.copy")} copy · / commands · ${keyHint(keymap, "app.exit")} close`}
+                </text>
+              </box>
+            ) : (
+              <Editor
+                ref={editor}
+                onSubmit={submit}
+                steering={view.running}
+                focused={!away}
+                seed={extensionUi.editor}
+                note={statusUp(view, closed) ? null : shownHint}
+                confirm={offers.asking}
+                onNotice={(text) => session.notify("warning", text)}
+                onEscapes={(count) => setEscapes(count === 1 ? "esc" : "esc esc")}
+                onChange={(text, cursor) => {
+                  completions.follow(text, cursor);
+                  offers.edited(text);
+                  recall.edited(text);
+                }}
+              />
+            )}
           </box>
           <Widgets widgets={widgets} placement="belowEditor" rows={panelRows[3]} />
           <box

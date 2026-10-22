@@ -41,6 +41,7 @@ let
       tools
       delegatesTo
       credentials
+      limits
       ;
   };
 in
@@ -66,7 +67,9 @@ assert lib.assertMsg (builtins.match "[a-zA-Z][a-zA-Z0-9_-]*" name != null)
     history = map (path: ".local/state/pituitary/${path}") [
       "worker.json"
       "role.json"
+      "assignment.json"
       "commands.json"
+      "domain.json"
       "sessions"
       "agent"
     ];

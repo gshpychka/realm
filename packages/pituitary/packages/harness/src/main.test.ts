@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseCommand } from "./main.ts";
+import { rootAttempt, waitRun } from "./runtime.fixture.ts";
+import { Runtime } from "./runtime.ts";
+import { startRuntime } from "./supervisor.ts";
 
 test("managed CLI accepts an objective and preserves literal leading dashes", () => {
   const command = parseCommand(["run", "--detach", "--name", "builder", "--", "--check", "this tree"], {});
@@ -51,6 +54,15 @@ test("declared agents select a catalog and accept several pinned repositories", 
   });
   expect(parseCommand(["agents", "--json"], {})).toMatchObject({ verb: "agents", json: true });
   expect(parseCommand(["recover", "builder"], {})).toMatchObject({ verb: "recover", name: "builder" });
+  expect(parseCommand(["attach", "builder", "--task", "child-task"], {})).toMatchObject({
+    verb: "attach",
+    name: "builder",
+    taskId: "child-task",
+  });
+  expect(parseCommand(["serve", "--state", "/tmp/runtime"], {})).toMatchObject({
+    verb: "serve",
+    state: "/tmp/runtime",
+  });
   expect(() => parseCommand(["run", "--repo", "owner/repo"], {})).toThrow("requires --agent");
   expect(() => parseCommand(["agents", "builder"], {})).toThrow("does not take a run name");
 });
@@ -75,34 +87,67 @@ test("options remain scoped to the command that supports them", () => {
   expect(() => parseCommand(["runs", "review"], {})).toThrow("does not take a run name");
 });
 
-test("the source CLI starts, inspects, and explicitly stops a persistent native run", () => {
+test("the source CLI starts, inspects, and explicitly stops a persistent native run", async () => {
   const root = mkdtempSync("/tmp/pituitary-cli-");
   const entry = fileURLToPath(new URL("./main.ts", import.meta.url));
+  const workerEnvironment = {
+    PITUITARY_AUTH_FILE: join(root, "credentials", "auth.json"),
+    PITUITARY_CONFIG_DIRECTORY: join(root, "configuration"),
+  };
+  const host = await startRuntime({ stateDirectory: root, workerEnvironment });
+  const runtime = new Runtime({ stateDirectory: root, autoStart: false });
   const command = (...args: string[]) =>
-    spawnSync(process.execPath, [entry, ...args, "--state", root], {
-      encoding: "utf8",
-      timeout: 15_000,
-      env: {
-        ...process.env,
-        PITUITARY_AUTH_FILE: join(root, "credentials", "auth.json"),
-        PITUITARY_CONFIG_DIRECTORY: join(root, "configuration"),
-      },
+    new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [entry, ...args, "--state", root], {
+        env: { ...process.env, ...workerEnvironment },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stdout = "",
+        stderr = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      child.once("error", reject);
+      child.once("exit", (status) => resolve({ status, stdout, stderr }));
     });
   try {
-    const started = command("run", "--name", "persistent", "--detach", "--cwd", root);
+    const started = await command("run", "--name", "persistent", "--detach", "--cwd", root);
     expect(started.status).toBe(0);
     expect(started.stdout.trim()).toBe("persistent");
-    const listed = command("runs", "--json");
+    const ready = await waitRun(runtime, "persistent", (detail) => rootAttempt(detail).status === "ready");
+    const listed = await command("runs", "--json");
     expect(listed.status).toBe(0);
-    expect(JSON.parse(listed.stdout)).toMatchObject([{ name: "persistent", status: "ready" }]);
-    const inspected = command("inspect", "persistent", "--json");
+    expect(JSON.parse(listed.stdout)).toMatchObject([
+      {
+        run: { name: "persistent", desired: "running" },
+        attempts: [{ status: "ready", sessionId: rootAttempt(ready).sessionId }],
+      },
+    ]);
+    const inspected = await command("inspect", "persistent", "--json");
     expect(inspected.status).toBe(0);
     expect(JSON.parse(inspected.stdout).events.at(-1).type).toBe("worker_ready");
-    const stopped = command("stop", "persistent");
+    const stopped = await command("stop", "persistent");
     expect(stopped.status).toBe(0);
-    expect(stopped.stdout).toContain("Stopped persistent");
+    expect(stopped.stdout).toContain("Stopping persistent");
+    const final = await waitRun(runtime, "persistent", (detail) => rootAttempt(detail).status === "stopped");
+    expect(final.run.desired).toBe("stopped");
+    expect(rootAttempt(final).sessionId).toBe(rootAttempt(ready).sessionId);
   } finally {
-    command("stop", "persistent");
-    rmSync(root, { recursive: true, force: true });
+    try {
+      if ((await runtime.list()).length) {
+        await runtime.stop("persistent");
+        await waitRun(runtime, "persistent", (detail) => rootAttempt(detail).status === "stopped");
+      }
+    } finally {
+      runtime.close();
+      try {
+        await host.close();
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
   }
 }, 30_000);

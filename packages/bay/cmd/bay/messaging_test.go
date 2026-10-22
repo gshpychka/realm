@@ -1,12 +1,32 @@
 package main
 
 import (
+	"context"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/gshpychka/realm/packages/bay/internal/api"
 	"github.com/gshpychka/realm/packages/bay/internal/messages"
 )
+
+func TestSessionRelayAndFeedUseOperatorAPI(t *testing.T) {
+	h := newHarness(t)
+	client := api.NewClient(os.Getenv("BAY_SOCKET"))
+	generation := uint64(2)
+	input := messages.Send{To: "child", ToID: "id-child", ClientID: "question-command", Body: "a question"}
+	m, err := client.Relay(context.Background(), "parent", messages.Relay{ID: "id-parent", Generation: &generation, Send: input})
+	if err != nil || m.From != "parent" || m.FromID != "id-parent" || len(h.msgs.sent) != 1 || h.msgs.sent[0] != input {
+		t.Fatalf("session relay = %+v, %v; sent %+v", m, err, h.msgs.sent)
+	}
+	if _, err := client.Messages().Feed(context.Background(), "opaque-cursor"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(h.msgs.calls, []string{"Relay parent", "Feed"}) {
+		t.Fatalf("operator API calls = %q", h.msgs.calls)
+	}
+}
 
 func TestThreads(t *testing.T) {
 	inZone(t)

@@ -17,16 +17,25 @@ import (
 // Participant is a party to messaging: a session, or the operator.
 type Participant struct {
 	// ID is the session's ID, or messages.Operator.
-	ID   string
-	Name string
+	ID         string
+	Name       string
+	Generation uint64
+}
+
+type Delivery struct {
+	Message messages.Message
+	Created bool
 }
 
 // Store keeps threads and messages. It refuses with fault kinds: Invalid for a malformed message, including one with a
 // body over messages.MaxBody; NotFound for a missing thread; Forbidden for a thread its caller takes no part in;
 // Conflict for a recipient whose name an earlier session holds in the thread.
 type Store interface {
-	// Send delivers a message, starting a thread when thread is 0.
-	Send(ctx context.Context, from, to Participant, thread int64, subject, body string) (messages.Message, error)
+	// Deliver delivers a message with an optional durable retry key.
+	Deliver(ctx context.Context, from, to Participant, s messages.Send) (Delivery, error)
+	// Receipt checks a sender's durable idempotency key before the gateway resolves the current recipient name.
+	Receipt(ctx context.Context, from Participant, s messages.Send) (*messages.Message, error)
+	Feed(ctx context.Context, viewer Participant, after string) (messages.Feed, error)
 	// Inbox returns the threads holding messages to viewer that viewer has not read.
 	Inbox(ctx context.Context, viewer Participant) ([]messages.Thread, error)
 	// Conversation returns a page of messages before the given message ID (0 for
@@ -86,7 +95,33 @@ func New(c Config) *Gateway {
 var operator = Participant{ID: messages.Operator, Name: messages.Operator}
 
 func participant(s identity.Session) Participant {
-	return Participant{ID: s.ID, Name: s.Name}
+	return Participant{ID: s.ID, Name: s.Name, Generation: s.Generation}
+}
+
+func (g *Gateway) deliverMessage(ctx context.Context, from Participant, s messages.Send) (messages.Message, error) {
+	if previous, err := g.store.Receipt(ctx, from, s); err != nil || previous != nil {
+		if previous != nil {
+			return *previous, err
+		}
+		return messages.Message{}, err
+	}
+	to, err := g.recipient(ctx, s.To)
+	if err != nil {
+		return messages.Message{}, err
+	}
+	if s.ToID != "" && s.ToID != to.ID {
+		return messages.Message{}, fmt.Errorf("%w: recipient %s has a different ID", fault.Conflict, s.To)
+	}
+	delivery, err := g.store.Deliver(ctx, from, to, s)
+	if err != nil {
+		return messages.Message{}, err
+	}
+	if delivery.Created && to.ID == messages.Operator {
+		if err := g.alert(ctx, from.Name, MessageEvent); err != nil {
+			g.log.Warn("alert not delivered", "session", from.Name, "event", MessageEvent, "err", err)
+		}
+	}
+	return delivery.Message, nil
 }
 
 // recipient resolves the name a message is addressed to: the operator, or a session in any state.

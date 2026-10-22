@@ -44,6 +44,10 @@ let
   };
   catalogFile = (pkgs.formats.json { }).generate "pituitary-agents.json" catalog;
   catalogPath = "/etc/pituitary/agents.json";
+  credentialProfilesPath = "/etc/pituitary/credentials.json";
+  credentialProfilesFile =
+    (pkgs.formats.json { }).generate "pituitary-credentials.json"
+      cfg.credentialProfiles;
   bayCommand = lib.getExe config.services.bay.package;
   package = pkgs.symlinkJoin {
     name = "pituitary-with-agents";
@@ -52,7 +56,10 @@ let
     postBuild = ''
       wrapProgram $out/bin/pituitary \
         --set-default PITUITARY_CATALOG ${lib.escapeShellArg catalogPath} \
-        --set-default PITUITARY_BAY_COMMAND ${lib.escapeShellArg bayCommand}
+        --set-default PITUITARY_BAY_COMMAND ${lib.escapeShellArg bayCommand} \
+        --set-default PITUITARY_STATE_DIR ${lib.escapeShellArg cfg.stateDirectory} \
+        --set-default PITUITARY_CREDENTIAL_PROFILES ${lib.escapeShellArg credentialProfilesPath} \
+        --set-default PITUITARY_RUN_LIMITS ${lib.escapeShellArg (builtins.toJSON cfg.limits)}
     '';
     inherit (cfg.package) meta;
   };
@@ -61,7 +68,7 @@ in
   imports = [ ./bay.nix ];
 
   options.services.pituitary = {
-    enable = lib.mkEnableOption "Pituitary's declared agent catalog and isolated Bay execution";
+    enable = lib.mkEnableOption "Pituitary's durable host runtime and declared Bay agents";
     operator = mkOption {
       type = types.str;
       description = "The operator who runs Pituitary and owns Bay's local API access.";
@@ -77,6 +84,58 @@ in
       default = pkgs.callPackage ../../../packages/pituitary/worker.nix { };
       defaultText = lib.literalExpression "pkgs.callPackage ../../../packages/pituitary/worker.nix { }";
       description = "Native worker installed in every agent's NixOS machine.";
+    };
+    stateDirectory = mkOption {
+      type = types.strMatching "/.*";
+      default = "/var/lib/pituitary";
+      description = "Private durable host state. CLI clients discover the runtime through this same directory.";
+    };
+    limits = {
+      maxTasks = mkOption {
+        type = types.ints.positive;
+        default = 16;
+        description = "Maximum tasks created in one run, including cancelled tasks.";
+      };
+      maxLiveAttempts = mkOption {
+        type = types.ints.positive;
+        default = 4;
+        description = "Maximum live attempts per run, including waiting or unreachable workers.";
+      };
+      maxDepth = mkOption {
+        type = types.ints.unsigned;
+        default = 2;
+        description = "Maximum task depth below the root coordinator.";
+      };
+      deadlineMs = mkOption {
+        type = types.ints.positive;
+        default = 3600000;
+        description = "Run deadline in milliseconds from creation.";
+      };
+      reportBytes = mkOption {
+        type = types.ints.between 1 65536;
+        default = 65536;
+        description = "Maximum UTF-8 bytes in a submitted report.";
+      };
+    };
+    credentialProfiles = mkOption {
+      default = { };
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            provider = mkOption {
+              type = types.strMatching "[^/[:space:]]+";
+              description = "Pi provider receiving this API key.";
+            };
+            file = mkOption {
+              type = types.addCheck types.str (
+                value: lib.hasPrefix "/" value && !lib.hasPrefix "${builtins.storeDir}/" value
+              );
+              description = "Absolute runtime file containing the API key. Nix store paths are forbidden.";
+            };
+          };
+        }
+      );
+      description = "Named provider API keys. Only runtime file references enter generated host configuration.";
     };
     agents = mkOption {
       type = types.attrsOf types.deferredModule;
@@ -104,10 +163,20 @@ in
         message = "services.pituitary and services.bay must use the same operator.";
       }
     ]
-    ++ lib.mapAttrsToList (name: agent: {
-      assertion = lib.all (target: builtins.hasAttr target cfg.agents) agent.manifest.delegatesTo;
-      message = "services.pituitary.agents.${name} delegates to an undeclared agent.";
-    }) agents;
+    ++ lib.concatLists (
+      lib.mapAttrsToList (name: agent: [
+        {
+          assertion = lib.all (target: builtins.hasAttr target cfg.agents) agent.manifest.delegatesTo;
+          message = "services.pituitary.agents.${name} delegates to an undeclared agent.";
+        }
+        {
+          assertion = lib.all (
+            profile: builtins.hasAttr profile cfg.credentialProfiles
+          ) agent.manifest.credentials;
+          message = "services.pituitary.agents.${name} requests an undeclared credential profile.";
+        }
+      ]) agents
+    );
 
     services.pituitary.catalogFile = catalogFile;
     services.bay = {
@@ -125,12 +194,51 @@ in
       ) agents;
     };
     environment.etc."pituitary/agents.json".source = catalogFile;
+    environment.etc."pituitary/credentials.json".source = credentialProfilesFile;
     environment.systemPackages = [ package ];
     # Home Manager may provide the frontend wrapper. Login defaults let that client
     # discover the same host catalog without duplicating its declarations.
     environment.sessionVariables = {
       PITUITARY_CATALOG = catalogPath;
       PITUITARY_BAY_COMMAND = bayCommand;
+      PITUITARY_STATE_DIR = cfg.stateDirectory;
+      PITUITARY_CREDENTIAL_PROFILES = credentialProfilesPath;
+      PITUITARY_RUN_LIMITS = builtins.toJSON cfg.limits;
+    };
+    systemd.tmpfiles.rules = [ "d ${cfg.stateDirectory} 0700 ${cfg.operator} - -" ];
+    systemd.services.pituitary = {
+      description = "Pituitary host runtime";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "bay-server.service" ];
+      wants = [ "bay-server.service" ];
+      restartTriggers = [
+        catalogFile
+        credentialProfilesFile
+      ];
+      environment = {
+        PITUITARY_CATALOG = catalogPath;
+        PITUITARY_STATE_DIR = cfg.stateDirectory;
+        PITUITARY_BAY_COMMAND = bayCommand;
+        PITUITARY_CREDENTIAL_PROFILES = credentialProfilesPath;
+        PITUITARY_RUN_LIMITS = builtins.toJSON cfg.limits;
+      };
+      serviceConfig = {
+        User = cfg.operator;
+        UMask = "0077";
+        ExecStart = lib.escapeShellArgs [
+          "${package}/bin/pituitary"
+          "serve"
+          "--state"
+          cfg.stateDirectory
+          "--catalog"
+          catalogPath
+        ];
+        Restart = "on-failure";
+        RestartSec = 2;
+        # Workers have their own durable lifetimes. A daemon restart must detach
+        # from local workers rather than killing them with the service cgroup.
+        KillMode = "process";
+      };
     };
   };
 }

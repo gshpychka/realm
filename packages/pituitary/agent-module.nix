@@ -49,16 +49,28 @@ in
       type = uniqueListOf name;
       default = [ ];
       description = ''
-        Agent definition names recorded in the manifest and validated by the host catalog. Autonomous
-        delegation dispatch is not implemented yet.
+        Agent definitions this role may ask the runtime to delegate to. The host validates these
+        references and intersects them with the run's authority and resource limits.
       '';
+    };
+    limits = {
+      maxChildren = mkOption {
+        type = types.ints.unsigned;
+        default = 1;
+        description = "Maximum child tasks this role may create; zero disables delegation.";
+      };
+      maxDepth = mkOption {
+        type = types.ints.unsigned;
+        default = 1;
+        description = "Maximum further delegation depth; descendants inherit the remaining allowance.";
+      };
     };
     credentials = mkOption {
       type = uniqueListOf (types.strMatching "[a-zA-Z0-9][a-zA-Z0-9_.-]*");
       default = [ ];
       description = ''
-        Credential profile names recorded in the manifest. Delivery is not implemented, so nonempty
-        requests are rejected before launch. Credential values and host file paths are not accepted.
+        Host credential profile names available to this role. Values arrive through the private
+        runtime connection and stay outside the role manifest and saved program history.
       '';
     };
   };

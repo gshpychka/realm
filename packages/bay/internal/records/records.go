@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,12 +21,14 @@ import (
 // Record is what a session starts from, and what remains of it once it has ended.
 type Record struct {
 	// ID identifies the session for as long as its record exists.
-	ID      string              `json:"id"`
-	Name    string              `json:"name"`
-	Program Program             `json:"program"`
-	Machine *machines.Selection `json:"machine,omitempty"`
-	Repos   []Repo              `json:"repos,omitempty"`
-	Created time.Time           `json:"created"`
+	ID string `json:"id"`
+	// Generation is host-owned execution authority; guest snapshots never rewind it.
+	Generation uint64              `json:"generation"`
+	Name       string              `json:"name"`
+	Program    Program             `json:"program"`
+	Machine    *machines.Selection `json:"machine,omitempty"`
+	Repos      []Repo              `json:"repos,omitempty"`
+	Created    time.Time           `json:"created"`
 }
 
 // PinMachine upgrades a legacy record once, before its next fresh instance. A
@@ -47,13 +50,41 @@ func (s *Store) PinMachine(name string, machine machines.Selection, program *Pro
 	}
 	r.Machine = &machine
 	r.Program.Runtime = program
-	data, err := json.MarshalIndent(r, "", "  ")
+	if err := replace(dir, r); err != nil {
+		return Record{}, err
+	}
+	return r, nil
+}
+
+// AdvanceGeneration durably revokes the previous execution before a fresh launch or restore. The session service
+// holds its lifecycle lock while changing a record, including while this replacement is committed.
+func (s *Store) AdvanceGeneration(name string) (Record, error) {
+	dir, err := s.dir(name)
 	if err != nil {
 		return Record{}, err
 	}
-	tmp, err := os.CreateTemp(dir, ".record-")
+	r, err := read(dir)
 	if err != nil {
 		return Record{}, err
+	}
+	if r.Generation >= math.MaxInt64 {
+		return Record{}, fmt.Errorf("session %s exhausted its execution generations", name)
+	}
+	r.Generation++
+	if err := replace(dir, r); err != nil {
+		return Record{}, err
+	}
+	return r, nil
+}
+
+func replace(dir string, r Record) error {
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".record-")
+	if err != nil {
+		return err
 	}
 	defer os.Remove(tmp.Name())
 	if _, err = tmp.Write(data); err == nil {
@@ -63,15 +94,15 @@ func (s *Store) PinMachine(name string, machine machines.Selection, program *Pro
 		err = closeErr
 	}
 	if err != nil {
-		return Record{}, err
+		return err
 	}
 	if err := os.Rename(tmp.Name(), filepath.Join(dir, recordFile)); err != nil {
-		return Record{}, err
+		return err
 	}
 	if err := syncDir(dir); err != nil {
-		return Record{}, err
+		return err
 	}
-	return r, nil
+	return nil
 }
 
 // Program is the session's program: a definition by name, or a command launched fresh on every start.

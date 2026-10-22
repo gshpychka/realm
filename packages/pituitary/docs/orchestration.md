@@ -31,7 +31,7 @@ initial coordinator/worker lifecycle.
   independent persistent worker and detach on exit.
 - `packages/tui/src/use-session.ts` owns execution synchronization inside React. The
   `AgentLink` interface and existing conversation rendering provide a migration seam.
-- Pinned Pi 0.87.1 exposes `createAgentSession`, `AgentSessionRuntime`, persistent native
+- Pinned Pi 0.87.1 exposes `createAgentSession`, `AgentSession`, persistent native
   sessions, custom tools/messages, direct subscriptions, and session-scoped UI contexts.
   We can reuse its model loop while owning the surrounding harness.
 - Bay owns isolated NixOS sessions, immutable repository starting revisions, saved
@@ -41,9 +41,10 @@ initial coordinator/worker lifecycle.
 - Bay selects declared machine images and allocations per program, pins them in session
   records, and prepares immutable warm bases shared by equal images and allocations.
   Programs define launch, resume, durable history, monitoring, and bounded connections.
-- Bay exposes durable record and machine identities. Messages have backward pagination,
-  but no non-mutating forward subscription or send deduplication.
-- Credential delivery and workspace import/export are still planned. Ending a session
+- Bay exposes durable record, machine, and execution identities. The orchestration slice
+  adds a non-marking forward mail cursor and retry-safe sends alongside human inboxes.
+- Provider API-key profiles use private runtime delivery and in-memory worker storage.
+  Workspace import/export is still planned. Ending a session
   saves selected program history and destroys unexported workspace changes.
 - Bay is disabled in reaper's configuration; its configured program is Claude. Enabling
   it and measuring real resource/boot behavior are deployment work, not assumptions.
@@ -391,9 +392,10 @@ needs testing.
 - Local runs now have SQLite records and a causal journal. `run`, `attach`, `runs`,
   `inspect`, and `stop` work from the installed launcher and the source harness command.
   The existing terminal UI attaches to managed workers and detaches on exit. Startup
-  failures and uncertain prompt delivery remain inspectable. This slice is CLI-driven;
-  a continuously running host scheduler, task graph, and outbox reconciliation remain
-  to be implemented.
+  failures and uncertain prompt delivery remain inspectable. A single host service now
+  owns managed execution and SQLite writes; CLI and TUI connections are disposable.
+  Legacy solo records migrate to one root task and attempt without duplicating native
+  conversation or execution identity on the run.
 - `lib.pituitaryAgent` evaluates real NixOS modules and independently produces a role
   manifest, image, and program definition. Metadata-only changes preserve machine image
   identity. The host `services.pituitary.agents` catalog now composes these outputs into
@@ -404,15 +406,19 @@ needs testing.
   selected Bay program. Runs freeze the role, machine revision, endpoint, and record
   identity. The worker requires immutable role initialization before opening its native
   conversation; model, instructions, and built-in tools apply there, including direct
-  Bash commands. Credential profile requests are rejected before launch while delivery
-  remains unimplemented.
+  Bash commands. The reachable role graph is frozen for future children as well as the
+  root worker. Named API-key profiles arrive outside durable command/history records
+  and use the SDK's in-memory credential store. Memory snapshots can retain these keys;
+  OAuth refresh and a provider broker remain future work.
 - `recover` reconciles an interrupted Bay launch against its recorded target and can
   initialize its existing running worker. It never relaunches ended or missing work.
   Desired stopped state is durable, so later observation cannot revive a stopped run.
   Stopping a Bay run shuts down its worker and suspends the identified VM, retaining
   the workspace until results can be exported. Explicit Bay `end` or `rm` remains
   destructive to unexported workspace changes; artifact transfer is a later milestone.
-  There is still no continuously running scheduler or autonomous delegation loop.
+  The scheduler commits domain decisions, receipts, and concrete outbox effects in one
+  SQLite transaction, then dispatches outside it. An uncertain launch reconciles its
+  existing environment without another create operation.
 - Bay exposes stable record identity and connection capability, a predefined program
   connector over its operator interface, and a stdio CLI adapter. Disconnecting leaves
   the persistent program alive; lifecycle changes and server shutdown retire bridges.
@@ -420,13 +426,24 @@ needs testing.
   observers to coexist. Bay pins image/resource revisions, prepares immutable warm
   bases, and admits sessions against both count and actual pinned memory budgets.
   Saved worker history excludes process locks, socket files, and reclamation state.
-  The connection checks the record ID. Snapshot/attempt incarnation fencing remains
-  part of the future managed orchestration layer.
+  Connections and lifecycle operations fence record identity and execution generation.
+  A changed generation or native incarnation interrupts the attempt rather than adopting
+  rewound history. Stale domain requests and late results cannot regain authority.
+- Native coordinator tools delegate, inspect related work, exchange attributed messages,
+  yield, and submit immutable reports. Delegation receipts return without holding a tool
+  call open for child completion. The run bounds total tasks, live attempts, depth,
+  deadline, and report bytes; role ceilings further restrict child count and depth.
+  Waiting workers retain their environment and count toward live resource admission.
+  Reports are explicitly unverified; code export and independent verification are separate.
+- New runs reload the selected JSON catalog while existing runs keep their frozen
+  reachable definitions. Frontends use runtime projections, so input authority is
+  revoked immediately on cancellation. Completed child conversations have private,
+  durable host archives and can be attached read-only without resuming their VMs.
 - Ordinary Pituitary retains the stock-Pi RPC path while native parity develops.
   Initial managed mode controls resource discovery and preserves conversation identity;
   custom component screens, terminal takeover, and branching use the ordinary path.
-- Delegation, peer-message wakeups, credential delivery, immutable result transfer,
-  verification/integration, and the final team UI remain
+- Immutable code transfer, verification/integration, OAuth credential handling, richer
+  dependency scheduling, and the final team UI remain
   later milestones. Bay has not been activated on reaper by this change.
 - First milestone validation: 696 unit tests, 242 terminal tests, 16 performance
   checks, package/module builds, the declarative machine check, source checks, and
@@ -434,6 +451,19 @@ needs testing.
   scenarios passed. The first batch exposed a test-fixture type assertion and import
   ordering; only the affected static gates were rerun after correction. No model
   provider calls were used.
-- Second milestone implementation is ready for integrated validation. Its host catalog,
-  machine selection, role initialization, and recovery checks are verified together at
-  that boundary; the first milestone's figures above do not describe this new batch.
+- Second milestone validation passed: 716 unit tests, 243 terminal tests, 16 performance
+  checks, Go race/vet checks, all 20 nested VM scenarios, package/module builds, source
+  checks, and all-systems Nix evaluation. Host catalog, machine selection, immutable role
+  initialization, and conservative recovery were verified together.
+- Third milestone's proving flow passes: a coordinator delegates to a worker, exchanges
+  a question and reply, retains the submitted report, and inspects the completed child's
+  archived conversation. Restarting the daemon during an active turn, replaying commands,
+  losing mail acknowledgements, and retrying admission do not duplicate work or model turns.
+  Legacy Bay conversations retain their original native history and conversation-only
+  authority when their records migrate.
+- Validation was grouped at that complete flow boundary: 749 unit cases, 243 terminal
+  cases, 16 performance checks, package/module builds, worker/catalog checks, source checks,
+  and all-systems Nix evaluation passed across the batch and affected reruns. Bay's Go
+  race/vet checks and all 20 nested VM retention scenarios passed. The batch exposed
+  HTTP response/connection handling, type annotations, and fixture assumptions; only the
+  affected gates were rerun after correction. No model provider calls were used.

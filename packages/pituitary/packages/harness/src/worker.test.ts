@@ -1,10 +1,20 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeSessionState, type RpcExtensionUIRequest, type RpcSessionState } from "@pituitary/rpc";
+import type { DomainRequest, WorkerAssignment } from "./domain-protocol.ts";
 import { type AgentManifest, agentManifestDigest } from "./protocol.ts";
 import { startWorker, type Worker, type WorkerEngineContext } from "./worker.ts";
 import { connectWorker, type WorkerClient } from "./worker-client.ts";
@@ -145,13 +155,174 @@ test("a managed worker binds its role before creating Pi and survives restart un
   await worker.close();
   const replacement = await startWorker(options);
   cleanup.push(() => replacement.close());
-  expect(creations).toBe(2);
+  expect(creations).toBe(1);
   const second = await client(replacement);
   expect(second.identity.roleDigest).toBe(agentManifestDigest(reviewer));
   await second.request(initialize, "initialize");
   expect(creations).toBe(2);
   await second.prompt("review now");
   expect(engine.prompts).toBe(1);
+});
+
+const assignment: WorkerAssignment = { runId: "run-1", taskId: "task-1", attemptId: "attempt-1", epoch: 1 };
+
+test("supervised requests survive detach and restart with stable receipts while credentials stay in RAM", async () => {
+  const root = directory();
+  const engine = scripted();
+  let creations = 0;
+  const options = {
+    socketPath: join(root, "worker.sock"),
+    stateDirectory: root,
+    cwd: root,
+    roleRequired: true,
+    engineFactory: async (context: WorkerEngineContext) => {
+      creations++;
+      return engine.factory(context);
+    },
+  };
+  let worker = await startWorker(options);
+  cleanup.push(() => worker.close());
+  let supervisor = await connectWorker(worker.socketPath, { supervisor: true });
+  cleanup.push(() => supervisor.close());
+  await expect(supervisor.request({ type: "initialize", manifest: reviewer, assignment })).rejects.toThrow(
+    "provision credentials",
+  );
+  await supervisor.provision({ anthropic: "fixture-secret-never-persist" });
+  await supervisor.request({ type: "initialize", manifest: reviewer, assignment });
+  expect(supervisor.identity.assignment).toEqual(assignment);
+  expect(engine.context.apiKeys).toEqual({ anthropic: "fixture-secret-never-persist" });
+  await expect(
+    supervisor.request({ type: "initialize", manifest: reviewer, assignment: { ...assignment, epoch: 2 } }),
+  ).rejects.toThrow("another attempt");
+  const requests: DomainRequest[] = [];
+  supervisor.onDomainRequest((request) => requests.push(request));
+  const domain = engine.context.domain;
+  if (!domain) throw new Error("Missing supervisor domain channel");
+  const pending = domain("assistant-entry", "message-call", {
+    type: "message",
+    to: "parent",
+    body: "A question",
+  });
+  await waitFor(() => requests.length === 1);
+  const first = requests[0];
+  if (!first) throw new Error("Missing domain request");
+  await supervisor.close();
+  supervisor = await connectWorker(worker.socketPath, { supervisor: true });
+  const replay: DomainRequest[] = [];
+  supervisor.onDomainRequest((request) => replay.push(request));
+  await waitFor(() => replay.length === 1);
+  expect(replay).toEqual([first]);
+  supervisor.answerDomain({
+    type: "domain_result",
+    id: first.id,
+    success: true,
+    data: { messageId: "mail-1" },
+  });
+  expect(await pending).toEqual({ messageId: "mail-1" });
+  expect(
+    await domain("assistant-entry", "message-call", { type: "message", to: "parent", body: "A question" }),
+  ).toEqual({ messageId: "mail-1" });
+  await expect(
+    domain("assistant-entry", "message-call", { type: "message", to: "parent", body: "Changed" }),
+  ).rejects.toThrow("another payload");
+  const interrupted = domain("assistant-entry", "second-call", {
+    type: "yield",
+    reason: "Waiting for the answer",
+  }).catch((error: unknown) => error);
+  await waitFor(() => replay.length === 2);
+  const waiting = replay[1];
+  if (!waiting) throw new Error("Missing waiting request");
+  await supervisor.close();
+  await worker.close();
+  expect(await interrupted).toBeInstanceOf(Error);
+  worker = await startWorker(options);
+  expect(creations).toBe(1);
+  supervisor = await connectWorker(worker.socketPath, { supervisor: true });
+  const resumed: DomainRequest[] = [];
+  supervisor.onDomainRequest((request) => resumed.push(request));
+  await waitFor(() => resumed.length === 1);
+  expect(resumed).toEqual([waiting]);
+  supervisor.answerDomain({ type: "domain_result", id: waiting.id, success: true, data: { waiting: true } });
+  await expect(supervisor.request({ type: "initialize", manifest: reviewer, assignment })).rejects.toThrow(
+    "provision credentials",
+  );
+  await supervisor.provision({ anthropic: "replacement-credential" });
+  await supervisor.request({ type: "initialize", manifest: reviewer, assignment });
+  expect(creations).toBe(2);
+  expect(
+    await engine.context.domain?.("assistant-entry", "second-call", {
+      type: "yield",
+      reason: "Waiting for the answer",
+    }),
+  ).toEqual({ waiting: true });
+  for (const file of readdirSync(root))
+    if (file.endsWith(".json")) {
+      const saved = readFileSync(join(root, file), "utf8");
+      expect(saved).not.toContain("fixture-secret-never-persist");
+      expect(saved).not.toContain("replacement-credential");
+    }
+});
+
+test("only the supervisor can provision auth or assign a worker", async () => {
+  const root = directory();
+  const worker = await startWorker({
+    socketPath: join(root, "worker.sock"),
+    stateDirectory: root,
+    cwd: root,
+    roleRequired: true,
+    engineFactory: scripted().factory,
+  });
+  cleanup.push(() => worker.close());
+  const controller = await client(worker);
+  await expect(controller.request({ type: "initialize", manifest: reviewer, assignment })).rejects.toThrow(
+    "supervisor lease",
+  );
+  await expect(controller.provision({ anthropic: "not-accepted" })).rejects.toThrow("only the supervisor");
+});
+
+test("a busy inbox rejection is retryable under the same delivery receipt ID", async () => {
+  const root = directory();
+  const engine = scripted();
+  let busy = true;
+  let delivered = 0;
+  const worker = await startWorker({
+    socketPath: join(root, "worker.sock"),
+    stateDirectory: root,
+    cwd: root,
+    roleRequired: true,
+    engineFactory: async (context) => ({
+      ...(await engine.factory(context)),
+      deliver: async () => {
+        if (busy) throw new Error("worker is busy");
+        delivered++;
+        return { entryId: "native-inbox-entry", duplicate: false };
+      },
+      deliveryStatus: () => ({ entryId: delivered ? "native-inbox-entry" : null }),
+    }),
+  });
+  cleanup.push(() => worker.close());
+  const supervisor = await connectWorker(worker.socketPath, { supervisor: true });
+  cleanup.push(() => supervisor.close());
+  await supervisor.provision({});
+  await supervisor.request({ type: "initialize", manifest: reviewer, assignment });
+  const delivery = {
+    type: "deliver" as const,
+    batchId: "batch-1",
+    messages: [{ id: "mail-1", from: "operator", body: "Continue" }],
+    wake: true,
+  };
+  await expect(supervisor.request(delivery, "stable-delivery")).rejects.toThrow("busy");
+  expect(await supervisor.request({ type: "get_delivery", batchId: "batch-1" })).toEqual({ entryId: null });
+  busy = false;
+  await supervisor.request(delivery, "stable-delivery");
+  expect(delivered).toBe(1);
+  expect(await supervisor.request({ type: "get_delivery", batchId: "batch-1" })).toEqual({
+    entryId: "native-inbox-entry",
+  });
+  const receipts = existsSync(join(root, "commands.json"))
+    ? readFileSync(join(root, "commands.json"), "utf8")
+    : "";
+  expect(receipts).not.toContain("stable-delivery");
 });
 
 test("role initialization requires the controller and cannot convert a local conversation", async () => {

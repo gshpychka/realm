@@ -30,12 +30,21 @@ let
       operator = "alice";
       package = clientPackage;
       inherit workerPackage;
+      credentialProfiles.primary = {
+        provider = "anthropic";
+        file = "/run/secrets/pituitary-api-key";
+      };
       agents = {
         builder = {
           imports = [ common ];
           pituitary.agent = {
             instructions = "Implement one reviewed result.";
             delegatesTo = [ "reviewer" ];
+            credentials = [ "primary" ];
+            limits = {
+              maxChildren = 2;
+              maxDepth = 1;
+            };
           };
         };
         reviewer = {
@@ -111,6 +120,14 @@ let
     memoryBudget = cfg.services.bay.sessions.maxMemory == 2;
     stableCatalogPath =
       cfg.environment.sessionVariables.PITUITARY_CATALOG == "/etc/pituitary/agents.json";
+    daemonOperator = cfg.systemd.services.pituitary.serviceConfig.User == "alice";
+    daemonState = cfg.environment.sessionVariables.PITUITARY_STATE_DIR == "/var/lib/pituitary";
+    daemonLifetime = cfg.systemd.services.pituitary.serviceConfig.KillMode == "process";
+    credentialReference =
+      cfg.systemd.services.pituitary.environment.PITUITARY_CREDENTIAL_PROFILES
+      == "/etc/pituitary/credentials.json";
+    limitsDeclared =
+      cfg.services.pituitary.limits.maxTasks == 16 && cfg.services.pituitary.limits.reportBytes == 65536;
     unknownDelegation = lib.any (
       check: !check.assertion && lib.hasPrefix "services.pituitary.agents.builder" check.message
     ) invalid.assertions;
@@ -124,7 +141,8 @@ pkgs.runCommand "pituitary-catalog-check" { nativeBuildInputs = [ pkgs.jq ]; } '
   catalog=${cfg.services.pituitary.catalogFile}
   jq -e '.schemaVersion == 1 and .baySocket == "/run/bay/bay.sock"
     and .agents.builder.name == "builder" and .agents.builder.program == "pituitary-builder"
-    and .agents.builder.delegatesTo == ["reviewer"] and .agents.reviewer.tools == ["read", "grep"]' \
+    and .agents.builder.delegatesTo == ["reviewer"] and .agents.builder.credentials == ["primary"]
+    and .agents.builder.limits == {maxChildren: 2, maxDepth: 1} and .agents.reviewer.tools == ["read", "grep"]' \
     "$catalog" >/dev/null
   jq -e --slurpfile catalog "$catalog" '. as $server | $catalog[0].agents.builder.machine as $machine
     | $server.programs["pituitary-builder"].machine == $machine

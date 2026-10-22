@@ -2,98 +2,137 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeSessionState } from "@pituitary/rpc";
-import { Runtime } from "./runtime.ts";
-import { startWorker } from "./worker.ts";
-import { connectWorker } from "./worker-client.ts";
+import { rootAttempt, waitRun } from "./runtime.fixture.ts";
+import { Runtime, type RuntimeOptions } from "./runtime.ts";
+import { startRuntime } from "./supervisor.ts";
 
-test("native worker survives runtime and frontend disconnection, then stops explicitly", async () => {
+async function fixture(options: Partial<RuntimeOptions> = {}) {
   const root = mkdtempSync(join(tmpdir(), "pituitary-runtime-"));
-  const options = {
+  const configured = {
     stateDirectory: root,
     workerEnvironment: {
       PITUITARY_AUTH_FILE: join(root, "credentials", "auth.json"),
       PITUITARY_CONFIG_DIRECTORY: join(root, "configuration"),
     },
+    ...options,
   };
-  let runtime: Runtime | null = new Runtime(options);
-  let name: string | undefined;
-  try {
-    const run = await runtime.start({ name: "durable-solo", cwd: root });
-    name = run.name;
-    expect(run.status).toBe("ready");
-    expect(run.sessionId).toBeTruthy();
-    runtime.close();
-    runtime = null;
+  let host = await startRuntime(configured);
+  const runtime = new Runtime({ ...configured, autoStart: false });
+  return {
+    root,
+    runtime,
+    reconnect: () => new Runtime({ stateDirectory: root, autoStart: false }),
+    async restartHost() {
+      await host.close();
+      host = await startRuntime(configured);
+    },
+    async close() {
+      try {
+        for (const run of await runtime.list()) await runtime.stop(run.id);
+        for (const run of await runtime.list())
+          await waitRun(runtime, run.id, (detail) =>
+            detail.attempts.every((attempt) => ["stopped", "failed"].includes(attempt.status)),
+          );
+      } finally {
+        runtime.close();
+        try {
+          await host.close();
+        } finally {
+          rmSync(root, { recursive: true, force: true });
+        }
+      }
+    },
+  };
+}
 
-    const first = await connectWorker(run.socket);
+test("native worker survives runtime and frontend disconnection, then stops explicitly", async () => {
+  const environment = await fixture();
+  let runtime = environment.runtime;
+  try {
+    const run = await runtime.start({ name: "durable-solo", cwd: environment.root });
+    const ready = rootAttempt(
+      await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "ready"),
+    );
+    expect(ready.sessionId).toBeTruthy();
+    runtime.close();
+
+    const first = await environment.reconnect().attach(run.id);
     const original = first.identity;
     await first.close();
-    const second = await connectWorker(run.socket);
+    const second = await environment.reconnect().attach(run.id);
     expect(second.identity.incarnation).toBe(original.incarnation);
-    expect((await second.getState()).sessionId).toBe(run.sessionId as string);
+    expect((await second.getState()).sessionId).toBe(ready.sessionId as string);
     await second.close();
 
-    runtime = new Runtime(options);
-    expect((await runtime.inspect(name)).sessionId).toBe(run.sessionId);
-    expect((await runtime.stop(name)).status).toBe("stopped");
-    expect((await runtime.stop(name)).status).toBe("stopped");
-    expect(runtime.store.events(run.id).map((event) => event.type)).toEqual([
-      "run_created",
-      "worker_starting",
-      "worker_ready",
-      "stop_requested",
-      "worker_stopped",
-    ]);
+    await environment.restartHost();
+    runtime = environment.reconnect();
+    const recovered = rootAttempt(
+      await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "ready"),
+    );
+    expect(recovered.sessionId).toBe(ready.sessionId);
+    expect(recovered.incarnation).toBe(original.incarnation);
+    expect((await runtime.stop(run.id)).desired).toBe("stopped");
+    const stopped = await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "stopped");
+    expect((await runtime.stop(run.id)).desired).toBe("stopped");
+    expect(
+      stopped.events
+        .filter((event) =>
+          ["run_created", "worker_ready", "stop_requested", "worker_stopped"].includes(event.type),
+        )
+        .map((event) => event.type),
+    ).toEqual(["run_created", "worker_ready", "worker_ready", "stop_requested", "worker_stopped"]);
   } finally {
-    if (name) {
-      runtime ??= new Runtime(options);
-      await runtime.stop(name).catch(() => {});
-    }
-    runtime?.close();
-    rmSync(root, { recursive: true, force: true });
+    await environment.close();
   }
 }, 20_000);
 
-test("a failed executable leaves an inspectable run and no repeated launch", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pituitary-runtime-failed-"));
-  const runtime = new Runtime({
-    stateDirectory: root,
+test("a failed executable leaves an inspectable attempt and no repeated launch", async () => {
+  const environment = await fixture({
     workerCommand: ["/nonexistent/pituitary-worker"],
     startupTimeout: 1000,
   });
   try {
-    await expect(runtime.start({ name: "failed-worker", cwd: root })).rejects.toThrow("Could not start");
-    expect(runtime.store.get("failed-worker").status).toBe("failed");
-    expect((await runtime.inspect("failed-worker")).status).toBe("failed");
-    expect(runtime.store.list()).toHaveLength(1);
+    const run = await environment.runtime.start({ name: "failed-worker", cwd: environment.root });
+    const failed = await waitRun(
+      environment.runtime,
+      run.id,
+      (detail) => rootAttempt(detail).status === "failed",
+    );
+    expect(rootAttempt(failed).error).toContain("ENOENT");
+    expect(await environment.runtime.list()).toHaveLength(1);
+    const again = await environment.runtime.inspect(run.id);
+    expect(rootAttempt(again)).toEqual(rootAttempt(failed));
+    expect(again.events.filter((event) => event.type === "attempt_interrupted")).toHaveLength(1);
   } finally {
-    runtime.close();
-    rmSync(root, { recursive: true, force: true });
+    await environment.close();
   }
 });
 
-test("startup filesystem failures leave a failed run with a useful journal", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pituitary-runtime-filesystem-"));
-  const runtime = new Runtime({ stateDirectory: root });
+test("startup filesystem failures leave an inspectable attempt with a useful journal", async () => {
+  const environment = await fixture();
   try {
-    writeFileSync(join(root, "runs"), "not a directory");
-    await expect(runtime.start({ name: "blocked-state", cwd: root })).rejects.toThrow("Could not start");
-    const run = runtime.store.get("blocked-state");
-    expect(run.status).toBe("failed");
-    expect(run.error).toContain("ENOTDIR");
-    expect(runtime.store.events(run.id).map((event) => event.type)).toEqual(["run_created", "start_failed"]);
+    writeFileSync(join(environment.root, "runs"), "not a directory");
+    const run = await environment.runtime.start({ name: "blocked-state", cwd: environment.root });
+    const failed = await waitRun(
+      environment.runtime,
+      run.id,
+      (detail) => rootAttempt(detail).status === "failed",
+    );
+    expect(rootAttempt(failed).error).toContain("ENOTDIR");
+    expect(failed.events.map((event) => event.type)).toContain("attempt_interrupted");
+    expect(failed.events.find((event) => event.type === "attempt_interrupted")?.data.error).toContain(
+      "ENOTDIR",
+    );
   } finally {
-    runtime.close();
-    rmSync(root, { recursive: true, force: true });
+    await environment.close();
   }
 });
 
-test("a stalled handshake respects the startup deadline and cannot leave an unready worker alive", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pituitary-runtime-stalled-"));
-  const fixture = join(root, "stalled-worker.ts");
+test("a stalled handshake respects its deadline and cannot leave an unready child alive", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pituitary-stalled-fixture-"));
+  const script = join(root, "stalled-worker.ts");
   writeFileSync(
-    fixture,
+    script,
     `
     import { createServer } from "node:net";
     process.on("SIGTERM", () => {});
@@ -101,64 +140,57 @@ test("a stalled handshake respects the startup deadline and cannot leave an unre
       .listen(process.argv[process.argv.indexOf("--socket") + 1]);
   `,
   );
-  const runtime = new Runtime({
-    stateDirectory: root,
-    workerCommand: [process.execPath, fixture],
-    startupTimeout: 150,
-  });
+  const environment = await fixture({ workerCommand: [process.execPath, script], startupTimeout: 150 });
   try {
     const started = Date.now();
-    await expect(runtime.start({ name: "stalled-worker", cwd: root })).rejects.toThrow("Could not start");
+    const run = await environment.runtime.start({ name: "stalled-worker", cwd: environment.root });
+    const failed = rootAttempt(
+      await waitRun(environment.runtime, run.id, (detail) => rootAttempt(detail).status === "failed", 2500),
+    );
     expect(Date.now() - started).toBeLessThan(2500);
-    const run = runtime.store.get("stalled-worker");
-    expect(run.status).toBe("failed");
-    expect(run.pid).toBeTruthy();
-    expect(() => process.kill(run.pid as number, 0)).toThrow();
+    expect(failed.error).toContain("timed out");
+    expect(failed.pid).toBeTruthy();
+    expect(() => process.kill(failed.pid as number, 0)).toThrow();
   } finally {
-    runtime.close();
+    await environment.close();
     rmSync(root, { recursive: true, force: true });
   }
 }, 5000);
 
-test("an observation begun before stop cannot revive the stopped run", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pituitary-runtime-observation-"));
-  const runtime = new Runtime({ stateDirectory: root });
-  const run = runtime.store.create({ name: "stopped-during-inspect", cwd: root });
-  let hold = false;
-  let answer: (() => void) | undefined;
-  const state = { ...fakeSessionState, sessionId: "observation-session" };
-  const worker = await startWorker({
-    socketPath: run.socket,
-    stateDirectory: run.directory,
-    cwd: root,
-    engineFactory: async () => ({
-      call: async (command) => {
-        if (command.type !== "get_state") return undefined;
-        if (hold)
-          return new Promise((resolve) => {
-            answer = () => resolve(state);
-          });
-        return state;
-      },
-      respond: () => {},
-      close: async () => {},
-    }),
-  });
+test("a launch completing after stop cannot revive a cancelled task", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pituitary-delayed-fixture-"));
+  const script = join(root, "delayed-worker.ts");
+  const worker = new URL("./worker.ts", import.meta.url).href;
+  writeFileSync(
+    script,
+    `
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const { startWorker } = await import(${JSON.stringify(worker)});
+    const args = process.argv.slice(2);
+    const argument = flag => args[args.indexOf(flag) + 1];
+    const worker = await startWorker({socketPath:argument("--socket"),stateDirectory:argument("--state"),cwd:argument("--cwd")});
+    process.on("SIGTERM", () => { void worker.close().then(() => process.exit(0)); });
+  `,
+  );
+  const environment = await fixture({ workerCommand: [process.execPath, script] });
   try {
-    runtime.store.update(run.id, { status: "ready", sessionId: state.sessionId }, "worker_ready");
-    hold = true;
-    const inspection = runtime.inspect(run.id);
-    for (let step = 0; !answer && step < 100; step++) await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(answer).toBeDefined();
-    runtime.store.update(run.id, { status: "stopped" }, "worker_stopped");
-    answer?.();
-    expect((await inspection).status).toBe("stopped");
-    expect(runtime.store.events(run.id).at(-1)?.type).toBe("worker_stopped");
+    const run = await environment.runtime.start({ name: "stopped-during-launch", cwd: environment.root });
+    await waitRun(environment.runtime, run.id, (detail) => rootAttempt(detail).status === "starting");
+    await environment.runtime.stop(run.id);
+    const stopped = await waitRun(
+      environment.runtime,
+      run.id,
+      (detail) => rootAttempt(detail).status === "stopped",
+    );
+    expect(stopped.run.desired).toBe("stopped");
+    expect(stopped.tasks[0]?.status).toBe("cancelled");
+    expect(rootAttempt(stopped).desired).toBe("stopped");
+    const final = await environment.runtime.inspect(run.id);
+    expect(rootAttempt(final).status).toBe("stopped");
+    expect(final.events.filter((event) => event.type === "worker_ready")).toEqual([]);
+    expect(final.events.at(-1)?.type).toBe("worker_stopped");
   } finally {
-    hold = false;
-    answer?.();
-    await worker.close();
-    runtime.close();
+    await environment.close();
     rmSync(root, { recursive: true, force: true });
   }
 });

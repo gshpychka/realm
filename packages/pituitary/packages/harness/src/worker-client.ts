@@ -14,6 +14,7 @@ import {
   type SessionStats,
   scrub,
 } from "@pituitary/rpc";
+import { type DomainRequest, type DomainResult, validateDomainCommand } from "./domain-protocol.ts";
 import {
   type ServerRecord,
   WORKER_PROTOCOL_VERSION,
@@ -26,6 +27,7 @@ interface Pending {
   resolve(value: unknown): void;
   reject(error: Error): void;
   timer?: ReturnType<typeof setTimeout>;
+  commandType?: WorkerCommand["type"];
 }
 
 export class WorkerClient implements AgentLink {
@@ -34,6 +36,8 @@ export class WorkerClient implements AgentLink {
   private readonly uiCloses = new Set<(id: string) => void>();
   private readonly closes = new Set<(reason: string) => void>();
   private readonly pending = new Map<string, Pending>();
+  private readonly domainListeners = new Set<(request: DomainRequest) => void>();
+  private readonly domainBacklog = new Map<string, DomainRequest>();
   private readonly beforeSubscribe: Array<{ event: PiEvent; sequence: number }> = [];
   private initialUi: RpcExtensionUIRequest[] = [];
   private reason: string | null = null;
@@ -45,6 +49,7 @@ export class WorkerClient implements AgentLink {
     private readonly socket: Duplex,
     control: boolean,
     timeout = 10_000,
+    options: { supervisor?: boolean } = {},
   ) {
     this.ready = new Promise<void>((resolve, reject) => {
       const decoder = new WorkerRecordDecoder();
@@ -69,11 +74,16 @@ export class WorkerClient implements AgentLink {
         for (const line of lines) {
           let record: ServerRecord;
           try {
-            record = scrub(JSON.parse(line) as ServerRecord);
+            const parsed = JSON.parse(line) as ServerRecord;
+            // Domain payloads are durable data, not terminal text. Preserve their exact bytes
+            // for host receipt identity; UI-facing Pi records keep the shared sanitizer.
+            record = parsed?.type === "domain_request" ? parsed : scrub(parsed);
             if (
               !record ||
               typeof record !== "object" ||
-              !["welcome", "rejected", "event", "ui", "ui_closed", "result"].includes(record.type)
+              !["welcome", "rejected", "event", "ui", "ui_closed", "result", "domain_request"].includes(
+                record.type,
+              )
             )
               throw new Error("invalid record type");
             if (
@@ -90,6 +100,23 @@ export class WorkerClient implements AgentLink {
               (typeof record.id !== "string" || typeof record.success !== "boolean")
             )
               throw new Error("invalid worker result");
+            if (record.type === "domain_request") {
+              if (
+                typeof record.id !== "string" ||
+                !/^[0-9a-f]{64}$/.test(record.id) ||
+                typeof record.assistantEntryId !== "string" ||
+                !record.assistantEntryId ||
+                record.assistantEntryId.length > 256 ||
+                typeof record.toolCallId !== "string" ||
+                !record.toolCallId ||
+                record.toolCallId.length > 256 ||
+                Object.keys(record).some(
+                  (key) => !["type", "id", "assistantEntryId", "toolCallId", "command"].includes(key),
+                )
+              )
+                throw new Error("invalid domain request identity");
+              validateDomainCommand(record.command);
+            }
           } catch {
             fail("worker sent an invalid protocol record");
             socket.destroy();
@@ -108,6 +135,21 @@ export class WorkerClient implements AgentLink {
             }
             clearTimeout(timer);
             resolve();
+          } else if (record.type === "domain_request") {
+            if (!options.supervisor) {
+              fail("worker sent domain control to a non-supervisor");
+              socket.destroy();
+              return;
+            }
+            if (!this.domainListeners.size) {
+              this.domainBacklog.set(record.id, record);
+              if (this.domainBacklog.size > 4096) {
+                fail("worker domain backlog exceeded capacity");
+                socket.destroy();
+                return;
+              }
+            }
+            for (const listener of this.domainListeners) listener(record);
           } else if (record.type === "rejected") {
             fail(record.error);
             socket.destroy();
@@ -128,15 +170,47 @@ export class WorkerClient implements AgentLink {
             if (!pending) continue;
             this.pending.delete(record.id);
             if (pending.timer) clearTimeout(pending.timer);
-            if (record.success) pending.resolve(record.data);
-            else pending.reject(new Error(record.error));
+            if (record.success) {
+              if (
+                pending.commandType === "initialize" &&
+                this.worker &&
+                record.data &&
+                typeof record.data === "object"
+              ) {
+                const initialized = record.data as {
+                  roleDigest: string;
+                  sessionId: string;
+                  sessionFile?: string;
+                  assignment?: WorkerIdentity["assignment"];
+                  capabilities?: string[];
+                };
+                this.worker = {
+                  ...this.worker,
+                  roleDigest: initialized.roleDigest,
+                  sessionId: initialized.sessionId,
+                  sessionFile: initialized.sessionFile,
+                  assignment: initialized.assignment,
+                };
+                if (initialized.capabilities?.includes("atomic-snapshot"))
+                  this.getSnapshot = async () =>
+                    (await this.request({ type: "get_snapshot" })) as AgentSnapshot;
+              }
+              pending.resolve(record.data);
+            } else pending.reject(new Error(record.error));
           }
         }
       });
       socket.on("error", (error) => fail(`worker connection failed: ${error.message}`));
       socket.on("close", () => fail("worker connection closed"));
       // Socket queues this until connected; pipes are already writable.
-      socket.write(encodeJsonLine({ type: "hello", version: WORKER_PROTOCOL_VERSION, control }));
+      socket.write(
+        encodeJsonLine({
+          type: "hello",
+          version: WORKER_PROTOCOL_VERSION,
+          control,
+          ...(options.supervisor ? { supervisor: true } : {}),
+        }),
+      );
     });
   }
 
@@ -148,6 +222,37 @@ export class WorkerClient implements AgentLink {
   get identity(): WorkerIdentity {
     if (!this.worker) throw new Error("worker is not connected");
     return this.worker;
+  }
+
+  onDomainRequest(listener: (request: DomainRequest) => void): () => void {
+    this.domainListeners.add(listener);
+    for (const request of this.domainBacklog.values()) listener(request);
+    this.domainBacklog.clear();
+    return () => this.domainListeners.delete(listener);
+  }
+
+  answerDomain(result: DomainResult): void {
+    if (!this.reason) this.socket.write(encodeJsonLine(result));
+  }
+
+  /** Credentials bypass command receipts and are never retained in the client or worker journal. */
+  async provision(apiKeys: Record<string, string>, timeout = 10_000): Promise<void> {
+    await this.ready;
+    if (this.reason) throw new Error(this.reason);
+    const id = randomUUID();
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("credential provision timed out"));
+      }, timeout);
+      this.pending.set(id, { resolve: () => resolve(), reject, timer });
+      this.socket.write(encodeJsonLine({ type: "credentials", id, apiKeys }), (error) => {
+        if (!error) return;
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error);
+      });
+    });
   }
 
   onEvent(listener: (event: PiEvent, sequence?: number) => void): () => void {
@@ -182,7 +287,7 @@ export class WorkerClient implements AgentLink {
     if (this.reason) throw new Error(this.reason);
     if (this.pending.has(id)) throw new Error(`command ${id} is already pending on this connection`);
     return new Promise((resolve, reject) => {
-      const pending: Pending = { resolve, reject };
+      const pending: Pending = { resolve, reject, commandType: command.type };
       if (timeout > 0)
         pending.timer = setTimeout(() => {
           this.pending.delete(id);
@@ -268,9 +373,11 @@ export class WorkerClient implements AgentLink {
 
 export async function connectWorker(
   socketPath: string,
-  options: { control?: boolean; timeout?: number } = {},
+  options: { control?: boolean; timeout?: number; supervisor?: boolean } = {},
 ): Promise<WorkerClient> {
   if (options.timeout !== undefined && (!Number.isFinite(options.timeout) || options.timeout <= 0))
     throw new Error("worker connection timeout must be positive");
-  return new WorkerClient(connect(socketPath), options.control !== false, options.timeout).connected();
+  return new WorkerClient(connect(socketPath), options.control !== false, options.timeout, {
+    supervisor: options.supervisor,
+  }).connected();
 }

@@ -49,3 +49,17 @@ func TestConnectRequiresExplicitIdentity(t *testing.T) {
 		t.Fatalf("connect without identity = %+v, calls %q", got, h.svc.calls)
 	}
 }
+
+func TestConnectForwardsExplicitExecutionGeneration(t *testing.T) {
+	h := newHarness(t)
+	h.svc.connect = func() io.ReadWriteCloser {
+		in, input := io.Pipe()
+		output, out := io.Pipe()
+		go func() { io.Copy(io.Discard, in); in.Close(); out.Close() }()
+		return &pipeConnection{PipeReader: output, input: input}
+	}
+	got := h.run("", "connect", "one", "--id", "id-one", "--generation", "0")
+	if got.code != 0 || len(h.svc.gotGeneration) != 1 || h.svc.gotGeneration[0] != 0 {
+		t.Fatalf("fenced connect = %+v, generations %v", got, h.svc.gotGeneration)
+	}
+}

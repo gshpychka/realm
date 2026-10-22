@@ -76,6 +76,32 @@ func TestGetMissing(t *testing.T) {
 	}
 }
 
+func TestLegacyGenerationAdvancesAndSurvivesReopen(t *testing.T) {
+	root := t.TempDir()
+	s, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Create(testRecord("old", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := s.Get("old")
+	if err != nil || legacy.Generation != 0 {
+		t.Fatalf("legacy generation: %+v, %v", legacy, err)
+	}
+	if _, err := s.AdvanceGeneration("old"); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := s.Get("old")
+	if err != nil || reopened.Generation != 1 || reopened.ID != legacy.ID {
+		t.Fatalf("durable generation: %+v, %v", reopened, err)
+	}
+}
+
 func TestRejectsPathNames(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	for _, name := range []string{"", ".", "..", "../x", "a/b", ".hidden"} {

@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"io"
+	"strconv"
 )
 
 func (c *cli) connect(ctx context.Context, args []string) error {
 	fs := newFlags()
 	id := fs.String("id", "", "")
+	generation := fs.String("generation", "", "")
 	positional, err := parse(fs, args, 1, 1)
 	if err != nil {
 		return err
@@ -15,7 +17,15 @@ func (c *cli) connect(ctx context.Context, args []string) error {
 	if *id == "" {
 		return usageError("--id must name the session's ID from bay show --json")
 	}
-	connection, err := c.client.Connect(ctx, positional[0], *id)
+	var generations []uint64
+	if *generation != "" {
+		value, err := strconv.ParseUint(*generation, 10, 64)
+		if err != nil {
+			return usageError("--generation must be a non-negative integer from bay show --json")
+		}
+		generations = []uint64{value}
+	}
+	connection, err := c.client.Connect(ctx, positional[0], *id, generations...)
 	if err != nil {
 		return err
 	}
