@@ -56,7 +56,7 @@ let
     '';
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-CILJsLhsJ5rmGshdnGR6uDYUNHsacqCUm/u8DkcddMI=";
+    outputHash = "sha256-mKLQNRVWC4VeXWeVtdwQLp8WCvVKR3NsXxR5eDMVnK0=";
   };
 in
 stdenvNoCC.mkDerivation {
@@ -74,14 +74,14 @@ stdenvNoCC.mkDerivation {
     cp -R ${dependencies}/. $out/share/pituitary/
     # Use the operator's pi, settings, extensions, and sessions.
     makeWrapper ${bun}/bin/bun $out/bin/pituitary \
-      --add-flags $out/share/pituitary/packages/tui/src/main.tsx \
+      --add-flags $out/share/pituitary/packages/harness/src/main.ts \
       --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ stdenv.cc.cc.lib ]} \
       --set-default PITUITARY_NVIM ${neovim-unwrapped}/bin/nvim \
       --set-default PITUITARY_GH ${gh}/bin/gh
     runHook postInstall
   '';
   meta = {
-    description = "OpenTUI frontend for the pi coding agent";
+    description = "Terminal workspace and durable runtime for the pi coding agent";
     mainProgram = "pituitary";
   };
 }

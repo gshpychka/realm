@@ -10,7 +10,7 @@ export {
   type HostMessage,
   recordReader,
 } from "./bridge-protocol.ts";
-export { type AgentLink, PiRpcClient, type PiRpcClientOptions } from "./client.ts";
+export { type AgentLink, type AgentSnapshot, PiRpcClient, type PiRpcClientOptions } from "./client.ts";
 export {
   dismiss,
   type EditorSeed,
@@ -30,12 +30,14 @@ export {
   isDialog,
   type PiEvent,
   plain,
+  type ResponseData,
   type RpcCommand,
   type RpcExtensionUIRequest,
   type RpcExtensionUIResponse,
   type RpcResponse,
   type RpcSessionState,
   type SessionStats,
+  scrub,
 } from "./protocol.ts";
 export {
   type AssistantTurnOptions,

@@ -6,6 +6,7 @@ import {
   assistantTurn,
   customTurn,
   failedTurn,
+  fakeSessionState,
   stored,
   toolRun,
   userTurn,
@@ -27,6 +28,52 @@ import {
 function run(events: PiEvent[]): SessionView {
   return reduceAll(emptySession, events);
 }
+
+test("a live snapshot restores the partial reply so later deltas continue it", () => {
+  const messages = [stored.user("keep working")];
+  const snapshot = {
+    sequence: 8,
+    state: { ...fakeSessionState, isStreaming: true },
+    messages,
+    streamingMessage: stored.assistant({ thinking: "checking", text: "first half" }),
+    pendingToolCalls: [],
+    queue: { steering: ["also review this"], followUp: [] },
+  };
+  const view = restore(messages, undefined, snapshot);
+  expect(view.running).toBe(true);
+  expect(view.entries.at(-1)).toMatchObject({
+    kind: "assistant",
+    text: "first half",
+    thinking: "checking",
+    done: false,
+  });
+  const delta = assistantTurn({ text: " and the rest", parts: 1 }).find((event) =>
+    isDelta(event, "text_delta"),
+  );
+  if (!delta) throw new Error("missing scripted delta");
+  expect(transcript(reduce(view, delta))).toContain("first half and the rest");
+  expect(view.queue.steering).toEqual(["also review this"]);
+  expect(view.messages).toBe(1);
+});
+
+test("live snapshots keep actual pending tools running and mark abandoned tools interrupted", () => {
+  const messages = [
+    stored.assistant({ toolCall: { id: "abandoned", name: "bash", args: { command: "old" } } }),
+    stored.user("try again"),
+    stored.assistant({ toolCall: { id: "current", name: "bash", args: { command: "new" } } }),
+  ];
+  const view = restore(messages, undefined, {
+    sequence: 5,
+    state: { ...fakeSessionState, isStreaming: true },
+    messages,
+    pendingToolCalls: ["current"],
+  });
+  const tools = view.entries.flatMap((entry) => (entry.kind === "assistant" ? entry.tools : []));
+  expect(tools.map((tool) => [tool.id, tool.state])).toEqual([
+    ["abandoned", "error"],
+    ["current", "running"],
+  ]);
+});
 
 describe("reduce", () => {
   test("builds the conversation from the event stream alone", () => {

@@ -42,6 +42,34 @@ inputs.nixpkgs.lib.nixos.runTest {
 
         users.users.alice.isNormalUser = true;
         environment.etc."bay-ntfy-token".text = ntfyToken;
+        environment.etc."bay-connect-test.py".text = ''
+          import http.client
+          import socket
+          import sys
+
+          connection = socket.socket(socket.AF_UNIX)
+          connection.settimeout(15)
+          connection.connect("/run/bay/bay.sock")
+          headers = (
+              "POST /v1/sessions/one/connect HTTP/1.1\r\n"
+              "Host: bay\r\n"
+              f"Bay-Session-ID: {sys.argv[1]}\r\n"
+              "Transfer-Encoding: chunked\r\n\r\n"
+          )
+          connection.sendall(headers.encode())
+          response = http.client.HTTPResponse(connection)
+          response.begin()
+          assert response.status == int(sys.argv[2]), response.status
+          if response.status == 200:
+              assert response.getheader("Bay-Session-ID") == sys.argv[1]
+              ready = response.readline().decode().split()
+              assert ready[0] == "ready" and int(ready[1]) > 0, ready
+              connection.sendall(b"5\r\nping\n\r\n")
+              assert response.readline() == b"echo ping\n"
+          connection.shutdown(socket.SHUT_RDWR)
+          response.close()
+          connection.close()
+        '';
 
         services.bay = {
           enable = true;
@@ -66,6 +94,20 @@ inputs.nixpkgs.lib.nixos.runTest {
             ];
             history = [ ".counter/log" ];
             monitor = false;
+            connect = [
+              "python3"
+              "-u"
+              "-c"
+              ''
+                import os, sys, time
+                with open(os.path.expanduser("~/.counter/bridge.pid"), "w") as pid:
+                    pid.write(str(os.getpid()))
+                print(f"ready {os.getuid()}", flush=True)
+                for line in sys.stdin:
+                    print("echo " + line.rstrip("\n"), flush=True)
+                time.sleep(60)
+              ''
+            ];
           };
           guest.modules = [
             (
@@ -216,6 +258,21 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       with subtest("saving history writes nothing when no history path exists"):
           assert guest("one", "bay-session save-history -- .counter/none | wc -c").strip() == "0"
+
+      with subtest("program connections are duplex, unprivileged and independent of the program"):
+          session = json.loads(bay("show one --json"))
+          assert session["id"] and session["capabilities"]["connect"], session
+          connect = "su - alice -c '${pkgs.python3}/bin/python3 /etc/bay-connect-test.py {} {}'"
+          host.succeed(connect.format("stale-id", 409))
+          for _ in range(2):
+              host.succeed(connect.format(session["id"], 200))
+              pid = int(guest("one", "cat /home/dev/.counter/bridge.pid").strip())
+              host.wait_until_succeeds(
+                  f"incus exec --disable-stdin --project bay one -- bash -c '! kill -0 {pid} 2>/dev/null'",
+                  timeout=timedelta(seconds=15),
+              )
+              assert guest("one", "bay-session program").strip() == "running"
+          assert counting("one"), "disconnect killed the persistent program"
 
       with subtest("attaching needs a terminal and holds a client on the program's tmux"):
           assert "terminal" in bay_fails("attach one < /dev/null")

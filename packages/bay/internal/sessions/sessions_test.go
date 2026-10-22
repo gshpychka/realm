@@ -277,6 +277,25 @@ func (f *fakeInstances) Exec(_ context.Context, name string, argv []string, stdi
 	return nil
 }
 
+func (f *fakeInstances) Connect(ctx context.Context, name, sessionID string, argv []string, stdin io.Reader, stdout io.Writer) error {
+	if err := f.Exec(ctx, name, argv, nil, io.Discard); err != nil {
+		return err
+	}
+	stopped := make(chan struct{})
+	defer close(stopped)
+	go func() {
+		select {
+		case <-ctx.Done():
+			if r, ok := stdin.(io.Closer); ok {
+				r.Close()
+			}
+		case <-stopped:
+		}
+	}()
+	_, err := io.Copy(stdout, stdin)
+	return err
+}
+
 func (f *fakeInstances) Caller(_ context.Context, cid uint32) (string, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1056,6 +1075,8 @@ func TestNewRejectsAConfigNoSessionCanRunUnder(t *testing.T) {
 		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{""}}}},
 		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{"p", "\x00"}}}},
 		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{"p"}, Resume: []string{""}}}},
+		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{"p"}, Connect: []string{""}}}},
+		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{"p"}, Connect: []string{"bridge", "\x00"}}}},
 		{MaxRunning: 1, Programs: map[string]Program{"": {Command: []string{"p"}}}},
 		{MaxRunning: 1, Programs: programs("a\x00b")},
 		{MaxRunning: 1, Programs: programs("")},

@@ -140,10 +140,16 @@ export function resumeArgs(args: readonly string[], sessionFile: string | undefi
 
 /** A resume command that can be pasted into a shell even when the path contains spaces or quotes. */
 export function resumeCommand(sessionFile: string): string {
-  const word = /^[a-zA-Z0-9_./-]+$/.test(sessionFile)
-    ? sessionFile
-    : `'${sessionFile.replaceAll("'", `'\\''`)}'`;
-  return `pituitary --session ${word}`;
+  return `pituitary --session ${shellWord(sessionFile)}`;
+}
+
+/** Include isolated state so the hint works again from the operator's parent shell. */
+export function attachCommand(name: string, stateDirectory?: string): string {
+  return `pituitary attach ${shellWord(name)}${stateDirectory ? ` --state ${shellWord(stateDirectory)}` : ""}`;
+}
+
+function shellWord(value: string): string {
+  return /^[a-zA-Z0-9_./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 export interface Log {

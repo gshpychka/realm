@@ -20,9 +20,13 @@ import type { BashResult } from "./session.ts";
  * Commands resolve once pi accepts them; everything the UI displays arrives through `onEvent`.
  */
 export interface AgentLink {
-  onEvent(listener: (event: PiEvent) => void): () => void;
+  onEvent(listener: (event: PiEvent, sequence?: number) => void): () => void;
+  /** A native worker captures history and in-flight work at one event cursor. */
+  getSnapshot?(): Promise<AgentSnapshot>;
   /** Requests extensions make of the operator: dialogs to answer, and text to show. */
   onUiRequest(listener: (request: RpcExtensionUIRequest) => void): () => void;
+  /** Native workers can retire a dialog on timeout/abort while the client is detached. */
+  onUiClose?(listener: (id: string) => void): () => void;
   /** Called once, with the reason, when the agent can no longer be reached. */
   onClose(listener: (reason: string) => void): () => void;
   /** Answers a dialog. pi sends nothing back. */
@@ -47,6 +51,15 @@ export interface AgentLink {
   /** Tokens, cost, and context use across the session. */
   getSessionStats(): Promise<SessionStats>;
   close(): Promise<void>;
+}
+
+export interface AgentSnapshot {
+  sequence: number;
+  state: RpcSessionState;
+  messages: readonly unknown[];
+  streamingMessage?: unknown;
+  pendingToolCalls: readonly string[];
+  queue?: { steering: readonly string[]; followUp: readonly string[] };
 }
 
 export interface PiRpcClientOptions {

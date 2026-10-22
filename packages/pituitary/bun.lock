@@ -33,6 +33,18 @@
         "@pituitary/rpc": "workspace:*",
       },
     },
+    "packages/harness": {
+      "name": "@pituitary/harness",
+      "version": "0.0.0",
+      "bin": {
+        "pituitary": "./src/main.ts",
+        "pituitary-worker": "./src/worker.ts",
+      },
+      "dependencies": {
+        "@earendil-works/pi-coding-agent": "0.87.1",
+        "@pituitary/rpc": "workspace:*",
+      },
+    },
     "packages/rpc": {
       "name": "@pituitary/rpc",
       "version": "0.0.0",
@@ -53,15 +65,13 @@
     "packages/tui": {
       "name": "@pituitary/tui",
       "version": "0.0.0",
-      "bin": {
-        "pituitary": "./src/main.tsx",
-      },
       "dependencies": {
         "@earendil-works/pi-coding-agent": "^0.87.1",
         "@msgpack/msgpack": "^3.1.3",
         "@opentui/core": "0.5.9",
         "@opentui/react": "0.5.9",
         "@pituitary/ember": "workspace:*",
+        "@pituitary/harness": "workspace:*",
         "@pituitary/rpc": "workspace:*",
         "@pituitary/spatial": "workspace:*",
         "react": "^19.2.0",
@@ -221,6 +231,8 @@
     "@pituitary/ember": ["@pituitary/ember@workspace:packages/ember"],
 
     "@pituitary/fake-pi": ["@pituitary/fake-pi@workspace:packages/fake-pi"],
+
+    "@pituitary/harness": ["@pituitary/harness@workspace:packages/harness"],
 
     "@pituitary/rpc": ["@pituitary/rpc@workspace:packages/rpc"],
 

@@ -41,6 +41,7 @@ let
   // lib.optionalAttrs (cfg.editor != null) { PITUITARY_EDITOR = cfg.editor; }
   // lib.optionalAttrs (cfg.logFile != null) { PITUITARY_LOG = cfg.logFile; }
   // lib.optionalAttrs (cfg.profileFile != null) { PITUITARY_PROFILE = cfg.profileFile; }
+  // lib.optionalAttrs (cfg.stateDirectory != null) { PITUITARY_STATE_DIR = cfg.stateDirectory; }
   // lib.optionalAttrs (cfg.keybindings != { }) { PITUITARY_KEYBINDINGS = keybindingsFile; }
   // cfg.extraEnvironment;
 
@@ -63,13 +64,20 @@ let
 in
 {
   options.programs.pituitary = {
-    enable = mkEnableOption "pituitary, the OpenTUI frontend for the pi coding agent";
+    enable = mkEnableOption "pituitary, the terminal workspace for the pi coding agent";
 
     package = mkOption {
       type = types.package;
       default = pkgs.callPackage ../../packages/pituitary { };
       defaultText = lib.literalExpression "pkgs.callPackage ../../packages/pituitary { }";
       description = "The pituitary package the configured wrapper runs.";
+    };
+
+    stateDirectory = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "/home/me/.local/state/pituitary";
+      description = "Managed run records and worker state; null follows XDG_STATE_HOME or ~/.local/state/pituitary.";
     };
 
     nvimPackage = mkOption {

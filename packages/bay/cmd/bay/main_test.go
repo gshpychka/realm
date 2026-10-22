@@ -16,7 +16,7 @@ import (
 func TestHelp(t *testing.T) {
 	h := newHarness(t)
 	names := []string{
-		"start", "attach", "list", "show", "suspend", "resume", "snap", "end", "rm", "threads", "read", "send", "help",
+		"start", "attach", "connect", "list", "show", "suspend", "resume", "snap", "end", "rm", "threads", "read", "send", "help",
 	}
 	for _, arg := range []string{"help", "-h", "--help"} {
 		t.Run(arg, func(t *testing.T) {

@@ -216,7 +216,7 @@ export function App({
         },
         restart: (notice) => {
           if (onRestart) onRestart(notice, state?.sessionFile);
-          else session.notify("warning", "pi cannot restart here; restart pituitary for this to take effect");
+          else session.notify("warning", "Stop this run and start a new one to apply this setting.");
         },
         reloadCommands: reread,
         limits: () => bridge?.limits() ?? null,

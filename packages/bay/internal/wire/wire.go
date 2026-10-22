@@ -133,14 +133,19 @@ func (c Client) Do(ctx context.Context, method, path string, in, out any) error 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		var f failure
-		if err := json.NewDecoder(resp.Body).Decode(&f); err != nil || f.Error == "" {
-			f.Error = resp.Status
-		}
-		return &statusError{status: resp.StatusCode, message: f.Error}
+		return ResponseError(resp)
 	}
 	if out == nil {
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// ResponseError decodes an unsuccessful response, retaining its fault kind.
+func ResponseError(resp *http.Response) error {
+	var f failure
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&f); err != nil || f.Error == "" {
+		f.Error = resp.Status
+	}
+	return &statusError{status: resp.StatusCode, message: f.Error}
 }

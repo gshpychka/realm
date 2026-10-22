@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +28,7 @@ type fakeService struct {
 	sessions []api.Session
 	attach   api.Attach
 	snapped  api.Snapped
+	connect  func() io.ReadWriteCloser
 
 	calls     []string
 	gotStart  api.Start
@@ -107,6 +109,14 @@ func (f *fakeService) Remove(_ context.Context, name string) error {
 func (f *fakeService) Attach(_ context.Context, name string) (api.Attach, error) {
 	defer f.enter("Attach " + name)()
 	return f.attach, f.failure("Attach")
+}
+
+func (f *fakeService) Connect(_ context.Context, name, id string) (io.ReadWriteCloser, error) {
+	defer f.enter("Connect " + name + " " + id)()
+	if f.connect != nil {
+		return f.connect(), nil
+	}
+	return nil, f.failure("Connect")
 }
 
 // fakeMessages is a messages.Service that answers from fixed data and records the calls it receives.

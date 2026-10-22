@@ -48,6 +48,7 @@ pkgs.mkShell {
       export BUN_INSTALL_CACHE_DIR="$pituitary_root/.cache/bun"
       export npm_config_cache="$pituitary_root/.cache/npm"
       export PI_CODING_AGENT_SESSION_DIR="$pituitary_root/.pi/sessions"
+      export PITUITARY_STATE_DIR="$pituitary_root/.pi/runs"
       export PATH="$pituitary_root/node_modules/.bin:$PATH"
       mkdir -p "$BUN_INSTALL_CACHE_DIR" "$npm_config_cache" "$PI_CODING_AGENT_SESSION_DIR"
       echo "cd $pituitary_root && just"

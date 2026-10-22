@@ -1,0 +1,19 @@
+{
+  "name": "@pituitary/harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pituitary": "./src/main.ts",
+    "pituitary-worker": "./src/worker.ts"
+  },
+  "exports": {
+    "./protocol": "./src/protocol.ts",
+    "./worker": "./src/worker.ts",
+    "./worker-client": "./src/worker-client.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "@pituitary/rpc": "workspace:*"
+  }
+}

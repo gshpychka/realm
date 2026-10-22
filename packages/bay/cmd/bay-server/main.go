@@ -52,6 +52,7 @@ type Program struct {
 	Resume  []string `json:"resume"`
 	History []string `json:"history"`
 	Monitor bool     `json:"monitor"`
+	Connect []string `json:"connect"`
 }
 
 type duration struct{ time.Duration }
@@ -143,7 +144,7 @@ func serve(config Config, log *slog.Logger) error {
 	}
 	programs := map[string]sessions.Program{}
 	for name, p := range config.Programs {
-		programs[name] = sessions.Program{Command: p.Command, Resume: p.Resume, History: p.History, Monitor: p.Monitor}
+		programs[name] = sessions.Program{Command: p.Command, Resume: p.Resume, History: p.History, Monitor: p.Monitor, Connect: p.Connect}
 	}
 	svc, err := sessions.New(store, driver, mirrors, sessions.Config{
 		Programs:   programs,
@@ -172,7 +173,12 @@ func serve(config Config, log *slog.Logger) error {
 	go refreshMirrors(ctx, mirrors, config.MirrorRefresh.Duration, log)
 
 	servers := []*http.Server{
-		{Handler: api.Handler(operatorAPI{svc}, messagesProxy(config.GatewaySocket))},
+		{
+			Handler: api.Handler(operatorAPI{svc}, messagesProxy(config.GatewaySocket)),
+			// Signal cancellation closes program bridges; detached lifecycle operations
+			// still finish before Shutdown returns, as they did before streaming.
+			BaseContext: func(net.Listener) context.Context { return ctx },
+		},
 		{Handler: identity.Handler(resolver{svc})},
 	}
 	errs := make(chan error, len(servers))

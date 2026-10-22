@@ -38,6 +38,12 @@ var commands = []subcommand{
 		run:     (*cli).list,
 	},
 	{
+		name:    "connect",
+		args:    "NAME --id SESSION_ID",
+		summary: "connect stdin/stdout to a program's configured endpoint; disconnect leaves it running",
+		run:     (*cli).connect,
+	},
+	{
 		name:    "show",
 		args:    "NAME [--json]",
 		summary: "show a session with its repos and snapshots",

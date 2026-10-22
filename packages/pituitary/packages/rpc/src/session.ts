@@ -1,3 +1,4 @@
+import type { AgentSnapshot } from "./client.ts";
 import { contentToText, type PiEvent } from "./protocol.ts";
 
 export type Phase = "idle" | "streaming" | "compacting" | "retrying";
@@ -226,11 +227,15 @@ function place(message: Message): string | null {
  * the session never finished, so it shows as interrupted. When `previous` is a view of
  * the same session, each turn summary it holds follows the message its turn ended on.
  */
-export function restore(messages: readonly unknown[], previous?: SessionView): SessionView {
+export function restore(
+  messages: readonly unknown[],
+  previous?: SessionView,
+  live?: AgentSnapshot,
+): SessionView {
   const kept = new Map<string, TurnEntry>();
   for (const entry of previous?.entries ?? [])
     if (entry.kind === "turn" && entry.after !== undefined) kept.set(entry.after, entry);
-  const view = messages.reduce<SessionView>((state, message) => {
+  let view = messages.reduce<SessionView>((state, message) => {
     const next = reduce(reduce(state, { type: "message_start", message } as PiEvent), {
       type: "message_end",
       message,
@@ -241,14 +246,28 @@ export function restore(messages: readonly unknown[], previous?: SessionView): S
     kept.delete(key);
     return append(next, (id) => ({ ...turn, id }));
   }, emptySession);
-  return { ...view, entries: view.entries.map(interrupted) };
+  const pending = new Set(live?.pendingToolCalls);
+  view = { ...view, entries: view.entries.map((entry) => interrupted(entry, pending)) };
+  if (live?.state.isStreaming) {
+    view = reduce(view, { type: "agent_start" });
+    if (live.streamingMessage) {
+      const message = live.streamingMessage as Message;
+      view = startMessage(view, message);
+      view = patchAssistant(view, (entry) => ({ ...settle(entry, message), done: false }));
+    }
+  }
+  if (live?.state.isCompacting) view = { ...view, phase: "compacting" };
+  if (live?.queue) view = { ...view, queue: live.queue };
+  return view;
 }
 
 /** The entry with each tool call it left running marked as interrupted, since none will finish. */
-function interrupted(entry: Entry): Entry {
+function interrupted(entry: Entry, pending: ReadonlySet<string>): Entry {
   if (entry.kind !== "assistant" || !entry.tools.some((tool) => tool.state === "running")) return entry;
   const stop = (tool: ToolView): ToolView =>
-    tool.state === "running" ? { ...tool, state: "error", output: tool.output || "interrupted" } : tool;
+    tool.state === "running" && !pending.has(tool.id)
+      ? { ...tool, state: "error", output: tool.output || "interrupted" }
+      : tool;
   return { ...entry, tools: entry.tools.map(stop) };
 }
 

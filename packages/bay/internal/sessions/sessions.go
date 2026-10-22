@@ -34,7 +34,8 @@ const (
 // Session is a session's record with its current state.
 type Session struct {
 	records.Record
-	State State
+	State       State
+	Connectable bool
 	// Snapshots are the instance's snapshots, oldest first.
 	Snapshots []string
 }
@@ -48,6 +49,9 @@ type Program struct {
 	History []string
 	// Monitor alerts the operator on a terminal bell or a long silence.
 	Monitor bool
+	// Connect is a predefined command that opens the program's persistent endpoint.
+	// It runs as the session user, separately from the program itself.
+	Connect []string
 }
 
 // Status is the state of a session's instance.
@@ -82,6 +86,8 @@ type Instances interface {
 	Restore(ctx context.Context, name, snapshot string) error
 	// Exec runs argv in the instance's guest as root; a non-zero exit is an error.
 	Exec(ctx context.Context, name string, argv []string, stdin io.Reader, stdout io.Writer) error
+	// Connect runs a cancellable bridge, bound to the instance's session ID.
+	Connect(ctx context.Context, name, sessionID string, argv []string, stdin io.Reader, stdout io.Writer) error
 	// Caller returns the name and session ID of the running instance whose vsock context ID is cid.
 	Caller(ctx context.Context, cid uint32) (name, sessionID string, err error)
 	// AttachCommand is the host command that runs argv in the instance attached to the caller's terminal.
@@ -127,6 +133,8 @@ type Service struct {
 	busy map[string]bool
 	// starting holds the sessions with a running slot reserved.
 	starting map[string]bool
+	// connections holds the live bridges cancelled before lifecycle changes.
+	connections map[string]*programConnection
 }
 
 // New returns a Service over the given store, instances and repos, or an error for a Config that breaks the
@@ -145,6 +153,9 @@ func New(store *records.Store, instances Instances, repos Repos, config Config, 
 		if err := validCommand(program.Resume); err != nil {
 			return nil, fmt.Errorf("program %s: resume: %w", name, err)
 		}
+		if err := validCommand(program.Connect); err != nil {
+			return nil, fmt.Errorf("program %s: connect: %w", name, err)
+		}
 		for _, path := range program.History {
 			if path == "." || !fs.ValidPath(path) || strings.ContainsRune(path, '\x00') {
 				return nil, fmt.Errorf("program %s: history path %q must be a clean path below the program's home", name, path)
@@ -152,14 +163,15 @@ func New(store *records.Store, instances Instances, repos Repos, config Config, 
 		}
 	}
 	return &Service{
-		records:    store,
-		instances:  instances,
-		repos:      repos,
-		config:     config,
-		log:        log,
-		maxHistory: 2 << 30,
-		busy:       map[string]bool{},
-		starting:   map[string]bool{},
+		records:     store,
+		instances:   instances,
+		repos:       repos,
+		config:      config,
+		log:         log,
+		maxHistory:  2 << 30,
+		busy:        map[string]bool{},
+		starting:    map[string]bool{},
+		connections: map[string]*programConnection{},
 	}, nil
 }
 
@@ -631,7 +643,7 @@ func (s *Service) get(ctx context.Context, name string, snapshots bool) (Session
 	if err != nil {
 		return Session{}, err
 	}
-	session := Session{Record: rec, State: state(status)}
+	session := Session{Record: rec, State: state(status), Connectable: s.connectable(rec)}
 	if snapshots && status != InstanceAbsent {
 		if session.Snapshots, err = s.instances.Snapshots(ctx, name); err != nil {
 			return Session{}, err
@@ -652,7 +664,7 @@ func (s *Service) List(ctx context.Context) ([]Session, error) {
 	}
 	sessions := make([]Session, 0, len(recs))
 	for _, rec := range recs {
-		sessions = append(sessions, Session{Record: rec, State: state(statuses[rec.Name])})
+		sessions = append(sessions, Session{Record: rec, State: state(statuses[rec.Name]), Connectable: s.connectable(rec)})
 	}
 	return sessions, nil
 }
@@ -715,6 +727,10 @@ func (s *Service) program(rec records.Record) (Program, error) {
 	return program, nil
 }
 
+func (s *Service) connectable(rec records.Record) bool {
+	return rec.Program.Definition != "" && len(s.config.Programs[rec.Program.Definition].Connect) > 0
+}
+
 func (p Program) resume() []string {
 	if len(p.Resume) > 0 {
 		return p.Resume
@@ -742,12 +758,24 @@ func (s *Service) guest(name string) guest.Guest {
 
 // claim marks name busy until release is called; a second operation on the same session meanwhile is a conflict.
 func (s *Service) claim(name string) (release func(), err error) {
+	return s.claimSession(name, true)
+}
+
+func (s *Service) claimSession(name string, disconnect bool) (release func(), err error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.busy[name] {
+		s.mu.Unlock()
 		return nil, fmt.Errorf("%w: another operation on session %s is in progress", fault.Conflict, name)
 	}
 	s.busy[name] = true
+	connection := s.connections[name]
+	s.mu.Unlock()
+	// A bridge must leave the old instance before an operation can replace it or
+	// roll it back. The program is independent of this short-lived connection.
+	if disconnect && connection != nil {
+		connection.Close()
+		<-connection.done
+	}
 	return func() {
 		s.mu.Lock()
 		delete(s.busy, name)

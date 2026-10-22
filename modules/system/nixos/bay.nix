@@ -39,6 +39,7 @@ let
       inherit (p)
         command
         resume
+        connect
         history
         monitor
         ;
@@ -186,6 +187,15 @@ let
         type = types.listOf types.str;
         default = [ ];
         description = "Command line that continues the program from its history, restored from the record or left on the instance's disk, and copes with a home that holds none; empty reuses `command`.";
+      };
+      connect = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = ''
+          Predefined command run as the session user to connect the operator to a persistent program over
+          stdin and stdout. Disconnecting stops this connector, not the program. Empty disables the program
+          connection; terminal attachment remains available.
+        '';
       };
       history = mkOption {
         type = types.listOf types.str;

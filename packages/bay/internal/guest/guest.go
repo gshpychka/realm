@@ -39,6 +39,12 @@ func (g Guest) Launch(ctx context.Context, argv []string, monitor bool) error {
 	return g.run(ctx, nil, nil, append([]string{"launch", mode, "--"}, argv...)...)
 }
 
+// Connect runs a predefined bridge as the session user. Its stdin/stdout belong
+// to the connection; the persistent program is not its child.
+func (g Guest) Connect(ctx context.Context, argv []string, stdin io.Reader, stdout io.Writer) error {
+	return g.run(ctx, stdin, stdout, append([]string{"connect", "--"}, argv...)...)
+}
+
 // Running reports whether the session's program is running.
 func (g Guest) Running(ctx context.Context) (bool, error) {
 	var out bytes.Buffer

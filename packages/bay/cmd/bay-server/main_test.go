@@ -32,7 +32,7 @@ func TestLoadConfig(t *testing.T) {
 		"gatewaySocket": "/run/bay-gateway/operator.sock",
 		"maxRunning": 8,
 		"programs": {
-			"claude": {"command": ["claude"], "resume": ["claude", "--continue"], "history": [".claude/projects"], "monitor": false}
+			"claude": {"command": ["claude"], "resume": ["claude", "--continue"], "history": [".claude/projects"], "monitor": false, "connect": ["bridge", "a path", ""]}
 		}
 	}`))
 	if err != nil {
@@ -41,7 +41,7 @@ func TestLoadConfig(t *testing.T) {
 	claude := config.Programs["claude"]
 	if config.Project != "bay" || config.Base != "base" || config.MaxRunning != 8 || config.MirrorRefresh.Duration != 90*time.Minute ||
 		!slices.Equal(claude.Command, []string{"claude"}) || !slices.Equal(claude.Resume, []string{"claude", "--continue"}) ||
-		!slices.Equal(claude.History, []string{".claude/projects"}) || claude.Monitor {
+		!slices.Equal(claude.History, []string{".claude/projects"}) || claude.Monitor || !slices.Equal(claude.Connect, []string{"bridge", "a path", ""}) {
 		t.Fatalf("loadConfig returned %+v", config)
 	}
 }

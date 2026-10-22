@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resolveAgentCommand, resumeArgs, resumeCommand } from "./config.ts";
+import { attachCommand, resolveAgentCommand, resumeArgs, resumeCommand } from "./config.ts";
 
 let oldArgs: string | undefined;
 let oldJson: string | undefined;
@@ -14,6 +14,13 @@ afterEach(() => {
   else process.env.PI_AGENT_ARGS = oldArgs;
   if (oldJson === undefined) delete process.env.PI_AGENT_ARGS_JSON;
   else process.env.PI_AGENT_ARGS_JSON = oldJson;
+});
+
+test("managed reconnect commands preserve run identity and custom state with shell quoting", () => {
+  expect(attachCommand("builder", "/tmp/my 'private' state")).toBe(
+    "pituitary attach builder --state '/tmp/my '\\''private'\\'' state'",
+  );
+  expect(attachCommand("builder")).toBe("pituitary attach builder");
 });
 
 describe("resumeArgs", () => {

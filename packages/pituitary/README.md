@@ -1,8 +1,12 @@
 # pituitary
 
-An [OpenTUI](https://github.com/sst/opentui) frontend for the
-[pi coding agent](https://github.com/earendil-works/pi), driven over pi's JSONL RPC protocol, and
-the environment it is built in. Pituitary is maintained as a package in Realm.
+A terminal workspace for the [pi coding agent](https://github.com/earendil-works/pi), built
+with [OpenTUI](https://github.com/sst/opentui). Ordinary conversations use Pi's JSONL RPC
+interface; managed local runs use a persistent native SDK worker. Pituitary is maintained
+as a package in Realm.
+
+The detailed [orchestration plan](docs/orchestration.md) describes the progression toward
+declared NixOS agents, Bay-backed delegation, durable collaboration, and verified results.
 
 ## Environment
 
@@ -99,6 +103,7 @@ reloading needs explicit cleanup and session handling first.
 | path | contents |
 | --- | --- |
 | `packages/rpc` | JSONL framing, the RPC transport, the event reducer, and scripted event builders |
+| `packages/harness` | persistent native workers, local run records, connection protocol, and managed CLI |
 | `packages/fake-pi` | an RPC agent with scripted replies, used by every test |
 | `packages/tui` | the OpenTUI React frontend |
 | `packages/spatial` | panes on a lattice, walked between and zoomed out over |
@@ -116,6 +121,68 @@ nix run /path/to/realm#pituitary -- --continue     # any pi argument passes thro
 
 `pituitary` drives the `pi` on `PATH` with your own settings, extensions, and sessions.
 An explicit `--mode text|json|rpc`, like `--print`, `--help`, or `--version`, runs pi directly.
+
+### Managed local runs
+
+```sh
+pituitary run --name review                    # opens a persistent native conversation
+pituitary run --name audit --detach 'Review this project'
+pituitary runs
+pituitary attach audit
+pituitary inspect audit --json
+pituitary stop audit
+```
+
+Closing the managed UI detaches; the worker continues. Attaching again opens the same
+conversation. One client controls input while observers can inspect it. `stop` explicitly
+ends the worker and retains its conversation and run journal. Run names stay reserved so
+reconnecting cannot silently target later work with the same name.
+
+These are local workers running with the operator's permissions. Bay-backed scheduling,
+delegation, and result integration are later milestones. The native worker uses existing
+Pi credentials and model preferences, with controlled resource discovery: ambient
+extensions, skills, and prompt templates are disabled for this initial managed mode.
+Custom component screens, terminal takeover, and conversation branching remain available
+through ordinary Pituitary. `PI_AGENT_CMD` and `PI_AGENT_ARGS_JSON` configure that ordinary
+RPC path; managed runs use the pinned SDK.
+
+`--state DIR` or `PITUITARY_STATE_DIR` selects an isolated run store. Its default is
+`$XDG_STATE_HOME/pituitary` or `~/.local/state/pituitary`. Credentials stay outside saved
+worker state. `PITUITARY_AUTH_FILE` and `PITUITARY_CONFIG_DIRECTORY` can select explicit
+credential and model-preference sources.
+
+From the checkout, `just harness run --name review` and `just harness attach review`
+execute source without a system rebuild. The dev shell keeps managed state in `.pi/runs`.
+
+### Declaring an agent machine
+
+Realm exposes `lib.pituitaryAgent` to evaluate an agent as a real NixOS guest:
+
+```nix
+realm.lib.pituitaryAgent {
+  name = "reviewer";
+  inherit pkgs;
+  workerPackage = realm.packages.${pkgs.system}.pituitary-worker;
+  modules = [
+    ({ pkgs, ... }: {
+      environment.systemPackages = [ pkgs.ripgrep pkgs.go ];
+      pituitary.agent = {
+        description = "Review a change and its evidence.";
+        instructions = "Find concrete defects in the supplied result.";
+        model = "anthropic/your-chosen-model";
+        tools = [ "read" "grep" ];
+      };
+    })
+  ];
+}
+```
+
+The result exposes `system`, `image`, `manifest`, `manifestFile`, and a Bay `program`
+definition with launch/resume/connect commands. The worker package contains no OpenTUI
+or frontend tools. Role metadata stays in the separate manifest: changing instructions
+or a model preserves the machine image, while changing its packages changes that image.
+Automatic catalog registration, manifest delivery, and Bay's selection of different
+agent machines are subsequent steps; this evaluator does not launch sessions.
 
 ### Home Manager
 
@@ -158,6 +225,7 @@ so they reach pituitary and the pi it starts, and no other program.
     editor = "nvim";                                   # what ctrl+g opens; null uses $VISUAL, $EDITOR, vi
     logFile = "/tmp/pituitary.log";                       # pi's stderr and diagnostics; null discards them
     profileFile = null;                                # startup and teardown timing marks
+    stateDirectory = null;                             # managed runs; null follows XDG state defaults
     nvimPackage = null;                                # the draft's neovim; null keeps the pinned build
     ghPackage = null;                                  # gh for the pull request and /share; null keeps the pinned build
     keybindings."app.model.select" = "alt+m";          # layered over pi's keybindings.json

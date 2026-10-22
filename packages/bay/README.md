@@ -43,6 +43,10 @@ bay start review                    # fresh instance from that record
 
 `rm` removes the instance, record and saved history. The host's shared repository mirrors and their retained revisions remain as a cache; Bay currently has no automatic cache eviction.
 
+Programs can also provide a persistent machine endpoint through an optional `connect = [ "worker" "connect" ];` command. Bay runs that predefined bridge as the session user, separately from the program in tmux. `bay show NAME --json` returns the session's stable `id` and `capabilities.connect`; use `bay connect NAME --id ID` to connect stdin/stdout. Disconnecting closes the bridge and leaves the program running. One connection may control a program at a time; suspend, rollback, end and removal disconnect it before changing the instance.
+
+The operator-only HTTP equivalent is `POST /v1/sessions/NAME/connect` over `/run/bay/bay.sock`, with the required `Bay-Session-ID: ID` header. It streams request and response bytes concurrently as `application/octet-stream`, echoes the session ID, and applies backpressure without buffering a conversation. A missing ID is a 400; a stale ID, unsupported program, non-running session or existing connection is a 409. A 200 accepts the bridge; the program's own handshake establishes readiness. A bridge failure after headers sets the `Bay-Connection-Error: bridge-failed` response trailer. The protocol inside those bytes belongs to the program, and closing request input still allows its final response to drain. The ID survives session restarts but changes when a removed name is reused.
+
 `bay send review 'please review the diff'` starts a message thread; `bay read THREAD` reads it. Inside a session, use `flare send operator 'ready to review'`, `flare inbox`, and `flare read THREAD`. Both send commands accept piped input (up to 64 KiB). Reads return the newest messages within a 256 KiB page; when older messages remain, the output gives a `read THREAD --before MESSAGE` command to fetch the preceding page. Only messages returned on that page are marked read. Agents use the same `before` cursor in the gateway's `read_thread` MCP tool.
 
 ## Development

@@ -10,6 +10,7 @@ import {
   type LocalAction,
   note,
   openSession,
+  type PiEvent,
   plain,
   present,
   type RpcExtensionUIResponse,
@@ -128,6 +129,8 @@ export function useSession(link: AgentLink): SessionController {
     let again = false;
     let forced = false;
     let statsRead = 0;
+    let snapshotEvents: { event: PiEvent; sequence?: number }[] | null = null;
+    let snapshotOverflow = false;
     const readStats = () => {
       const read = ++statsRead;
       link.getSessionStats().then(
@@ -140,6 +143,43 @@ export function useSession(link: AgentLink): SessionController {
     const once = async () => {
       const rebuild = forced;
       forced = false;
+      if (link.getSnapshot) {
+        const received: { event: PiEvent; sequence?: number }[] = [];
+        snapshotEvents = received;
+        snapshotOverflow = false;
+        try {
+          const snapshot = await link.getSnapshot();
+          if (!active) return;
+          if (snapshotOverflow) {
+            again = true;
+            return;
+          }
+          const first = built.current === null;
+          const elsewhere = !first && snapshot.state.sessionId !== built.current;
+          pacer.flush();
+          if (elsewhere) setExtensionUi(openSession);
+          let rebuilt = restore(snapshot.messages, elsewhere ? undefined : reduced.current, snapshot);
+          // The atomic snapshot includes every event through its cursor. Replay only
+          // later arrivals, including those received before its response was handled.
+          for (const receivedEvent of received) {
+            if (receivedEvent.sequence === undefined || receivedEvent.sequence > snapshot.sequence) {
+              rebuilt = reduce(rebuilt, receivedEvent.event);
+            }
+          }
+          reduced.current = { ...rebuilt, waitingSince: reduced.current.waitingSince };
+          built.current = snapshot.state.sessionId;
+          setState(snapshot.state);
+          setView(reduced.current);
+          readStats();
+          if (first) {
+            profile.mark("state");
+            profile.mark("session-loaded");
+          }
+        } finally {
+          snapshotEvents = null;
+        }
+        return;
+      }
       const mark = heard;
       const next = await link.getState();
       if (!active) return;
@@ -204,9 +244,13 @@ export function useSession(link: AgentLink): SessionController {
         readStats();
       }, 250);
     };
-    const unsubscribeEvents = link.onEvent((event) => {
+    const unsubscribeEvents = link.onEvent((event, sequence) => {
       heard++;
       heardTotal.current++;
+      if (snapshotEvents) {
+        if (snapshotEvents.length < 2048) snapshotEvents.push({ event, sequence });
+        else snapshotOverflow = true;
+      }
       pacer.handle(event);
       if (event.type === "agent_start" || event.type === "agent_settled") {
         setExtensionUi((current) => follow(current, event));
@@ -231,6 +275,9 @@ export function useSession(link: AgentLink): SessionController {
         expiries.add(expiry);
       }
     });
+    const unsubscribeUiClose = link.onUiClose?.((id) => {
+      setExtensionUi((current) => dismiss(current, id));
+    });
     const unsubscribeClose = link.onClose((reason) => {
       setClosed(reason);
       setExtensionUi((current) => ({ ...current, dialogs: [] }));
@@ -238,27 +285,32 @@ export function useSession(link: AgentLink): SessionController {
       noted("error", `pi stopped: ${reason}`);
     });
     const mark = heard;
-    const firstState = link.getState().then((first) => {
-      profile.mark("state");
-      return first;
-    });
-    Promise.all([firstState, link.getMessages()])
-      .then(([first, messages]) => {
-        if (!active) return;
-        profile.mark("session-loaded");
-        built.current = first.sessionId;
-        setState(first);
-        readStats();
-        if (messages.length === 0 || heard !== mark) return;
-        pacer.flush();
-        reduced.current = { ...restore(messages), waitingSince: reduced.current.waitingSince };
-        setView(reduced.current);
-      })
-      .catch((cause: unknown) => noted("error", describe(cause)));
+    const firstState = !link.getSnapshot
+      ? link.getState().then((first) => {
+          profile.mark("state");
+          return first;
+        })
+      : null;
+    if (firstState)
+      Promise.all([firstState, link.getMessages()])
+        .then(([first, messages]) => {
+          if (!active) return;
+          profile.mark("session-loaded");
+          built.current = first.sessionId;
+          setState(first);
+          readStats();
+          if (messages.length === 0 || heard !== mark) return;
+          pacer.flush();
+          reduced.current = { ...restore(messages), waitingSince: reduced.current.waitingSince };
+          setView(reduced.current);
+        })
+        .catch((cause: unknown) => noted("error", describe(cause)));
+    else void sync.current(true);
     return () => {
       active = false;
       unsubscribeEvents();
       unsubscribeUi();
+      unsubscribeUiClose?.();
       unsubscribeClose();
       for (const expiry of expiries) clearTimeout(expiry);
       if (pending) clearTimeout(pending);

@@ -21,6 +21,7 @@ let
         };
         programs.pituitary = {
           enable = true;
+          stateDirectory = "/home/check/.local/state/pituitary-runs";
           nvimPackage = pkgs.neovim-unwrapped;
           ghPackage = pkgs.gh;
           agent = {
@@ -111,6 +112,7 @@ pkgs.runCommand "pituitary-home-manager-check" { nativeBuildInputs = [ pkgs.jq ]
   expect "PITUITARY_PROFILE='/tmp/pituitary.profile'"
   expect "PITUITARY_KEYBINDINGS='/home/check/.config/pituitary/keybindings.json'"
   expect "PITUITARY_CHECK='set'"
+  expect "PITUITARY_STATE_DIR='/home/check/.local/state/pituitary-runs'"
 
   # Exercise the installed wrapper and argument decoder together: shell quoting,
   # embedded spaces, and an empty argument must survive both layers.

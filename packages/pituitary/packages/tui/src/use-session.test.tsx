@@ -1,7 +1,15 @@
 import { expect, test } from "bun:test";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
-import type { AgentLink, PiEvent, RpcSessionState, SessionStats } from "@pituitary/rpc";
+import type {
+  AgentLink,
+  AgentSnapshot,
+  PiEvent,
+  RpcExtensionUIRequest,
+  RpcSessionState,
+  SessionStats,
+} from "@pituitary/rpc";
+import { assistantTurn, fakeSessionState, stored } from "@pituitary/rpc";
 import { useState } from "react";
 import { type SessionController, useSession } from "./use-session.ts";
 
@@ -185,4 +193,108 @@ test("queued text remains recoverable after the agent disconnects", async () => 
     flushSync(() => root.unmount());
     app.renderer.destroy();
   }
+});
+
+test("live attachment uses the snapshot cursor to include later deltas exactly once", async () => {
+  const snapshot = deferred<AgentSnapshot>();
+  let event!: (value: PiEvent, sequence?: number) => void;
+  const agent = link({
+    getSnapshot: () => snapshot.promise,
+    onEvent: (listener) => {
+      event = listener;
+      return () => {};
+    },
+  });
+  let latest!: SessionController;
+  function Probe() {
+    latest = useSession(agent);
+    return null;
+  }
+  const app = await createTestRenderer({ width: 20, height: 4 });
+  const root = createRoot(app.renderer);
+  try {
+    flushSync(() => root.render(<Probe />));
+    const delta = (text: string) => {
+      const value = assistantTurn({ text, parts: 1 }).find(
+        (item) => item.type === "message_update" && item.assistantMessageEvent.type === "text_delta",
+      );
+      if (!value) throw new Error("missing delta");
+      return value;
+    };
+    flushSync(() => {
+      event(delta("first"), 4);
+      event(delta(" second"), 6);
+    });
+    const messages = [stored.user("continue")];
+    snapshot.resolve({
+      sequence: 5,
+      state: { ...fakeSessionState, isStreaming: true },
+      messages,
+      streamingMessage: stored.assistant({ text: "first" }),
+      pendingToolCalls: [],
+    });
+    await until(() => latest.state !== null);
+    expect(latest.view.running).toBe(true);
+    expect(latest.view.entries.at(-1)).toMatchObject({
+      kind: "assistant",
+      text: "first second",
+      done: false,
+    });
+  } finally {
+    flushSync(() => root.unmount());
+    app.renderer.destroy();
+  }
+});
+
+test("a native worker can retire one dialog without dismissing another", async () => {
+  let request!: (value: RpcExtensionUIRequest) => void;
+  let retire!: (id: string) => void;
+  let subscribed = false;
+  const agent = link({
+    onUiRequest: (listener) => {
+      request = listener;
+      return () => {};
+    },
+    onUiClose: (listener) => {
+      retire = listener;
+      subscribed = true;
+      return () => {
+        subscribed = false;
+      };
+    },
+  });
+  let latest!: SessionController;
+  function Probe() {
+    latest = useSession(agent);
+    return null;
+  }
+  const app = await createTestRenderer({ width: 20, height: 4 });
+  const root = createRoot(app.renderer);
+  try {
+    flushSync(() => root.render(<Probe />));
+    await until(() => latest.state !== null);
+    flushSync(() => {
+      request({
+        type: "extension_ui_request",
+        id: "expired",
+        method: "confirm",
+        title: "Expired",
+        message: "Old question",
+      });
+      request({
+        type: "extension_ui_request",
+        id: "current",
+        method: "confirm",
+        title: "Current",
+        message: "New question",
+      });
+    });
+    expect(latest.extensionUi.dialogs).toHaveLength(2);
+    flushSync(() => retire("expired"));
+    expect(latest.extensionUi.dialogs.map((dialog) => dialog.id)).toEqual(["current"]);
+  } finally {
+    flushSync(() => root.unmount());
+    app.renderer.destroy();
+  }
+  expect(subscribed).toBe(false);
 });

@@ -7,6 +7,7 @@ usage: bay-session ready
        bay-session launch quiet|monitor -- [COMMAND...]
        bay-session program
        bay-session attach
+       bay-session connect -- COMMAND...
        bay-session stop
        bay-session save-history -- PATH...
        bay-session restore-history
@@ -80,6 +81,18 @@ attach)
     exit 1
   fi
   exec env TERM="${TERM:-xterm-256color}" tmux attach -t main
+  ;;
+
+connect)
+  [ $# -ge 2 ] && [ "$1" = -- ] || usage
+  shift
+  # Exec the bridge in place: disconnect signals must reach only this bridge,
+  # never the program running independently in the root-owned tmux server.
+  cd "$WORK" || exit
+  exec setpriv --reuid="$SESSION_USER" --regid="$(id -g "$SESSION_USER")" --init-groups -- \
+    env -i HOME="$SESSION_HOME" USER="$SESSION_USER" LOGNAME="$SESSION_USER" \
+    PATH="/run/wrappers/bin:/etc/profiles/per-user/$SESSION_USER/bin:/run/current-system/sw/bin" \
+    LANG=C.UTF-8 bash -lc 'exec "$@"' bridge "$@"
   ;;
 
 stop)

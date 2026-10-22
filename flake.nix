@@ -113,6 +113,7 @@
         in
         {
           pituitary = pkgs.callPackage ./packages/pituitary { };
+          pituitary-worker = pkgs.callPackage ./packages/pituitary/worker.nix { };
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           inherit bay;
@@ -221,7 +222,9 @@
 
       homeManagerModules.pituitary = ./modules/home-manager/pituitary.nix;
       nixosModules.bay = ./modules/system/nixos/bay.nix;
+      nixosModules.pituitaryAgent = ./packages/pituitary/agent-module.nix;
       lib.bayGuestImage = import ./packages/bay/image.nix;
+      lib.pituitaryAgent = import ./packages/pituitary/agent.nix;
 
       # Minimal bootstrap NixOS config for GCE image
       # Full config is deployed separately via nixos-rebuild
@@ -325,6 +328,9 @@
           aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
           x86_64-linux = {
             inherit (projectPackages.x86_64-linux) bay flare;
+            pituitary-agents = import ./tests/pituitary-agents.nix {
+              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+            };
             bay-vm = import ./tests/bay.nix {
               inherit inputs;
               pkgs = nixpkgs.legacyPackages.x86_64-linux;

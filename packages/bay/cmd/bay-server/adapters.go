@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 
 	"github.com/gshpychka/realm/packages/bay/internal/api"
 	"github.com/gshpychka/realm/packages/bay/internal/identity"
@@ -66,6 +67,10 @@ func (o operatorAPI) Attach(ctx context.Context, name string) (api.Attach, error
 	return api.Attach{Command: command}, err
 }
 
+func (o operatorAPI) Connect(ctx context.Context, name, id string) (io.ReadWriteCloser, error) {
+	return o.svc.Connect(ctx, name, id)
+}
+
 func parseRepos(specs []string) ([]sessions.RepoRef, error) {
 	refs := make([]sessions.RepoRef, 0, len(specs))
 	for _, spec := range specs {
@@ -80,12 +85,14 @@ func parseRepos(specs []string) ([]sessions.RepoRef, error) {
 
 func toAPI(s sessions.Session) api.Session {
 	out := api.Session{
-		Name:      s.Name,
-		State:     api.State(s.State),
-		Program:   s.Program.Definition,
-		Command:   s.Program.Command,
-		Created:   s.Created,
-		Snapshots: s.Snapshots,
+		ID:           s.ID,
+		Name:         s.Name,
+		State:        api.State(s.State),
+		Program:      s.Program.Definition,
+		Command:      s.Program.Command,
+		Created:      s.Created,
+		Snapshots:    s.Snapshots,
+		Capabilities: api.Capabilities{Connect: s.Connectable},
 	}
 	for _, r := range s.Repos {
 		out.Repos = append(out.Repos, toAPIRepo(r))

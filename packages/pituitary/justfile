@@ -63,6 +63,11 @@ live *args:
     PITUITARY_LOG={{quote(justfile_directory() + "/artifacts/tui.log")}} \
     bun packages/tui/src/main.tsx "$@"
 
+# Persistent native runs from source: just harness run --name review, just harness attach review.
+[positional-arguments]
+harness *args:
+    bun packages/harness/src/main.ts "$@"
+
 clean:
     rm -rf artifacts .tmp
 

@@ -5,10 +5,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, extend } from "@opentui/react";
-import { BRIDGE_EXTENSION, BridgeHost, HANDOFF_ENV, HANDOFF_RESULT_ENV, PiRpcClient } from "@pituitary/rpc";
+import { connectWorker } from "@pituitary/harness/worker-client";
+import {
+  type AgentLink,
+  BRIDGE_EXTENSION,
+  BridgeHost,
+  HANDOFF_ENV,
+  HANDOFF_RESULT_ENV,
+  PiRpcClient,
+} from "@pituitary/rpc";
 import { App, type AppProps } from "./app.tsx";
 import { OptInText } from "./components/text.ts";
-import { openLog, resolveAgentCommand, resumeArgs, resumeCommand } from "./config.ts";
+import { attachCommand, openLog, resolveAgentCommand, resumeArgs, resumeCommand } from "./config.ts";
 import { prewarm } from "./nvim/engine.ts";
 import { mark } from "./profile.ts";
 
@@ -16,6 +24,7 @@ mark("modules");
 
 const log = openLog();
 const agent = resolveAgentCommand();
+const workerSocket = process.env.PITUITARY_WORKER_SOCKET;
 
 if (agent.direct) {
   const run = spawnSync(agent.command, agent.args, { stdio: "inherit" });
@@ -25,12 +34,12 @@ if (agent.direct) {
 // A rejection nobody handled belongs in the log; on screen it would cover the UI.
 process.on("unhandledRejection", (reason) => log.write(`unhandled rejection: ${String(reason)}\n`));
 
-const bridge = new BridgeHost();
-bridge.onConnect(() => mark("bridge-connected"));
+const bridge = workerSocket ? undefined : new BridgeHost();
+bridge?.onConnect(() => mark("bridge-connected"));
 // Anthropic has not published these headers, so the log keeps the names and values seen,
 // whenever the set of names changes.
 let limitNames = "";
-bridge.onLimits((_limits, headers) => {
+bridge?.onLimits((_limits, headers) => {
   const names = Object.keys(headers).sort().join(",");
   if (names === limitNames) return;
   limitNames = names;
@@ -38,7 +47,7 @@ bridge.onLimits((_limits, headers) => {
 });
 // The socket directory goes with the process however it ends.
 process.on("exit", () => {
-  bridge.close();
+  bridge?.close();
   mark("exit");
 });
 const withBridge = (args: readonly string[]) => [...args, "--extension", BRIDGE_EXTENSION];
@@ -47,7 +56,7 @@ function startAgent(args: readonly string[]): PiRpcClient {
   const started = new PiRpcClient({
     command: agent.command,
     args: withBridge(args),
-    env: bridge.env(),
+    env: bridge?.env(),
     onStderr: (chunk) => log.write(chunk),
     onExit: (code, signal) => log.write(`agent exited code=${code} signal=${signal}\n`),
   });
@@ -55,7 +64,7 @@ function startAgent(args: readonly string[]): PiRpcClient {
   return started;
 }
 
-let client = startAgent(agent.args);
+let client: AgentLink = workerSocket ? await connectWorker(workerSocket) : startAgent(agent.args);
 mark("agent-spawned");
 prewarm();
 
@@ -92,9 +101,16 @@ const quit = () => {
   mark("renderer-destroyed");
   void closing.then(() => {
     mark("agent-closed");
-    bridge.close();
+    bridge?.close();
     mark("bridge-closed");
-    if (sessionFile && existsSync(sessionFile))
+    if (workerSocket) {
+      const name = process.env.PITUITARY_RUN_NAME;
+      process.stdout.write(
+        name
+          ? `Detached from run ${name}. To reconnect: ${attachCommand(name, process.env.PITUITARY_STATE_DIR)}\n`
+          : "Detached from worker.\n",
+      );
+    } else if (sessionFile && existsSync(sessionFile))
       process.stdout.write(`To resume this session: ${resumeCommand(sessionFile)}\n`);
     process.exit(0);
   });
@@ -152,8 +168,8 @@ const render = (startWith: AppProps["startWith"] = {}) =>
       onSessionFile={(file) => {
         sessionFile = file;
       }}
-      onHandoff={(text, sessionFile) => void handoff(text, sessionFile)}
-      onRestart={(notice, sessionFile) => void restart(notice, sessionFile)}
+      onHandoff={workerSocket ? undefined : (text, sessionFile) => void handoff(text, sessionFile)}
+      onRestart={workerSocket ? undefined : (notice, sessionFile) => void restart(notice, sessionFile)}
       startWith={startWith}
     />,
   );

@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,15 +28,23 @@ const (
 )
 
 type Session struct {
+	// ID stays the same across starts and changes when a removed name is reused.
+	ID    string `json:"id"`
 	Name  string `json:"name"`
 	State State  `json:"state"`
 	// Program names the session's program definition; empty when the session runs Command.
-	Program string    `json:"program,omitempty"`
-	Command []string  `json:"command,omitempty"`
-	Repos   []Repo    `json:"repos,omitempty"`
-	Created time.Time `json:"created"`
+	Program      string       `json:"program,omitempty"`
+	Command      []string     `json:"command,omitempty"`
+	Repos        []Repo       `json:"repos,omitempty"`
+	Created      time.Time    `json:"created"`
+	Capabilities Capabilities `json:"capabilities"`
 	// Snapshots are the snapshots of a running or suspended session, oldest first.
 	Snapshots []string `json:"snapshots,omitempty"`
+}
+
+// Capabilities describe the configured program, independently of session state.
+type Capabilities struct {
+	Connect bool `json:"connect"`
 }
 
 type Repo struct {
@@ -110,6 +119,8 @@ type Service interface {
 	End(ctx context.Context, name string, e End) error
 	Remove(ctx context.Context, name string) error
 	Attach(ctx context.Context, name string) (Attach, error)
+	// Connect opens the configured program's byte stream, bound to a session ID.
+	Connect(ctx context.Context, name, id string) (io.ReadWriteCloser, error)
 }
 
 // messagesPrefix is where the API carries the operator's messaging.
@@ -170,6 +181,7 @@ func Handler(svc Service, msgs http.Handler) http.Handler {
 		a, err := svc.Attach(r.Context(), r.PathValue("name"))
 		respond(w, a, err)
 	})
+	mux.HandleFunc("POST /v1/sessions/{name}/connect", connectHandler(svc))
 	mux.Handle(messagesPrefix+"/", http.StripPrefix(messagesPrefix, msgs))
 	return mux
 }

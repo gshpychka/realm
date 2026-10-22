@@ -6,6 +6,7 @@ import (
 
 	"github.com/gshpychka/realm/packages/bay/internal/identity"
 	"github.com/gshpychka/realm/packages/bay/internal/records"
+	"github.com/gshpychka/realm/packages/bay/internal/sessions"
 )
 
 func TestToIdentityKeepsOnlyIDAndName(t *testing.T) {
@@ -18,5 +19,12 @@ func TestToIdentityKeepsOnlyIDAndName(t *testing.T) {
 	}
 	if got := toIdentity(rec); got != (identity.Session{ID: "id-one", Name: "one"}) {
 		t.Fatalf("toIdentity = %+v", got)
+	}
+}
+
+func TestPublicSessionRetainsStableIdentity(t *testing.T) {
+	got := toAPI(sessions.Session{Record: records.Record{ID: "id-one", Name: "one"}, State: sessions.Running})
+	if got.ID != "id-one" || got.Name != "one" {
+		t.Fatalf("public session = %+v", got)
 	}
 }

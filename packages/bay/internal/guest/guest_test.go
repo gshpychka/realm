@@ -39,6 +39,9 @@ func TestOperationsRunBaySession(t *testing.T) {
 		{"launch monitor", func(g Guest) error { return g.Launch(ctx, []string{"agent"}, true) }, []string{"bay-session", "launch", "monitor", "--", "agent"}},
 		{"launch a login shell", func(g Guest) error { return g.Launch(ctx, nil, true) }, []string{"bay-session", "launch", "monitor", "--"}},
 		{"stop", func(g Guest) error { return g.Stop(ctx) }, []string{"bay-session", "stop"}},
+		{"connect", func(g Guest) error {
+			return g.Connect(ctx, []string{"worker", "connect", "a path", ""}, strings.NewReader(""), io.Discard)
+		}, []string{"bay-session", "connect", "--", "worker", "connect", "a path", ""}},
 		{"save history", func(g Guest) error { return g.SaveHistory(ctx, []string{".a", "b/c"}, io.Discard) }, []string{"bay-session", "save-history", "--", ".a", "b/c"}},
 		{"restore history", func(g Guest) error { return g.RestoreHistory(ctx, strings.NewReader("")) }, []string{"bay-session", "restore-history"}},
 		{
