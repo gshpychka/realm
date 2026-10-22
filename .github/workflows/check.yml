@@ -12,9 +12,9 @@ concurrency:
 
 jobs:
   flake-check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
       # Fleet-wide eval: all systems, no machine builds.
       - run: nix flake check --all-systems --no-build
@@ -38,9 +38,9 @@ jobs:
           .#checks.x86_64-linux.bay-shellcheck
 
   pituitary:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
       - name: Check Pituitary
         run: >-
