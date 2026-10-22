@@ -23,7 +23,12 @@
     extraEnv = {
       HOMEBREW_NO_ANALYTICS = "1";
     };
+    # `brew shellenv` costs ~300ms per interactive zsh; systemPath below
+    # carries its PATH entry
+    enableZshIntegration = false;
   };
+  # cask CLIs (cursor, dagger, ...) link here
+  environment.systemPath = [ "${config.homebrew.prefix}/bin" ];
   homebrew = {
     enable = true;
     taps = builtins.attrNames config.nix-homebrew.taps;

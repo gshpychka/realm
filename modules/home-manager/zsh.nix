@@ -180,6 +180,8 @@ in
         append = true;
         share = false;
       };
+      # write each command to HISTFILE as it runs
+      setOptions = [ "INC_APPEND_HISTORY" ];
       historySubstringSearch = {
         enable = true;
       };
@@ -199,6 +201,9 @@ in
       initContent = /* bash */ ''
         bindkey '^E' autosuggest-accept
 
+        # wait 10ms (default 400ms) for the rest of a multi-key sequence
+        KEYTIMEOUT=1
+
         # delete past insert start in insert mode
         bindkey -M viins '^?' backward-delete-char # If Backspace sends DEL (127)
         bindkey -M viins '^H' backward-delete-char # If Backspace sends Ctrl-H
@@ -213,17 +218,11 @@ in
         zle -N zle-keymap-select _set_vi_cursor_shape
         zle -N zle-line-init _set_vi_cursor_shape
 
-        # A remote program (tmux, nvim) whose SSH connection drops never sends
-        # the sequences that undo the input modes it enabled, so they persist in
-        # the local terminal:
-        # - mouse reporting: ZLE's vi keymap swallows the reports, but a
-        #   cooked-mode tty (e.g. the next ssh while it authenticates) echoes
-        #   them as ^[[<35;x;yM
-        # - extended keyboard encoding: keys arrive as escape sequences, whose
-        #   leading ESC switches ZLE from viins to vicmd
-        # After ssh exits, this turns off X10/normal/button/any-event mouse
-        # tracking and SGR encoding, resets xterm modifyOtherKeys, and sets the
-        # kitty keyboard protocol flags to 0.
+        # A remote program whose SSH connection drops leaves the input modes it
+        # enabled active in the local terminal. After ssh exits, this turns off
+        # X10/normal/button/any-event mouse tracking and SGR mouse encoding,
+        # resets xterm modifyOtherKeys, and sets the kitty keyboard protocol
+        # flags to 0.
         ssh() {
           command ssh "$@"
           local rc=$?
@@ -264,44 +263,23 @@ in
         # - empty buffer: fuzzy search all history
         # - with text: find only commands that start with the text, then fuzzy search among them
         fzf-history-widget-custom() {
-          local selected
-          
-          if [[ -z "$BUFFER" ]]; then
-            # empty command line - default(-ish) behavior
-            selected=$(
-              fc -rl 1 |
-              ${lib.getExe pkgs.gawk} '
-                {
-                  # remove line number
-                  $1="";
-                  # print without leading space
-                  print substr($0,2)
-                }' |
-              ${lib.getExe pkgs.fzf} --tac --no-sort
-            )
-          else
-            # command line has text - filter by prefix before fuzzy search
-            local prefix="$BUFFER"
-            
-            selected=$(
-              fc -rl 1 |
-              ${lib.getExe pkgs.gawk} -v prefix="$prefix" '
-                {
-                  # remove line number
-                  $1="";
-                  # get command without leading space
-                  line=substr($0,2);
-                  # print if starts with prefix
-                  if (substr(line,1,length(prefix))==prefix) 
-                    print line
-                }' |
-              ${lib.getExe pkgs.fzf} \
-                  --tac \
-                  --no-sort \
-                  --query=''${prefix#* }
-            )
+          local selected query
+          # $history holds full command text, newest first; (u) keeps the
+          # newest occurrence of each command
+          local -a lines=("''${(@u)history}")
+
+          if [[ -n "$BUFFER" ]]; then
+            # (b) escapes glob characters so the buffer matches literally
+            lines=("''${(@M)lines:#''${(b)BUFFER}*}")
+            query=''${BUFFER#* }
           fi
-          
+
+          # NUL-separated so multi-line commands stay one entry
+          selected=$(
+            print -rN -- "''${lines[@]}" |
+            ${lib.getExe pkgs.fzf} --read0 --no-sort --query="$query"
+          )
+
           # update command line with selection, if any
           if [[ -n "$selected" ]]; then
             # replace command line
