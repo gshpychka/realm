@@ -130,6 +130,31 @@ cold state is retained; it cannot resolve a YAML code difference.
 | New Matter/ZHA/MQTT device | Retain controller state; compare exact fabric/node/IEEE/client identities and native capabilities. Extend the MQTT ledger for every client. Never commission a second fabric or re-pair to silence a missing reference. |
 | History/auth/users/mobile/OAuth changes | Retain complete captured writable state. Verify login, history and current clients; rotate only the temporary migration token according to the runbook. Never export these objects into declarative code. |
 
+For each captured custom component, compare its actual files with the packaged
+candidate. In the workstation session, enter the exact manifest domain:
+
+```sh
+read -r -p 'Captured custom component domain: ' DOMAIN
+[[ $DOMAIN =~ ^[a-z][a-z0-9_]*$ ]]
+test -f "$SNAPSHOT/custom_components/$DOMAIN/manifest.json"
+nix build "$CHECKOUT#legacyPackages.x86_64-linux.homeAssistant.componentPackages.$DOMAIN" \
+  --no-write-lock-file --out-link "$WORK/component-$DOMAIN"
+component_status=0
+diff -ru --exclude=__pycache__ --exclude='*.pyc' --exclude=.git \
+  "$SNAPSHOT/custom_components/$DOMAIN" \
+  "$WORK/component-$DOMAIN/custom_components/$DOMAIN" \
+  > "$WORK/component-$DOMAIN.diff" || component_status=$?
+test "$component_status" -le 1
+```
+
+Select `aarch64-linux` on an ARM workstation. Review each private diff: packaged
+manifest formatting/version stamping may differ, while a changed Python source
+needs an explicit retained/replaced behavior decision and test. A missing
+package attribute is an unported domain; do not suppress that failure or copy
+the live component back after `sanitize`. Record its package/version/source and
+the diff review in the runtime checklist. Repeat the comparison for each domain
+listed in `runtime-inventory.json`.
+
 **Low confidence — external or dormant clients:** no file scanner can establish
 that an offline device exists or that a physical target is correct. Record it
 in the private ledger and perform the exact section 12 acceptance action. A
