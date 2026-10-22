@@ -37,19 +37,25 @@ the household runs; the paths below are under homeassistant/components/assist_pi
 - Lost audio: a backlog past MAX_BACKLOG_S drops its oldest audio. Speech that may
   have lost its start or middle to such a gap is never acted on: its run is
   cancelled at stt-vad-start, and the gap moves past it, so the rest of the same
-  utterance is cancelled the same way (GAP_GUARD_S).
+  utterance is cancelled the same way (GAP_GUARD_S). What is left of it, too short
+  to detect, is kept out of the next utterance's run.
 - Echo: speech recognition gets no audio while the assistant is audible, as on
   Home Assistant's own satellites, so GPT-Live's echo cannot become a command;
-  see feed(). The held audio is decided once the assistant stops, never spliced:
+  see feed(). Without barge-in, that audio is echo: it is dropped, speech over the
+  assistant with it, and silence takes its place, so an utterance it interrupted
+  ends whole. With barge-in, it is held and decided once the assistant stops,
+  never spliced:
   - The user spoke over the assistant (user_heard, judged on Live's timeline, so
     a transcript trailing the user's previous utterance never counts): it all
     goes on from shortly before their words, or from the hold's start when they
     were already mid-utterance, a backchannel included.
   - Nobody did: it was echo and is dropped. An utterance it interrupted gets
     silence in its place, so Home Assistant hears that utterance end whole.
-- Lost speech is never acted on in part: a run that ends mid-utterance (a lost
-  connection, an error) leaves a gap like a dropped backlog does. Speech a gap
-  cuts is always reported as a turn that did nothing, never dropped silently.
+- Lost speech is never acted on in part: a run that ends before Home Assistant has
+  a whole utterance (a lost connection, an error), speech it has yet to detect
+  included, leaves a gap like a dropped backlog does. Speech a gap cuts is always
+  reported as a turn that did nothing, never dropped silently, or as one that may
+  have acted on part of it once Home Assistant has it whole.
 """
 
 from __future__ import annotations
@@ -272,8 +278,7 @@ class _Run:
     error: str | None = None
     # The gap that cut it (HomeTurn.gap).
     gap: int | None = None
-    # Speech over the assistant was reported only after Home Assistant had this utterance whole:
-    # it may have acted on the utterance's rest alone.
+    # A gap cut it only once Home Assistant had it whole: it may have acted on part of it.
     cut_late: bool = False
 
     def index_at(self, ms: int) -> int | None:
@@ -294,6 +299,13 @@ class _Run:
             frames.append(_Frame(frame.index + cut, frame.pcm[cut:]))
         return frames
 
+    def offset_at(self, index: int) -> int:
+        """The run audio offset of the conversation sample `index`, or of the first sent after it."""
+        for start, frame in self.sent:
+            if index < frame.index + len(frame.pcm):
+                return start + max(0, index - frame.index)
+        return self.sent_samples
+
 
 class HomeListener:
     """Home Assistant listening at one speaker for one conversation.
@@ -310,6 +322,8 @@ class HomeListener:
         device_id: str,
         policy: ToolPolicy,
         lock: asyncio.Lock,
+        *,
+        barge_in: bool,
         connector: Callable[..., Any] = connect,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -324,6 +338,8 @@ class HomeListener:
         self._policy = policy
         # This device's: runs of all its conversations take turns.
         self._lock = lock
+        # Speech over the assistant reaches Home Assistant once GPT-Live reports it (user_heard).
+        self._barge_in = barge_in
         self._connect = connector
         self._clock = clock
         self.events: asyncio.Queue[HomeEvent] = asyncio.Queue()
@@ -341,6 +357,8 @@ class HomeListener:
         self._gap_reason: str | None = None
         # Gaps so far: the newest's number (HomeTurn.gap).
         self._gaps = 0
+        # Without barge-in: samples of silence put in place of the echo since the assistant became audible.
+        self._echo_silence = 0
         # The assistant is audible: audio is held, not sent.
         self._holding = False
         # Held audio, each frame with whether the assistant was audible in it: a pause between two
@@ -382,6 +400,15 @@ class HomeListener:
         """One block of echo-cancelled MIC_RATE audio, and whether the assistant was audible meanwhile."""
         frame = _Frame(self._next_index, pcm)
         self._next_index += len(pcm)
+        if not self._barge_in:
+            if not audible:
+                self._echo_silence = 0
+                self._enqueue(frame)
+            elif (n := min(len(pcm), int(ECHO_SILENCE_S * MIC_RATE) - self._echo_silence)) > 0:
+                # Echo: dropped, with silence in its place up to ECHO_SILENCE_S.
+                self._enqueue(_Frame(frame.index, np.zeros(n, dtype=np.int16)))
+                self._echo_silence += n
+            return
         if audible and not self._holding:
             if self._deciding_until is None:
                 self._held.clear()
@@ -429,7 +456,7 @@ class HomeListener:
         GPT-Live judges that on its own timeline (live.py), where a transcript trailing what the
         user said before the assistant began starts before the assistant's speech: it never counts.
         `during`: it started within the assistant's speech itself, not in the moments after it the
-        speaker may still be playing it out.
+        speaker may still be playing it out. Without barge-in it changes nothing.
         """
         if back_s is None:
             return
@@ -558,7 +585,8 @@ class HomeListener:
 
     def _gap_after(self, run: _Run) -> None:
         """Marks a gap when `run` ended, already told, before Home Assistant had its whole utterance."""
-        if run.vad_start_ms is not None and not run.audio_done:
+        # Its audio may end in speech too short yet for stt-vad-start (_MIN_SPEECH_MS).
+        if run.sent and not run.audio_done:
             self._gaps += 1
             self._gap_floor = None
             self._gap_ahead()
@@ -572,6 +600,16 @@ class HomeListener:
         """
         start_ms = max(run.vad_start_ms or 0, _MIN_SPEECH_MS)
         return _Restart(max(0, run.sent_samples - start_ms * _SAMPLES_PER_MS), reason, gap=True)
+
+    def _leftover_end(self, run: _Run) -> int | None:
+        """Where audio right after the newest gap ends, when `run` holds some of it before speech the gap left whole.
+
+        Speech there continues the utterance the gap cut, too short to be detected and cancelled like the rest of it.
+        """
+        if self._gap_at is None or run.speech_start is None or run.speech_start < self._gap_at:
+            return None
+        end = self._gap_at + _MIN_SPEECH_MS * _SAMPLES_PER_MS
+        return end if run.sent[0][1].index < end else None
 
     def _requeue(self, frames: list[_Frame]) -> None:
         """Audio a run did not use, back at the front of the queue, in order."""
@@ -750,6 +788,9 @@ class HomeListener:
                         self._gap_after(run)
                         break
                     self._on_event(run, kind, data)
+                    if (run.audio_done or run.intent_started) and restart.done() and not restart.result().idle:
+                        # A cut decided as Home Assistant took the utterance whole: it may act on part of it.
+                        run.cut_late = True
                     if kind == "stt-vad-start" and not run.intent_started:
                         if self._cut(run):
                             # Never acted on. An utterance that lost its middle is a turn that did nothing;
@@ -768,6 +809,14 @@ class HomeListener:
                             return
                         # Audio dropped before this speech began is no part of it.
                         self._overrun = False
+                        if (leftover_end := self._leftover_end(run)) is not None:
+                            # Speech recognition hears all of a run's audio: the speech goes to one that starts past
+                            # what the gap left of the cut utterance.
+                            await _stopped(sender)
+                            sender = None
+                            keep = run.sent_samples - run.offset_at(leftover_end)
+                            await self._restart(ws, run, run_id, _Restart(keep))
+                            return
                         if handler is not None and restart.done() and restart.result().idle:
                             # An idle restart decided before Home Assistant reported this speech is void:
                             # the run goes on, and so does its audio.
@@ -882,7 +931,7 @@ class HomeListener:
     def _finish(self, run: _Run, reason: str = "") -> None:
         turn = _turn(run, self._policy, reason)
         if run.cut_late and turn.outcome in (Outcome.ACTED, Outcome.ANSWERED, Outcome.ASKED):
-            # It may have acted on the end of a request whose start was taken for echo.
+            # It may have acted on part of a request a gap cut.
             turn = replace(turn, outcome=Outcome.UNCERTAIN, reason="speech cut late", gap=run.gap or self._gaps)
         log.log(
             logging.WARNING if turn.outcome == Outcome.UNCERTAIN else logging.INFO,

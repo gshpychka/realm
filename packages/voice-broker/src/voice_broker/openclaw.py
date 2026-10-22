@@ -388,8 +388,6 @@ class Conversation:
         self._id = conversation_id
         # None until the first consult is placed.
         self._session: str | None = None
-        # Places the first consult once, should two ever start together.
-        self._placing = asyncio.Lock()
 
     @property
     def id(self) -> str:
@@ -401,16 +399,13 @@ class Conversation:
         return self._session
 
     async def consult(self, task: str) -> str:
-        """The agent's answer to `task`, a turn of the conversation's session."""
-        # Held until the first consult's input is ready, handoff included, so none overtakes it.
-        async with self._placing:
-            if self._session is None:
-                session = await self._place(task)
-                if session != self._openclaw.config.session_key:
-                    task = await self._handoff(task)
-                self._session = session
-            session = self._session
-        return await self._openclaw.consult(task, session)
+        """The agent's answer to `task`, a turn of the conversation's session; one consult at a time."""
+        if self._session is None:
+            session = await self._place(task)
+            if session != self._openclaw.config.session_key:
+                task = await self._handoff(task)
+            self._session = session
+        return await self._openclaw.consult(task, self._session)
 
     async def recent(self) -> list[Turn]:
         return await self._openclaw.recent()

@@ -40,6 +40,7 @@ packages/home-assistant/
   migration/               read-only private snapshot preflight
   core-dependencies/       Core runtime compatibility packages
     pymodbus/              native override and its test-isolation patch
+    python-overseerr/      native client query fix and local HTTP regressions
     zigpy/                 native override and its semaphore-test patch
   mcp-dependencies/        MCP dependencies and build backend
   custom-components/      native component package expressions
@@ -160,7 +161,11 @@ release zip to include its compiled frontend. The Dyson API patch and upstream
 dependency test fixes are applied during builds.
 
 The Core Python scope reuses nixpkgs packages. Its aio-libs and frontend overrides
-match Core 2026.10.2; `croniter` and original `passlib` satisfy exact component
+match Core 2026.10.2; source-specific Cython adjustments retain aiohttp's compiled
+parsers. The native Overseerr client forwards raw query values so the HTTP client
+encodes them once; four local-server regressions cover spaces, percent signs,
+reserved characters and Ukrainian titles. It retains the native package version.
+`croniter` and original `passlib` satisfy exact component
 requirements. `homeeasy`, `translitua` and `novaposhta-python-client` supply
 packages absent from the locked nixpkgs. MCP has its own native Python scope:
 its vendored FastMCP requires newer `python-dotenv` and `pydantic-monty`, and its
@@ -327,9 +332,14 @@ covering every registered program and shared helper file.
 Run this scoped check locally without remote builders:
 
 ```sh
-nix build --offline --no-write-lock-file --no-link --print-out-paths \
+nix build --no-write-lock-file --no-link --print-out-paths \
   --builders '' --max-jobs 1 --cores 1 -L .#checks.x86_64-linux.home-assistant-config
 ```
+
+The first build needs public source/cache access. Add `--offline` after its
+dependencies are present; otherwise Nix cannot use binary caches and may attempt
+large dependency rebuilds. The pinned Pi system and installer still need an ARM
+builder; running x86 configuration QA does not build those outputs.
 
 The same check enforces ownership across the complete HA machine and package
 trees. Seven guard regression tests accept colocated modules, programs, patches

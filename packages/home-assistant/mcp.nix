@@ -2,7 +2,21 @@
 let
   # MCP's vendored FastMCP requires these newer wheel versions and uv backend.
   mcpPython = pkgs.python314Packages.overrideScope (
-    ps: _previous: {
+    ps: previous: {
+      # Only Authlib's optional web-framework tests depend on this scope's
+      # dotenv override. Its runtime is unchanged, so reuse the tested package.
+      authlib =
+        let
+          native = pkgs.python314Packages.authlib;
+          runtime = package: map (dependency: dependency.drvPath) package.dependencies;
+        in
+        assert previous.authlib.version == native.version;
+        assert toString previous.authlib.src == toString native.src;
+        assert map toString (previous.authlib.patches or [ ]) == map toString (native.patches or [ ]);
+        assert (previous.authlib.postPatch or "") == (native.postPatch or "");
+        assert previous.authlib.pythonModule.drvPath == native.pythonModule.drvPath;
+        assert runtime previous.authlib == runtime native;
+        native;
       python-dotenv = ps.callPackage ./mcp-dependencies/python-dotenv.nix { };
       pydantic-monty = ps.callPackage ./mcp-dependencies/pydantic-monty.nix { };
     }

@@ -6,6 +6,7 @@ Description=Reapply Kodi addon customizations after an addon update
 # update deletes and re-extracts the whole addon directory. The script's own
 # writes trigger one more run, which finds nothing to do.
 PathChanged=/storage/.kodi/addons/skin.bingie/1080i/IncludesBingie.xml
+PathChanged=/storage/.kodi/addons/skin.bingie/1080i/DialogSettings.xml
 PathChanged=/storage/.kodi/addons/plugin.video.plexkodiconnect/resources/lib/plex_api/media.py
 PathChanged=/storage/.kodi/addons/script.bingie.widgets/resources/lib/helpers/kodidb.py
 Unit=kodi-customize.service

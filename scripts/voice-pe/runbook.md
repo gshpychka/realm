@@ -64,9 +64,12 @@ upstream commit. `python-inputs.lock.json` pins the IDF build-time Python closur
 (wheels, plus pure-Python esptool source). Native wheel ELF dependencies are
 patched with Nix libraries; downloads occur only in fixed-output fetch derivations.
 
-`project.nix` starts with a new HOME and empty project, runs ESPHome 2026.8.0
-code generation offline, redirects only declared pinned library/XMOS sources,
-and fails unexpected downloads. Firmware compilation uses two CMake configure
+`esphome.nix` pins the ESPHome 2026.8.0 generator source and hash independently
+of the fleet's rolling ESPHome package; update it together with the firmware's
+SDK and public input locks. `project.nix` starts with a new HOME and empty
+project, runs ESPHome 2026.8.0 code generation offline, redirects only declared
+pinned library/XMOS sources, and fails unexpected downloads. Firmware
+compilation uses two CMake configure
 passes: the first discovers built-in IDF components, the second supplies their
 REQUIRES. Neither step consumes an old ESPHome build directory. Build metadata
 uses a fixed release epoch, independent of wall-clock time.

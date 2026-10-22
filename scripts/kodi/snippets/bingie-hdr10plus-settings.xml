@@ -1,0 +1,33 @@
+<!-- kodi-customize: HDR10+ Video settings -->
+<control type="group" id="1091">
+	<visible>Window.IsActive(osdvideosettings)</visible>
+	<width>800</width>
+	<height>96</height>
+	<control type="button" id="1090">
+		<description>Select HDR10+ mapping</description>
+		<include>DialogButton</include>
+		<width>800</width>
+		<height>60</height>
+		<align>left</align>
+		<textoffsetx>20</textoffsetx>
+		<label>HDR10+ mapping</label>
+		<label2>$VAR[KodiCustomizeHdr10PlusMode]</label2>
+		<onup>5</onup>
+		<ondown>5</ondown>
+		<onleft>back</onleft>
+		<onright>5</onright>
+		<!-- StreamHdrType::HDR_TYPE_HDR10PLUS is 4. A literal + is parsed as AND. -->
+		<enable>Player.HasVideo + !VideoPlayer.Content(livetv) + [Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)]</enable>
+		<onclick>RunScript(/storage/.config/kodi-customize/kodi-hdr10plus.py)</onclick>
+	</control>
+	<control type="label">
+		<left>20</left>
+		<top>60</top>
+		<width>760</width>
+		<height>36</height>
+		<font>Reg24</font>
+		<textcolor>$INFO[Skin.String(HeaderTextColor)]</textcolor>
+		<label>$VAR[KodiCustomizeHdr10PlusStatus]</label>
+	</control>
+</control>
+<!-- kodi-customize: end -->

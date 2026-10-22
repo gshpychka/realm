@@ -82,7 +82,6 @@ import http.client
 import json
 import os
 import re
-import socket
 import sqlite3
 import sys
 import time
@@ -254,7 +253,7 @@ class Api:
             except (
                 urllib.error.URLError,
                 http.client.HTTPException,
-                socket.timeout,
+                TimeoutError,
                 ConnectionError,
             ) as err:
                 if method == "POST":
@@ -299,7 +298,7 @@ def wait_ready(name, url, version, api_key):
         except (
             urllib.error.URLError,
             http.client.HTTPException,
-            socket.timeout,
+            TimeoutError,
             ConnectionError,
         ) as err:
             if time.monotonic() > deadline:
@@ -390,7 +389,7 @@ def read_login(path):
 def login_rows(con):
     columns = ", ".join(LOGIN_COLUMNS.values())
     rows = con.execute(f"SELECT {columns} FROM Users").fetchall()
-    return [dict(zip(LOGIN_COLUMNS, row)) for row in rows]
+    return [dict(zip(LOGIN_COLUMNS, row, strict=True)) for row in rows]
 
 
 def restore_login(database, secret_path):
@@ -1250,7 +1249,7 @@ def redacted(value, secrets, secret_fields=frozenset()):
 
 
 def save_backup(backup_dir, name, plan):
-    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     for n in range(100):
         path = os.path.join(
             backup_dir, f"{name}-before-{stamp}{f'-{n}' if n else ''}.json"

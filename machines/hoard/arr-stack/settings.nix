@@ -19,7 +19,7 @@
 # (added when a movie/series is deleted with "prevent re-adding"), tags other
 # than the import lists' (Seerr creates one per user), indexers (pushed by
 # Prowlarr), Sonarr's language profile (a v3 leftover v4 doesn't use).
-{ ... }:
+_:
 let
   filter = key: type: value: { inherit key type value; };
   # the app seeds one consumer per implementation; all are off here

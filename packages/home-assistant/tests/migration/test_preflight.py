@@ -95,7 +95,11 @@ class PreflightTests(unittest.TestCase):
     def test_missing_targets_and_disabled_integrations_are_blockers(self):
         self.write(
             "core.config_entries",
-            {"entries": [{"entry_id": "entry", "disabled_by": "user"}]},
+            {
+                "entries": [
+                    {"entry_id": "entry", "domain": "mqtt", "disabled_by": "user"}
+                ]
+            },
         )
         self.write("core.device_registry", {"devices": []})
         self.write("core.area_registry", {"areas": []})
@@ -129,6 +133,7 @@ class PreflightTests(unittest.TestCase):
                     {
                         "entries": [
                             {
+                                "entry_id": "entry",
                                 "domain": "mqtt",
                                 "data": {"host": host, "password": "NEVER_PRINT"},
                             }
@@ -174,12 +179,90 @@ class PreflightTests(unittest.TestCase):
         )
         self.assertIn("scene-renamed", self.codes())
 
+    def test_scene_name_reserved_by_another_identity_blocks_cutover(self):
+        config = self.declarations["configuration"]
+        config["scene"] = [{"id": "new-id", "name": "Night"}]
+        config["script"]["wake"]["sequence"].append(
+            {"action": "scene.turn_on", "target": {"entity_id": "scene.night"}}
+        )
+        self.write(
+            "core.entity_registry",
+            {
+                "entities": [
+                    {"entity_id": "light.bed"},
+                    {"entity_id": "scene.night", "unique_id": "old-id"},
+                ]
+            },
+        )
+        self.assertIn("scene-identity-conflict", self.codes())
+        self.assertEqual(self.audit()["status"], "blocked")
+
+    def test_entity_reference_is_not_a_substring_of_another_entity(self):
+        self.declarations["entities"]["light"]["prefix"] = "light.be"
+        self.assertEqual(self.codes(), set())
+
+    def test_device_targets_are_checked_without_assuming_uuid_syntax(self):
+        self.declarations["configuration"]["script"]["wake"]["sequence"][0]["target"][
+            "device_id"
+        ] = "invalid-device-id"
+        self.assertIn("device-missing", self.codes())
+        self.declarations["configuration"]["script"]["wake"]["sequence"][0]["target"][
+            "device_id"
+        ] = "a" * 32
+        self.declarations["configuration"]["media_player"] = [
+            {
+                "platform": "smartthings_soundbar",
+                "name": "Soundbar",
+                "device_id": "vendor-id",
+            }
+        ]
+        self.assertNotIn("device-missing", self.codes())
+
+    def test_malformed_auth_and_registry_records_are_blockers(self):
+        self.write(
+            "auth", {"users": "NEVER_PRINT", "refresh_tokens": {"NEVER_PRINT": True}}
+        )
+        self.write("core.device_registry", {"devices": [{"id": ["NEVER_PRINT"]}]})
+        report = self.audit()
+        self.assertTrue(
+            {"authentication-incomplete", "state-unreadable"} <= self.codes()
+        )
+        self.assertEqual(report["status"], "blocked")
+        self.assertNotIn("NEVER_PRINT", json.dumps(report))
+
+    def test_cli_rejects_malformed_declaration_root_without_traceback(self):
+        declarations = self.root / "declarations.json"
+        declarations.write_text('["NEVER_PRINT"]')
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SOURCE),
+                "--declarations",
+                str(declarations),
+                str(self.config),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("NEVER_PRINT", result.stdout + result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_cli_is_read_only_and_returns_failure_without_leaking_values(self):
         declarations = self.root / "declarations.json"
         declarations.write_text(json.dumps(self.declarations))
         self.write(
             "core.config_entries",
-            {"entries": [{"data": {"url": "http://supervisor/NEVER_PRINT"}}]},
+            {
+                "entries": [
+                    {
+                        "entry_id": "entry",
+                        "domain": "mqtt",
+                        "data": {"url": "http://supervisor/NEVER_PRINT"},
+                    }
+                ]
+            },
         )
         before = {p: p.read_bytes() for p in self.config.rglob("*") if p.is_file()}
         result = subprocess.run(

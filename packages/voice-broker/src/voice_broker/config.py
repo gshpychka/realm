@@ -186,6 +186,9 @@ class HomeAssistantAudio:
     read_only_tools: frozenset[str]
     # Names of exposed tools that do non-home work: their use is no evidence of home work.
     non_home_tools: frozenset[str]
+    # The user's speech over the assistant reaches Home Assistant once GPT-Live reports it; otherwise
+    # all audio while the assistant is audible is dropped as echo.
+    barge_in: bool
     # None: no shadow classification, and no classifier request.
     shadow: RoutingShadow | None = None
 
@@ -356,10 +359,13 @@ def _home_assistant(raw: dict[str, Any]) -> HomeAssistantAudio:
         pipeline=raw["pipeline"],
         read_only_tools=frozenset(raw["read_only_tools"]),
         non_home_tools=frozenset(raw.get("non_home_tools", [])),
+        barge_in=raw["barge_in"],
         shadow=RoutingShadow(_provider(shadow, where), _timeout(shadow, where)) if shadow else None,
     )
     if not home.pipeline:
         raise ValueError("home_assistant needs a pipeline")
+    if not isinstance(home.barge_in, bool):
+        raise ValueError("home_assistant.barge_in must be true or false")
     if overlap := home.read_only_tools & home.non_home_tools:
         raise ValueError(f"tools both read-only and non-home: {', '.join(sorted(overlap))}")
     return home

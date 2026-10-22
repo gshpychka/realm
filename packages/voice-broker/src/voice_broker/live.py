@@ -24,10 +24,10 @@ GPT-Live stays the only voice:
   Home Assistant turns heard but not yet told, in the order they happened.
   Their audio offsets are logged, not compared with GPT-Live's timeline, whose
   time base the API does not document.
-- Whether the user spoke over the assistant, which decides whether Home
-  Assistant hears the audio held meanwhile (assist.py), is judged within
-  GPT-Live's timeline alone: a user transcript fragment against the assistant's
-  own transcript, both stamped on it. No offset between it and the mic is assumed.
+- Whether the user spoke over the assistant is judged within GPT-Live's timeline
+  alone, and goes to Home Assistant's listener (HomeEars.user_heard): a user
+  transcript fragment against the assistant's own transcript, both stamped on it.
+  No offset between it and the mic is assumed.
 """
 
 from __future__ import annotations

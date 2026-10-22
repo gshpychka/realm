@@ -13,7 +13,6 @@
 let
   cfg = config.my.voice-broker;
   openclaw = config.my.openclaw;
-  gw = config.services.openclaw-gateway;
   json = pkgs.formats.json { };
   voicePes = lib.filterAttrs (_: host: host.voiceArea != null) config.my.hosts;
   voicePeIps = map (host: host.lanIp) (lib.attrValues voicePes);
@@ -229,6 +228,11 @@ in
         default = [ ];
         description = "Names of exposed tools whose work is not about the home: their use is no evidence that the speech was a home request.";
       };
+      bargeIn.enable = lib.mkEnableOption ''
+        passing the user's speech over the assistant to Home Assistant once
+        GPT-Live's transcript shows it: the mic audio is held while the
+        assistant is audible and for up to 2 s after it. Otherwise that audio
+        is dropped as echo, speech over the assistant with it'';
       shadow = {
         enable = lib.mkEnableOption ''
           classifying each delegation in parallel mode too, logged beside
@@ -568,6 +572,7 @@ in
           inherit (cfg.homeAssistant) pipeline;
           read_only_tools = cfg.homeAssistant.readOnlyTools;
           non_home_tools = cfg.homeAssistant.nonHomeTools;
+          barge_in = cfg.homeAssistant.bargeIn.enable;
           shadow = lib.mkIf cfg.homeAssistant.shadow.enable (classifierSettings cfg.homeAssistant.shadow);
         };
       })

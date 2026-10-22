@@ -16,6 +16,8 @@ from voice_broker.protocol import MIC_RATE, SPEAKER_RATE
 IDLE_S = 3.0
 # The watchdog's poll interval.
 POLL_S = 0.5
+# What a conversation reads of the config: no cap reached, no recordings.
+CONFIG = SimpleNamespace(idle_timeout_s=IDLE_S, max_conversation_s=600.0, recordings_dir=None)
 
 
 class Clock:
@@ -55,12 +57,12 @@ class Device:
         raise AssertionError("the watchdog read the device")
 
 
-def run_watchdog(make_config, monkeypatch, changes, session=None, setup=None) -> tuple[float, EndReason | None]:
+def run_watchdog(monkeypatch, changes, session=None, setup=None) -> tuple[float, EndReason | None]:
     session = session or Session()
     clock = Clock()
     monkeypatch.setattr(conversation_module, "time", SimpleNamespace(monotonic=clock.monotonic))
     conversation = Conversation(
-        make_config(idle_timeout_s=IDLE_S, max_conversation_s=600.0),
+        CONFIG,
         "test",
         Device(),
         session,
@@ -74,15 +76,15 @@ def run_watchdog(make_config, monkeypatch, changes, session=None, setup=None) ->
     return clock.t, conversation.end_reason
 
 
-def test_the_conversation_ends_3s_after_the_last_activity(make_config, monkeypatch):
+def test_the_conversation_ends_3s_after_the_last_activity(monkeypatch):
     # Activity less than 3 s apart (a reply finished playing, say) keeps it open; the last one, at 4 s, counts.
-    ended, reason = run_watchdog(make_config, monkeypatch, lambda c: [(2.0, c.mark_activity), (4.0, c.mark_activity)])
+    ended, reason = run_watchdog(monkeypatch, lambda c: [(2.0, c.mark_activity), (4.0, c.mark_activity)])
     assert reason == EndReason.IDLE
     # Not at 3 s exactly, by the next poll after it.
     assert 4.0 + IDLE_S < ended <= 4.0 + IDLE_S + POLL_S
 
 
-def test_backend_work_holds_the_conversation_open_past_3s(make_config, monkeypatch):
+def test_backend_work_holds_the_conversation_open_past_3s(monkeypatch):
     session = Session()
     session.busy = True
 
@@ -94,25 +96,25 @@ def test_backend_work_holds_the_conversation_open_past_3s(make_config, monkeypat
 
         return [(20.0, result_told)]
 
-    ended, reason = run_watchdog(make_config, monkeypatch, changes, session)
+    ended, reason = run_watchdog(monkeypatch, changes, session)
     assert reason == EndReason.IDLE
     assert 20.0 + IDLE_S < ended <= 20.0 + IDLE_S + POLL_S
 
 
-def test_speech_still_on_its_way_to_live_holds_the_conversation_open_past_3s(make_config, monkeypatch):
+def test_speech_still_on_its_way_to_live_holds_the_conversation_open_past_3s(monkeypatch):
     session = Session()
     session.hearing = True
 
     def heard() -> None:
         session.hearing = False
 
-    ended, reason = run_watchdog(make_config, monkeypatch, lambda c: [(20.0, heard)], session)
+    ended, reason = run_watchdog(monkeypatch, lambda c: [(20.0, heard)], session)
     assert reason == EndReason.IDLE
     # The watchdog marked activity at its last poll while hearing, just before 20 s.
     assert 20.0 - POLL_S + IDLE_S < ended <= 20.0 + IDLE_S + POLL_S
 
 
-def test_reply_audio_still_queued_holds_the_conversation_open_past_3s(make_config, monkeypatch):
+def test_reply_audio_still_queued_holds_the_conversation_open_past_3s(monkeypatch):
     def queue_reply(c: Conversation) -> None:
         # One loud second, never sent: the device plays nothing, so it stays audible.
         c.play(np.full(SPEAKER_RATE, 8000, dtype=np.int16))
@@ -127,6 +129,6 @@ def test_reply_audio_still_queued_holds_the_conversation_open_past_3s(make_confi
 
         return [(20.0, played_out)]
 
-    ended, reason = run_watchdog(make_config, monkeypatch, changes, setup=queue_reply)
+    ended, reason = run_watchdog(monkeypatch, changes, setup=queue_reply)
     assert reason == EndReason.IDLE
     assert 20.0 + IDLE_S < ended <= 20.0 + IDLE_S + POLL_S

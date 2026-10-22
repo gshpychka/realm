@@ -34,6 +34,24 @@ def targets(value, key):
             yield from targets(child, key)
 
 
+def device_references(value):
+    """Native HA targets and device triggers use registry IDs; vendors do not."""
+    if isinstance(value, dict):
+        target = value.get("target")
+        if isinstance(target, dict):
+            yield from strings(target.get("device_id", []))
+        if (
+            value.get("trigger", value.get("platform")) == "device"
+            or value.get("condition") == "device"
+        ):
+            yield from strings(value.get("device_id", []))
+        for child in value.values():
+            yield from device_references(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from device_references(child)
+
+
 def supervisor_endpoint(value):
     """Recognize add-on DNS names, including host values without a URL scheme."""
     try:
@@ -80,6 +98,18 @@ def audit(config_dir, declarations):
                 isinstance(x, dict) for x in result
             ):
                 raise TypeError
+            required = {
+                "core.config_entries": ("entry_id", "domain"),
+                "core.entity_registry": ("entity_id",),
+                "core.device_registry": ("id",),
+                "core.area_registry": ("id",),
+            }.get(name, ())
+            if any(
+                not isinstance(item.get(key), str) or not item[key]
+                for item in result
+                for key in required
+            ):
+                raise TypeError
             return result
         except (OSError, ValueError, KeyError, TypeError):
             issue(
@@ -92,7 +122,12 @@ def audit(config_dir, declarations):
     devices = storage("core.device_registry", "devices", list)
     areas = storage("core.area_registry", "areas", list)
     auth = storage("auth", None, dict)
-    if not auth.get("users") or not auth.get("refresh_tokens"):
+    if not all(
+        isinstance(auth.get(key), list)
+        and auth[key]
+        and all(isinstance(item, dict) for item in auth[key])
+        for key in ("users", "refresh_tokens")
+    ):
         issue(
             "authentication-incomplete", "Authentication lacks users or refresh tokens."
         )
@@ -112,7 +147,7 @@ def audit(config_dir, declarations):
         if any(supervisor_endpoint(value) for value in strings(entry)):
             issue(
                 "supervisor-endpoint",
-                "A config entry uses Supervisor/add-on DNS. Reconfigure it through HA before cutover.",
+                "A config entry uses Supervisor/add-on DNS. Reconfigure it through HA before accepting the native controller.",
             )
         if entry.get("domain") == "hassio":
             issue(
@@ -136,7 +171,11 @@ def audit(config_dir, declarations):
         e["entry_id"]: e for e in entries if isinstance(e.get("entry_id"), str)
     }
     declared_text = json.dumps(config)
-    references = {e for e in strings(declarations["entities"]) if e in declared_text}
+    references = {
+        e
+        for e in strings(declarations["entities"])
+        if re.search(r"(?<![a-z0-9_])" + re.escape(e) + r"(?![a-z0-9_])", declared_text)
+    }
     references.update(
         e
         for e in targets(config, "entity_id")
@@ -162,9 +201,8 @@ def audit(config_dir, declarations):
             )
 
     known_devices = {d.get("id") for d in devices if isinstance(d.get("id"), str)}
-    for device in sorted(set(targets(config, "device_id"))):
-        # The soundbar's vendor UUID belongs to SmartThings, not HA's registry.
-        if re.fullmatch(r"[0-9a-f]{32}", device) and device not in known_devices:
+    for device in sorted(set(device_references(config))):
+        if device not in known_devices:
             issue(
                 "device-missing",
                 "Referenced HA device is absent from the restored registry.",
@@ -202,6 +240,17 @@ def audit(config_dir, declarations):
                 expected = "scene." + re.sub(
                     r"[^a-z0-9_]+", "_", definition["name"].lower()
                 ).strip("_")
+                reserved = by_entity.get(expected)
+                if (
+                    expected in references
+                    and reserved is not None
+                    and str(reserved.get("unique_id")) != unique_id
+                ):
+                    issue(
+                        "scene-identity-conflict",
+                        "A different restored scene identity reserves the name used by declared callers. Reconcile through HA.",
+                        expected,
+                    )
                 for entity, record in by_entity.items():
                     if (
                         entity.startswith("scene.")
@@ -229,7 +278,9 @@ def audit(config_dir, declarations):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="home-assistant-preflight", description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="home-assistant-preflight", description=__doc__
+    )
     parser.add_argument(
         "config_dir",
         type=Path,
@@ -244,8 +295,10 @@ def main():
     args = parser.parse_args()
     try:
         declarations = json.loads(args.declarations.read_text())
-        if not isinstance(declarations.get("configuration"), dict) or not isinstance(
-            declarations.get("entities"), dict
+        if (
+            not isinstance(declarations, dict)
+            or not isinstance(declarations.get("configuration"), dict)
+            or not isinstance(declarations.get("entities"), dict)
         ):
             raise ValueError
         report = audit(args.config_dir, declarations)

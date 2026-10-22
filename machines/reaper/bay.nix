@@ -1,4 +1,4 @@
-# Bay: disposable VM sessions for coding agents, driven with `bay` (the bay repo's docs/design.md has the design).
+# Bay: disposable VM sessions for coding agents; see packages/bay/docs/design.md.
 #
 # Alerts to ntfy on buoy need a publisher token, not set up yet:
 #   ntfy token generate                                    # tk_..., on any machine with ntfy-sh
@@ -9,7 +9,6 @@
 {
   config,
   lib,
-  inputs,
   ...
 }:
 let
@@ -26,8 +25,6 @@ let
   };
 in
 {
-  imports = [ inputs.bay.nixosModules.default ];
-
   options.my.bay = {
     enable = lib.mkEnableOption "Bay";
   };

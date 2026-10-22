@@ -1,0 +1,13 @@
+<!-- kodi-customize: HDR10+ OSD mode -->
+<variable name="KodiCustomizeHdr10PlusMode">
+	<value condition="!System.GetBool(coreelec.amlogic.dolbyvision.hdr10plus.convert)">Native HDR10+</value>
+	<value condition="System.GetBool(coreelec.amlogic.dolbyvision.hdr10plus.prefer.convert) | ![String.IsEqual(Player.Process(video.source.hdr.type),Dolby Vision) | String.IsEqual(Player.Process(video.source.additional.hdr.type),Dolby Vision)]">HDR10+ → DoVi</value>
+	<value>Original DoVi</value>
+</variable>
+<variable name="KodiCustomizeHdr10PlusStatus">
+	<value condition="!Player.HasVideo">Start playback to select HDR10+ mapping</value>
+	<!-- Use the numeric HDR10+ type (4); + is an operator in skin conditions. -->
+	<value condition="Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)">Playing: $INFO[Player.Process(video.hdr.type)]</value>
+	<value>Playing: $INFO[Player.Process(video.hdr.type)] · HDR10+ not detected</value>
+</variable>
+<!-- kodi-customize: end -->

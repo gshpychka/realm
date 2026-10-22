@@ -22,7 +22,7 @@ mkdir "$STAGE/addons"
 git -C "$STAGE/repo" archive --prefix=script.module.infotagger/ FETCH_HEAD addon.xml icon.png resources |
   tar -C "$STAGE/addons" -xf -
 
-tar -cf - -C "$HERE" kodi-customize.sh kodi-settings-rpc.py skin-overrides snippets -C "$STAGE" addons |
+tar -cf - -C "$HERE" kodi-customize.sh kodi-settings-rpc.py kodi-hdr10plus.py kodi-reload-skin.py skin-overrides snippets -C "$STAGE" addons |
   ssh "$HOST" "rm -rf $REMOTE && mkdir $REMOTE && tar -C $REMOTE -xf -"
 for unit in "${UNITS[@]}"; do
   ssh "$HOST" "cat > /storage/.config/system.d/$unit" <"$HERE/$unit"

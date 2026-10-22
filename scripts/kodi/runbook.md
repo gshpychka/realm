@@ -11,7 +11,7 @@ Kodi overwrites an addon's directory on every update, so `kodi-customize.sh`
 reapplies these at boot and after each Bingie, Bingie Widgets or PKC update:
 
 - Kodi's settings from the table in `kodi-customize.sh`, each with its reason:
-  player-led Dolby Vision tuned for the S95C, HDR10+ played as Dolby Vision,
+  player-led Dolby Vision tuned for the S95C,
   and subtitles at a fixed spot in the bottom letterbox bar, the same in every
   display mode
 - InfoTagger 0.0.9, fetched by `deploy.sh` at its pinned commit, and the pin
@@ -21,6 +21,14 @@ reapplies these at boot and after each Bingie, Bingie Widgets or PKC update:
   Netflix-style PKC skip intro/credits button
 - shows the Dolby Vision profile and HDR10+ from Plex in Bingie's HDR badge,
   e.g. "DV P8.1 · HDR10+" (`snippets/`)
+- adds an **HDR10+ mapping** row at the top of the OSD's **Video settings**,
+  showing the selected mode and actual playback processing type. The row stays
+  visible and explains when HDR10+ is not detected. Hybrid files offer **Native HDR10+**,
+  **Original DoVi**, and **HDR10+ mapped to DoVi**; HDR10+-only files offer the
+  two applicable modes. A change stops and reopens the video at the
+  current position, restoring pause, audio and subtitle selection. The S95C
+  receives player-led DoVi as HDR10. The choice persists in Kodi's settings
+  across boots, deployments and add-on updates
 - keeps an in-progress item's rating, year, HDR badges and plot on screen, with
   the progress bar under them
 - lists files without subtitles in Bingie's widgets, e.g. Continue Watching
@@ -32,10 +40,17 @@ Deploy from eve:
 scripts/kodi/deploy.sh
 ```
 
+Skin edits reload automatically once playback stops; deployments and add-on
+updates leave the current video running. Until then the previous layout stays
+loaded. Kodi's Video settings opens with its usual first setting focused;
+press Up to reach the HDR10+ mapping row above it.
+
 A running Kodi takes setting changes at once; the subtitle position per
 display mode, InfoTagger and the Skin Shortcuts pin land at the next boot
 (`ssh kodi reboot`). The table is the source of truth: a setting changed in
-Kodi's menus goes back to the table's value whenever the script runs. After a
+Kodi's menus goes back to the table's value whenever the script runs. The OSD's
+HDR10+ conversion, dual-format priority and conversion preference are excluded
+from the table so the button's choice survives. After a
 PKC patch change, restart Kodi so PKC loads it
 (`ssh kodi systemctl restart kodi`).
 Library items get new HDR details when PKC next syncs them; to rewrite all of
@@ -52,6 +67,40 @@ CoreELEC renames is logged too: `ssh kodi journalctl -t kodi-customize`.
 To undo: disable both units, delete them and `/storage/.config/kodi-customize`,
 then reinstall Bingie, Bingie Widgets and PKC from their repositories to
 restore the original files. The settings stay until changed in Kodi.
+
+## Follow-up: per-video HDR10+ mapping
+
+The current HDR10+ picker changes CPM's global settings. Make its choice
+persist per video file, like Kodi's other Video settings, through a Kodi
+source patch in `cpm/patches/kodi/` and a rebuild.
+
+Desired behavior:
+
+- Save **Native HDR10+**, **Original DoVi**, or **HDR10+ mapped to DoVi** for
+  each file. Offer **Use global default** to clear the override; HDR10+-only
+  files expose only their applicable modes.
+- Load the saved mode before HDR policy selection and decoder initialization,
+  so replaying or resuming a file starts in the right mode without a second
+  playback start from a background script.
+- Resolve the override for the current player without changing global HDR
+  settings or another video's preference. Files without overrides retain the
+  global default, including existing files after a database migration.
+- Keep the choice and actual processing status in the OSD's Video settings.
+  Changing mode during playback should preserve position, pause state, audio
+  and subtitles if the decoder must reopen.
+
+Implementation scope: extend `CVideoSettings` and its comparison/default
+handling, add database persistence and migration in `CVideoDatabase`, expose
+the mode in `CGUIDialogVideoSettings`, and pass the resolved choice into CPM's
+Amlogic HDR policy before opening the decoder. Replace the global-setting
+writes in `kodi-hdr10plus.py` and the custom skin row with the native setting
+when that support lands. Keep build patches and deployment idempotent in this
+repo.
+
+Verify that two files remember different modes across Kodi restarts, clearing
+an override restores the global default, every applicable mode transition
+works in both directions, and switching between files leaves HDR/SDR colors,
+playback state and unrelated video settings correct.
 
 ## CoreELEC build
 

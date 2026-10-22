@@ -34,7 +34,7 @@ in
           let
             # display a vendor-specific icon for git repos
             generateGitHostIconModule = host: symbol: color: {
-              when = "${pkgs.git}/bin/git config --get remote.origin.url | grep -q ${host}";
+              when = "${lib.getExe pkgs.git} config --get remote.origin.url | grep -q ${host}";
               require_repo = true;
               command = "";
               style = color;
@@ -48,7 +48,7 @@ in
             repo_name = {
               description = "Name of the current git repository";
               command =
-                "basename \"$(${pkgs.git}/bin/git config --get remote.origin.url)\"" + "| sed 's/\\.git$//'";
+                "basename \"$(${lib.getExe pkgs.git} config --get remote.origin.url)\"" + "| sed 's/\\.git$//'";
               # no space after
               format = "[$symbol($output)]($style)";
               when = true;
@@ -57,7 +57,7 @@ in
             git_directory = {
               description = "directory relative to the root of the git repo";
               # strip the last slash
-              command = "${pkgs.git}/bin/git rev-parse --show-prefix | sed 's:/*$::'";
+              command = "${lib.getExe pkgs.git} rev-parse --show-prefix | sed 's:/*$::'";
               when = true;
               require_repo = true;
               format = "[$symbol($output) ]($style)";
@@ -138,10 +138,10 @@ in
     programs.fzf = {
       enable = true;
       fileWidget = {
-        command = "${pkgs.fd}/bin/fd --type f --strip-cwd-prefix";
+        command = "${lib.getExe pkgs.fd} --type f --strip-cwd-prefix";
       };
       changeDirWidget = {
-        command = "${pkgs.fd}/bin/fd --type d --strip-cwd-prefix";
+        command = "${lib.getExe pkgs.fd} --type d --strip-cwd-prefix";
       };
       defaultOptions = [
         "--border sharp"
@@ -180,6 +180,8 @@ in
         append = true;
         share = false;
       };
+      # write each command to HISTFILE as it runs
+      setOptions = [ "INC_APPEND_HISTORY" ];
       historySubstringSearch = {
         enable = true;
       };
@@ -196,8 +198,11 @@ in
         })
       ];
 
-      initContent = ''
+      initContent = /* bash */ ''
         bindkey '^E' autosuggest-accept
+
+        # wait 10ms (default 400ms) for the rest of a multi-key sequence
+        KEYTIMEOUT=1
 
         # delete past insert start in insert mode
         bindkey -M viins '^?' backward-delete-char # If Backspace sends DEL (127)
@@ -212,6 +217,19 @@ in
         }
         zle -N zle-keymap-select _set_vi_cursor_shape
         zle -N zle-line-init _set_vi_cursor_shape
+
+        # A remote program whose SSH connection drops leaves the input modes it
+        # enabled active in the local terminal. After ssh exits, this turns off
+        # X10/normal/button/any-event mouse tracking and SGR mouse encoding,
+        # resets xterm modifyOtherKeys, and sets the kitty keyboard protocol
+        # flags to 0.
+        ssh() {
+          command ssh "$@"
+          local rc=$?
+          # /dev/tty keeps the sequences out of redirected output
+          print -n '\e[?9l\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[>4m\e[=0;1u' 2>/dev/null >/dev/tty
+          return $rc
+        }
 
         function cd() {
           builtin cd "$@" && ls
@@ -245,44 +263,23 @@ in
         # - empty buffer: fuzzy search all history
         # - with text: find only commands that start with the text, then fuzzy search among them
         fzf-history-widget-custom() {
-          local selected
-          
-          if [[ -z "$BUFFER" ]]; then
-            # empty command line - default(-ish) behavior
-            selected=$(
-              fc -rl 1 |
-              ${pkgs.gawk}/bin/awk '
-                {
-                  # remove line number
-                  $1="";
-                  # print without leading space
-                  print substr($0,2)
-                }' |
-              ${pkgs.fzf}/bin/fzf --tac --no-sort
-            )
-          else
-            # command line has text - filter by prefix before fuzzy search
-            local prefix="$BUFFER"
-            
-            selected=$(
-              fc -rl 1 |
-              ${pkgs.gawk}/bin/awk -v prefix="$prefix" '
-                {
-                  # remove line number
-                  $1="";
-                  # get command without leading space
-                  line=substr($0,2);
-                  # print if starts with prefix
-                  if (substr(line,1,length(prefix))==prefix) 
-                    print line
-                }' |
-              ${pkgs.fzf}/bin/fzf \
-                  --tac \
-                  --no-sort \
-                  --query=''${prefix#* }
-            )
+          local selected query
+          # $history holds full command text, newest first; (u) keeps the
+          # newest occurrence of each command
+          local -a lines=("''${(@u)history}")
+
+          if [[ -n "$BUFFER" ]]; then
+            # (b) escapes glob characters so the buffer matches literally
+            lines=("''${(@M)lines:#''${(b)BUFFER}*}")
+            query=''${BUFFER#* }
           fi
-          
+
+          # NUL-separated so multi-line commands stay one entry
+          selected=$(
+            print -rN -- "''${lines[@]}" |
+            ${lib.getExe pkgs.fzf} --read0 --no-sort --query="$query"
+          )
+
           # update command line with selection, if any
           if [[ -n "$selected" ]]; then
             # replace command line

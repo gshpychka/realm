@@ -9,7 +9,7 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
 - `modules/system/` - System-level modules, split into `common/`, `darwin/`, and `nixos/`
 - `modules/home-manager/` - home-manager configs (neovim, zsh, tmux, git, and other user tooling)
 - `overlays/` - Package overlays
-- `packages/` - Custom package definitions
+- `packages/` - Custom package definitions and application source: `pituitary/` (Bun workspace for the pi frontend) and `bay/` (Go module for isolated VM sessions, including its guest image)
 - `secrets/` - SOPS encrypted secrets
 - `tests/` - NixOS VM tests, exposed as flake checks
 - `infra/` - Cloud infrastructure: Terraform units (GCP VM for buoy, Cloudflare DNS and tunnels), the bootstrap GCE image under `infra/nixos/`, and the `link-sanitizer/` Alchemy stack (Telegram bot on AWS Lambda)
@@ -44,6 +44,8 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
     - Build with `nix build .#iso`; SSH into the booted installer via `ssh nixos@iso`
 
 ## Notes
+- Pituitary and Bay are maintained here; do not restore their former flake inputs. Their public modules are `modules/home-manager/pituitary.nix` and `modules/system/nixos/bay.nix`.
+- Use `nix develop .#pituitary` and `cd packages/pituitary && just loop` for its complete development loop. Bay's `nix build .#bay` runs its Go tests; `.#checks.x86_64-linux.bay-vm` exercises nested VMs and needs KVM.
 - Nix only sees files that are tracked by git - run `git add` after creating new files before checking config
 - Check config after making non-trivial changes: `nix flake check --all-systems --no-build`
 - Perform a full build if on the relevant machine: `nix flake check`

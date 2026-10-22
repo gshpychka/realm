@@ -25,6 +25,7 @@ in
       escapeTime = 0;
       historyLimit = 1000000;
       keyMode = "vi";
+      focusEvents = true;
       disableConfirmationPrompt = true;
       # would be cooler to use "tmux-direct" but zsh can't handle it
       # we still get 16M colors via config

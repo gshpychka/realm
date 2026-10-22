@@ -69,8 +69,15 @@ and `/mnt/boot/firmware`, install with:
 sudo nixos-install --flake .#home-assistant --no-root-passwd
 ```
 
+Before first boot of the installed system, stage the preserved state and native
+credentials described below. Keep the old controller stopped while the new
+controller is running.
+
 Use an ARM builder or configured remote ARM builder for ARM outputs. The image
 build and installation do not establish the physical acceptance gates above.
+The OCI service pulls the digest-pinned Matter image at runtime; the Nix system
+build does not fetch or test that image. Verify registry access and the ARM image
+pull before relying on the first boot.
 
 ## Private snapshot preflight
 
@@ -105,6 +112,9 @@ silently waive it.
    HA and the relevant app controllers for consistent capture. Keep a tested,
    encrypted recovery backup, and preserve the original media. Never run two
    controllers against the same Zigbee/Matter devices.
+   The initial cutover should use the same Core version. If live HA has advanced
+   beyond the declared pin, update and validate the pin before importing state;
+   do not open newer state with an older Core.
 2. Copy the complete HA directory to `/var/lib/hass`, preserving hidden files,
    authentication, registries, integration entries, dashboards, Assist pipelines,
    recorder DB/WAL files and writable Pyscript journal. Assign its files to the
@@ -132,12 +142,28 @@ silently waive it.
    need an upstream-supported state migration and a tested recovery path.
    Matter.js [documents its Python-server import format](https://github.com/matter-js/matterjs-server/blob/v1.4.0/docs/cli.md#storage-format);
    importing requires the complete old `/data`, not just an HA integration entry.
-6. Replace Supervisor-only config-flow connections through HA's reconfiguration
-   or options UI, preserving entry/device IDs. The declared endpoints are MQTT
+6. Replace Supervisor-only config-flow connections through HA. The endpoints are MQTT
    `127.0.0.1:1883`, Matter `ws://127.0.0.1:5580/ws`, and Glances
    `127.0.0.1:61208`; check the fields expected by each integration. Remove the
-   obsolete Supervisor integration. HA's Bluetooth stack provides the configured
-   Matter BLE proxy. Review native callback URLs and OAuth reauthentication.
+   obsolete Supervisor integration. Some flows validate their connection, so
+   endpoint changes may need a controlled first start with the old controller
+   stopped. Record preflight blockers beforehand, reconfigure through the native
+   HA UI, then recapture and re-audit the private state before acceptance. Do not
+   rewrite `.storage` behind a running controller. HA's Bluetooth stack provides
+   the configured Matter BLE proxy. Review native callback URLs and OAuth
+   reauthentication. Review persisted absolute HAOS paths such as `/config` and
+   remap them to `/var/lib/hass` through the integration's supported settings.
+
+   The pinned Core's flows have different identity behavior:
+
+   | Integration | Supported endpoint change | Identity consequence |
+   | --- | --- | --- |
+   | MQTT | Open the existing entry's Reconfigure flow and change the broker/native credentials | Updates the existing entry in place ([source](https://github.com/home-assistant/core/blob/2026.10.2/homeassistant/components/mqtt/config_flow.py#L4367)) |
+   | Matter | Add Integration → Matter, choose the manual server URL and validate the native endpoint; do not delete the imported entry | The setup flow updates/reloads the existing first entry and clears add-on flags; preserving fabric/node IDs still requires compatible server state ([source](https://github.com/home-assistant/core/blob/2026.10.2/homeassistant/components/matter/config_flow.py#L321)) |
+   | Glances | Record existing references, remove/re-add the entry against the native endpoint, then reconcile names and callers | There is no host reconfigure/options flow, and sensor/device identities include the new entry ID ([flow](https://github.com/home-assistant/core/blob/2026.10.2/homeassistant/components/glances/config_flow.py), [identities](https://github.com/home-assistant/core/blob/2026.10.2/homeassistant/components/glances/sensor.py#L349)) |
+
+   Preserve dashboard/history references during the Glances change; merely copying
+   its registry does not make a replacement entry retain those identities.
 
 The host extends UDP connection tracking to 3,600 seconds, as
 [recommended by the pinned Matter server](https://github.com/matter-js/matterjs-server/blob/v1.4.0/docs/os_requirements.md#stateful-firewalls-host-vm-hypervisor).
@@ -159,7 +185,7 @@ as Nix inputs. The service units intentionally fail if required files are absent
 | Runtime file | Required content |
 | --- | --- |
 | `secrets.yaml` | `soundbar_api_key` and complete private `yasno_address_guard` app configuration, including its journal path/entity bindings |
-| `ha-mcp.env` | Standalone HA admin token, secret MCP path and settings expected by the packaged server; Supervisor authority cannot substitute for a native HA token |
+| `ha-mcp.env` | `HOMEASSISTANT_TOKEN` and `MCP_SECRET_PATH` for the packaged server; Supervisor authority cannot substitute for a native HA token |
 | `mosquitto-passwords` | Mosquitto-compatible hashes for HA **and every MQTT client**; replace Supervisor-authenticated clients |
 | `restic-repository`, `restic-password`, `restic-environment` | Repository/destination authentication; initialize the repository separately and test a restore |
 

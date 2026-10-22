@@ -1,0 +1,78 @@
+# Every recipe assumes Realm's pituitary dev shell (`nix develop ../..#pituitary`).
+
+default: loop
+
+# One autonomous iteration: every gate, plus screens to read.
+loop:
+    @bash scripts/loop.sh
+
+install:
+    bun install
+
+typecheck:
+    tsc -p .
+
+lint:
+    biome check .
+
+fmt:
+    biome check --write .
+
+# Build the package exported by Realm.
+package:
+    nix build ../..#pituitary --no-link
+
+# Build a home with every Pituitary option configured and inspect its wrapper.
+module:
+    nix build ../..#checks.$(nix eval --impure --raw --expr builtins.currentSystem).pituitary-home-manager --no-link
+
+# Reducer, framing, pacing, and transport, against the scripted agent.
+unit:
+    bun test packages/
+
+# The UI in a headless PTY, driven through tui-test.
+e2e:
+    node --test --test-reporter=spec "e2e/**/*.test.ts"
+
+# Key-to-screen latency and rendering speed, one file at a time; figures land in artifacts/perf.
+perf:
+    node --test --test-concurrency=1 --test-reporter=spec "e2e/**/*.perf.ts"
+
+# Operate a live UI session step by step: just tui start --scenario tool, just tui submit hi, just tui screen --style
+[positional-arguments]
+tui *args:
+    @node scripts/tui.ts "$@"
+
+# Refresh artifacts/screens without asserting, for looking at the UI.
+screens:
+    node --test "e2e/**/*.test.ts" > /dev/null 2>&1 || true
+    @for f in artifacts/screens/*.txt; do printf '\n════ %s ════\n' "$(basename "$f" .txt)"; cat "$f"; done
+
+# The UI against the scripted agent, in this terminal.
+run scenario="hello" delay="25":
+    PI_AGENT_CMD=bun PI_AGENT_ARGS={{justfile_directory()}}/packages/fake-pi/src/main.ts \
+    FAKE_PI_SCENARIO={{scenario}} FAKE_PI_DELAY_MS={{delay}} \
+    PITUITARY_LOG={{justfile_directory()}}/artifacts/tui.log \
+    bun packages/tui/src/main.tsx
+
+# The UI against the real pi CLI. Needs a provider credential in the environment.
+live *args:
+    PI_AGENT_CMD={{justfile_directory()}}/node_modules/.bin/pi \
+    PI_AGENT_ARGS="{{args}}" \
+    PITUITARY_LOG={{justfile_directory()}}/artifacts/tui.log \
+    bun packages/tui/src/main.tsx
+
+clean:
+    rm -rf artifacts .tmp
+
+# Every fire primitive in this terminal: just ember <tiles|row1|row2|columns>
+ember view="tiles":
+    EMBER_VIEW={{view}} bun packages/ember/showcase/main.tsx
+
+# The showcase recordings: asciinema casts, GIFs, and stills in artifacts/demo. just demo [work vim …]
+demo *scenes:
+    node scripts/demo/record.ts {{scenes}}
+
+# Rasterise the e2e screen captures.
+png:
+    @bash scripts/rasterise.sh artifacts/screens

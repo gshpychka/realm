@@ -52,13 +52,8 @@ coreelec.amlogic.dolbyvision.vsvdb.payload "4903885698A953"
 # 1230 and MaxFALL 234.
 coreelec.amlogic.dolbyvision.hdr.inject true
 coreelec.amlogic.dolbyvision.hdr.payload "3421AA9B9619FC08488A0839133D4240B0040100CE04EA00"
-# Dolby Vision has priority: for files carrying both, the S95C shows the box's
-# Dolby Vision output brighter than its own HDR10+ processing.
-coreelec.amlogic.dolbyvision.dual.priority 0
-# Files with HDR10+ alone play as Dolby Vision built from their HDR10+
-# metadata; files carrying both play their own Dolby Vision.
-coreelec.amlogic.dolbyvision.hdr10plus.convert true
-coreelec.amlogic.dolbyvision.hdr10plus.prefer.convert false
+# HDR10+ conversion, dual-format priority and conversion preference belong to
+# the OSD button (kodi-hdr10plus.py), so boot/update runs preserve the choice.
 # Subtitles sit at a fixed spot (manual alignment, 0) near the bottom of the
 # screen. Almost every film in the library has its letterbox bars baked into a
 # 16:9 frame, so Kodi's "bottom of video, outside" places them over the
@@ -217,6 +212,61 @@ bingie_hdr() {
   if sed -n "$range p" "$file" | grep -q '<textwidth>160</textwidth>'; then
     sed -i "$range s#<textwidth>160</textwidth>#<textwidth>320</textwidth>#" "$file"
     log "Bingie HDR badge widened"
+    reload_skin=1
+  fi
+}
+
+# Remove an obsolete marked snippet without touching the surrounding skin.
+remove_block() {
+  file=$1 marker=$2
+  grep -qF "$marker" "$file" || return 0
+  if ! awk -v marker="$marker" '
+    index($0, marker) { inblock = 1 }
+    inblock { if (/kodi-customize: end/) inblock = 0; next }
+    { print }
+    END { exit inblock ? 2 : 0 }
+  ' "$file" >"$file.tmp.$$"; then
+    rm -f "$file.tmp.$$"
+    log "block in $file has no end marker, left untouched; restore the addon's file"
+    status=1
+    return 0
+  fi
+  mv "$file.tmp.$$" "$file"
+  log "removed obsolete HDR10+ OSD block from $file"
+  reload_skin=1
+}
+
+# DialogSettings.xml is shared by video, audio and other settings dialogs.
+# Put our row outside Kodi's generated list (id 5), which Kodi clears and
+# rebuilds, and show it only in Video settings. Up/down at the list's ends
+# reaches the row; other dialogs retain their navigation.
+bingie_hdr10plus_osd() {
+  for marker in \
+    '<!-- kodi-customize: HDR10+ OSD button -->' \
+    '<!-- kodi-customize: HDR10+ classic OSD -->' \
+    '<!-- kodi-customize: HDR10+ Bingie OSD -->'; do
+    remove_block "$SKIN/IncludesOSD.xml" "$marker"
+  done
+  for spec in \
+    'IncludesVariables.xml|<variable name="VideoHDRVar">|bingie-hdr10plus-variables.xml' \
+    'DialogSettings.xml|<!-- templates -->|bingie-hdr10plus-settings.xml'; do
+    file=${spec%%|*}
+    rest=${spec#*|}
+    anchor=${rest%%|*}
+    snippet=${rest#*|}
+    if insert_before "$SKIN/$file" "$anchor" "$HERE/snippets/$snippet"; then
+      log "HDR10+ OSD patched in $file ($snippet)"
+      reload_skin=1
+    fi
+  done
+  file="$SKIN/DialogSettings.xml"
+  range='/<control type="grouplist" id="5">/,/<\/control>/'
+  if sed -n "$range p" "$file" | grep -qE '<on(up|down)>5</on(up|down)>'; then
+    sed -i \
+      -e "$range s#<onup>5</onup>#<onup condition=\"Window.IsActive(osdvideosettings)\">1090</onup><onup condition=\"!Window.IsActive(osdvideosettings)\">5</onup>#" \
+      -e "$range s#<ondown>5</ondown>#<ondown condition=\"Window.IsActive(osdvideosettings)\">1090</ondown><ondown condition=\"!Window.IsActive(osdvideosettings)\">5</ondown>#" \
+      "$file"
+    log "HDR10+ Video settings navigation patched"
     reload_skin=1
   fi
 }
@@ -402,11 +452,12 @@ fi
 if [ -d "$SKIN" ]; then
   hide_profile
   bingie_hdr
+  bingie_hdr10plus_osd
   bingie_progress
   install_overrides
 fi
 
 if [ "$reload_skin" = 1 ] && systemctl -q is-active kodi.service; then
-  kodi-send --action="ReloadSkin()" >/dev/null
+  kodi-send --action="RunScript($HERE/kodi-reload-skin.py)" >/dev/null
 fi
 exit "$status"

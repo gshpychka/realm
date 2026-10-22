@@ -1,0 +1,94 @@
+package wire_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/gshpychka/realm/packages/bay/internal/fault"
+	"github.com/gshpychka/realm/packages/bay/internal/wire"
+)
+
+var kinds = []error{fault.NotFound, fault.Conflict, fault.Invalid, fault.Forbidden}
+
+func TestFailGivesEachFaultKindItsStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"not found", fmt.Errorf("%w: thread 7", fault.NotFound), http.StatusNotFound},
+		{"conflict", fmt.Errorf("%w: session is busy", fault.Conflict), http.StatusConflict},
+		{"invalid", fmt.Errorf("%w: no body", fault.Invalid), http.StatusBadRequest},
+		{"forbidden", fmt.Errorf("%w: unknown caller", fault.Forbidden), http.StatusForbidden},
+		{"a kind wrapped by a plain error", fmt.Errorf("send: %w", fmt.Errorf("%w: thread 7", fault.NotFound)), http.StatusNotFound},
+		{"an error without a kind", errors.New("write messages.db: input/output error"), http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			wire.Fail(rec, tt.err)
+			if rec.Code != tt.status {
+				t.Errorf("status = %d, want %d", rec.Code, tt.status)
+			}
+			if !strings.Contains(rec.Body.String(), tt.err.Error()) {
+				t.Errorf("body %q does not carry the error text %q", rec.Body.String(), tt.err)
+			}
+		})
+	}
+}
+
+// server answers every request by failing with err.
+func server(t *testing.T, err error) wire.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { wire.Fail(w, err) }))
+	t.Cleanup(srv.Close)
+	return wire.Client{HTTP: srv.Client(), Base: srv.URL}
+}
+
+func TestClientReturnsFailuresAsTheirFaultKind(t *testing.T) {
+	for _, want := range kinds {
+		t.Run(want.Error(), func(t *testing.T) {
+			sent := fmt.Errorf("%w: detail", want)
+			err := server(t, sent).Do(context.Background(), http.MethodGet, "/", nil, nil)
+			if fault.Kind(err) != want {
+				t.Fatalf("Do returned %v, want fault kind %v", err, want)
+			}
+			if err.Error() != sent.Error() {
+				t.Errorf("Do returned the text %q, want %q", err, sent)
+			}
+		})
+	}
+}
+
+func TestClientReturnsOtherFailuresWithoutAKind(t *testing.T) {
+	err := server(t, errors.New("disk gone")).Do(context.Background(), http.MethodGet, "/", nil, nil)
+	if err == nil || err.Error() != "disk gone" || fault.Kind(err) != nil {
+		t.Errorf("Do returned %v (kind %v), want the text of a failure without a kind", err, fault.Kind(err))
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "<html>upstream down</html>", http.StatusBadGateway)
+	}))
+	t.Cleanup(srv.Close)
+	err = wire.Client{HTTP: srv.Client(), Base: srv.URL}.Do(context.Background(), http.MethodGet, "/", nil, nil)
+	if err == nil || err.Error() != "502 Bad Gateway" || fault.Kind(err) != nil {
+		t.Errorf("Do returned %v (kind %v), want the status of a reply that is no failure message", err, fault.Kind(err))
+	}
+}
+
+func TestReadRejectsUnknownFields(t *testing.T) {
+	var in struct{ Name string }
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"a","extra":1}`))
+	if err := wire.Read(req, &in); !errors.Is(err, fault.Invalid) {
+		t.Errorf("Read returned %v, want fault.Invalid", err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"name":"a"}`))
+	if err := wire.Read(req, &in); err != nil || in.Name != "a" {
+		t.Errorf("Read returned %v with %+v", err, in)
+	}
+}

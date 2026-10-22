@@ -3,15 +3,12 @@
   lib,
   pkgs,
   osConfig,
-  inputs,
   ...
 }:
 let
   cfg = config.my.pi;
 in
 {
-  imports = [ inputs.pituitary.homeManagerModules.default ];
-
   options.my.pi = {
     enable = lib.mkEnableOption "pi coding agent";
     pituitary.enable = lib.mkEnableOption "pituitary, the OpenTUI frontend for pi";

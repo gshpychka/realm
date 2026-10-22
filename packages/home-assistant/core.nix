@@ -8,8 +8,24 @@ let
   core = home-assistant.override {
     inherit extraComponents;
     packageOverrides = ps: previous: {
+      # tqdm has no runtime dependencies. Its optional-feature tests pull Dask
+      # into this scope; reuse the tested native package with the same runtime.
+      tqdm =
+        let
+          native = pkgs.python314Packages.tqdm;
+        in
+        assert previous.tqdm.version == native.version;
+        assert toString previous.tqdm.src == toString native.src;
+        assert map toString (previous.tqdm.patches or [ ]) == map toString (native.patches or [ ]);
+        assert (previous.tqdm.postPatch or "") == (native.postPatch or "");
+        assert previous.tqdm.pythonModule.drvPath == native.pythonModule.drvPath;
+        assert (previous.tqdm.dependencies or [ ]) == [ ];
+        native;
       pymodbus = ps.callPackage ./core-dependencies/pymodbus { inherit (previous) pymodbus; };
       zigpy = ps.callPackage ./core-dependencies/zigpy { inherit (previous) zigpy; };
+      python-overseerr = ps.callPackage ./core-dependencies/python-overseerr {
+        inherit (previous) python-overseerr;
+      };
       # Core 2026.10.2 selects these aio-libs versions and frontend wheel.
       yarl = previous.yarl.overridePythonAttrs (
         finalAttrs: _previous: {
@@ -34,7 +50,7 @@ let
         }
       );
       aiohttp = previous.aiohttp.overridePythonAttrs (
-        finalAttrs: _previous: {
+        finalAttrs: previousAttrs: {
           version = "3.14.5";
           src = pkgs.fetchFromGitHub {
             owner = "aio-libs";
@@ -42,6 +58,11 @@ let
             tag = "v${finalAttrs.version}";
             hash = "sha256-gSxqab8AYJ6PsMP1PYWUxQ8TJ9KtEehoekLD8ziBt+g=";
           };
+          # 3.14.5 already includes both WebSocket Cython annotation fixes.
+          # The nixpkgs backport targets 3.14.3 and cannot be applied again.
+          patches = pkgs.lib.filter (
+            patch: !(pkgs.lib.hasSuffix "cython-3.3.0-compat.patch" (toString patch))
+          ) (previousAttrs.patches or [ ]);
           # The pinned release stores its pytest options in pytest.ini.
           postPatch = ''
             rm -r vendor
@@ -51,6 +72,10 @@ let
               --replace-fail "cythonize: .install-cython" "cythonize:"
             substituteInPlace pytest.ini \
               --replace-fail "ignore:Couldn't import C tracer:coverage.exceptions.CoverageWarning" ""
+            # This newer constant has the same Cython 3.3 conflict with its
+            # unsigned-int declaration in reader_c.pxd. Let the .pxd own the type.
+            substituteInPlace aiohttp/_websocket/reader_py.py \
+              --replace-fail "MSG_SIZE_OVERHEAD: Final[int] = 128" "MSG_SIZE_OVERHEAD = 128"
           '';
         }
       );

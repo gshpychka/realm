@@ -46,15 +46,6 @@
       # not following our nixpkgs: more cache hits that way
       url = "github:numtide/llm-agents.nix";
     };
-    pituitary = {
-      url = "git+ssh://git@github.com/gshpychka/pituitary";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.home-manager.follows = "home-manager";
-    };
-    bay = {
-      url = "git+ssh://git@github.com/gshpychka/bay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     nix-openclaw = {
       # not following our nixpkgs: its pinned pnpm dependency hashes are
       # computed against its own nixpkgs
@@ -103,7 +94,7 @@
         "x86_64-linux"
         "aarch64-linux"
       ];
-      # every system the fleet spans
+      # Every platform supported by the fleet's nixpkgs toolchain.
       systems = linuxSystems ++ [ "aarch64-darwin" ];
       # formatter packages shared by `nix fmt` and the treefmt check
       treefmtTools =
@@ -115,7 +106,22 @@
           taplo
           ruff
           biome
+          go
         ];
+      projectPackages = lib.genAttrs systems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          bay = pkgs.callPackage ./packages/bay { };
+        in
+        {
+          pituitary = pkgs.callPackage ./packages/pituitary { };
+        }
+        // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          inherit bay;
+          inherit (bay) flare;
+        }
+      );
     in
     {
       darwinConfigurations.eve = darwin.lib.darwinSystem {
@@ -203,49 +209,60 @@
         ];
       };
 
-      # expose the ISO for easy building: `nix build .#iso`
-      packages.x86_64-linux.iso = self.nixosConfigurations.iso.config.system.build.isoImage;
-
       legacyPackages = lib.genAttrs linuxSystems (system: {
         homeAssistant = nixpkgs.legacyPackages.${system}.callPackage ./packages/home-assistant { };
       });
 
-      # A separate SD installer boots without touching HA's existing NVMe disk.
-      # Keep it on the same Pi firmware/kernel input as the installed machine.
-      packages.aarch64-linux.home-assistant-installer =
-        (inputs.nixos-raspberrypi.nixosConfigurations.rpi5-installer.extendModules {
-          modules = [
-            ./modules/common
-            (
-              { config, lib, ... }:
-              {
-                networking.hostName = "home-assistant-installer";
-                boot.zfs.forceImportRoot = false;
-                users.users.root.openssh.authorizedKeys.keys = [ config.my.sshKeys.main ];
-                services.openssh.settings = {
-                  PasswordAuthentication = lib.mkForce false;
-                  KbdInteractiveAuthentication = lib.mkForce false;
-                  PermitRootLogin = lib.mkForce "prohibit-password";
-                };
-              }
-            )
-          ];
-        }).config.system.build.sdImage;
+      packages = lib.recursiveUpdate projectPackages {
+        x86_64-linux = {
+          iso = self.nixosConfigurations.iso.config.system.build.isoImage;
+          voice-pe-firmware = import ./scripts/voice-pe/firmware.nix {
+            pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          };
+          gce-image =
+            let
+              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              original = self.nixosConfigurations.buoy-bootstrap.config.system.build.googleComputeImage;
+            in
+            pkgs.runCommand "gce-image.raw.tar.gz" { inherit original; } ''
+              cp $original/*.raw.tar.gz $out
+            '';
+        };
+        # A separate SD installer boots without touching HA's existing NVMe disk.
+        # Keep it on the same Pi firmware/kernel input as the installed machine.
+        aarch64-linux.home-assistant-installer =
+          (inputs.nixos-raspberrypi.nixosConfigurations.rpi5-installer.extendModules {
+            modules = [
+              ./modules/common
+              (
+                { config, lib, ... }:
+                {
+                  networking.hostName = "home-assistant-installer";
+                  boot.zfs.forceImportRoot = false;
+                  users.users.root.openssh.authorizedKeys.keys = [ config.my.sshKeys.main ];
+                  services.openssh.settings = {
+                    PasswordAuthentication = lib.mkForce false;
+                    KbdInteractiveAuthentication = lib.mkForce false;
+                    PermitRootLogin = lib.mkForce "prohibit-password";
+                  };
+                }
+              )
+            ];
+          }).config.system.build.sdImage;
 
-      packages.x86_64-linux.voice-pe-firmware = import ./scripts/voice-pe/firmware.nix {
-        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        aarch64-linux.harbor-sd-image =
+          (self.nixosConfigurations.harbor.extendModules {
+            modules = [
+              "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
+              # harbor's root is ext4; the image does not need ZFS imports
+              { boot.zfs.forceImportRoot = false; }
+            ];
+          }).config.system.build.sdImage;
       };
 
-      # bootable SD image for harbor: `nix build .#harbor-sd-image`
-      packages.aarch64-linux.harbor-sd-image =
-        (self.nixosConfigurations.harbor.extendModules {
-          modules = [
-            "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
-            # the sd-image module pulls in zfs support; harbor's root is ext4,
-            # so opt into false, the default from nixpkgs 26.11 on
-            { boot.zfs.forceImportRoot = false; }
-          ];
-        }).config.system.build.sdImage;
+      homeManagerModules.pituitary = ./modules/home-manager/pituitary.nix;
+      nixosModules.bay = ./modules/system/nixos/bay.nix;
+      lib.bayGuestImage = import ./packages/bay/image.nix;
 
       # Minimal bootstrap NixOS config for GCE image
       # Full config is deployed separately via nixos-rebuild
@@ -253,16 +270,6 @@
         system = "x86_64-linux";
         modules = [ ./infra/nixos/configuration.nix ];
       };
-
-      # GCE image for buoy VPS: `nix build .#gce-image`
-      packages.x86_64-linux.gce-image =
-        let
-          pkgs = nixpkgs.legacyPackages.x86_64-linux;
-          original = self.nixosConfigurations.buoy-bootstrap.config.system.build.googleComputeImage;
-        in
-        pkgs.runCommand "gce-image.raw.tar.gz" { inherit original; } ''
-          cp $original/*.raw.tar.gz $out
-        '';
 
       # One check per machine, grouped by system and derived from the config
       # sets, so new machines are covered automatically.
@@ -290,6 +297,9 @@
               bun2nix = inputs.bun2nix.packages.${system}.default;
             in
             {
+              pituitary-home-manager = import ./tests/pituitary-home-manager.nix {
+                inherit pkgs home-manager;
+              };
               statix = pkgs.runCommand "check-statix" { nativeBuildInputs = [ pkgs.statix ]; } ''
                 statix check ${self} -c ${self}
                 touch $out
@@ -366,6 +376,19 @@
           {
             aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
             x86_64-linux = {
+              inherit (projectPackages.x86_64-linux) bay flare;
+              bay-vm = import ./tests/bay.nix {
+                inherit inputs;
+                pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              };
+              bay-shellcheck =
+                let
+                  pkgs = nixpkgs.legacyPackages.x86_64-linux;
+                in
+                pkgs.runCommand "check-bay-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
+                  shellcheck --shell=bash ${./packages/bay/bay-session.sh}
+                  touch $out
+                '';
               iso = self.nixosConfigurations.iso.config.system.build.isoImage;
               nixos-switch = import ./tests/nixos-switch.nix {
                 inherit inputs;
@@ -400,15 +423,10 @@
           };
         in
         {
-          ${if pkgs.stdenv.hostPlatform.isLinux then "update-home-assistant" else null} = {
+          pituitary = {
             type = "app";
-            program = lib.getExe updateHomeAssistant;
-            inherit (updateHomeAssistant) meta;
-          };
-          ${if pkgs.stdenv.hostPlatform.isLinux then "home-assistant-preflight" else null} = {
-            type = "app";
-            program = lib.getExe homeAssistantPreflight;
-            inherit (homeAssistantPreflight) meta;
+            program = lib.getExe projectPackages.${system}.pituitary;
+            inherit (projectPackages.${system}.pituitary) meta;
           };
           update-pi-packages = {
             type = "app";
@@ -426,6 +444,28 @@
             inherit (flashVoicePe) meta;
           };
         }
+        // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          update-home-assistant = {
+            type = "app";
+            program = lib.getExe updateHomeAssistant;
+            inherit (updateHomeAssistant) meta;
+          };
+          home-assistant-preflight = {
+            type = "app";
+            program = lib.getExe homeAssistantPreflight;
+            inherit (homeAssistantPreflight) meta;
+          };
+          bay = {
+            type = "app";
+            program = lib.getExe projectPackages.${system}.bay;
+            inherit (projectPackages.${system}.bay) meta;
+          };
+          flare = {
+            type = "app";
+            program = lib.getExe projectPackages.${system}.flare;
+            inherit (projectPackages.${system}.flare) meta;
+          };
+        }
       );
 
       devShells =
@@ -437,6 +477,7 @@
               piExtensionTypes = pkgs.callPackage ./packages/pi-extension-types.nix { };
             in
             {
+              pituitary = import ./packages/pituitary/shell.nix { inherit pkgs; };
               default = pkgs.mkShell {
                 buildInputs = [
                   pkgs.nixd
@@ -458,6 +499,9 @@
                 inherit nixpkgs system;
                 inherit (inputs) bun2nix;
               };
+            }
+            // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+              bay = import ./packages/bay/shell.nix { inherit pkgs; };
             };
         in
         lib.genAttrs systems mkShell;

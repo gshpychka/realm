@@ -107,6 +107,7 @@ class Broker:
             state.device.home_assistant_device_id,
             ToolPolicy(home.read_only_tools, home.non_home_tools),
             state.home_runs,
+            barge_in=home.barge_in,
         )
         observe = self._openclaw.observe if self._config.openclaw.observer_session_key else None
         return Parallel(listener, observe, self._router.route if self._router else None)
