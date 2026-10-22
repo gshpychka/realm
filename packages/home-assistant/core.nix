@@ -5,38 +5,37 @@
   extraPackages ? _: [ ],
 }:
 let
+  # Scoped optional test inputs need not rebuild an unchanged native runtime.
+  # Fail evaluation if a future package update invalidates that equivalence.
+  reuseNative =
+    name: scoped:
+    let
+      native = pkgs.python314Packages.${name};
+      runtime = package: map (dependency: dependency.drvPath) package.dependencies;
+      propagated = package: map (dependency: dependency.drvPath) package.propagatedBuildInputs;
+    in
+    assert scoped.version == native.version;
+    assert toString scoped.src == toString native.src;
+    assert map toString (scoped.patches or [ ]) == map toString (native.patches or [ ]);
+    assert (scoped.postPatch or "") == (native.postPatch or "");
+    assert scoped.pythonModule.drvPath == native.pythonModule.drvPath;
+    assert runtime scoped == runtime native;
+    assert propagated scoped == propagated native;
+    native;
   core = home-assistant.override {
     inherit extraComponents;
     packageOverrides = ps: previous: {
       # tqdm has no runtime dependencies. Its optional-feature tests pull Dask
       # into this scope; reuse the tested native package with the same runtime.
-      tqdm =
-        let
-          native = pkgs.python314Packages.tqdm;
-        in
-        assert previous.tqdm.version == native.version;
-        assert toString previous.tqdm.src == toString native.src;
-        assert map toString (previous.tqdm.patches or [ ]) == map toString (native.patches or [ ]);
-        assert (previous.tqdm.postPatch or "") == (native.postPatch or "");
-        assert previous.tqdm.pythonModule.drvPath == native.pythonModule.drvPath;
-        assert (previous.tqdm.dependencies or [ ]) == [ ];
-        native;
+      tqdm = reuseNative "tqdm" previous.tqdm;
       # Only OpenAI's optional HTTPX2 tests use the scoped transport fixtures.
       # Its source, interpreter and complete runtime are the native package.
-      openai =
-        let
-          native = pkgs.python314Packages.openai;
-          runtime = package: map (dependency: dependency.drvPath) package.dependencies;
-          propagated = package: map (dependency: dependency.drvPath) package.propagatedBuildInputs;
-        in
-        assert previous.openai.version == native.version;
-        assert toString previous.openai.src == toString native.src;
-        assert map toString (previous.openai.patches or [ ]) == map toString (native.patches or [ ]);
-        assert (previous.openai.postPatch or "") == (native.postPatch or "");
-        assert previous.openai.pythonModule.drvPath == native.pythonModule.drvPath;
-        assert runtime previous.openai == runtime native;
-        assert propagated previous.openai == propagated native;
-        native;
+      openai = reuseNative "openai" previous.openai;
+      # Memray's fork/self-tracing tests can loop under user-mode emulation.
+      # Textual and Memray only differ through optional scoped test inputs;
+      # use the already-tested native packages without changing their tests.
+      textual = reuseNative "textual" previous.textual;
+      memray = reuseNative "memray" previous.memray;
       pymodbus = ps.callPackage ./core-dependencies/pymodbus { inherit (previous) pymodbus; };
       pyrate-limiter = ps.callPackage ./core-dependencies/pyrate-limiter {
         inherit (previous) pyrate-limiter;
