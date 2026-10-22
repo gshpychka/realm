@@ -21,6 +21,22 @@ let
         assert previous.tqdm.pythonModule.drvPath == native.pythonModule.drvPath;
         assert (previous.tqdm.dependencies or [ ]) == [ ];
         native;
+      # Only OpenAI's optional HTTPX2 tests use the scoped transport fixtures.
+      # Its source, interpreter and complete runtime are the native package.
+      openai =
+        let
+          native = pkgs.python314Packages.openai;
+          runtime = package: map (dependency: dependency.drvPath) package.dependencies;
+          propagated = package: map (dependency: dependency.drvPath) package.propagatedBuildInputs;
+        in
+        assert previous.openai.version == native.version;
+        assert toString previous.openai.src == toString native.src;
+        assert map toString (previous.openai.patches or [ ]) == map toString (native.patches or [ ]);
+        assert (previous.openai.postPatch or "") == (native.postPatch or "");
+        assert previous.openai.pythonModule.drvPath == native.pythonModule.drvPath;
+        assert runtime previous.openai == runtime native;
+        assert propagated previous.openai == propagated native;
+        native;
       pymodbus = ps.callPackage ./core-dependencies/pymodbus { inherit (previous) pymodbus; };
       pyrate-limiter = ps.callPackage ./core-dependencies/pyrate-limiter {
         inherit (previous) pyrate-limiter;
