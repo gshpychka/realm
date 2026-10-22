@@ -13,6 +13,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      id = "1741995459539";
       alias = "Media / Goodnight";
       triggers = [
         {
@@ -30,6 +31,7 @@ in
       ];
     }
     {
+      id = "1744026803586";
       alias = "Media / Ask to activate Movie scene";
       description = "After dark, when Plex starts a fresh playback, offer the movie scene and open a 10s window in which a long press activates it.";
       triggers = [
@@ -63,6 +65,7 @@ in
       ];
     }
     {
+      id = "1744987485407";
       alias = "Media / Activate Movie scene on Table button Long press";
       description = "Long press activates the movie scene only while the offer window timer is running; otherwise the same press falls through to the light toggles.";
       triggers = [ (longPress devices.roomTableButton) ];
@@ -70,6 +73,7 @@ in
       actions = [ (call "scene.turn_on" entities.scene.tvWatching { transition = 1; }) ];
     }
     {
+      id = "1746203147558";
       alias = "Voice / Add media using Assist";
       triggers = [
         {
@@ -132,6 +136,8 @@ in
               {
                 action = "conversation.process";
                 alias = "Ask LLM to classify media";
+                # An unavailable classifier takes the explicit unknown-kind path.
+                continue_on_error = true;
                 data = {
                   agent_id = entities.conversation.chatgpt2;
                   text = templates.classifier_prompt;
@@ -207,6 +213,8 @@ in
           {
             action = "ai_task.generate_data";
             alias = "Ask for a joke";
+            # The request is already added; the optional joke cannot hide success.
+            continue_on_error = true;
             data = {
               entity_id = entities.ai_task.openaiAiTask;
               instructions = templates.confirmation_prompt;

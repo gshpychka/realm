@@ -7,7 +7,7 @@ import importlib.util
 import json
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,7 +30,7 @@ flow_contract = load_module("flow_contract")
 class Guard:
     def __init__(self, api, config, journal, save, now=None):
         self.api, self.config, self.journal, self.save = api, config, journal, save
-        self.now = now or datetime.now(timezone.utc)
+        self.now = now or datetime.now(UTC)
 
     def persist(self):
         self.save(self.journal)

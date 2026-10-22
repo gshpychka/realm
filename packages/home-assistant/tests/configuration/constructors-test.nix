@@ -6,6 +6,7 @@ let
   files = import ../../../../machines/home-assistant/configuration/template-files.nix;
   rejects = value: !(builtins.tryEval (builtins.deepSeq value true)).success;
   valid = {
+    id = "fixture";
     alias = "Fixture";
     triggers = [
       {
@@ -24,7 +25,9 @@ in
 assert import ./button-triggers-test.nix { inherit lib; };
 assert import ./lib-test.nix { inherit lib; };
 assert rejects (ha.automation "opaque body");
-assert rejects (ha.automation (valid // { id = "optional-id"; }));
+assert rejects (ha.automation (builtins.removeAttrs valid [ "id" ]));
+assert rejects (ha.automation (valid // { id = ""; }));
+assert rejects (ha.automation (valid // { id = 42; }));
 assert rejects (ha.automation (valid // { actions = "opaque body"; }));
 assert rejects (ha.automation (valid // { triggers = [ "opaque body" ]; }));
 assert rejects (

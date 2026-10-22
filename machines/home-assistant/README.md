@@ -1,5 +1,10 @@
 Home Assistant on a Raspberry Pi 5 with an Argon ONE V3 case and NVMe storage.
 
+The intended outcome is a declarative OS and household configuration with
+preserved HA runtime state. See [migration readiness and cutover](migration.md)
+for the ownership boundary, private snapshot preflight, installer, credentials,
+release gates and rollback. Git alone cannot recreate device pairings or accounts.
+
 The machine root contains host and service declarations. `configuration/` uses
 normal NixOS modules grouped by household domain. A domain owns its automations,
 scripts, template contracts and authored Jinja programs together: weather's
@@ -32,6 +37,7 @@ packages/home-assistant/
   core.nix                 Core package and its Python runtime scope
   mcp.nix                  MCP package and its separate Python runtime scope
   update.nix               explicit source-update commands
+  migration/               read-only private snapshot preflight
   core-dependencies/       Core runtime compatibility packages
     pymodbus/              native override and its test-isolation patch
     zigpy/                 native override and its semaphore-test patch
@@ -43,6 +49,7 @@ packages/home-assistant/
     configuration/         native schema, constructor and service behavior checks
     layout/                ownership guard and its regression tests
     mcp/                   package imports, dependency metadata and resource checks
+    migration/             snapshot blockers, reference checks and secret redaction
     runtime/               cooling, backup and Yasno component contracts
     templates/             Nix/Python template checks and their fixtures
     updater/               source refresh, path selection and failure contracts
@@ -55,8 +62,9 @@ Third-party component sources keep their upstream layout. Existing runtime
 component boundaries remain cohesive.
 
 The 45 automations, four scripts and two scenes describe the active household
-behavior. Automations omit `initial_state` so HA can restore their last runtime
-enabled state. Definitions and features change through Nix.
+behavior. Automations and scenes retain their original IDs so a restored registry
+can reuse their identities. Automations omit `initial_state` so HA can restore
+their last runtime enabled state. Definitions and features change through Nix.
 
 `entities.nix` names the entity references used by the declarations. `devices.nix`
 contains only ZHA event sources, the soundbar's cloud device identity, and three
@@ -78,7 +86,7 @@ native trigger attrsets, so a functional trigger ID can be added with
 
 `constructors.nix` holds the internal checks for automation, script, action,
 condition and helper shapes; `lib.nix` exposes the household configuration API.
-Automation fields follow alias, description, triggers, conditions, actions,
+Automation fields follow id, alias, description, triggers, conditions, actions,
 variables, then execution options, omitting absent fields. Bodies stay native
 attrsets and lists. Dependent variables use `orderedVariables`, which emits one
 action per binding in list order. `templates.nix` merges seven domain modules
@@ -125,13 +133,12 @@ The module provides native configuration serialization; HA provides the actual
 schema and Jinja engines. The local constructors add narrow shape/provenance
 checks around those existing tools, rather than another configuration language.
 
-Automations omit optional top-level IDs and keep descriptive aliases. Trigger
-IDs are retained where branch conditions reference them. Nix-managed definitions
-are edited in Nix.
-Scenes have no explicit IDs: their names provide the entity names used by callers,
-and the [scene schema](https://github.com/home-assistant/core/blob/2026.10.2/homeassistant/components/homeassistant/scene.py)
-accepts this. Script/helper keys are functional entity names. The fan and Ollama
-sensors retain semantic `unique_id` values for registry identity.
+Original automation and scene IDs preserve the existing registry identities,
+entity names and enabled-state restoration. Removing them can allocate suffixed
+replacement entities when the old registry is restored. Trigger IDs are retained
+where branch conditions reference them. Nix-managed definitions are edited in
+Nix. Script/helper keys are functional entity names. The fan and Ollama sensors
+retain semantic `unique_id` values for registry identity.
 
 Entity state triggers and service targets avoid device/entity registry UUIDs.
 ZHA button and device-offline events still use named device constants because
@@ -260,13 +267,16 @@ separate power-button protocol is not implemented.
 Nightly encrypted restic backups use `restic-repository`, `restic-password`, and
 `restic-environment` in the private credentials directory. The backup job briefly
 stops active HA, MCP, Matter, MQTT, Tailscale and Bluetooth services, copies their
-state and SSH host keys, validates SQLite, and restores the active services even
-if copying fails. Incomplete `.next` copies require operator review. Retention is
+state and SSH host keys, preserves file ownership/metadata, validates SQLite,
+and restores the active services even if copying fails. Systemd cleanup recovers
+after cancellation, including a killed copy process. If a restart fails, inspect
+the journal and run `sudo home-assistant-backup-recover` before retrying.
+Incomplete `.next` copies require operator review. Retention is
 7 daily, 4 weekly and 6 monthly snapshots.
 
-The x86 offline config check is a required dependency of the Pi system build as
-well as `checks.x86_64-linux.home-assistant-config`. It needs an x86 builder, even
-when building the Pi closure separately. It validates native HA schemas, custom integration
+The offline config check is exposed as `checks.x86_64-linux.home-assistant-config`
+and `checks.aarch64-linux.home-assistant-config`. Run it as a release gate on the
+available Linux builder; it is not retained in the Pi's runtime closure. It validates native HA schemas, custom integration
 imports and dependency versions, MCP resources, and cooling/backup/Yasno
 contracts. It also exercises ordered variable templates, quoted GPT prompts,
 movie timer gating, printer snapshots, alert thresholds and native state triggers
@@ -288,7 +298,10 @@ requests, rejected requests, unknown/malformed classifications, confirmation
 fallbacks and service failures. They check service request data and order,
 conversation replies, returned data and bound variables. HA's rejection of
 non-mapping service responses is checked separately from template fallbacks.
-Each scenario runs once. Six power runs cover success and each delivery failure
+Provider failures reach classification/confirmation fallback responses; media
+queue mutations still abort on failure. Four weather scenarios verify that an
+unavailable provider reaches the fallback conversation response. Each scenario
+runs once. Six power runs cover success and each delivery failure
 for outage and restoration notifications. Sensors change during speech;
 Telegram must receive the message captured before speech, and failures must stop
 subsequent calls.
@@ -304,7 +317,9 @@ scalar/mapping/list/null results, underscores, digits and keyword attributes,
 with strict undefined checks. Nix negatives reject injection and raw-source or
 mixed-file bypasses; generated sources still require registry membership.
 Source-order checks cover every evaluated automation, and
-Nix tests check the public API and reject duplicate domain exports. The QA
+Nix tests check the public API and reject duplicate domain exports. Migration
+preflight regressions exercise missing state, identity continuity, target checks,
+Supervisor endpoint detection, redaction and read-only operation. The QA
 output includes a derived `template-scope-inventory.json` with the current
 program names, file/reference provenance and use paths, plus `template-file-inventory.json`
 covering every registered program and shared helper file.

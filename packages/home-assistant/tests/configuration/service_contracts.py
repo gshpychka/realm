@@ -24,6 +24,7 @@ async def run_script(hass, sequence, variables, responses, fail=None, on_call=No
         ("ai_task", "generate_data"),
         ("assist_satellite", "announce"),
         ("telegram_bot", "send_message"),
+        ("weather", "get_forecasts"),
     ]
 
     async def record(call):
@@ -142,7 +143,7 @@ async def validate_media(hass, config):
             add({slot: "Fixture title"}, kind, fail=fail)
     add(
         {"title": "Ambiguous"},
-        "movie",
+        "unknown",
         title="Ambiguous",
         reply=classification("movie"),
         fail="conversation.process",
@@ -166,8 +167,9 @@ async def validate_media(hass, config):
                 f"hassarr.add_overseerr_{'movie' if kind == 'movie' else 'tv_show'}",
                 "ai_task.generate_data",
             ]
-        # HA rejects a missing response before a template can render it. Keep
-        # that protocol failure distinct from malformed mapping fallbacks.
+        # HA rejects a non-mapping response before assigning the response
+        # variable. Read-only classification and optional confirmation must
+        # continue to their explicit fallback in that case too.
         missing_response = (
             "conversation.process"
             if classified and not isinstance(reply, dict)
@@ -177,14 +179,11 @@ async def validate_media(hass, config):
         )
         if fail:
             expected = expected[: expected.index(fail) + 1]
+        if missing_response and not fail:
+            expected = expected[: expected.index(missing_response) + 1]
+        if fail and fail.startswith("hassarr."):
             assert (
                 error == ("HomeAssistantError", "fixture service failure")
-                and result is None
-            )
-        elif missing_response:
-            expected = expected[: expected.index(missing_response) + 1]
-            assert (
-                error == ("HomeAssistantError", "service_reponse_invalid")
                 and result is None
             )
         else:
@@ -210,9 +209,12 @@ async def validate_media(hass, config):
             assert bound["slots"] == (slots if isinstance(slots, dict) else {})
             assert bound["clean_title"] == title and bound["media_kind"] == kind
             if classified:
-                assert bound["llm_kind"] == reply
+                if isinstance(reply, dict) and fail != "conversation.process":
+                    assert bound["llm_kind"] == reply
+                else:
+                    assert "llm_kind" not in bound
             if kind != "unknown":
-                assert bound["witty_remark"] == remark
+                assert bound.get("witty_remark") == remark
         assert names == expected, (slots, names, expected)
         for name, data in calls:
             if name == "conversation.process":
@@ -292,10 +294,47 @@ async def validate_power(hass, config):
     return count
 
 
+async def validate_weather(hass, config):
+    actions = next(
+        item
+        for item in config["automation"]
+        if item["alias"] == "System / Weather report"
+    )["actions"]
+    count = 0
+    for state, attributes, responses, fail in [
+        (
+            "sunny",
+            {"temperature": 20},
+            {"weather.get_forecasts": {"weather.openweathermap": {"forecast": []}}},
+            None,
+        ),
+        ("unavailable", {}, {}, "weather.get_forecasts"),
+        ("unknown", {}, {"weather.get_forecasts": None}, None),
+        ("unavailable", {}, {"weather.get_forecasts": {}}, None),
+    ]:
+        hass.states.async_set("weather.openweathermap", state, attributes)
+        calls, error, result = await run_script(hass, actions, {}, responses, fail)
+        count += 1
+        assert error is None and result is not None
+        assert [name for name, _ in calls] == ["weather.get_forecasts"]
+        assert calls[0][1] == {
+            "type": "hourly",
+            "entity_id": ["weather.openweathermap"],
+        }
+        assert result[2]["fc"] == []
+        if state == "sunny":
+            assert result[0] == "It's 20 degrees and sunny."
+        else:
+            assert result[0] == "Current weather information is unavailable."
+    return count
+
+
 async def validate_service_contracts(hass, config):
     media_count = await validate_media(hass, config)
     power_count = await validate_power(hass, config)
+    weather_count = await validate_weather(hass, config)
     print(
         f"Service contracts passed: {media_count} media scenarios / {media_count} native script runs; "
-        f"{power_count} power script runs; request data, replies, captured values, service order and failures."
+        f"{power_count} power and {weather_count} weather script runs; "
+        "request data, replies, captured values, service order and provider failures."
     )

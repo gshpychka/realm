@@ -8,6 +8,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      id = "1749302876683";
       alias = "System / Weather report";
       triggers = [
         {
@@ -23,6 +24,8 @@ in
       actions = [
         {
           action = "weather.get_forecasts";
+          # A failed provider must still reach the unavailable-weather response.
+          continue_on_error = true;
           data = {
             type = "hourly";
           };

@@ -105,7 +105,7 @@ in
 core.overrideAttrs (_previous: rec {
   version = "2026.10.2";
   # The home-assistant-config check validates schemas, imports and behavior
-  # in the pinned Core environment as a dependency of the Pi system build.
+  # in the pinned Core environment on either supported Linux architecture.
   doCheck = false;
   doInstallCheck = false;
   src = pkgs.fetchFromGitHub {

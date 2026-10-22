@@ -14,6 +14,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      id = "1739949582133";
       alias = "Devices / Zigbee router offline";
       triggers = [
         {
@@ -25,6 +26,7 @@ in
       actions = [ (announce "The Zigbee router is offline" { }) ];
     }
     {
+      id = "1739949635477";
       alias = "Devices / Zigbee is back online";
       triggers = [
         {
@@ -37,6 +39,7 @@ in
       actions = [ (announce "The Zigbee router is back online." { }) ];
     }
     {
+      id = "1740515216770";
       alias = "Devices / Water leak detected";
       triggers = [
         {
@@ -82,6 +85,7 @@ in
       ];
     }
     {
+      id = "1742200304139";
       alias = "Devices / Zigbee device offline notification";
       triggers = [
         (zha devices.bedButton "device_offline" "device_offline")
@@ -97,6 +101,7 @@ in
       ];
     }
     {
+      id = "1781467492529";
       alias = "Devices / Turn off Dyson Night mode";
       triggers = [
         {

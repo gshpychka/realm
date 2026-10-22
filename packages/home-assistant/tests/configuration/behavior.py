@@ -15,7 +15,9 @@ async def validate_behavior(hass, config):
     automations = {item["alias"]: item for item in config["automation"]}
     assert automations and len(automations) == len(config["automation"])
     assert all(" / " in alias for alias in automations)
-    assert all("id" not in item for item in config["automation"])
+    ids = [item["id"] for item in config["automation"]]
+    assert all(isinstance(identity, str) and identity for identity in ids)
+    assert len(ids) == len(set(ids))
 
     def automation(alias):
         return automations[alias]

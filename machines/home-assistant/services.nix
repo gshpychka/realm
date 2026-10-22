@@ -1,4 +1,5 @@
 {
+  config,
   ha,
   haPackages,
   haPkgs,
@@ -9,6 +10,13 @@
 let
   inherit (ha) templates;
   fanPython = pkgs.python3.withPackages (ps: [ ps.smbus2 ]);
+  backupRecovery = pkgs.writeShellApplication {
+    name = "home-assistant-backup-recover";
+    runtimeInputs = [ pkgs.systemd ];
+    text = ''
+      exec ${pkgs.python3}/bin/python3 ${./runtime/backup/consistent-backup.py} recover
+    '';
+  };
 in
 {
   systemd.services.ha-mcp = {
@@ -112,6 +120,8 @@ in
       LISTEN_ADDRESS = "127.0.0.1";
       PRIMARY_INTERFACE = "end0";
       LOG_LEVEL = "info";
+      # Time synchronization also sends local timezone and DST information.
+      TZ = config.time.timeZone;
       # HA 2026.10.2 bridges its native Bluetooth stack to this endpoint. This
       # avoids raw HCI privileges in the unprivileged Matter container.
       BLE_PROXY = "true";
@@ -131,6 +141,11 @@ in
     '';
   };
   boot.kernel.sysctl."net.ipv4.ping_group_range" = "0 2147483647";
+  # Sleepy Matter reports can arrive minutes after the controller's request.
+  # Keep those IPv6 UDP subscriptions tracked instead of dropping reports when
+  # Linux's 120-second default expires. No fixed controller UDP port exists:
+  # https://github.com/matter-js/matterjs-server/blob/v1.4.0/docs/os_requirements.md#stateful-firewalls-host-vm-hypervisor
+  boot.kernel.sysctl."net.netfilter.nf_conntrack_udp_timeout_stream" = 3600;
   # Matter/Thread use IPv6 multicast; ZHA uses a network coordinator.
   services.tailscale = {
     enable = true;
@@ -158,6 +173,8 @@ in
     "d /var/lib/hass/.ssh 0700 hass hass -"
     # Numeric ownership matches the pinned upstream unprivileged image user.
     "d /var/lib/matter-server 0700 1000 1000 -"
+    # Recovery journal survives a cancelled restic unit, until services restart.
+    "d /run/home-assistant-backup 0700 root root -"
   ];
   # Encrypted remote backups use privately provisioned repository credentials.
   services.restic.backups.home-assistant = {
@@ -172,6 +189,8 @@ in
       Persistent = true;
     };
     backupPrepareCommand = "${pkgs.python3}/bin/python3 ${./runtime/backup/consistent-backup.py}";
+    # ExecStopPost also runs when preparation was killed before its finally.
+    backupCleanupCommand = lib.getExe backupRecovery;
     pruneOpts = [
       "--keep-daily 7"
       "--keep-weekly 4"
@@ -179,7 +198,9 @@ in
     ];
   };
   systemd.services.restic-backups-home-assistant.path = [
+    pkgs.coreutils
     pkgs.rclone
     pkgs.systemd
   ];
+  environment.systemPackages = [ backupRecovery ];
 }

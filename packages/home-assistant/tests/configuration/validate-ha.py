@@ -203,6 +203,9 @@ async def validate(hass, configuration, components, component_path, template_fix
 
         validate_field_order(Path(sys.argv[4]), configuration)
         await validate_service_contracts(hass, configuration)
+        from configuration.identity import validate_identity
+
+        await validate_identity(configuration)
         # Check the vacuum activity API mapping against inert device-state data.
         from custom_components.dyson_local.vacuum import DYSON_STATES, DysonVacuumEntity
         from homeassistant.components.vacuum import VacuumActivity

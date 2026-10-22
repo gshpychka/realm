@@ -11,6 +11,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      id = "1735948041970";
       alias = "Devices / Print error notification";
       description = "Announces actionable printer errors, suppressing known informational HMS codes.";
       triggers = [
@@ -39,6 +40,7 @@ in
       };
     }
     {
+      id = "1736031167938";
       alias = "Devices / Print finished notification";
       description = "Announces print completion and has the print_watcher AI task guess the printed object from a finished-print snapshot.";
       triggers = [
@@ -71,6 +73,7 @@ in
       };
     }
     {
+      id = "1790439678498";
       alias = "Devices / 3D print Live Activity";
       description = "Mirrors the H2C print on the iPhone Lock Screen / Dynamic Island as a companion-app Live Activity. Updates on status/stage changes and every 5 minutes while printing; the countdown ticks on-device via chronometer so no per-second pushes are needed (iOS throttles frequent updates).";
       triggers = [
@@ -213,6 +216,7 @@ in
       mode = "restart";
     }
     {
+      id = "1787590347448";
       alias = "Voice / Print check by voice";
       description = "Answers spoken questions about the running print with a camera-based verdict.";
       triggers = [

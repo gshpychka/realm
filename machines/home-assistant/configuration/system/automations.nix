@@ -8,6 +8,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      id = "1749902052905";
       alias = "System / Enable fully loaded after startup";
       triggers = [
         {
@@ -26,6 +27,7 @@ in
       ];
     }
     {
+      id = "1749902102800";
       alias = "System / Disable fully loaded on shutdown";
       triggers = [
         {

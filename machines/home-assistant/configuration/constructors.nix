@@ -96,10 +96,16 @@ let
           }
         )
       );
+  # Exported IDs retain registry identity and traces when display aliases change.
   automation =
     value:
     ensure "automation"
-      (builtins.isAttrs value && builtins.isString (value.alias or null) && !(value ? id))
+      (
+        builtins.isAttrs value
+        && builtins.isString (value.alias or null)
+        && builtins.isString (value.id or null)
+        && value.id != ""
+      )
       (
         checked "automation body" (
           value

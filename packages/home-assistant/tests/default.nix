@@ -74,6 +74,7 @@ pkgs.runCommand "home-assistant-config-qa"
     test -f ${updaterChecks}/passed
     ${python}/bin/python ${./.}/layout/check.py ${../../..}
     ${python}/bin/python ${./.}/layout/test_check.py
+    ${python}/bin/python ${./.}/migration/test_preflight.py ${../migration/preflight.py}
     env -i HOME="$TMPDIR" PATH="$PATH" ${packages.mcp}/bin/ha-mcp --version \
       | ${pkgs.gnugrep}/bin/grep -Fx 'ha-mcp ${packages.mcp.version}'
     # The broker's test-config mode validates auth/ACL syntax with fixture files.

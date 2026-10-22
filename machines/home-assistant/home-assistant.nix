@@ -1,23 +1,12 @@
 {
   config,
   haPackages,
-  inputs,
   lib,
   pkgs,
   ...
 }:
 {
   imports = [ ./configuration ];
-
-  # The offline x86 config/schema/behavior check is a required build dependency,
-  # including when the Pi closure is built separately from flake checks.
-  system.extraDependencies = [
-    (import ../../packages/home-assistant/tests {
-      pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
-      configuration = config.services.home-assistant.config;
-      inherit (config.services.home-assistant) extraComponents;
-    })
-  ];
 
   services.home-assistant = {
     enable = true;
@@ -114,11 +103,44 @@
       MemoryMax = "3G";
     };
     path = [ pkgs.openssh ];
-    preStart = lib.mkAfter ''
-      ln -sfn "$CREDENTIALS_DIRECTORY/secrets.yaml" /var/lib/hass/secrets.yaml
-      mkdir -p /var/lib/hass/pyscript/apps /var/lib/hass/yasno-address-guard /var/lib/hass/media
-      # The app source is immutable; its transaction/recovery journal is state.
-      ln -sfn ${./runtime/yasno-address-guard} /var/lib/hass/pyscript/apps/yasno_address_guard
-    '';
+    preStart = lib.mkMerge [
+      (lib.mkBefore ''
+        # Check restored files before the native module overwrites configuration
+        # or tries to install links into an existing component/app directory.
+        config_dir=${lib.escapeShellArg config.services.home-assistant.configDir}
+        migration_conflict() {
+          echo "Home Assistant: preserve and move $1 before starting the declarative service; see machines/home-assistant/migration.md." >&2
+          exit 1
+        }
+        for managed_path in "$config_dir/configuration.yaml" "$config_dir/secrets.yaml" "$config_dir/pyscript/apps/yasno_address_guard"; do
+          if [ -e "$managed_path" ] && [ ! -L "$managed_path" ]; then
+            migration_conflict "$managed_path"
+          fi
+        done
+        if [ -L "$config_dir/custom_components" ]; then
+          migration_conflict "$config_dir/custom_components"
+        fi
+        for component in "$config_dir"/custom_components/*; do
+          if [ "''${component##*/}" = __pycache__ ]; then
+            continue
+          fi
+          if [ -L "$component" ]; then
+            case "$(readlink "$component")" in
+              /nix/store/*) ;;
+              *) migration_conflict "$component" ;;
+            esac
+          elif [ -e "$component" ]; then
+            migration_conflict "$component"
+          fi
+        done
+        # Declarative migration guard ends here.
+      '')
+      (lib.mkAfter ''
+        ln -sfnT "$CREDENTIALS_DIRECTORY/secrets.yaml" /var/lib/hass/secrets.yaml
+        mkdir -p /var/lib/hass/pyscript/apps /var/lib/hass/yasno-address-guard /var/lib/hass/media
+        # The app source is immutable; its transaction/recovery journal is state.
+        ln -sfnT ${./runtime/yasno-address-guard} /var/lib/hass/pyscript/apps/yasno_address_guard
+      '')
+    ];
   };
 }

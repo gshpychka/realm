@@ -31,6 +31,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      id = "1735974440260";
       alias = "Voice / Moment of silence announcement";
       triggers = [
         {
@@ -41,6 +42,7 @@ in
       actions = [ (announce "It's time for a moment of silence" { preannounce = false; }) ];
     }
     {
+      id = "1740237487651";
       alias = "Voice / Switch to local assistant";
       triggers = [
         {
@@ -80,6 +82,7 @@ in
       actions = [ { action = "rest_command.ollama_preload"; } ] ++ selectAssistants "Reaper";
     }
     {
+      id = "1740237609917";
       alias = "Voice / Switch to remote assistant";
       triggers = [
         {
@@ -102,6 +105,7 @@ in
       actions = selectAssistants "Remote";
     }
     {
+      id = "1740514715257";
       alias = "Voice / Voice assistant changed to Local announcement";
       triggers = [
         {
@@ -113,6 +117,7 @@ in
       actions = [ (announce "Voice assistant changed to local." { }) ];
     }
     {
+      id = "1740514774923";
       alias = "Voice / Voice assistant changed to Remote announcement";
       triggers = [
         {
@@ -124,6 +129,7 @@ in
       actions = [ (announce "Voice assistant changed to remote." { }) ];
     }
     {
+      id = "1740518420448";
       alias = "Voice / Lower voice volume at night";
       triggers = [
         {
@@ -144,6 +150,7 @@ in
       ];
     }
     {
+      id = "1740518452668";
       alias = "Voice / Set voice volume back to full in the morning";
       triggers = [
         {
@@ -164,6 +171,7 @@ in
       ];
     }
     {
+      id = "1742134027344";
       alias = "Voice / Internet provider change announcement";
       triggers = [
         {

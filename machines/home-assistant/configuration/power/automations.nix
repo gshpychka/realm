@@ -24,6 +24,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      id = "1740518221778";
       alias = "Power / Turn on reaper in the morning";
       triggers = [
         {
@@ -35,6 +36,7 @@ in
       actions = [ (call "switch.turn_on" entities.switch.reaperPower { }) ];
     }
     {
+      id = "1752228037308";
       alias = "Power / Reaper Windows Button";
       triggers = [
         {
@@ -67,6 +69,7 @@ in
       ];
     }
     {
+      id = "1761754817178";
       alias = "Power / City power is off";
       triggers = [
         {
@@ -82,6 +85,7 @@ in
       actions = notifyPowerChange templates.city_power_off;
     }
     {
+      id = "1763747070957";
       alias = "Power / Low battery";
       triggers =
         map
@@ -102,6 +106,7 @@ in
       ];
     }
     {
+      id = "1765823486412";
       alias = "Power / Low battery remaining time";
       triggers = [
         {
@@ -118,6 +123,7 @@ in
       ];
     }
     {
+      id = "1766322149528";
       alias = "Power / Hoard is offline";
       triggers = [
         {
@@ -129,6 +135,7 @@ in
       actions = [ (announce "Hoard is offline" { }) ];
     }
     {
+      id = "1766322208678";
       alias = "Power / Hoard is back online";
       triggers = [
         {
@@ -141,6 +148,7 @@ in
       actions = [ (announce "Hoard is back online." { }) ];
     }
     {
+      id = "1768472043250";
       alias = "Power / City power back on";
       triggers = [
         {
@@ -153,6 +161,7 @@ in
       actions = notifyPowerChange templates.city_power_on;
     }
     {
+      id = "1763821630644";
       alias = "Voice / Announce battery level via button";
       triggers = [
         (quintuplePress devices.roomLightswitch)
@@ -167,6 +176,7 @@ in
       ];
     }
     {
+      id = "1787041307832";
       alias = "Voice / Power system Alarm announcement";
       triggers = [
         {

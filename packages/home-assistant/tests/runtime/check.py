@@ -6,7 +6,6 @@ All filesystem writes use temporary directories; systemctl and I2C are stubs.
 import asyncio
 import importlib.util
 import math
-import sqlite3
 import sys
 import tempfile
 from pathlib import Path
@@ -82,69 +81,8 @@ def cooling(host):
 
 
 def backups(host):
-    for corrupt in [False, True]:
-        backup = module("backup", host / "runtime" / "backup" / "consistent-backup.py")
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            for name in [
-                "hass",
-                "matter-server",
-                "mosquitto",
-                "private/home-assistant",
-                "ha-mcp",
-                "tailscale",
-                "bluetooth",
-            ]:
-                (root / "var/lib" / name).mkdir(parents=True, exist_ok=True)
-            (root / "run/lock").mkdir(parents=True)
-            (root / "etc/ssh").mkdir(parents=True)
-            (root / "etc/ssh/ssh_host_ed25519_key").write_text("synthetic fixture")
-            current = root / "var/lib/home-assistant-backup"
-            current.mkdir()
-            (current / "previous-snapshot").touch()
-            for name in ["home-assistant_v2.db", "zigbee.db"]:
-                with sqlite3.connect(root / "var/lib/hass" / name) as connection:
-                    connection.execute("CREATE TABLE fixture (id INTEGER)")
-            if corrupt:
-                (root / "var/lib/hass/zigbee.db").write_bytes(b"invalid fixture")
-            operations = []
-
-            def command(*args, operations=operations, **_kwargs):
-                operations.append(args)
-                active = args[-1] in {"home-assistant", "mosquitto", "bluetooth"}
-                return SimpleNamespace(
-                    returncode=0 if "is-active" not in args or active else 3
-                )
-
-            backup.Path = lambda path, root=root: root / str(path).lstrip("/")
-            backup.command = command
-            failed = False
-            try:
-                backup.main()
-            except sqlite3.DatabaseError:
-                failed = True
-            assert failed == corrupt
-            assert (
-                "systemctl",
-                "stop",
-                "home-assistant",
-                "mosquitto",
-                "bluetooth",
-            ) in operations
-            assert operations[-1] == (
-                "systemctl",
-                "start",
-                "bluetooth",
-                "mosquitto",
-                "home-assistant",
-            )
-            assert (current / "previous-snapshot").exists() == corrupt
-            assert (current / ".consistent-snapshot").exists() != corrupt
-            if not corrupt:
-                key = current / "ssh-host-keys/ssh_host_ed25519_key"
-                assert key.read_text() == "synthetic fixture"
-                assert key.stat().st_mode & 0o777 == 0o600
-                assert (current / "bluetooth").is_dir()
+    checks = module("backup_checks", Path(__file__).with_name("backup.py"))
+    checks.run(host, module)
 
 
 def guard(host):

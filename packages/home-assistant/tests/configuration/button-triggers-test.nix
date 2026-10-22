@@ -97,6 +97,7 @@ let
     ]
   ) gestures;
   valid = {
+    id = "semantic_button_fixture";
     alias = "Semantic button fixture";
     triggers = [ (ha.singlePress devices.bedShelfButton) ];
     actions = [ (ha.call "light.toggle" ha.entities.light.bedLight { }) ];
@@ -118,7 +119,7 @@ assert
       id = "held";
     }
   ];
-assert rejects (ha.automation (valid // { id = "optional-id"; }));
+assert rejects (ha.automation (builtins.removeAttrs valid [ "id" ]));
 assert rejects (
   ha.automation (
     valid // { triggers = [ ((ha.singlePress devices.bedButton) // { id = unchecked; }) ]; }

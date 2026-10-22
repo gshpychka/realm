@@ -5,6 +5,8 @@ in
 {
   services.home-assistant.config.scene = [
     {
+      # Preserve scene.night in the restored HA entity registry.
+      id = "1741877284270";
       entities = {
         ${entities.light.bedLight} = "off";
         ${entities.light.cuteLights} = "off";
@@ -22,6 +24,8 @@ in
       name = "Night";
     }
     {
+      # Preserve scene.tv_watching in the restored HA entity registry.
+      id = "1743964862836";
       entities = {
         ${entities.light.kitchenLights} = "off";
         ${entities.light.roomOverheadLights} = "off";

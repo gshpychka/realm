@@ -99,12 +99,12 @@
     }@inputs:
     let
       inherit (nixpkgs) lib;
-      # every system the fleet spans
-      systems = [
+      linuxSystems = [
         "x86_64-linux"
         "aarch64-linux"
-        "aarch64-darwin"
       ];
+      # every system the fleet spans
+      systems = linuxSystems ++ [ "aarch64-darwin" ];
       # formatter packages shared by `nix fmt` and the treefmt check
       treefmtTools =
         pkgs: with pkgs; [
@@ -206,9 +206,31 @@
       # expose the ISO for easy building: `nix build .#iso`
       packages.x86_64-linux.iso = self.nixosConfigurations.iso.config.system.build.isoImage;
 
-      legacyPackages = lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (system: {
+      legacyPackages = lib.genAttrs linuxSystems (system: {
         homeAssistant = nixpkgs.legacyPackages.${system}.callPackage ./packages/home-assistant { };
       });
+
+      # A separate SD installer boots without touching HA's existing NVMe disk.
+      # Keep it on the same Pi firmware/kernel input as the installed machine.
+      packages.aarch64-linux.home-assistant-installer =
+        (inputs.nixos-raspberrypi.nixosConfigurations.rpi5-installer.extendModules {
+          modules = [
+            ./modules/common
+            (
+              { config, lib, ... }:
+              {
+                networking.hostName = "home-assistant-installer";
+                boot.zfs.forceImportRoot = false;
+                users.users.root.openssh.authorizedKeys.keys = [ config.my.sshKeys.main ];
+                services.openssh.settings = {
+                  PasswordAuthentication = lib.mkForce false;
+                  KbdInteractiveAuthentication = lib.mkForce false;
+                  PermitRootLogin = lib.mkForce "prohibit-password";
+                };
+              }
+            )
+          ];
+        }).config.system.build.sdImage;
 
       packages.x86_64-linux.voice-pe-firmware = import ./scripts/voice-pe/firmware.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
@@ -329,22 +351,28 @@
               '';
             }
           );
-        in
-        lib.recursiveUpdate (lib.recursiveUpdate nixosChecks lintChecks) {
-          aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
-          x86_64-linux = {
+          # Configuration QA can run on the Pi or an x86 build server. Keep it
+          # outside the deployed closure so ARM rebuilds do not need an x86 builder.
+          homeAssistantChecks = lib.genAttrs linuxSystems (system: {
             home-assistant-config = import ./packages/home-assistant/tests {
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              pkgs = nixpkgs.legacyPackages.${system};
               configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
               inherit (self.nixosConfigurations.home-assistant.config.services.home-assistant) extraComponents;
             };
-            iso = self.nixosConfigurations.iso.config.system.build.isoImage;
-            nixos-switch = import ./tests/nixos-switch.nix {
-              inherit inputs;
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          });
+        in
+        lib.recursiveUpdate
+          (lib.recursiveUpdate (lib.recursiveUpdate nixosChecks lintChecks) homeAssistantChecks)
+          {
+            aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
+            x86_64-linux = {
+              iso = self.nixosConfigurations.iso.config.system.build.isoImage;
+              nixos-switch = import ./tests/nixos-switch.nix {
+                inherit inputs;
+                pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              };
             };
           };
-        };
 
       # `nix fmt` — treefmt drives the per-language formatters (see treefmt.toml)
       formatter = lib.genAttrs systems (
@@ -367,12 +395,20 @@
           flashVoicePe = pkgs.callPackage ./scripts/voice-pe/flash.nix { };
           provisionVoicePe = pkgs.callPackage ./scripts/voice-pe/provision.nix { };
           updateHomeAssistant = pkgs.callPackage ./packages/home-assistant/update.nix { };
+          homeAssistantPreflight = pkgs.callPackage ./packages/home-assistant/migration {
+            configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
+          };
         in
         {
           ${if pkgs.stdenv.hostPlatform.isLinux then "update-home-assistant" else null} = {
             type = "app";
             program = lib.getExe updateHomeAssistant;
             inherit (updateHomeAssistant) meta;
+          };
+          ${if pkgs.stdenv.hostPlatform.isLinux then "home-assistant-preflight" else null} = {
+            type = "app";
+            program = lib.getExe homeAssistantPreflight;
+            inherit (homeAssistantPreflight) meta;
           };
           update-pi-packages = {
             type = "app";

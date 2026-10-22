@@ -21,6 +21,7 @@ in
 {
   services.home-assistant.config.automation = map ha.automation [
     {
+      id = "1735822501432";
       alias = "Lighting / Overhead lights toggle";
       triggers = [
         (singlePress devices.roomLightswitch)
@@ -32,6 +33,7 @@ in
       actions = [ (call "light.toggle" entities.light.roomOverheadLights { }) ];
     }
     {
+      id = "1735822817931";
       alias = "Lighting / Kitchen lights toggle";
       triggers = [
         (singlePress devices.kitchenLightswitch)
@@ -43,6 +45,7 @@ in
       actions = [ (call "light.toggle" entities.light.kitchenLights { }) ];
     }
     {
+      id = "1735822879704";
       alias = "Lighting / Bed light toggle";
       triggers = [
         (singlePress devices.bedButton)
@@ -53,6 +56,7 @@ in
       actions = [ (call "light.toggle" entities.light.bedLight { }) ];
     }
     {
+      id = "1736777638584";
       alias = "Lighting / Party light toggle";
       triggers = [
         (triplePress devices.kitchenLightswitch)
@@ -61,6 +65,7 @@ in
       actions = [ (call "light.toggle" entities.light.partyLight { }) ];
     }
     {
+      id = "1736777817476";
       alias = "Lighting / Room lights full brightness";
       triggers = [
         (doublePress devices.roomLightswitch)
@@ -76,6 +81,7 @@ in
       ];
     }
     {
+      id = "1736777871135";
       alias = "Lighting / Kitchen lights full brightness";
       triggers = [
         (doublePress devices.kitchenLightswitch)
@@ -89,12 +95,14 @@ in
       ];
     }
     {
+      id = "1749390846354";
       alias = "Lighting / Cute lights toggle";
       triggers = lightTogglePresses;
       conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
       actions = [ (call "light.toggle" entities.light.cuteLights { }) ];
     }
     {
+      id = "1749471372840";
       alias = "Lighting / Turn on plant light";
       triggers = [
         {
@@ -114,6 +122,7 @@ in
       ];
     }
     {
+      id = "1749471809764";
       alias = "Lighting / Turn off plant light";
       triggers = [
         {
@@ -125,12 +134,14 @@ in
       actions = [ (call "light.turn_off" entities.light.plantLight { }) ];
     }
     {
+      id = "1755457211035";
       alias = "Lighting / Lava lamp toggle";
       triggers = lightTogglePresses;
       conditions = [ (state entities.timer.movieSceneOfferWindow "idle") ];
       actions = [ (call "light.toggle" entities.light.lavaLamp { }) ];
     }
     {
+      id = "1765384948992";
       alias = "Lighting / Flash light when Room assistant starts listening";
       triggers = [
         {

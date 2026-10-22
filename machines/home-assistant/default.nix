@@ -52,9 +52,12 @@ in
     allowedUDPPorts = [
       1900
       5353
-      5540
     ];
     trustedInterfaces = [ "tailscale0" ];
+    # Matter uses controller-initiated IPv6 UDP subscriptions on ephemeral
+    # ports. Stateful replies are accepted by the native firewall; their long
+    # idle timeout is set in services.nix. An inbound UDP/5540 opening cannot
+    # fix controller traffic and would not cover the advertised device ports.
     # SSDP search replies arrive from UDP 1900 at a dynamically chosen client
     # port. Conntrack cannot associate those unicast replies with a multicast
     # destination. Accept that source port on the wired LAN for IPv4/IPv6.
@@ -99,6 +102,11 @@ in
   nix.settings = {
     max-jobs = 1;
     cores = 1;
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
   };
+  nix.channel.enable = false;
   system.stateVersion = "26.05";
 }

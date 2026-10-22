@@ -33,6 +33,7 @@ def inline_jinja(path):
 
 def validate_field_order(root, config):
     order = [
+        "id",
         "alias",
         "description",
         "triggers",
@@ -50,13 +51,12 @@ def validate_field_order(root, config):
         )[1]
         for body in re.findall(r"^    \{\n(.*?)^    \}", declarations, re.M | re.S):
             fields = re.findall(r"^      (\w+) =", body, re.M)
-            assert fields and fields[0] == "alias", (path, fields)
+            assert fields[:2] == ["id", "alias"], (path, fields)
             assert fields == sorted(fields, key=order.index), (path, fields)
-            assert "id" not in fields
             aliases.append(re.search(r'alias = "([^"\n]+)";', body)[1])
     assert sorted(aliases) == sorted(a["alias"] for a in config["automation"])
     print(
-        f"Automation source order passed: {len(aliases)} declarations; no top-level IDs."
+        f"Automation source order passed: {len(aliases)} declarations with stable IDs."
     )
 
 
@@ -76,6 +76,7 @@ MACHINE_ENTRYPOINTS = {
     "home-assistant.nix",
     "services.nix",
     "README.md",
+    "migration.md",
     ".gitignore",
 }
 CONFIGURATION_ENTRYPOINTS = {
@@ -106,7 +107,15 @@ DOMAINS = {
     "voice",
     "weather",
 }
-TEST_CONCERNS = {"configuration", "layout", "mcp", "runtime", "templates", "updater"}
+TEST_CONCERNS = {
+    "configuration",
+    "layout",
+    "mcp",
+    "migration",
+    "runtime",
+    "templates",
+    "updater",
+}
 RUNTIME_COMPONENTS = {"argonone", "backup", "yasno-address-guard"}
 
 
@@ -124,6 +133,8 @@ def responsibility(base, local, root):
             return (len(parts) == 2 and owner in CONFIGURATION_ENTRYPOINTS) or (
                 len(parts) >= 3 and owner in DOMAINS
             )
+    elif boundary == "migration":
+        return (root / base / boundary / "default.nix").is_file()
     elif boundary == "tests":
         return local == Path("tests/default.nix") or (
             len(parts) >= 3 and owner in TEST_CONCERNS
