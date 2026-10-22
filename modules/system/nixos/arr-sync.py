@@ -1249,7 +1249,7 @@ def redacted(value, secrets, secret_fields=frozenset()):
 
 
 def save_backup(backup_dir, name, plan):
-    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     for n in range(100):
         path = os.path.join(
             backup_dir, f"{name}-before-{stamp}{f'-{n}' if n else ''}.json"
