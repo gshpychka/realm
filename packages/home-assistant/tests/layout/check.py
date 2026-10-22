@@ -78,6 +78,7 @@ MACHINE_ENTRYPOINTS = {
     "services.nix",
     "README.md",
     "migration.md",
+    "drift-workbook.md",
     ".gitignore",
 }
 CONFIGURATION_ENTRYPOINTS = {
