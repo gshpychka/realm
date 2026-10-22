@@ -178,11 +178,23 @@ path. Do not replace this with automatic trust-on-first-use.
 
 ## 3. Record baseline and capture a rehearsal
 
+```sh
+mkdir -m700 "$WORK/haos-emergency-kit"
+```
+
 In HA Settings → System → Backups, create a full manual backup named
-`pre-nixos`. Complete emergency-kit/encryption-key download, place those private
-files under `$WORK` with mode 0600, and wait for completion. Capture checks an
-existing backup archive, not the retained encryption key. The raw cold capture
-is independent of HAOS backup encryption.
+`pre-nixos`. Complete the emergency-kit/encryption-key download, saving every
+downloaded file directly in `$WORK/haos-emergency-kit`, and wait for backup
+completion. Then protect the downloaded files:
+
+```sh
+find "$WORK/haos-emergency-kit" -type f -exec chmod 600 {} +
+test -n "$(find "$WORK/haos-emergency-kit" -type f -print -quit)"
+```
+
+Capture checks an existing backup archive, not the retained encryption key.
+The raw cold capture is independent of HAOS backup encryption; both seal
+commands below also encrypt and restore-compare this emergency-kit directory.
 
 In the administrator profile → Security → Long-lived access tokens, create
 `nixos-migration`; copy it once through a silent prompt:
@@ -280,18 +292,28 @@ ssh "${SSH_SOURCE[@]}" "root@$SOURCE" "docker logs --since 168h $MQTT" \
   > "$WORK/mqtt-client-history.txt" 2>&1
 ```
 
-Build a private ledger with columns `client_id,device_or_service,username,
-password_source,reconnect_verified`. Add every `New client connected` record,
-user in Mosquitto app Configuration, HA MQTT entry and gateway/device MQTT
-settings, including Victron bridges. **Low confidence:** dormant clients may be
-absent from retained logs. Compare this list with MQTT's Devices page and actual
-bridge/device settings; power every listed client on for acceptance.
+Build `$WORK/mqtt-client-ledger.json` as a private JSON array, one object per
+client, with `client_id`, `device_or_service`, `settings_location`, `source`,
+`native`, `changed_at`, `reconnect_verified` and `rollback_restored_at`.
+`settings_location` records the exact supported settings page or config file/key
+used to change that client. Both `source` and `native` contain `host`, `port`,
+`tls`, `username` and `password_source`; the latter identifies the exact private
+file/key or retained client setting containing that password. Record the actual
+source values before changing anything. Keep every original password recoverable
+privately, including credentials that will change. Add every `New client
+connected` record, user in Mosquitto app Configuration, HA MQTT entry and
+gateway/device MQTT settings, including Victron bridges. **Low confidence:**
+dormant clients may be absent from retained logs. Compare this list with MQTT's
+Devices page and actual bridge/device settings; power every listed client on
+for acceptance. Keep this ledger mode 0600 and update it after each verified
+change; never put credentials or private endpoint values in Git.
 
 Create `$WORK/mqtt-users.json` as a complete array of `{username,password}`
 objects, including HA and every external client. Keep known passwords where
-possible. Replace Supervisor implicit credentials with native credentials on
-that exact client's settings page and record it. Usernames use letters/numbers
-and `_ . @ -`; passwords contain no CR/LF/NUL.
+possible. Record any required replacement of Supervisor implicit credentials in
+the ledger's `native` settings, but leave the original client settings active
+until section 11 starts the native broker. Usernames use letters/numbers and
+`_ . @ -`; passwords contain no CR/LF/NUL.
 
 ```sh
 chmod 600 "$WORK/mqtt-users.json"
@@ -339,7 +361,8 @@ chmod 600 "$WORK/credentials-input/"* "$WORK/rclone.conf"
 cp -a "$WORK/credentials-input" "$WORK/backup-workstation"
 printf 'RCLONE_CONFIG=%s\n' "$WORK/rclone.conf" > "$WORK/backup-workstation/restic-environment"
 "$TOOLS" restic-init "$WORK/backup-workstation" --execute
-"$TOOLS" seal "$WORK/rehearsal" "$WORK/backup-workstation" "$WORK/rehearsal-encrypted-proof"
+"$TOOLS" seal "$WORK/rehearsal" "$WORK/backup-workstation" "$WORK/rehearsal-encrypted-proof" \
+  "$WORK/haos-emergency-kit"
 ```
 
 Initialize once only. On retries of an existing repository omit init and choose
@@ -443,12 +466,16 @@ original automation IDs and baseline enabled states. Never purge registries to
 remove findings. Remove an obsolete inactive entity individually only after its
 replacement and lack of remaining callers are confirmed.
 
-For every other Supervisor endpoint finding, open that named entry's Configure/
-Reconfigure dialog and replace the exact reported field with its native/fleet
-endpoint. If no endpoint flow exists, keep the old entry until a replacement and
-explicit entity-name/device map are verified using the Glances method. Finish
-OAuth reauthentication on the replacement, keeping external callback URL/DNS/
-proxy/certificate correct. Every affected entry must show loaded.
+For every other Supervisor endpoint finding, record its exact entry ID/domain,
+reported field, current endpoint and intended native/fleet endpoint in private
+`$WORK/endpoint-plan.json` as a JSON array, using `[]` when there are no additional
+entries. Keep it mode 0600. Inspect that integration's Configure/Reconfigure
+dialog without submitting changes. Record the supported flow, or mark that an
+explicit replacement entry and entity-name/device map will be needed. Source
+entries must keep working HAOS endpoints throughout rehearsal; section 11
+applies the recorded changes after native replacements exist. Record any OAuth
+callback URL/DNS/proxy/certificate requirement there too, without starting
+replacement authentication on the source.
 
 After source UI renames/config changes, recapture into a new rehearsal directory,
 re-export declarations/plan, and rerun preflight. Keep old copies immutable.
@@ -510,7 +537,8 @@ install -m600 "$WORK/final-secrets.yaml" "$WORK/credentials-native/secrets.yaml"
 "$TOOLS" seal "$WORK/final" "$WORK/backup-workstation" "$WORK/final-encrypted-proof" \
   "$WORK/credentials-final" "$WORK/rclone.conf" "$WORK/outbound_key" \
   "$WORK/outbound_known_hosts" "$WORK/mqtt-ha.json" "$WORK/glances.json" \
-  "$WORK/final-reconcile.json" "$WORK/ha-token"
+  "$WORK/final-reconcile.json" "$WORK/ha-token" \
+  "$WORK/mqtt-client-ledger.json" "$WORK/endpoint-plan.json" "$WORK/haos-emergency-kit"
 ```
 
 Compare `final-preflight.json` with the resolved rehearsal findings. Only the
@@ -543,6 +571,7 @@ ssh "${SSH_INSTALLER[@]}" "root@$INSTALLER_IP" 'install -d -m700 /root/ha-migrat
 scp "${SSH_INSTALLER[@]}" -r "$WORK/final" "$WORK/credentials-final" \
   "$WORK/outbound_key" "$WORK/outbound_known_hosts" "$WORK/rclone.conf" \
   "$WORK/final-reconcile.json" "$WORK/mqtt-ha.json" "$WORK/glances.json" "$WORK/ha-token" "$WORK/artifacts.json" \
+  "$WORK/mqtt-client-ledger.json" "$WORK/endpoint-plan.json" \
   "root@$INSTALLER_IP:/root/ha-migration/"
 ```
 
@@ -600,6 +629,7 @@ install -d -m700 /mnt/ha-candidate/var/lib/ha-migration
 install -m600 "$WORK/final-reconcile.json" \
   /mnt/ha-candidate/var/lib/ha-migration/reconcile.json
 cp -a "$WORK/mqtt-ha.json" "$WORK/glances.json" "$WORK/ha-token" \
+  "$WORK/mqtt-client-ledger.json" "$WORK/endpoint-plan.json" \
   /mnt/ha-candidate/var/lib/ha-migration/
 sync
 umount /mnt/ha-candidate/boot/firmware
@@ -672,9 +702,26 @@ verify the map first, remove only the selected old entry, then assign its freed
 entity IDs to the replacement sensors. Renaming first would collide with names
 still reserved by the old registry records.
 
+Now apply each client change from `$OP/mqtt-client-ledger.json` at its recorded
+`settings_location`, using only its recorded `native` host/port/TLS/username and
+password source. Keep the source values intact. Use the workstation's original
+`$WORK/mqtt-client-ledger.json` as the authoritative recovery record: enter
+`changed_at` there immediately before submitting each client change, reconnect
+the client, and verify its intended client ID/username in the native broker log
+plus a fresh HA value before marking `reconnect_verified`. Keep that workstation
+record available even if the candidate fails to boot; do not depend on its
+native copy for rollback. A source-only app that was replaced by a native
+service remains stopped on retained HAOS; configure its native replacement
+instead.
+
+For each additional entry in `$OP/endpoint-plan.json`, open its recorded
+Configure/Reconfigure flow on native HA and change only the recorded endpoint
+field. If no endpoint flow exists, retain its old entry until a replacement and
+explicit entity-name/device map are verified using the Glances method. Complete
+that replacement's OAuth prompts and verify its external callback URL,
+certificate, proxy/DNS and mobile access. Every retained entry must show loaded.
 Remove Supervisor integration through Settings → Devices & services only after
-native replacements work. Complete OAuth repair prompts and verify external
-callback URL, certificate, proxy/DNS and mobile access.
+its native replacements work.
 After these repairs and the Glances name changes, run
 `"$TOOLS" cold-audit "$OP/after-reconciliation" --execute` and require exit 0.
 Inspect its `preflight.json`; no pending source-reference or endpoint finding
@@ -738,20 +785,75 @@ readlink -f /run/current-system > "$OP/accepted-system"
 systemctl reboot
 ```
 
-Reconnect with pinned native host key, start Bash, set
-`TOOLS=/nix/var/nix/gcroots/ha-migration-tools/bin/home-assistant-migrate` and
-`OP=/var/lib/ha-migration`, then run health into
-`health-second-boot`, repeat one ZHA action, one Matter report, MQTT freshness
-and a Voice PE request. `systemctl list-timers restic-backups-home-assistant.timer`
-must show next 03:30 backup (up to 15 minutes jitter). Activate the accepted
-generation with `"$(cat "$OP/accepted-system")/bin/switch-to-configuration" switch`,
-then run health into another new directory. This tests activation, not a state
-downgrade.
+Reconnect with the pinned native host key and start a new Bash session:
 
-Create dedicated `native-ha-mcp` administrator token, replace only its assignment
-in `ha-mcp.env`, restart MCP, verify a read-only query, then revoke temporary
-`nixos-migration` token after all clients stop using it. Remove temporary token/
-credential copies only after recovery proof and independent password retention.
+```sh
+set -euo pipefail
+TOOLS=/nix/var/nix/gcroots/ha-migration-tools/bin/home-assistant-migrate
+OP=/var/lib/ha-migration
+"$TOOLS" health "$OP/health-second-boot"
+systemctl list-timers restic-backups-home-assistant.timer
+```
+
+The timer must show the next 03:30 backup (up to 15 minutes jitter). Repeat one
+ZHA action, one Matter report, MQTT freshness and a Voice PE request; record all
+four results in `physical-acceptance.md` before continuing. Activate the accepted
+generation and check the resulting services:
+
+```sh
+accepted_system=$(cat "$OP/accepted-system")
+test "$accepted_system" = "$(readlink -f /run/current-system)"
+"$accepted_system/bin/switch-to-configuration" switch
+"$TOOLS" health "$OP/health-after-activation"
+```
+
+This tests activation of the accepted code and its retained state.
+
+1. In native HA open the administrator profile → Security → Long-lived access
+   tokens → Create token, name it `native-ha-mcp`, and copy its one-time value.
+2. In the native root shell run the following block. The silent prompt does not
+   put that token in command arguments or history. The existing secret path is
+   preserved, and the complete staged bundle is validated before installation:
+
+```sh
+set +x
+umask 077
+"$TOOLS" credentials /var/lib/private/home-assistant "$OP/credentials-token-rotation-input"
+mcp_secret_path=''
+while IFS='=' read -r mcp_key mcp_value; do
+  if [[ $mcp_key == MCP_SECRET_PATH ]]; then mcp_secret_path=$mcp_value; fi
+done < "$OP/credentials-token-rotation-input/ha-mcp.env"
+[[ $mcp_secret_path =~ ^/[A-Za-z0-9_-]{32,}$ ]]
+IFS= read -rs -p 'Dedicated native-ha-mcp token: ' mcp_token; printf '\n'
+[[ $mcp_token =~ ^[A-Za-z0-9._-]+$ ]]
+{ printf 'HOMEASSISTANT_TOKEN=%s\n' "$mcp_token";
+  printf 'MCP_SECRET_PATH=%s\n' "$mcp_secret_path"; } \
+  > "$OP/credentials-token-rotation-input/ha-mcp.env"
+unset mcp_token mcp_secret_path mcp_key mcp_value
+"$TOOLS" credentials "$OP/credentials-token-rotation-input" "$OP/credentials-after-token-rotation"
+install -o root -g root -m600 "$OP/credentials-after-token-rotation/ha-mcp.env" \
+  /var/lib/private/home-assistant/ha-mcp.env
+systemctl restart ha-mcp.service
+systemctl is-active --quiet ha-mcp.service
+```
+
+3. Through the existing MCP client at its retained private path, perform a
+   read-only query for `sensor.yasno_power` and compare its result with native
+   HA. Require success before revoking the migration token.
+4. Confirm every client has stopped using `nixos-migration`. In the native
+   administrator profile → Security → Long-lived access tokens, delete only
+   the token named `nixos-migration`.
+
+The earlier backup predates this auth and credential change; prove the final
+state again:
+
+```sh
+"$TOOLS" prove-backup "$OP/native-backup-proof-after-token-rotation"
+```
+
+Require empty proof differences, a successful full repository check and restored
+services again. Remove temporary token/credential copies only after this final
+recovery proof and independent password retention.
 Keep original media + matching cold capture together for rollback.
 
 ## 13. Rollback and interrupted-operation recovery
@@ -768,8 +870,19 @@ Stop-native stops timer/backup before cleanup can restart controllers, then
 HA/MCP/Matter/broker/Tailscale/Bluetooth, masks them persistently and verifies
 inactivity. After poweroff unplug power, remove/label candidate, reinstall original
 HAOS NVMe/boot media, remove SD and power on. Never run original while native
-controllers remain running. Check login, ZHA, Matter, MQTT and voice against
-baseline. Do not copy converted native data back to original HAOS.
+controllers remain running. Using the workstation's retained
+`mqtt-client-ledger.json`, restore each changed external client's exact `source`
+host/port/TLS/username/password through its recorded `settings_location` after
+the candidate is powered off. Reconnect each client to HAOS and record
+`rollback_restored_at` only after its intended client ID/username and fresh HA
+value are verified. Do not change a client that kept its original settings.
+Check login, ZHA, Matter, MQTT and voice against baseline. A provider may have
+invalidated the source OAuth refresh token when native HA refreshed it: for
+each affected original entry, open its existing Settings → Devices & services
+repair/reauthentication prompt, sign in to the same provider account, approve
+its original callback URL and verify that entry loads. Retain its entry/entity/
+device IDs; do not delete/re-add or re-pair it. Do not copy converted native data
+back to original HAOS.
 
 If HAOS does not automatically restart containers left stopped by final capture,
 use the workstation's recorded capture and verified host-debug identity:
