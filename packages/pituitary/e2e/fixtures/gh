@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Stands in for the GitHub CLI and logs each call: `pr view` answers as FAKE_GH_STATE says,
+# `auth status` as FAKE_GH_AUTH says, and `gist create` as FAKE_GH_GIST says, copying the
+# file it would upload to FAKE_GH_UPLOAD.
+[ -n "$FAKE_GH_DELAY" ] && sleep "$FAKE_GH_DELAY"
+[ -n "$FAKE_GH_LOG" ] && printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+case "$1 $2" in
+  "auth status")
+    case "${FAKE_GH_AUTH:-in}" in
+      in) echo "Logged in to github.com account operator" >&2; exit 0 ;;
+      out) echo "You are not logged into any GitHub hosts. To log in, run: gh auth login" >&2; exit 1 ;;
+    esac ;;
+  "gist create")
+    file=${!#}
+    [ -n "$FAKE_GH_UPLOAD" ] && cp "$file" "$FAKE_GH_UPLOAD"
+    case "${FAKE_GH_GIST:-ok}" in
+      ok) echo "- Creating gist $(basename "$file")" >&2; echo "https://gist.github.com/operator/0123456789abcdef0123456789abcdef" ;;
+      failing) echo "HTTP 422: Validation Failed" >&2; exit 1 ;;
+    esac ;;
+  *)
+    number=${FAKE_GH_NUMBER:-1234}
+    url="https://github.com/gshpychka/pituitary/pull/$number"
+    case "${FAKE_GH_STATE:-none}" in
+      open) echo "{\"number\":$number,\"url\":\"$url\",\"state\":\"OPEN\",\"isDraft\":false}" ;;
+      draft) echo "{\"number\":$number,\"url\":\"$url\",\"state\":\"OPEN\",\"isDraft\":true}" ;;
+      merged) echo "{\"number\":$number,\"url\":\"$url\",\"state\":\"MERGED\",\"isDraft\":false}" ;;
+      closed) echo "{\"number\":$number,\"url\":\"$url\",\"state\":\"CLOSED\",\"isDraft\":false}" ;;
+      none) echo "no pull requests found for branch \"main\"" >&2; exit 1 ;;
+      failing) echo "error connecting to api.github.com" >&2; exit 1 ;;
+    esac ;;
+esac

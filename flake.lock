@@ -1,25 +1,5 @@
 {
   "nodes": {
-    "bay": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791642445,
-        "narHash": "sha256-0UF6qsnIml2zC92J+yS5lQ1KFTjKbgi3HnoqYWXRPV0=",
-        "ref": "refs/heads/main",
-        "rev": "2c0ae338b3324e081331b42cdfb9345f05f2d02b",
-        "revCount": 3,
-        "type": "git",
-        "url": "ssh://git@github.com/gshpychka/bay"
-      },
-      "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/gshpychka/bay"
-      }
-    },
     "brew-src": {
       "flake": false,
       "locked": {
@@ -648,29 +628,6 @@
         "type": "github"
       }
     },
-    "pituitary": {
-      "inputs": {
-        "home-manager": [
-          "home-manager"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1791568107,
-        "narHash": "sha256-luH2X0XTwQP7y7sRIoQmh24FF1x81eel5vnXXq4cODM=",
-        "ref": "refs/heads/main",
-        "rev": "a0ebe85eccfe7192ae80b91f7c8ca16898d9aeaf",
-        "revCount": 53,
-        "type": "git",
-        "url": "ssh://git@github.com/gshpychka/pituitary"
-      },
-      "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/gshpychka/pituitary"
-      }
-    },
     "pre-commit": {
       "inputs": {
         "flake-compat": "flake-compat",
@@ -721,7 +678,6 @@
     },
     "root": {
       "inputs": {
-        "bay": "bay",
         "bun2nix": "bun2nix",
         "darwin": "darwin",
         "home-manager": "home-manager",
@@ -739,7 +695,6 @@
         "nixos-hardware": "nixos-hardware",
         "nixos-stable": "nixos-stable",
         "nixpkgs": "nixpkgs_4",
-        "pituitary": "pituitary",
         "sops-nix": "sops-nix"
       }
     },

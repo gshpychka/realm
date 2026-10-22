@@ -30,6 +30,26 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
 | `scripts/` | Runbooks for the travel router, Kodi box and Voice PE; OpenClaw's nixos-control plugin |
 | `tests/` | NixOS VM tests |
 
+## Applications
+
+[Pituitary](packages/pituitary) is the OpenTUI frontend for pi.
+[Bay](packages/bay) runs disposable, isolated VM sessions for terminal programs;
+its guest-side command is `flare`. Their source, modules, tests and development
+environments live here. The former standalone repositories are retired.
+
+```sh
+nix run .#pituitary
+nix build .#bay .#flare                    # Linux
+nix develop .#pituitary                   # then: cd packages/pituitary && just loop
+nix develop .#bay                         # then: cd packages/bay && go test ./...
+```
+
+The flake exports `homeManagerModules.pituitary` (`programs.pituitary`) and
+`nixosModules.bay` (`services.bay`). Realm imports them with its regular module
+trees; host preferences stay in `machines/`. Each package README records its
+source revision and development workflow. `lib.bayGuestImage` builds a standalone
+Bay guest image.
+
 ## Usage
 
 ```sh

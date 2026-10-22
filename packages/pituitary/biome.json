@@ -1,0 +1,50 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "root": false,
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "includes": ["**/*.ts", "**/*.tsx", "**/*.json", "!**/*.tsbuildinfo"] },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 110 },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": { "noConsole": "off" },
+      "style": { "useImportType": "error" },
+      "performance": { "noReExportAll": "error" },
+      "a11y": { "recommended": false }
+    }
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "overrides": [
+    {
+      "includes": [
+        "packages/tui/src/**",
+        "!packages/tui/src/components/mascot.tsx",
+        "!packages/tui/src/firelight.ts",
+        "!packages/tui/src/remains.ts",
+        "!**/*.test.ts",
+        "!**/*.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@pituitary/ember": "The fire burns only in the mascot: components/mascot.tsx and the light and remains it leaves, firelight.ts and remains.ts, are the UI modules that import @pituitary/ember."
+                },
+                "patterns": [
+                  {
+                    "group": ["@pituitary/ember/**"],
+                    "message": "The fire burns only in the mascot: components/mascot.tsx and the light and remains it leaves, firelight.ts and remains.ts, are the UI modules that import @pituitary/ember."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
