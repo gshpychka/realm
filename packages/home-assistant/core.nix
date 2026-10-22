@@ -40,6 +40,9 @@ let
       # them shared instead of duplicating Django/benchmark checks under QEMU.
       django = reuseNative "django" previous.django;
       pytest-benchmark = reuseNative "pytest-benchmark" previous.pytest-benchmark;
+      # Moto is only an optional AWS test fixture; its entire runtime also
+      # matches native, independently of those scoped test dependencies.
+      moto = reuseNative "moto" previous.moto;
       pymodbus = ps.callPackage ./core-dependencies/pymodbus { inherit (previous) pymodbus; };
       pyrate-limiter = ps.callPackage ./core-dependencies/pyrate-limiter {
         inherit (previous) pyrate-limiter;
