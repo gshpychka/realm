@@ -5,7 +5,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["modules/**/*.ts", "modules/**/*.js", "infra/**/*.ts", "!**/node_modules"]
+    "includes": [
+      "modules/**/*.ts",
+      "modules/**/*.js",
+      "infra/**/*.ts",
+      "infra/**/*.tsx",
+      "!**/node_modules"
+    ]
   },
   "formatter": {
     "indentStyle": "space",

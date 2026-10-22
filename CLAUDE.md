@@ -12,7 +12,7 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
 - `packages/` - Custom package definitions and application source: `pituitary/` (Bun workspace for the Pi Durable harness and terminal UI) and `bay/` (Go module for isolated NixOS execution environments)
 - `secrets/` - SOPS encrypted secrets
 - `tests/` - NixOS VM tests, exposed as flake checks
-- `infra/` - Cloud infrastructure: Terraform units (GCP VM for buoy, Cloudflare DNS and tunnels), the bootstrap GCE image under `infra/nixos/`, and the `link-sanitizer/` Alchemy stack (Telegram bot on AWS Lambda)
+- `infra/` - Cloud infrastructure: Terraform units (GCP VM for buoy, Cloudflare DNS and tunnels), the bootstrap GCE image under `infra/nixos/`, and Alchemy stacks: `link-sanitizer/` (Telegram bot on AWS Lambda), `probabench/` (probability benchmark runner and static results site on AWS S3/CloudFront)
 - `scripts/` - Artifacts for devices outside the flake, one folder per device with a `runbook.md` as its deployment path: `mudi/` (GL.iNet travel router), `kodi/` (CoreELEC Kodi box) and `voice-pe/` (kitchen Home Assistant Voice PE firmware)
 
 ## Standards

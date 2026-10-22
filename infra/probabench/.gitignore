@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.tsbuild/
+.direnv/
+.home/
+.ralph/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+coverage/
+packages/web/public/data/*.lock
+*.log
+.DS_Store
+
+# Alchemy logs, caches and local state
+.alchemy/

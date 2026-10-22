@@ -1,0 +1,204 @@
+import { describe, expect, it } from "@effect/vitest";
+import * as Schema from "effect/Schema";
+import {
+  brier,
+  calibrationError,
+  counts,
+  observedRate,
+  rateInterval,
+  rmse,
+  samplingRmse,
+  summarizeRun,
+} from "./metrics";
+import { Run, type Trial } from "./schema";
+
+describe("rmse", () => {
+  it("is 0 for all-1s at x=1", () => {
+    expect(rmse([1, 1, 1], 1)).toBe(0);
+  });
+
+  it("is 0 for all-0s at x=0", () => {
+    expect(rmse([0, 0], 0)).toBe(0);
+  });
+
+  it("is 0.5 for alternating 0/1 at x=0.5", () => {
+    expect(rmse([0, 1, 0, 1], 0.5)).toBe(0.5);
+  });
+
+  it("ignores invalid trials when averaging", () => {
+    expect(rmse([1, { invalidText: "oops" }, 1], 1)).toBe(0);
+  });
+
+  it("is null when there are no valid bits", () => {
+    expect(rmse([], 0.5)).toBeNull();
+    expect(rmse([{ invalidText: "x" }, { invalidText: "y" }], 0.5)).toBeNull();
+  });
+});
+
+describe("brier", () => {
+  it("equals rmse squared over valid bits", () => {
+    expect(brier([0, 1, 0, 1], 0.5)).toBe(0.25);
+  });
+
+  it("is 0 for a perfectly-matching constant", () => {
+    expect(brier([1, 1], 1)).toBe(0);
+  });
+
+  it("ignores invalid trials when averaging", () => {
+    expect(brier([0, { invalidText: "x" }], 0)).toBe(0);
+  });
+
+  it("is null when there are no valid bits", () => {
+    expect(brier([], 0.5)).toBeNull();
+  });
+});
+
+describe("samplingRmse", () => {
+  it("peaks at 0.5", () => {
+    expect(samplingRmse(0.5)).toBe(0.5);
+  });
+
+  it("is 0 at the endpoints", () => {
+    expect(samplingRmse(0)).toBe(0);
+    expect(samplingRmse(1)).toBe(0);
+  });
+
+  it("matches sqrt(x*(1-x)) for an interior point", () => {
+    expect(samplingRmse(0.1)).toBeCloseTo(Math.sqrt(0.1 * 0.9), 12);
+  });
+
+  it("is not a lower bound on sample RMSE", () => {
+    expect(rmse([0, 0, 0], 0.1)).toBeLessThan(samplingRmse(0.1));
+  });
+});
+
+describe("empirical calibration", () => {
+  it("uses only valid bits as the denominator", () => {
+    const outcomes = [1, 0, { invalidText: "oops" }] as const;
+    expect(observedRate(outcomes)).toBe(0.5);
+    expect(calibrationError(outcomes, 0.25)).toBe(0.25);
+  });
+
+  it("distinguishes uncalibrated samples with identical RMSE at x=0.5", () => {
+    expect(rmse([0, 0], 0.5)).toBe(rmse([0, 1], 0.5));
+    expect(calibrationError([0, 0], 0.5)).toBe(0.5);
+    expect(calibrationError([0, 1], 0.5)).toBe(0);
+  });
+
+  it("returns null when all replies are invalid or missing", () => {
+    expect(observedRate([])).toBeNull();
+    expect(observedRate([{ invalidText: "x" }])).toBeNull();
+    expect(calibrationError([{ invalidText: "x" }], 0.5)).toBeNull();
+  });
+});
+
+describe("counts", () => {
+  it("tallies ones, zeros, and invalids in a mixed array", () => {
+    const outcomes: ReadonlyArray<Trial> = [
+      1,
+      0,
+      1,
+      { invalidText: "oops" },
+      0,
+      { invalidText: "" },
+    ];
+    expect(counts(outcomes)).toEqual({ ones: 2, zeros: 2, invalid: 2 });
+  });
+
+  it("is all-zero for an empty array", () => {
+    expect(counts([])).toEqual({ ones: 0, zeros: 0, invalid: 0 });
+  });
+});
+
+describe("rateInterval", () => {
+  it("gives the Wilson interval for 50 ones in 100 valid trials", () => {
+    const interval = rateInterval([...Array<Trial>(50).fill(1), ...Array<Trial>(50).fill(0)]);
+    expect(interval?.[0]).toBeCloseTo(0.4038315, 6);
+    expect(interval?.[1]).toBeCloseTo(0.5961685, 6);
+  });
+
+  it("keeps uncertainty at observed endpoints and ignores invalid replies", () => {
+    const interval = rateInterval(Array<Trial>(100).fill(0));
+    expect(interval?.[0]).toBe(0);
+    expect(interval?.[1]).toBeCloseTo(0.0369935, 6);
+    expect(rateInterval([1, { invalidText: "x" }])).toEqual(rateInterval([1]));
+    expect(rateInterval([{ invalidText: "x" }])).toBeNull();
+  });
+});
+
+describe("summarizeRun", () => {
+  const makeRun = (points: readonly { x: number; outcomes: readonly Trial[] }[]) =>
+    Schema.decodeUnknownSync(Run)({
+      id: "execution-1",
+      model: "model",
+      trialsPerStep: 4,
+      stepPercent: 50,
+      startedAt: "2026-06-26T00:00:00.000Z",
+      points: points.map((point) => ({ ...point, rmse: rmse(point.outcomes, point.x) })),
+    });
+
+  it("weights covered target points equally and reports missing valid data separately", () => {
+    const run = makeRun([
+      { x: 0, outcomes: [0, 0, 0, 0] },
+      { x: 0.5, outcomes: [1, 1, { invalidText: "x" }, { invalidText: "y" }] },
+      { x: 1, outcomes: Array<Trial>(4).fill({ invalidText: "x" }) },
+    ]);
+    expect(summarizeRun(run)).toEqual({
+      calibrationError: 0.25,
+      valid: 6,
+      invalid: 6,
+      total: 12,
+      validity: 0.5,
+      coveredPoints: 2,
+      totalPoints: 3,
+      coverage: 2 / 3,
+    });
+  });
+
+  it("does not award zero calibration error to an all-invalid run", () => {
+    const invalid = Array<Trial>(4).fill({ invalidText: "x" });
+    const summary = summarizeRun(
+      makeRun([
+        { x: 0, outcomes: invalid },
+        { x: 1, outcomes: invalid },
+      ]),
+    );
+    expect(summary).toEqual({
+      calibrationError: null,
+      valid: 0,
+      invalid: 8,
+      total: 8,
+      validity: 0,
+      coveredPoints: 0,
+      totalPoints: 2,
+      coverage: 0,
+    });
+  });
+
+  it("reports zero error with complete coverage and validity for matched frequencies", () => {
+    const summary = summarizeRun(
+      makeRun([
+        { x: 0, outcomes: [0, 0, 0, 0] },
+        { x: 0.5, outcomes: [0, 1, 0, 1] },
+        { x: 1, outcomes: [1, 1, 1, 1] },
+      ]),
+    );
+    expect(summary).toMatchObject({
+      calibrationError: 0,
+      valid: 12,
+      total: 12,
+      validity: 1,
+      coverage: 1,
+    });
+  });
+
+  it("defines coverage over recorded points so partial-grid interpretation stays explicit", () => {
+    const summary = summarizeRun(makeRun([{ x: 0.25, outcomes: [0, 0, 0, 1] }]));
+    expect(summary).toMatchObject({
+      calibrationError: 0,
+      coveredPoints: 1,
+      totalPoints: 1,
+      coverage: 1,
+    });
+  });
+});

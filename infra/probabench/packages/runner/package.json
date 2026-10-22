@@ -1,0 +1,24 @@
+{
+  "name": "@probabench/runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "probabench": "./src/index.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@effect/ai": "0.36.0",
+    "@effect/ai-openrouter": "^0.11.0",
+    "@effect/cli": "^0.75.2",
+    "@effect/platform": "0.96.2",
+    "@effect/platform-node": "^0.107.0",
+    "@probabench/domain": "workspace:*",
+    "effect": "3.21.4"
+  }
+}

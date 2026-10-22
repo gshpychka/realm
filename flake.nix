@@ -267,7 +267,7 @@
                 touch $out
               '';
               deadnix = pkgs.runCommand "check-deadnix" { nativeBuildInputs = [ pkgs.deadnix ]; } ''
-                deadnix --fail --exclude ${self}/infra/link-sanitizer/bun.nix -- ${self}
+                deadnix --fail --exclude ${self}/infra/link-sanitizer/bun.nix ${self}/infra/probabench/bun.nix -- ${self}
                 touch $out
               '';
               # whole-tree format check; copy out of the read-only store so
@@ -313,6 +313,9 @@
                 nativeBuildInputs = [ bun2nix.hook ];
                 buildPhase = "bun run check";
                 installPhase = "touch $out";
+              };
+              probabench = import ./infra/probabench/check.nix {
+                inherit pkgs bun2nix;
               };
               # the Voice PE component's ESP-free logic, built for the host
               voice-pe = pkgs.runCommandCC "check-voice-pe" { buildInputs = [ pkgs.gtest ]; } ''

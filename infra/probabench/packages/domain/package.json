@@ -1,0 +1,15 @@
+{
+  "name": "@probabench/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "effect": "^3.21.4"
+  }
+}

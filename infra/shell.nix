@@ -33,6 +33,8 @@ pkgs.mkShell {
     pkgs.google-cloud-sdk
     pkgs.awscli2
     pkgs.bun
+    pkgs.nodejs
+    pkgs.biome
     bun2nix.packages.${system}.default
     pkgs.sops
     pkgs.age

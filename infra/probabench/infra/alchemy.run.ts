@@ -1,0 +1,54 @@
+import * as Alchemy from "alchemy";
+import * as AWS from "alchemy/AWS";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
+export default Alchemy.Stack(
+  "ProbaBench",
+  {
+    providers: AWS.providers(),
+    // Alchemy's AWS state store resolves real credentials even in dev mode.
+    // Keep local development independent of the account's remote state.
+    state: Layer.unwrap(
+      Alchemy.AlchemyContext.useSync(({ dev }) => (dev ? Alchemy.localState() : AWS.state())),
+    ),
+  },
+  Effect.gen(function* () {
+    const site = yield* AWS.Website.StaticSite("Web", {
+      path: "../packages/web",
+      build: {
+        command: "bun run build",
+        output: "dist",
+        // Vite imports the domain workspace directly. Include it in the build
+        // hash so schema-only changes cannot reuse an outdated frontend build.
+        include: [
+          "**/*",
+          "../domain/src/**",
+          "../domain/package.json",
+          "../../tsconfig.base.json",
+          "../../package.json",
+        ],
+        lockfile: true,
+      },
+      dev: { command: "bun run dev" },
+      spa: true,
+      // This bucket holds reproducible build artifacts, so destroy can remove it.
+      forceDestroy: true,
+      assets: {
+        fileOptions: [
+          {
+            // These filenames are stable across benchmark runs. Alchemy's
+            // default for non-HTML files is a year-long immutable browser cache.
+            files: "data/*.json",
+            cacheControl: "public,max-age=0,must-revalidate",
+          },
+        ],
+      },
+      // Invalidate the app shell and the mutable results together, and return
+      // only once CloudFront can serve the completed release.
+      invalidation: { paths: "all", wait: true },
+    });
+
+    return { url: site.url };
+  }),
+);
