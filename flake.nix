@@ -213,52 +213,68 @@
         homeAssistant = nixpkgs.legacyPackages.${system}.callPackage ./packages/home-assistant { };
       });
 
-      packages = lib.recursiveUpdate projectPackages {
-        x86_64-linux = {
-          iso = self.nixosConfigurations.iso.config.system.build.isoImage;
-          voice-pe-firmware = import ./scripts/voice-pe/firmware.nix {
-            pkgs = nixpkgs.legacyPackages.x86_64-linux;
-          };
-          gce-image =
-            let
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
-              original = self.nixosConfigurations.buoy-bootstrap.config.system.build.googleComputeImage;
-            in
-            pkgs.runCommand "gce-image.raw.tar.gz" { inherit original; } ''
-              cp $original/*.raw.tar.gz $out
-            '';
-        };
-        # A separate SD installer boots without touching HA's existing NVMe disk.
-        # Keep it on the same Pi firmware/kernel input as the installed machine.
-        aarch64-linux.home-assistant-installer =
-          (inputs.nixos-raspberrypi.nixosConfigurations.rpi5-installer.extendModules {
-            modules = [
-              ./modules/common
-              (
-                { config, lib, ... }:
-                {
-                  networking.hostName = "home-assistant-installer";
-                  boot.zfs.forceImportRoot = false;
-                  users.users.root.openssh.authorizedKeys.keys = [ config.my.sshKeys.main ];
-                  services.openssh.settings = {
-                    PasswordAuthentication = lib.mkForce false;
-                    KbdInteractiveAuthentication = lib.mkForce false;
-                    PermitRootLogin = lib.mkForce "prohibit-password";
+      packages = lib.recursiveUpdate projectPackages (
+        lib.recursiveUpdate
+          (lib.genAttrs
+            [
+              "x86_64-linux"
+              "aarch64-linux"
+            ]
+            (system: {
+              home-assistant-migrate =
+                nixpkgs.legacyPackages.${system}.callPackage ./packages/home-assistant/migration/runbook.nix
+                  {
+                    configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
                   };
-                }
-              )
-            ];
-          }).config.system.build.sdImage;
+            })
+          )
+          {
+            x86_64-linux = {
+              iso = self.nixosConfigurations.iso.config.system.build.isoImage;
+              voice-pe-firmware = import ./scripts/voice-pe/firmware.nix {
+                pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              };
+              gce-image =
+                let
+                  pkgs = nixpkgs.legacyPackages.x86_64-linux;
+                  original = self.nixosConfigurations.buoy-bootstrap.config.system.build.googleComputeImage;
+                in
+                pkgs.runCommand "gce-image.raw.tar.gz" { inherit original; } ''
+                  cp $original/*.raw.tar.gz $out
+                '';
+            };
+            # A separate SD installer boots without touching HA's existing NVMe disk.
+            # Keep it on the same Pi firmware/kernel input as the installed machine.
+            aarch64-linux.home-assistant-installer =
+              (inputs.nixos-raspberrypi.nixosConfigurations.rpi5-installer.extendModules {
+                modules = [
+                  ./modules/common
+                  (
+                    { config, lib, ... }:
+                    {
+                      networking.hostName = "home-assistant-installer";
+                      boot.zfs.forceImportRoot = false;
+                      users.users.root.openssh.authorizedKeys.keys = [ config.my.sshKeys.main ];
+                      services.openssh.settings = {
+                        PasswordAuthentication = lib.mkForce false;
+                        KbdInteractiveAuthentication = lib.mkForce false;
+                        PermitRootLogin = lib.mkForce "prohibit-password";
+                      };
+                    }
+                  )
+                ];
+              }).config.system.build.sdImage;
 
-        aarch64-linux.harbor-sd-image =
-          (self.nixosConfigurations.harbor.extendModules {
-            modules = [
-              "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
-              # harbor's root is ext4; the image does not need ZFS imports
-              { boot.zfs.forceImportRoot = false; }
-            ];
-          }).config.system.build.sdImage;
-      };
+            aarch64-linux.harbor-sd-image =
+              (self.nixosConfigurations.harbor.extendModules {
+                modules = [
+                  "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
+                  # harbor's root is ext4; the image does not need ZFS imports
+                  { boot.zfs.forceImportRoot = false; }
+                ];
+              }).config.system.build.sdImage;
+          }
+      );
 
       homeManagerModules.pituitary = ./modules/home-manager/pituitary.nix;
       nixosModules.bay = ./modules/system/nixos/bay.nix;
@@ -364,6 +380,9 @@
           # Configuration QA can run on the Pi or an x86 build server. Keep it
           # outside the deployed closure so ARM rebuilds do not need an x86 builder.
           homeAssistantChecks = lib.genAttrs linuxSystems (system: {
+            home-assistant-migration = import ./packages/home-assistant/tests/migration {
+              pkgs = nixpkgs.legacyPackages.${system};
+            };
             home-assistant-config = import ./packages/home-assistant/tests {
               pkgs = nixpkgs.legacyPackages.${system};
               configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
@@ -454,6 +473,11 @@
             type = "app";
             program = lib.getExe homeAssistantPreflight;
             inherit (homeAssistantPreflight) meta;
+          };
+          home-assistant-migrate = {
+            type = "app";
+            program = lib.getExe self.packages.${system}.home-assistant-migrate;
+            inherit (self.packages.${system}.home-assistant-migrate) meta;
           };
           bay = {
             type = "app";

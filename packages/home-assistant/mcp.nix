@@ -19,6 +19,8 @@ let
         native;
       python-dotenv = ps.callPackage ./mcp-dependencies/python-dotenv.nix { };
       pydantic-monty = ps.callPackage ./mcp-dependencies/pydantic-monty.nix { };
+      # The native runtime is unchanged; share Core's transport test fixtures.
+      httpcore2 = ps.callPackage ./core-dependencies/httpcore2 { inherit (previous) httpcore2; };
     }
   );
   buildBackend = mcpPython.callPackage ./mcp-dependencies/uv-build.nix { };

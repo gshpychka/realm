@@ -71,6 +71,7 @@ PACKAGE_ENTRYPOINTS = {
     ".gitattributes",
 }
 MACHINE_ENTRYPOINTS = {
+    ".gitattributes",
     "default.nix",
     "hardware.nix",
     "home-assistant.nix",
@@ -116,7 +117,7 @@ TEST_CONCERNS = {
     "templates",
     "updater",
 }
-RUNTIME_COMPONENTS = {"argonone", "backup", "yasno-address-guard"}
+RUNTIME_COMPONENTS = {"argonone", "backup", "glances", "yasno-address-guard"}
 
 
 def responsibility(base, local, root):

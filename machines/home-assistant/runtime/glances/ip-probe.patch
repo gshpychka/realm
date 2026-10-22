@@ -1,0 +1,30 @@
+--- a/glances/globals.py
++++ b/glances/globals.py
+@@ -637,5 +637,12 @@
+                 p.join(timeout=seconds)
+                 if not p.is_alive():
+-                    return q.get()
++                    # A crashed worker (or an empty successful worker) must not
++                    # make this timeout wrapper wait forever for a queue result.
++                    if p.exitcode != 0:
++                        return default
++                    try:
++                        return q.get(timeout=0.1)
++                    except queue.Empty:
++                        return default
+                 p.terminate()
+                 p.join(timeout=0.1)
+@@ -748,7 +755,10 @@
+     family = socket.AF_INET6 if ipv6 else socket.AF_INET
+ 
+-    # Get IP address
+-    stats = psutil.net_if_stats()
+-    addrs = psutil.net_if_addrs()
++    # Unsupported NIC metadata must not prevent unrelated monitoring.
++    try:
++        stats = psutil.net_if_stats()
++        addrs = psutil.net_if_addrs()
++    except OSError:
++        return None, None
+ 
+     ip_address = None

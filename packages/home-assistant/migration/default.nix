@@ -9,6 +9,7 @@ let
     builtins.toJSON {
       inherit configuration;
       entities = import ../../../machines/home-assistant/configuration/entities.nix;
+      devices = import ../../../machines/home-assistant/configuration/devices.nix;
     }
   );
 in
@@ -18,4 +19,5 @@ writeShellApplication {
     exec ${python3}/bin/python3 ${./preflight.py} --declarations ${declarations} "$@"
   '';
   meta.description = "Read-only audit of a private HA snapshot against the declared configuration";
+  passthru = { inherit declarations; };
 }

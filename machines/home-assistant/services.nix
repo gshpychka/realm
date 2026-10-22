@@ -161,6 +161,7 @@ in
   };
   services.glances = {
     enable = true;
+    package = pkgs.callPackage ./runtime/glances { };
     extraArgs = [
       "--webserver"
       "--bind"

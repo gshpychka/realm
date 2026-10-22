@@ -37,7 +37,10 @@ jobs:
           .#checks.x86_64-linux.pituitary-home-manager
           .#checks.x86_64-linux.bay-shellcheck
       - name: Validate Home Assistant configuration and migration
-        run: nix build --no-link -L .#checks.x86_64-linux.home-assistant-config
+        run: >-
+          nix build --no-link -L
+          .#checks.x86_64-linux.home-assistant-config
+          .#checks.x86_64-linux.home-assistant-migration
 
   pituitary:
     runs-on: ubuntu-24.04

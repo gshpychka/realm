@@ -22,10 +22,15 @@ let
         assert (previous.tqdm.dependencies or [ ]) == [ ];
         native;
       pymodbus = ps.callPackage ./core-dependencies/pymodbus { inherit (previous) pymodbus; };
+      pyrate-limiter = ps.callPackage ./core-dependencies/pyrate-limiter {
+        inherit (previous) pyrate-limiter;
+      };
       zigpy = ps.callPackage ./core-dependencies/zigpy { inherit (previous) zigpy; };
       python-overseerr = ps.callPackage ./core-dependencies/python-overseerr {
         inherit (previous) python-overseerr;
       };
+      # Core and MCP share this native transport's deterministic test fixtures.
+      httpcore2 = ps.callPackage ./core-dependencies/httpcore2 { inherit (previous) httpcore2; };
       # Core 2026.10.2 selects these aio-libs versions and frontend wheel.
       yarl = previous.yarl.overridePythonAttrs (
         finalAttrs: _previous: {

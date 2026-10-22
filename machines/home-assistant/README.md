@@ -32,12 +32,13 @@ machines/home-assistant/
   runtime/
     argonone/              case cooling component
     backup/                consistent backup component
+    glances/               bounded network/filesystem probe compatibility
     yasno-address-guard/    Pyscript address transaction component
 packages/home-assistant/
   core.nix                 Core package and its Python runtime scope
   mcp.nix                  MCP package and its separate Python runtime scope
   update.nix               explicit source-update commands
-  migration/               read-only private snapshot preflight
+  migration/               guarded capture/install/restore/reconcile/runbook CLI
   core-dependencies/       Core runtime compatibility packages
     pymodbus/              native override and its test-isolation patch
     python-overseerr/      native client query fix and local HTTP regressions
@@ -50,7 +51,7 @@ packages/home-assistant/
     configuration/         native schema, constructor and service behavior checks
     layout/                ownership guard and its regression tests
     mcp/                   package imports, dependency metadata and resource checks
-    migration/             snapshot blockers, reference checks and secret redaction
+    migration/             private preflight and executable migration regressions
     runtime/               cooling, backup and Yasno component contracts
     templates/             Nix/Python template checks and their fixtures
     updater/               source refresh, path selection and failure contracts
@@ -278,6 +279,14 @@ after cancellation, including a killed copy process. If a restart fails, inspect
 the journal and run `sudo home-assistant-backup-recover` before retrying.
 Incomplete `.next` copies require operator review. Retention is
 7 daily, 4 weekly and 6 monthly snapshots.
+
+The executable migration entrypoint is `nix run .#home-assistant-migrate -- --help`.
+Follow [the complete runbook](migration.md) in order; it covers capture, verified
+recovery, ARM installation, credentials, supported config flows, hardware
+acceptance and rollback. `checks.<linux-system>.home-assistant-migration` runs the
+shell safety and private-state fixture suites, including real local encrypted
+restoration, without touching a live controller or block device. Both Linux
+architectures expose the same CLI and migration checks.
 
 The offline config check is exposed as `checks.x86_64-linux.home-assistant-config`
 and `checks.aarch64-linux.home-assistant-config`. Run it as a release gate on the
