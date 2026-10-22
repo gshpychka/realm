@@ -534,11 +534,23 @@ YASNO_ENTRY_ID=$("$TOOLS" tool yq -r '.yasno_address_guard.entry_id' "$WORK/cred
   --output "$WORK/final-yasno-evidence" \
   --query-file "$WORK/credentials-input/yasno-queries.json" \
   --selection-file "$WORK/credentials-input/yasno-selections.json"
+cp -a "$FINAL_SNAPSHOT/secrets.yaml" "$WORK/final-secrets-input.yaml"
+chmod 600 "$WORK/final-secrets-input.yaml"
+```
+
+Use the final capture's secrets, including credentials changed after rehearsal.
+If the soundbar uses a different `!secret` name, repeat section 4's exact mapping
+in `final-secrets-input.yaml`: copy its **current final-capture value** into
+`soundbar_api_key` in a local editor. Keep every other final-capture key. Do not
+replace this file with the rehearsal credential bundle. Yasno preparation writes
+the native guard configuration from the exact final evidence:
+
+```sh
 "$TOOLS" prepare-yasno --snapshot "$FINAL_SNAPSHOT" --entry-id "$YASNO_ENTRY_ID" \
   --address-file "$WORK/final-yasno-evidence/yasno-address.json" \
   --regions-file "$WORK/final-yasno-evidence/yasno-regions.json" \
   --official-group-file "$WORK/final-yasno-evidence/yasno-official-group.json" \
-  --existing-secrets "$WORK/credentials-native/secrets.yaml" \
+  --existing-secrets "$WORK/final-secrets-input.yaml" \
   --output "$WORK/final-secrets.yaml" --plan "$WORK/final-yasno-name-plan.json"
 install -m600 "$WORK/final-secrets.yaml" "$WORK/credentials-native/secrets.yaml"
 "$TOOLS" credentials "$WORK/credentials-native" "$WORK/credentials-final"

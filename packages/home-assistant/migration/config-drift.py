@@ -643,6 +643,15 @@ def run(args):
         for name in sorted(files):
             path = Path(directory) / name
             relative = str(path.relative_to(root))
+            if name == "secrets.yaml":
+                try:
+                    secret_path = loader.checked_path(path)
+                    loader.files[relative] = hashlib.sha256(
+                        secret_path.read_bytes()
+                    ).hexdigest()
+                except (OSError, Unresolved):
+                    loader.issue("secret-file-unreadable", relative)
+                continue
             if (
                 name.endswith((".yaml", ".yml"))
                 and name != "secrets.yaml"
