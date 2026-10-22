@@ -1,0 +1,3 @@
+{% set kind = (dig(llm_kind | default(none), ['response', 'speech', 'plain', 'speech']) or '') | string | lower %} {{ 'movie' if kind == 'movie'
+   else 'show' if kind == 'show'
+   else 'unknown' }}

@@ -1,0 +1,24 @@
+--- a/src/python_overseerr/overseerr.py
++++ b/src/python_overseerr/overseerr.py
+@@ -8,5 +8,4 @@
+ import socket
+ from typing import TYPE_CHECKING, Any, Literal
+-from urllib.parse import quote
+ 
+ from aiohttp import ClientError, ClientResponseError, ClientSession
+@@ -135,5 +134,5 @@
+         """Search for media in Overseerr."""
+         response = await self._request(
+-            METH_GET, "search", params={"query": quote(keyword)}
++            METH_GET, "search", params={"query": keyword}
+         )
+         return SearchResult.from_json(response).results
+--- a/tests/test_overseerr.py
++++ b/tests/test_overseerr.py
+@@ -239,5 +239,5 @@
+         METH_GET,
+         headers=HEADERS,
+-        params={"query": "frosty%20the%20snowman"},
++        params={"query": "frosty the snowman"},
+         json=None,
+     )

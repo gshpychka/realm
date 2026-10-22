@@ -1,0 +1,1 @@
+{{ ((slots.get('movie_title') or slots.get('show_title') or slots.get('title') or '') | string) | regex_replace(' +(on|to|in|into|2) +((my|our|the) +)?(media +)?((plex|duplex)( +(library|collection))?|library|collection|watch ?list)( +please)?$', '', ignorecase=True) | regex_replace(' +please$', '', ignorecase=True) | trim }}

@@ -1,0 +1,1 @@
+{% set ts = nxt | select('mapping') | selectattr('temperature', 'defined') | map(attribute='temperature') | select('is_number') | map('float') | list %}{{ ts | max if ts else now_temp }}

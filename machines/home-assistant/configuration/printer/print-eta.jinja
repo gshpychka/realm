@@ -1,0 +1,1 @@
+{% set t = states((@@JSON_BALCONY_H2_C_END_TIME@@ | from_json)) | as_datetime(none) %}{{ (t | as_local).strftime('%H:%M') if t else 'unknown' }}

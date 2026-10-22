@@ -1,0 +1,1 @@
+{{ ('cool' if (state_attr((@@JSON_AIR_CONDITIONER@@ | from_json), 'current_temperature') | float(0)) > target_temperature | float(0) else 'heat') if is_number(state_attr((@@JSON_AIR_CONDITIONER@@ | from_json), 'current_temperature')) else 'off' }}

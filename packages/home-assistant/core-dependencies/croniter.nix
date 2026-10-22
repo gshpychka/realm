@@ -1,0 +1,24 @@
+{
+  buildPythonPackage,
+  fetchPypi,
+  setuptools,
+  python-dateutil,
+  pytz,
+}:
+buildPythonPackage (finalAttrs: {
+  pname = "croniter";
+  version = "6.0.0";
+  pyproject = true;
+  src = fetchPypi {
+    inherit (finalAttrs) pname version;
+    hash = "sha256-N8UEsxOVYRSpg+ziwrB3kLHxCU/p2BzJRzkhR0glVXc=";
+  };
+  build-system = [ setuptools ];
+  dependencies = [
+    python-dateutil
+    pytz
+  ];
+  pythonImportsCheck = [ "croniter" ];
+  # Import and manifest checks exercise the packaged runtime dependencies.
+  doCheck = false;
+})

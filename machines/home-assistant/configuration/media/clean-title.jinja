@@ -1,0 +1,3 @@
+{%- if raw_type == '' and media_kind in ['movie', 'show'] -%}
+{{ raw_title | string | regex_replace('^(movie|film|tv show|tv series|television show|television series|show|series|tv) +', '', ignorecase=True) }}
+{%- else -%}{{ raw_title | string }}{%- endif -%}

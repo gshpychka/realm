@@ -1,0 +1,1 @@
+{% set p = state_attr((@@JSON_OPENWEATHERMAP@@ | from_json), 'precipitation') %}{{ p | float if is_number(p) else 0 }}

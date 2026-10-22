@@ -1,0 +1,1 @@
+{{ states((@@JSON_BALCONY_H2_C_TASK_NAME@@ | from_json)) if has_value((@@JSON_BALCONY_H2_C_TASK_NAME@@ | from_json)) else 'Print' }}

@@ -64,6 +64,9 @@
       url = "github:NixOS/nixos-hardware/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Pi 5 vendor kernel, RP1/Bluetooth firmware and generation-aware bootloader.
+    # Keep its tested kernel/firmware package set independent of the fleet.
+    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
     # bun.nix's schema varies between versions, so the infra shell's CLI that
     # writes it and the checks' fetcher that reads it share this input; pinned
     # to the head of nix-community/bun2nix#110, which accepts the lockfile
@@ -87,12 +90,12 @@
     }@inputs:
     let
       inherit (nixpkgs) lib;
-      # Every platform supported by the fleet's nixpkgs toolchain.
-      systems = [
+      linuxSystems = [
         "x86_64-linux"
         "aarch64-linux"
-        "aarch64-darwin"
       ];
+      # Every platform supported by the fleet's nixpkgs toolchain.
+      systems = linuxSystems ++ [ "aarch64-darwin" ];
       # formatter packages shared by `nix fmt` and the treefmt check
       treefmtTools =
         pkgs: with pkgs; [
@@ -145,6 +148,18 @@
         ];
       };
 
+      nixosConfigurations.home-assistant = inputs.nixos-raspberrypi.lib.nixosSystem {
+        # Use the Pi input's tested OS/kernel module set. HA, MCP and Tailscale
+        # use the scoped fleet package set; Matter uses its pinned upstream image.
+        specialArgs = { inherit inputs; };
+        modules = [
+          inputs.nixos-raspberrypi.nixosModules.raspberry-pi-5.base
+          inputs.nixos-raspberrypi.nixosModules.raspberry-pi-5.bluetooth
+          ./modules/common
+          ./machines/home-assistant
+        ];
+      };
+
       nixosConfigurations.reaper = nixpkgs.lib.nixosSystem {
         specialArgs = { inherit inputs; };
         modules = [
@@ -194,30 +209,72 @@
         ];
       };
 
-      packages = lib.recursiveUpdate projectPackages {
-        x86_64-linux = {
-          iso = self.nixosConfigurations.iso.config.system.build.isoImage;
-          voice-pe-firmware = import ./scripts/voice-pe/firmware.nix {
-            pkgs = nixpkgs.legacyPackages.x86_64-linux;
-          };
-          gce-image =
-            let
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
-              original = self.nixosConfigurations.buoy-bootstrap.config.system.build.googleComputeImage;
-            in
-            pkgs.runCommand "gce-image.raw.tar.gz" { inherit original; } ''
-              cp $original/*.raw.tar.gz $out
-            '';
-        };
-        aarch64-linux.harbor-sd-image =
-          (self.nixosConfigurations.harbor.extendModules {
-            modules = [
-              "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
-              # harbor's root is ext4; the image does not need ZFS imports
-              { boot.zfs.forceImportRoot = false; }
-            ];
-          }).config.system.build.sdImage;
-      };
+      legacyPackages = lib.genAttrs linuxSystems (system: {
+        homeAssistant = nixpkgs.legacyPackages.${system}.callPackage ./packages/home-assistant { };
+      });
+
+      packages = lib.recursiveUpdate projectPackages (
+        lib.recursiveUpdate
+          (lib.genAttrs
+            [
+              "x86_64-linux"
+              "aarch64-linux"
+            ]
+            (system: {
+              home-assistant-migrate =
+                nixpkgs.legacyPackages.${system}.callPackage ./packages/home-assistant/migration/runbook.nix
+                  {
+                    configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
+                  };
+            })
+          )
+          {
+            x86_64-linux = {
+              iso = self.nixosConfigurations.iso.config.system.build.isoImage;
+              voice-pe-firmware = import ./scripts/voice-pe/firmware.nix {
+                pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              };
+              gce-image =
+                let
+                  pkgs = nixpkgs.legacyPackages.x86_64-linux;
+                  original = self.nixosConfigurations.buoy-bootstrap.config.system.build.googleComputeImage;
+                in
+                pkgs.runCommand "gce-image.raw.tar.gz" { inherit original; } ''
+                  cp $original/*.raw.tar.gz $out
+                '';
+            };
+            # A separate SD installer boots without touching HA's existing NVMe disk.
+            # Keep it on the same Pi firmware/kernel input as the installed machine.
+            aarch64-linux.home-assistant-installer =
+              (inputs.nixos-raspberrypi.nixosConfigurations.rpi5-installer.extendModules {
+                modules = [
+                  ./modules/common
+                  (
+                    { config, lib, ... }:
+                    {
+                      networking.hostName = "home-assistant-installer";
+                      boot.zfs.forceImportRoot = false;
+                      users.users.root.openssh.authorizedKeys.keys = [ config.my.sshKeys.main ];
+                      services.openssh.settings = {
+                        PasswordAuthentication = lib.mkForce false;
+                        KbdInteractiveAuthentication = lib.mkForce false;
+                        PermitRootLogin = lib.mkForce "prohibit-password";
+                      };
+                    }
+                  )
+                ];
+              }).config.system.build.sdImage;
+
+            aarch64-linux.harbor-sd-image =
+              (self.nixosConfigurations.harbor.extendModules {
+                modules = [
+                  "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
+                  # harbor's root is ext4; the image does not need ZFS imports
+                  { boot.zfs.forceImportRoot = false; }
+                ];
+              }).config.system.build.sdImage;
+          }
+      );
 
       homeManagerModules.pituitary = ./modules/home-manager/pituitary.nix;
       nixosModules.bay = ./modules/system/nixos/bay.nix;
@@ -320,30 +377,44 @@
               '';
             }
           );
-        in
-        lib.recursiveUpdate (lib.recursiveUpdate nixosChecks lintChecks) {
-          aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
-          x86_64-linux = {
-            inherit (projectPackages.x86_64-linux) bay flare;
-            bay-vm = import ./tests/bay.nix {
-              inherit inputs;
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          # Configuration QA can run on the Pi or an x86 build server. Keep it
+          # outside the deployed closure so ARM rebuilds do not need an x86 builder.
+          homeAssistantChecks = lib.genAttrs linuxSystems (system: {
+            home-assistant-migration = import ./packages/home-assistant/tests/migration {
+              pkgs = nixpkgs.legacyPackages.${system};
             };
-            bay-shellcheck =
-              let
+            home-assistant-config = import ./packages/home-assistant/tests {
+              pkgs = nixpkgs.legacyPackages.${system};
+              configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
+              inherit (self.nixosConfigurations.home-assistant.config.services.home-assistant) extraComponents;
+            };
+          });
+        in
+        lib.recursiveUpdate
+          (lib.recursiveUpdate (lib.recursiveUpdate nixosChecks lintChecks) homeAssistantChecks)
+          {
+            aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
+            x86_64-linux = {
+              inherit (projectPackages.x86_64-linux) bay flare;
+              bay-vm = import ./tests/bay.nix {
+                inherit inputs;
                 pkgs = nixpkgs.legacyPackages.x86_64-linux;
-              in
-              pkgs.runCommand "check-bay-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
-                shellcheck --shell=bash ${./packages/bay/bay-session.sh}
-                touch $out
-              '';
-            iso = self.nixosConfigurations.iso.config.system.build.isoImage;
-            nixos-switch = import ./tests/nixos-switch.nix {
-              inherit inputs;
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              };
+              bay-shellcheck =
+                let
+                  pkgs = nixpkgs.legacyPackages.x86_64-linux;
+                in
+                pkgs.runCommand "check-bay-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
+                  shellcheck --shell=bash ${./packages/bay/bay-session.sh}
+                  touch $out
+                '';
+              iso = self.nixosConfigurations.iso.config.system.build.isoImage;
+              nixos-switch = import ./tests/nixos-switch.nix {
+                inherit inputs;
+                pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              };
             };
           };
-        };
 
       # `nix fmt` — treefmt drives the per-language formatters (see treefmt.toml)
       formatter = lib.genAttrs systems (
@@ -365,6 +436,10 @@
           piPackages = pkgs.callPackage ./packages/pi-packages { };
           flashVoicePe = pkgs.callPackage ./scripts/voice-pe/flash.nix { };
           provisionVoicePe = pkgs.callPackage ./scripts/voice-pe/provision.nix { };
+          updateHomeAssistant = pkgs.callPackage ./packages/home-assistant/update.nix { };
+          homeAssistantPreflight = pkgs.callPackage ./packages/home-assistant/migration {
+            configuration = self.nixosConfigurations.home-assistant.config.services.home-assistant.config;
+          };
         in
         {
           pituitary = {
@@ -389,6 +464,21 @@
           };
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          update-home-assistant = {
+            type = "app";
+            program = lib.getExe updateHomeAssistant;
+            inherit (updateHomeAssistant) meta;
+          };
+          home-assistant-preflight = {
+            type = "app";
+            program = lib.getExe homeAssistantPreflight;
+            inherit (homeAssistantPreflight) meta;
+          };
+          home-assistant-migrate = {
+            type = "app";
+            program = lib.getExe self.packages.${system}.home-assistant-migrate;
+            inherit (self.packages.${system}.home-assistant-migrate) meta;
+          };
           bay = {
             type = "app";
             program = lib.getExe projectPackages.${system}.bay;

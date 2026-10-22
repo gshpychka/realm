@@ -1,0 +1,1 @@
+Warning: Less than one hour of battery power remaining. Battery is at {{ (states((@@JSON_BATTERY_CHARGE@@ | from_json)) | float | round(0)) if is_number(states((@@JSON_BATTERY_CHARGE@@ | from_json))) else 'unknown' }} percent.

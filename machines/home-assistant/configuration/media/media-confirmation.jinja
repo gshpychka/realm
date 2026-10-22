@@ -1,0 +1,6 @@
+{% set remark = dig(witty_remark | default(none), ['data']) %}
+{% if remark is string and remark %}
+  {{ remark }}
+{% else %}
+  Got it — "{{ clean_title }}" has been added to your {{ media_kind }} queue.
+{% endif %}

@@ -1,0 +1,123 @@
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -25,4 +25,5 @@
+ 
+ import pytest
++import requests
+ 
+ from glances.main import GlancesMain
+@@ -106,2 +107,19 @@
+     # Close the WebDriver instance
+     driver.quit()
++
++
++def wait_for_http(process, url, method="GET", **kwargs):
++    """Wait for an HTTP response instead of assuming a fixed startup duration."""
++    deadline = time.monotonic() + 60
++    last_error = None
++    while time.monotonic() < deadline:
++        assert process.poll() is None, f"Server exited with {process.returncode}"
++        try:
++            response = requests.request(method, url, timeout=1, **kwargs)
++            if response.status_code == 200:
++                return
++            last_error = f"HTTP {response.status_code}"
++        except requests.RequestException as error:
++            last_error = error
++        time.sleep(0.1)
++    raise AssertionError(f"Server did not become ready at {url}: {last_error}")
+--- a/tests/test_browser_restful.py
++++ b/tests/test_browser_restful.py
+@@ -21,9 +21,10 @@
+ import subprocess
+ import sys
+-import time
+ from pathlib import Path
+ 
+ import pytest
+ import requests
++
++from conftest import wait_for_http
+ 
+ from glances.outputs.glances_restful_api import GlancesRestfulApi
+@@ -121,9 +122,10 @@
+     args = shlex.split(cmdline)
+     pid = subprocess.Popen(args)
+-    # Wait for the server to start
+-    time.sleep(5)
+-    yield pid
+-    pid.terminate()
+-    pid.wait(timeout=5)
++    try:
++        wait_for_http(pid, f"{URL}/status")
++        yield pid
++    finally:
++        pid.terminate()
++        pid.wait(timeout=5)
+ 
+ 
+--- a/tests/test_restful.py
++++ b/tests/test_restful.py
+@@ -20,4 +20,6 @@
+ import requests
+ 
++from conftest import wait_for_http
++
+ from glances import __version__
+ from glances.globals import text_type
+@@ -60,6 +62,5 @@
+         args = shlex.split(cmdline)
+         pid = subprocess.Popen(args)
+-        print("Please wait 5 seconds...")
+-        time.sleep(5)
++        wait_for_http(pid, f"{URL}/status")
+ 
+         self.assertTrue(pid is not None)
+--- a/tests/test_xmlrpc.py
++++ b/tests/test_xmlrpc.py
+@@ -20,4 +20,6 @@
+ 
+ import requests
++
++from conftest import wait_for_http
+ 
+ SERVER_PORT = 62209
+@@ -70,6 +72,5 @@
+         print(f"Run: {cmdline}")
+         pid = subprocess.Popen(shlex.split(cmdline))
+-        print("Wait 5 seconds for server start...")
+-        time.sleep(5)
++        wait_for_http(pid, URL, method="POST", data=XMLRPC_BODY)
+         self.assertIsNotNone(pid)
+ 
+@@ -93,6 +94,5 @@
+         print(f"Run: {cmdline}")
+         pid_secure = subprocess.Popen(shlex.split(cmdline))
+-        print("Wait 5 seconds for server start...")
+-        time.sleep(5)
++        wait_for_http(pid_secure, SECURE_URL, method="POST", data=XMLRPC_BODY)
+         self.assertIsNotNone(pid_secure)
+ 
+@@ -156,6 +156,5 @@
+         print(f"Run: {cmdline}")
+         pid_cors = subprocess.Popen(shlex.split(cmdline))
+-        print("Wait 5 seconds for server start...")
+-        time.sleep(5)
++        wait_for_http(pid_cors, CORS_URL, method="POST", data=XMLRPC_BODY)
+         self.assertIsNotNone(pid_cors)
+ 
+--- a/tests/test_plugin_load.py
++++ b/tests/test_plugin_load.py
+@@ -230,9 +230,8 @@
+         assert cores >= 1
+ 
+-    def test_phys_core_returns_int(self):
+-        """Test that phys_core returns an integer."""
++    def test_phys_core_returns_count_or_unknown(self):
++        """psutil permits None when physical topology cannot be determined."""
+         cores = phys_core()
+-        assert isinstance(cores, int)
+-        assert cores >= 1
++        assert cores is None or (isinstance(cores, int) and cores >= 1)
+ 
+     @pytest.mark.skipif(WINDOWS, reason="Load average not available on Windows")

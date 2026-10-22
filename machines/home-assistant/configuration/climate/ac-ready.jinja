@@ -1,0 +1,1 @@
+{{ target_temperature is defined and target_temperature is number and target_temperature is not boolean and 16 <= target_temperature <= 31 and is_number(state_attr((@@JSON_AIR_CONDITIONER@@ | from_json), 'current_temperature')) }}

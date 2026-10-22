@@ -1,0 +1,1 @@
+{{ dict(text=prompt, agent_id=(@@JSON_CHATGPT_EXPERT@@ | from_json), **({'conversation_id': conversation_id} if conversation_id | default('') else {})) }}

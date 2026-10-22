@@ -1,0 +1,15 @@
+{%- set schedule = states((@@JSON_YASNO_POWER@@ | from_json)) -%}
+{%- set restoration = as_datetime(states((@@JSON_YASNO_NEXT_POWER@@ | from_json)), none) -%}
+{%- set remaining = (as_timestamp(restoration) - as_timestamp(now())) if restoration is not none else none -%}
+{%- set hours = (remaining / 3600) | round(0) | int if remaining is not none else 0 -%}
+City power is off.
+{% if schedule == 'outage' %}
+  This is a scheduled outage.
+  {% if remaining is not none and remaining > 0 %}
+    {% if remaining < 3600 %}Power should be back on in less than an hour.
+    {% else %}Power should be back on in about {{ hours }} {{ 'hour' if hours == 1 else 'hours' }}.{% endif %}
+  {% else %}No information about how long the outage will last.{% endif %}
+{% elif schedule == 'normal' %}This is not a scheduled outage.
+{% else %}The outage schedule is unavailable, so I cannot confirm whether this outage is scheduled.{% endif %}
+Battery is at {{ states((@@JSON_BATTERY_CHARGE@@ | from_json)) | int('unknown') }} percent.
+Current power draw is {{ states((@@JSON_MULTIPLUS_OUTPUT_POWER_L1@@ | from_json)) }} Watts.

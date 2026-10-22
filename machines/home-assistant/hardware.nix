@@ -1,0 +1,41 @@
+{ lib, ... }:
+{
+  # Samsung SSD 980 500GB on the Argon NVMe board.
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/HA_NIXOS";
+    fsType = "ext4";
+  };
+  fileSystems."/boot/firmware" = {
+    device = "/dev/disk/by-label/HA_FIRMWARE";
+    fsType = "vfat";
+    options = [ "umask=0077" ];
+  };
+  boot.loader.raspberry-pi = {
+    bootloader = "kernel";
+    firmwarePath = "/boot/firmware";
+  };
+  boot.initrd.availableKernelModules = [
+    "nvme"
+    "pcie_brcmstb"
+    "xhci_pci"
+  ];
+  boot.kernelModules = [ "i2c-dev" ];
+  hardware.raspberry-pi.config.all.base-dt-params.i2c_arm = {
+    enable = true;
+    value = "on";
+  };
+  # Enable external PCIe for the Argon NVMe board at the supported default speed.
+  hardware.raspberry-pi.config.all.base-dt-params.pciex1 = {
+    enable = true;
+    value = "on";
+  };
+  hardware.bluetooth.enable = true;
+  hardware.bluetooth.powerOnBoot = true;
+  powerManagement.cpuFreqGovernor = lib.mkDefault "ondemand";
+  # Compressed RAM swap bounds memory pressure on the 4GB board.
+  zramSwap = {
+    enable = true;
+    memoryPercent = 25;
+  };
+  services.fstrim.enable = true;
+}
