@@ -1,4 +1,4 @@
-import type { KeyEvent, ScrollBoxRenderable } from "@opentui/core";
+import type { BoxRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core";
 import { usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
 import type { AgentLink, BridgeHost } from "@pituitary/rpc";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,6 +21,7 @@ import { editExternally } from "./external-editor.ts";
 import { firelight } from "./firelight.ts";
 import { usePullRequest } from "./github/use-pull-request.ts";
 import { type Action, actionFor, type Keymap, loadKeymap } from "./keymap.ts";
+import { KeymapProvider, keyHint } from "./keymap-context.tsx";
 import { modelTitle } from "./model-names.ts";
 import { remains } from "./remains.ts";
 import { theme } from "./theme.ts";
@@ -55,8 +56,6 @@ export interface AppProps {
 const QUIT_WINDOW_MS = 500;
 /** Entries the conversation draws at first, and how many more each step back shows. */
 const WINDOW = 150;
-/** Rows kept for the editor and the footer when a popup is sized to the screen. */
-const RESERVED_ROWS = 9;
 /** Actions that still work while the keyboard walks the boxes: they show the boxes otherwise, or leave. */
 const BROWSE_ACTIONS = new Set<Action>(["app.tools.browse", "app.tools.expand", "app.thinking.toggle"]);
 /** Which way each paging key scrolls the conversation. */
@@ -111,15 +110,22 @@ export function App({
   const [picker, setPicker] = useState<PickerSpec | null>(null);
   const [checklist, setChecklist] = useState<ChecklistSpec | null>(null);
   const [window, setWindow] = useState(WINDOW);
+  const [draftRows, setDraftRows] = useState(3);
+  const [footerRows, setFooterRows] = useState(2);
   // The draft starts in insert mode, where the first escape is the draft's own.
   const [escapes, setEscapes] = useState("esc esc");
+  const interruptHint = keymap["app.interrupt"]
+    .map((binding) => (/^(esc|escape)$/i.test(binding) ? escapes : binding))
+    .join(" / ");
   const custom = useCustomViews(bridge).at(-1);
   const limits = useLimits(bridge);
   const stage = useMemo(() => new MascotStage(TRAVELS ? undefined : ["corner"]), []);
-  const display = useMemo<Display>(() => ({ expanded, thinking, escapes }), [expanded, thinking, escapes]);
+  const display = useMemo<Display>(
+    () => ({ expanded, thinking, escapes: interruptHint }),
+    [expanded, thinking, interruptHint],
+  );
   const tasks = useMemo(() => latestTasks(view.entries), [view.entries]);
   const widgets = useMemo(() => besideTodo(extensionUi.widgets, tasks), [extensionUi.widgets, tasks]);
-  const popupRows = Math.max(2, screenRows - RESERVED_ROWS);
   const queued = view.queue.steering.length + view.queue.followUp.length;
   const dialog = extensionUi.dialogs[0];
   const choosing = picker !== null || checklist !== null;
@@ -132,6 +138,36 @@ export function App({
   const pull = usePullRequest(link, cwd, branch);
   const { commands, reread } = useCommands(link, state?.sessionId);
   const completions = useCompletion(editor, commands, cwd);
+  const workingRows = statusUp(view, closed) ? (closed || !TRAVELS ? 1 : 2) : 0;
+  const room = Math.max(0, screenRows - draftRows - footerRows - workingRows);
+  const popup = taken || Boolean(completions.completion && !away);
+  // Panels share half the available rows. A popup keeps at least eight rows for its
+  // controls and choices; panels stay visible alongside it wherever space permits.
+  const available = Math.min(12, Math.floor(room / 2), popup ? Math.max(0, room - 8) : room);
+  const wants = [
+    queued > 0 ? queued + (keymap["app.message.dequeue"][0] ? 1 : 0) : 0,
+    tasks.some((task) => task.status !== "completed" && task.status !== "deleted")
+      ? Math.min(9, tasks.length + 1)
+      : 0,
+    widgets
+      .filter((widget) => widget.placement === "aboveEditor")
+      .reduce((sum, widget) => sum + widget.lines.length, 0),
+    widgets
+      .filter((widget) => widget.placement === "belowEditor")
+      .reduce((sum, widget) => sum + widget.lines.length, 0),
+  ];
+  const panelRows = wants.map(() => 0);
+  for (let left = available; left > 0; ) {
+    let used = false;
+    for (let index = 0; index < wants.length && left > 0; index++) {
+      if ((panelRows[index] ?? 0) >= (wants[index] ?? 0)) continue;
+      panelRows[index] = (panelRows[index] ?? 0) + 1;
+      left--;
+      used = true;
+    }
+    if (!used) break;
+  }
+  const popupRows = Math.max(2, room - panelRows.reduce((sum, rows) => sum + rows, 0));
 
   // A dialog, picker, or panel taking the keyboard ends a walk through the boxes.
   useEffect(() => {
@@ -274,7 +310,7 @@ export function App({
       const now = Date.now();
       if (text) editor.current?.set("");
       else if (now - lastInterrupt.current < QUIT_WINDOW_MS) onQuit();
-      else flash("ctrl+c again to quit", QUIT_WINDOW_MS);
+      else flash(`${keyHint(keymap, "app.clear")} again to quit`, QUIT_WINDOW_MS);
       lastInterrupt.current = now;
       return true;
     },
@@ -324,6 +360,7 @@ export function App({
     "app.editor.external": (_key, text) => {
       const edited = editExternally(renderer, text);
       if (edited !== null) editor.current?.set(edited);
+      else flash("external editor failed; your draft is unchanged");
       return true;
     },
     "app.suspend": () => {
@@ -354,9 +391,10 @@ export function App({
   };
 
   /** An open dialog takes every key; ctrl+c or the interrupt key cancels it. */
-  const dialogKey = (action: Action | null): boolean => {
+  const dialogKey = (key: KeyEvent, action: Action | null): boolean => {
     if (!dialog) return false;
     if (action === "app.clear" || action === "app.interrupt") {
+      key.preventDefault();
       answer(dialog.id, { type: "extension_ui_response", id: dialog.id, cancelled: true });
     }
     return true;
@@ -408,7 +446,7 @@ export function App({
     const standing = offers.take();
     const text = editor.current?.text() ?? "";
     const action = actionFor(keymap, key);
-    if (dialogKey(action) || customKey(key, action) || choosing) return;
+    if (dialogKey(key, action) || customKey(key, action) || choosing) return;
     if (browsing) {
       browseKey(key, action, text, standing);
       return;
@@ -420,7 +458,7 @@ export function App({
     if (draftKey(key, action, text, standing)) key.preventDefault();
   };
 
-  useHeldKeys(editor, onKey, !away);
+  useHeldKeys(editor, onKey, !away, dialog ?? custom ?? null);
 
   usePaste((event) => {
     if (!custom || !bridge) return;
@@ -430,65 +468,91 @@ export function App({
 
   const shownHint = browsing ? BROWSE_HINT : hint;
   return (
-    <MascotProvider value={stage}>
-      <box flexDirection="column" width="100%" height="100%" backgroundColor={theme.bg}>
-        <Conversation
-          ref={scroll}
-          entries={view.entries}
-          running={view.running}
-          display={display}
-          window={window}
-          browsing={browsing}
-          onLeave={() => setBrowsing(false)}
-        />
-        <TodoPanel tasks={tasks} />
-        <Working view={view} hint={shownHint} closed={closed} escapes={escapes} />
-        <Queue queue={view.queue} dequeue={keymap["app.message.dequeue"][0]} />
-        <Widgets widgets={widgets} placement="aboveEditor" />
-        <Popups
-          dialogs={extensionUi.dialogs}
-          custom={custom}
-          picker={picker}
-          checklist={checklist}
-          completion={
-            completions.completion && !away
-              ? { items: completions.completion.items, index: completions.index }
-              : null
-          }
-          rows={popupRows}
-          onAnswer={answer}
-          onClosePicker={() => setPicker(null)}
-          onCloseChecklist={() => setChecklist(null)}
-        />
-        <Editor
-          ref={editor}
-          onSubmit={submit}
-          steering={view.running}
-          focused={!away}
-          seed={extensionUi.editor}
-          note={statusUp(view, closed) ? null : shownHint}
-          confirm={offers.asking}
-          onNotice={(text) => session.notify("warning", text)}
-          onEscapes={(count) => setEscapes(count === 1 ? "esc" : "esc esc")}
-          onChange={(text, cursor) => {
-            completions.follow(text, cursor);
-            offers.edited(text);
-            recall.edited(text);
-          }}
-        />
-        <Widgets widgets={widgets} placement="belowEditor" />
-        <Footer
-          state={state}
-          stats={stats}
-          statuses={extensionUi.statuses}
-          turnStatuses={extensionUi.turnStatuses}
-          cwd={cwd}
-          branch={branch}
-          pull={pull}
-          limits={limits}
-        />
-        <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />
-      </box>
-    </MascotProvider>
+    <KeymapProvider value={keymap}>
+      <MascotProvider value={stage}>
+        <box flexDirection="column" width="100%" height="100%" backgroundColor={theme.bg}>
+          <Conversation
+            ref={scroll}
+            entries={view.entries}
+            running={view.running}
+            display={display}
+            window={window}
+            browsing={browsing}
+            onLeave={() => setBrowsing(false)}
+          />
+          <box
+            flexDirection="column"
+            flexShrink={1}
+            minHeight={0}
+            overflow="hidden"
+            justifyContent="flex-end"
+          >
+            <TodoPanel tasks={tasks} rows={panelRows[1]} />
+            <Working view={view} hint={shownHint} closed={closed} escapes={interruptHint} />
+            <Queue queue={view.queue} dequeue={keymap["app.message.dequeue"][0]} rows={panelRows[0]} />
+            <Widgets widgets={widgets} placement="aboveEditor" rows={panelRows[2]} />
+            <Popups
+              dialogs={extensionUi.dialogs}
+              custom={custom}
+              picker={picker}
+              checklist={checklist}
+              completion={
+                completions.completion && !away
+                  ? { items: completions.completion.items, index: completions.index }
+                  : null
+              }
+              rows={popupRows}
+              onAnswer={answer}
+              onClosePicker={() => setPicker(null)}
+              onCloseChecklist={() => setChecklist(null)}
+            />
+          </box>
+          <box
+            flexDirection="column"
+            flexShrink={0}
+            onSizeChange={function (this: BoxRenderable) {
+              setDraftRows(this.height);
+            }}
+          >
+            <Editor
+              ref={editor}
+              onSubmit={submit}
+              steering={view.running}
+              focused={!away}
+              seed={extensionUi.editor}
+              note={statusUp(view, closed) ? null : shownHint}
+              confirm={offers.asking}
+              onNotice={(text) => session.notify("warning", text)}
+              onEscapes={(count) => setEscapes(count === 1 ? "esc" : "esc esc")}
+              onChange={(text, cursor) => {
+                completions.follow(text, cursor);
+                offers.edited(text);
+                recall.edited(text);
+              }}
+            />
+          </box>
+          <Widgets widgets={widgets} placement="belowEditor" rows={panelRows[3]} />
+          <box
+            flexDirection="column"
+            flexShrink={0}
+            onSizeChange={function (this: BoxRenderable) {
+              setFooterRows(this.height);
+            }}
+          >
+            <Footer
+              state={state}
+              stats={stats}
+              statuses={extensionUi.statuses}
+              turnStatuses={extensionUi.turnStatuses}
+              cwd={cwd}
+              branch={branch}
+              pull={pull}
+              limits={limits}
+            />
+          </box>
+          <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />
+        </box>
+      </MascotProvider>
+    </KeymapProvider>
   );
 }

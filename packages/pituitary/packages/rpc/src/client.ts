@@ -76,11 +76,14 @@ export class PiRpcClient implements AgentLink {
   private readonly pending = new Map<string, Pending>();
   private nextId = 0;
   private exitReason: string | null = null;
+  private started = false;
+  private closing: Promise<void> | null = null;
 
   constructor(private readonly options: PiRpcClientOptions) {}
 
   start(): void {
-    if (this.child) throw new Error("client already started");
+    if (this.started) throw new Error("client already started");
+    this.started = true;
     const args = [...(this.options.args ?? []), "--mode", "rpc"];
     const child = spawn(this.options.command, args, {
       cwd: this.options.cwd,
@@ -93,8 +96,11 @@ export class PiRpcClient implements AgentLink {
       for (const record of this.decoder.push(chunk)) this.handleRecord(record);
     });
     child.stderr.on("data", (chunk: Buffer) => this.options.onStderr?.(chunk.toString()));
+    // The peer may close stdin before exiting. Streams emit errors separately from write callbacks.
+    child.stdin.on("error", (error) => this.fail(`agent input failed: ${error.message}`));
     child.on("error", (error) => this.fail(`agent process failed to start: ${error.message}`));
-    child.on("exit", (code, signal) => {
+    // `exit` can precede the final stdout data. `close` waits for both output pipes to drain.
+    child.on("close", (code, signal) => {
       for (const record of this.decoder.flush()) this.handleRecord(record);
       this.fail(`agent process exited (code=${code ?? "null"} signal=${signal ?? "null"})`);
       this.options.onExit?.(code, signal);
@@ -118,7 +124,7 @@ export class PiRpcClient implements AgentLink {
   }
 
   respond(response: RpcExtensionUIResponse): void {
-    this.child?.stdin.write(encodeJsonLine(response));
+    if (!this.exitReason && this.child?.stdin.writable) this.child.stdin.write(encodeJsonLine(response));
   }
 
   async call<C extends RpcCommand>(command: C): Promise<ResponseData<C["type"]>> {
@@ -175,7 +181,8 @@ export class PiRpcClient implements AgentLink {
   /** Resolves with pi's `data` payload, or rejects with the error it reported. */
   request(command: RpcCommand, timeoutMs = 0, id = `req-${++this.nextId}`): Promise<unknown> {
     const child = this.child;
-    if (!child) return Promise.reject(new Error(this.exitReason ?? "client not started"));
+    if (this.exitReason || !child) return Promise.reject(new Error(this.exitReason ?? "client not started"));
+    if (this.pending.has(id)) return Promise.reject(new Error(`request ${id} is already pending`));
     return new Promise<unknown>((resolve, reject) => {
       const pending: Pending = { resolve, reject };
       if (timeoutMs > 0) {
@@ -192,12 +199,14 @@ export class PiRpcClient implements AgentLink {
     });
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.closing) return this.closing;
     const child = this.child;
-    if (!child) return;
+    if (!child) return Promise.resolve();
     this.child = null;
+    this.fail("agent connection closed");
     child.stdin.end();
-    await new Promise<void>((resolve) => {
+    this.closing = new Promise<void>((resolve) => {
       const kill = setTimeout(() => {
         child.kill("SIGKILL");
         resolve();
@@ -213,6 +222,7 @@ export class PiRpcClient implements AgentLink {
       });
       child.kill("SIGTERM");
     });
+    return this.closing;
   }
 
   private handleRecord(record: string): void {
@@ -220,6 +230,8 @@ export class PiRpcClient implements AgentLink {
     try {
       // Nothing pi relays reaches the terminal with its control characters.
       output = scrub(JSON.parse(record) as PiOutput);
+      if (!output || typeof output !== "object" || Array.isArray(output) || typeof output.type !== "string")
+        throw new Error("record has no event type");
     } catch {
       this.options.onStderr?.(`unparseable record: ${record}\n`);
       return;
@@ -249,11 +261,10 @@ export class PiRpcClient implements AgentLink {
   }
 
   private fail(reason: string): void {
-    if (this.exitReason === null) {
-      for (const listener of this.closeListeners) listener(reason);
-      this.closeListeners.clear();
-    }
+    if (this.exitReason !== null) return;
     this.exitReason = reason;
     for (const [id] of this.pending) this.settle(id, (pending) => pending.reject(new Error(reason)));
+    for (const listener of this.closeListeners) listener(reason);
+    this.closeListeners.clear();
   }
 }

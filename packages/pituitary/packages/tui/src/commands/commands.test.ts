@@ -87,4 +87,14 @@ describe("mentionAt", () => {
   test("ignores an @ inside a word", () => {
     expect(mentionAt("mail me@host", 12)).toBeNull();
   });
+
+  test("completes a quoted path with spaces and replaces its remaining suffix", () => {
+    expect(mentionAt('look @"docs/user guide.md" next', 15)).toEqual({
+      query: "docs/use",
+      start: 5,
+      end: 26,
+    });
+    expect(mentionAt('@"docs/user ', 12)).toEqual({ query: "docs/user ", start: 0, end: 12 });
+    expect(mentionAt('@"docs/user guide.md" ', 21)).toBeNull();
+  });
 });

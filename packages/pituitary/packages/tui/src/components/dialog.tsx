@@ -1,7 +1,9 @@
-import type { InputRenderable, TextareaRenderable } from "@opentui/core";
-import { useKeyboard } from "@opentui/react";
+import type { InputRenderable, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
+import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { DialogRequest, RpcExtensionUIResponse } from "@pituitary/rpc";
 import { useEffect, useRef, useState } from "react";
+import { useKeyHint } from "../keymap-context.tsx";
+import { wrappedRows } from "../text-width.ts";
 import { theme } from "../theme.ts";
 
 export interface DialogProps {
@@ -31,25 +33,36 @@ export const GRACE_MS = 400;
  */
 export function Dialog({ dialog, behind, onAnswer, rows = LIST_ROWS }: DialogProps) {
   const { id } = dialog;
+  const { width } = useTerminalDimensions();
   const [ready, setReady] = useState(false);
   // Each dialog mounts afresh, keyed by its id, so the grace runs once per dialog.
   useEffect(() => {
     const timer = setTimeout(() => setReady(true), GRACE_MS);
     return () => clearTimeout(timer);
   }, []);
+  const titleRows = Math.max(1, Math.min(3, Math.floor(rows / 3), wrappedRows(dialog.title, width - 4)));
   return (
     <box
       flexDirection="column"
       flexShrink={0}
       border
       borderColor={theme.tool}
+      backgroundColor={theme.bg}
       title={behind > 0 ? ` 1 of ${behind + 1} ` : undefined}
       titleAlignment="right"
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg={theme.tool}>{dialog.title}</text>
-      <Body dialog={dialog} onAnswer={onAnswer} ready={ready} rows={rows} key={id} />
+      <scrollbox maxHeight={titleRows} flexShrink={0} scrollX={false} focusable={false}>
+        <text fg={theme.tool}>{dialog.title}</text>
+      </scrollbox>
+      <Body
+        dialog={dialog}
+        onAnswer={onAnswer}
+        ready={ready}
+        rows={Math.max(1, rows - titleRows + 1)}
+        key={id}
+      />
     </box>
   );
 }
@@ -75,16 +88,17 @@ function Body({
             textColor={theme.assistant}
             backgroundColor={theme.bg}
             focusedBackgroundColor={theme.bg}
+            keyBindings={[{ name: "kpenter", action: "select-current" }]}
             onSelect={(index) => {
               const value = dialog.options[index];
               if (value !== undefined) onAnswer({ type: "extension_ui_response", id, value });
             }}
           />
-          <Hint text="↑↓ choose · enter pick · esc cancel" />
+          <Hint text="↑↓ choose · enter pick" />
         </box>
       );
     case "confirm":
-      return <Confirm id={id} message={dialog.message} onAnswer={onAnswer} ready={ready} />;
+      return <Confirm id={id} message={dialog.message} onAnswer={onAnswer} ready={ready} rows={rows} />;
     case "input":
       return <Input id={id} placeholder={dialog.placeholder ?? ""} onAnswer={onAnswer} ready={ready} />;
     case "editor":
@@ -94,7 +108,7 @@ function Body({
           prefill={dialog.prefill ?? ""}
           onAnswer={onAnswer}
           ready={ready}
-          rows={Math.max(2, Math.min(EDITOR_ROWS, rows))}
+          rows={Math.max(1, Math.min(EDITOR_ROWS, rows))}
         />
       );
   }
@@ -105,22 +119,40 @@ function Confirm({
   message,
   onAnswer,
   ready,
+  rows,
 }: {
   id: string;
   message: string;
   onAnswer: DialogProps["onAnswer"];
   ready: boolean;
+  rows: number;
 }) {
+  const scroll = useRef<ScrollBoxRenderable | null>(null);
+  const { width } = useTerminalDimensions();
   useKeyboard((key) => {
-    if (!ready) return;
-    if (key.name === "y" || key.name === "return")
+    if (!ready || key.defaultPrevented || key.ctrl || key.meta) return;
+    const by = { up: -1, down: 1, pageup: -rows, pagedown: rows }[key.name];
+    if (by) {
+      key.preventDefault();
+      scroll.current?.scrollBy(by);
+      return;
+    }
+    if (key.name === "y" || key.name === "return" || key.name === "kpenter")
       onAnswer({ type: "extension_ui_response", id, confirmed: true });
     else if (key.name === "n") onAnswer({ type: "extension_ui_response", id, confirmed: false });
   });
   return (
     <box flexDirection="column">
-      <text fg={theme.assistant}>{message}</text>
-      <Hint text="y / enter yes · n no · esc cancel" />
+      <scrollbox
+        ref={scroll}
+        height={Math.max(1, Math.min(rows, wrappedRows(message, width - 4)))}
+        flexShrink={0}
+        scrollX={false}
+        focusable={false}
+      >
+        <text fg={theme.assistant}>{message}</text>
+      </scrollbox>
+      <Hint text="y / enter yes · n no" />
     </box>
   );
 }
@@ -145,7 +177,7 @@ function Input({
         placeholder={placeholder}
         onSubmit={() => onAnswer({ type: "extension_ui_response", id, value: field.current?.value ?? "" })}
       />
-      <Hint text="enter submit · esc cancel" />
+      <Hint text="enter submit" />
     </box>
   );
 }
@@ -170,16 +202,27 @@ function Editor({
   }, []);
   const save = () => onAnswer({ type: "extension_ui_response", id, value: area.current?.plainText ?? "" });
   useKeyboard((key) => {
-    if (ready && key.ctrl && key.name === "s") save();
+    if (ready && !key.defaultPrevented && key.ctrl && key.name === "s") {
+      key.preventDefault();
+      save();
+    }
   });
   return (
     <box flexDirection="column">
       <textarea ref={area} focused={ready} initialValue={prefill} height={rows} onSubmit={save} />
-      <Hint text="alt+enter or ctrl+s save · esc cancel" />
+      <Hint text="ctrl+s save · alt+enter" />
     </box>
   );
 }
 
 function Hint({ text }: { text: string }) {
-  return <text fg={theme.dim}>{text}</text>;
+  const interrupt = useKeyHint("app.interrupt");
+  const clear = useKeyHint("app.clear");
+  const cancel = interrupt ?? clear;
+  return (
+    <text fg={theme.dim} truncate wrapMode="none">
+      {text}
+      {cancel ? ` · ${cancel} cancel` : ""}
+    </text>
+  );
 }

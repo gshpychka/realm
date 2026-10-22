@@ -156,6 +156,26 @@ describe("lattice", () => {
 });
 
 describe("a lattice holds its own panes", () => {
+  test("custom pane objects retain their rendering behavior", () => {
+    class Tile {
+      id = "talk";
+      at: Coord = [0, 0];
+      #caption = "conversation";
+      render() {
+        return this.#caption;
+      }
+    }
+    const held = lattice([new Tile()]);
+    expect(held.panes[0]?.render()).toBe("conversation");
+  });
+
+  test("ids must name a pane and positions must be finite lattice cells", () => {
+    expect(() => lattice([pane("", [0, 0])])).toThrow("pane id");
+    for (const coordinate of [0.5, NaN, Infinity, -Infinity, Number.MAX_VALUE]) {
+      expect(() => lattice([pane("invalid", [coordinate, 0])])).toThrow("integer");
+    }
+  });
+
   test("mutating the array it was built from cannot slip a pane past the checks", () => {
     const panes = [pane("talk", [0, 0]), pane("code", [1, 0])];
     const held = lattice(panes);

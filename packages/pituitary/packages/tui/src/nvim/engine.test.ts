@@ -161,6 +161,23 @@ describe("the draft engine", () => {
     await until((draft) => textOf(draft) === "" && draft.mode === "i");
   });
 
+  test("a failed handover leaves the last visible draft available to the fallback editor", async () => {
+    engine.input("keep this draft");
+    await until(text("keep this draft"));
+    const taken = engine.take();
+    const failed = taken.then(
+      () => false,
+      () => true,
+    );
+    let fallback = "";
+    engine.onClose(() => {
+      fallback = textOf(engine.draft);
+    });
+    engine.close();
+    expect(await failed).toBe(true);
+    expect(fallback).toBe("keep this draft");
+  });
+
   test("a request sent with a replacement lands in the insert mode the replacement enters", async () => {
     await inNormal("draft");
     const { rpc } = engine as unknown as {

@@ -29,8 +29,9 @@ type Store interface {
 	Send(ctx context.Context, from, to Participant, thread int64, subject, body string) (messages.Message, error)
 	// Inbox returns the threads holding messages to viewer that viewer has not read.
 	Inbox(ctx context.Context, viewer Participant) ([]messages.Thread, error)
-	// Conversation returns a thread with its messages and marks the messages to viewer read.
-	Conversation(ctx context.Context, viewer Participant, thread int64) (messages.Conversation, error)
+	// Conversation returns a page of messages before the given message ID (0 for
+	// the latest) and marks only its returned messages to viewer read.
+	Conversation(ctx context.Context, viewer Participant, thread, before int64) (messages.Conversation, error)
 	// Threads returns every thread, to the operator only.
 	Threads(ctx context.Context, viewer Participant) ([]messages.Thread, error)
 }

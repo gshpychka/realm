@@ -8,7 +8,7 @@ import { createRoot, extend } from "@opentui/react";
 import { BRIDGE_EXTENSION, BridgeHost, HANDOFF_ENV, HANDOFF_RESULT_ENV, PiRpcClient } from "@pituitary/rpc";
 import { App, type AppProps } from "./app.tsx";
 import { OptInText } from "./components/text.ts";
-import { openLog, resolveAgentCommand, resumeArgs } from "./config.ts";
+import { openLog, resolveAgentCommand, resumeArgs, resumeCommand } from "./config.ts";
 import { prewarm } from "./nvim/engine.ts";
 import { mark } from "./profile.ts";
 
@@ -95,7 +95,7 @@ const quit = () => {
     bridge.close();
     mark("bridge-closed");
     if (sessionFile && existsSync(sessionFile))
-      process.stdout.write(`To resume this session: pituitary --session ${sessionFile}\n`);
+      process.stdout.write(`To resume this session: ${resumeCommand(sessionFile)}\n`);
     process.exit(0);
   });
 };

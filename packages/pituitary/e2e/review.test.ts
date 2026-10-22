@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { launch, normalMode } from "./helpers/harness.ts";
+import { launch, normalMode, pastGrace } from "./helpers/harness.ts";
 import { re } from "./helpers/pattern.ts";
 
 const CTRL_O = "\x0f";
@@ -11,17 +11,27 @@ after(async () => {
   await closeAll();
 });
 
-test("keys typed as a dialog opens do not answer it", async () => {
-  const app = await launch({ scenario: "permission", delayMs: 100 });
-  await app.terminal.submit("clean up");
-  await app.terminal.waitText("rm -rf build");
-  await app.terminal.submit("no stop");
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  const screen = await app.capture("dialog-grace");
-  assert.match(screen, /Yes, for this session/, `the dialog was answered by typing:\n${screen}`);
-  assert.doesNotMatch(screen, /Removed build/, screen);
-  await app.close();
-});
+for (const delayMs of [100, 200])
+  test(`keys typed as a dialog opens do not answer it (${delayMs}ms events)`, async () => {
+    const app = await launch({ scenario: "permission", delayMs });
+    try {
+      await app.terminal.submit("clean up");
+      await app.terminal.waitText("rm -rf build");
+      await app.terminal.submit("no stop");
+      // The tool's heading precedes the ask by several events. Wait for the actual
+      // dialog after typing, then verify it remains unanswered past its grace period.
+      await app.terminal.waitText("Yes, for this session", { timeout: 2000 });
+      await pastGrace();
+      await app.terminal.waitIdle();
+      const screen = await app.capture("dialog-grace");
+      assert.match(screen, /Yes, for this session/, `the dialog was answered by typing:\n${screen}`);
+      assert.doesNotMatch(screen, /Removed build/, screen);
+      await app.terminal.write("\x1b[B\x1b[B\r");
+      await app.terminal.waitText("Left build alone (No)");
+    } finally {
+      await app.close();
+    }
+  });
 
 test("escape sequences from the model, a tool, or an extension never reach the terminal", async () => {
   const app = await launch({ scenario: "hostile" });

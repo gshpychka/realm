@@ -68,6 +68,8 @@ test("limits well within reach stay behind a quiet card, which a click opens", a
   assert.equal(await colourOf(app.terminal, glyphs.card), DIM);
   await clickCard(app.terminal);
   await app.terminal.waitText("5h 34%");
+  // Usage headers and session spend arrive independently over the bridge and RPC.
+  await app.terminal.expectText("$0.01");
   const open = footerOf(await app.capture("limits-calm-open"));
   assert.ok(
     open.includes(`${glyphs.card} $0.01 ${INNER} 5h 34% ${INNER} wk 12% `),
@@ -103,6 +105,7 @@ test("extra usage shows in the open card, with how much of the month it has spen
 test("a narrow footer keeps each limit's figure, giving up the fire and the reset", async () => {
   const app = await afterReply("limits-extra", 60);
   await app.terminal.waitText("extra 42%");
+  await app.terminal.expectText("$0.01");
   const footer = footerOf(await app.capture("limits-extra-narrow"));
   assert.ok(footer.includes("$0.01"), `cost cut:\n${footer}`);
   assert.ok(footer.includes("5h 100%") && footer.includes("wk 71%"), `a limit cut:\n${footer}`);

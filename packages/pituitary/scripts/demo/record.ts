@@ -6,10 +6,11 @@
 //
 // Runs inside the dev shell, which provides nvim, resvg, and the fonts.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeAll, TuiTest } from "@microsoft/tui-test";
+import { OPERATOR_TERMINAL } from "../../e2e/helpers/harness.ts";
 import { glyphs } from "../../packages/tui/src/glyphs.ts";
 
 const REPO = join(import.meta.dirname, "..", "..");
@@ -44,28 +45,25 @@ const THEME = [
 ].join(",");
 
 function nixBin(attr: string, bin: string): string {
-  const built = spawnSync("nix", ["build", "--no-link", "--print-out-paths", `nixpkgs#${attr}`], {
-    encoding: "utf8",
-  });
-  if (built.status !== 0) throw new Error(`nix build nixpkgs#${attr} failed: ${built.stderr}`);
-  return join(built.stdout.trim().split("\n").at(-1) ?? "", "bin", bin);
+  return join(nixPath(attr), "bin", bin);
 }
 
 function nixPath(attr: string): string {
-  const built = spawnSync("nix", ["build", "--no-link", "--print-out-paths", `nixpkgs#${attr}`], {
-    encoding: "utf8",
-  });
-  if (built.status !== 0) throw new Error(`nix build nixpkgs#${attr} failed: ${built.stderr}`);
+  // Demo tools use Realm's lock, rather than the operator's mutable nixpkgs registry.
+  const expression = `let realm = builtins.getFlake (builtins.getEnv "REALM_DEMO_ROOT");
+    pkgs = import realm.inputs.nixpkgs { system = builtins.currentSystem; }; in pkgs.${attr}`;
+  const built = spawnSync(
+    "nix",
+    ["build", "--no-link", "--print-out-paths", "--impure", "--expr", expression],
+    {
+      encoding: "utf8",
+      env: { ...process.env, REALM_DEMO_ROOT: join(REPO, "../..") },
+    },
+  );
+  if (built.status !== 0)
+    throw new Error(`building ${attr} from Realm's nixpkgs failed: ${built.stderr || built.error}`);
   return built.stdout.trim().split("\n").at(-1) ?? "";
 }
-
-const ASCIINEMA = nixBin("asciinema", "asciinema");
-const AGG = nixBin("asciinema-agg", "agg");
-const FFMPEG = nixBin("ffmpeg.bin", "ffmpeg");
-const NERD_FONT_DIR = join(
-  nixPath("nerd-fonts.jetbrains-mono"),
-  "share/fonts/truetype/NerdFonts/JetBrainsMono",
-);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -80,7 +78,7 @@ function workspace(): { home: string; project: string } {
     join(home, "run"),
     join(project, "src"),
   ]) {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   writeFileSync(join(home, ".pi", "agent", "settings.json"), "{}");
   writeFileSync(
@@ -398,7 +396,12 @@ async function record(scene: Scene): Promise<void> {
   const cast = join(OUT, `${scene.name}.cast`);
   const agent = scene.agent;
   // The operator's own profile file stays out, so the demo writes no timing marks into it.
-  const { PITUITARY_PROFILE: _profile, ...inherited } = process.env as Record<string, string>;
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name, value]) =>
+        value !== undefined && name !== "PITUITARY_PROFILE" && !OPERATOR_TERMINAL.includes(name),
+    ),
+  ) as Record<string, string>;
   const env: Record<string, string> = {
     ...inherited,
     HOME: home,
@@ -414,111 +417,117 @@ async function record(scene: Scene): Promise<void> {
     FAKE_GH_NUMBER: "1234",
     PI_CODING_AGENT_SESSION_DIR: join(home, "sessions"),
     ...(agent && "pi" in agent
-      ? { PI_AGENT_CMD: PI, PI_AGENT_ARGS: agent.pi.join(" ") }
+      ? { PI_AGENT_CMD: PI, PI_AGENT_ARGS_JSON: JSON.stringify(agent.pi) }
       : {
           PI_AGENT_CMD: "bun",
-          PI_AGENT_ARGS: AGENT,
+          PI_AGENT_ARGS_JSON: JSON.stringify([AGENT]),
           FAKE_PI_SCENARIO: agent?.scenario ?? "demo-work",
           FAKE_PI_DELAY_MS: String(agent?.delayMs ?? 0),
         }),
     ...(scene.entry?.env ?? {}),
   };
-  const program = `bun ${scene.entry?.path ?? TUI}`;
+  const entry = scene.entry?.path ?? TUI;
+  const program = `bun '${entry.replaceAll("'", "'\\''")}'`;
 
   const terminal = TuiTest.ephemeral(`demo-${scene.name}`, {
     timeouts: { text: 20_000, idle: 20_000, ready: 30_000 },
   });
-  await terminal.run(
-    ASCIINEMA,
-    ["rec", "--quiet", "--overwrite", "-f", "asciicast-v2", "-i", "1.5", "-c", program, cast],
-    {
-      cols,
-      rows,
-      cwd: project,
-      env,
-    },
-  );
-  await terminal.waitText(scene.ready);
-  // The cast starts on the frame that showed `ready`, so marks count from here.
-  const readyAt = performance.now();
-  const marks = new Map<string, number>();
+  try {
+    await terminal.run(
+      ASCIINEMA,
+      ["rec", "--quiet", "--overwrite", "-f", "asciicast-v2", "-i", "1.5", "-c", program, cast],
+      {
+        cols,
+        rows,
+        cwd: project,
+        env,
+      },
+    );
+    await terminal.waitText(scene.ready);
+    // The cast starts on the frame that showed `ready`, so marks count from here.
+    const readyAt = performance.now();
+    const marks = new Map<string, number>();
 
-  // Keys a person types arrive unevenly; a fixed seed keeps each recording the same.
-  let seed = 7;
-  const jitter = () => {
-    seed = (seed * 1103515245 + 12345) % 2 ** 31;
-    return seed / 2 ** 31;
-  };
-  const driver: Driver = {
-    terminal,
-    mark(name) {
-      marks.set(name, (performance.now() - readyAt) / 1000);
-    },
-    async type(text) {
-      for (const char of text) {
-        await terminal.write(char);
-        await sleep(38 + jitter() * 70 + (char === " " ? 30 : 0));
-      }
-    },
-    async key(sequence, pauseMs = 0) {
-      await terminal.write(sequence);
-      await sleep(pauseMs || 120);
-    },
-    pause: sleep,
-    async wait(text, timeoutMs = 20_000) {
-      const start = Date.now();
-      while (!(await terminal.text()).includes(text)) {
-        if (Date.now() - start > timeoutMs)
-          throw new Error(`${scene.name}: "${text}" never showed\n${await terminal.text()}`);
-        await sleep(20);
-      }
-    },
-    async still(name) {
-      const svg = join(OUT, `${name}.svg`);
-      await terminal.screenshot(svg);
-      rasterise(svg);
-    },
-  };
-  await scene.play(driver);
-  await terminal.write(scene.quit ?? CTRL_D);
-
-  // asciinema writes the last events once the program exits.
-  let size = -1;
-  for (let tries = 0; tries < 40; tries++) {
-    await sleep(150);
-    const now = existsSync(cast) ? statSync(cast).size : -1;
-    if (now === size && now > 0) break;
-    size = now;
-  }
-  await terminal.closeQuiet();
-  const { header, events } = readCast(cast);
-  let kept = fromFirstFrame(untilExit(events), scene.ready);
-  const gif = join(OUT, `${scene.name}.gif`);
-  const fps = scene.fps ?? FPS;
-  if (scene.loop) {
-    const at = (name: string) => {
-      const seconds = marks.get(name);
-      if (seconds === undefined) throw new Error(`${scene.name}: no mark "${name}"`);
-      return Math.round(seconds * fps);
+    // Keys a person types arrive unevenly; a fixed seed keeps each recording the same.
+    let seed = 7;
+    const jitter = () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed / 2 ** 31;
     };
-    const { from, to } = scene.loop;
-    writeCast(cast, header, kept);
-    render(cast, gif, { lastFrame: 1 / fps, idleLimit: 60, fps });
-    const all = frames(gif, fps);
-    const [start, end] = bestLoop(all, {
-      from: from ? [at(from[0]), at(from[1])] : [0, all.length - 1],
-      to: to
-        ? () => [at(to[0]), at(to[1])]
-        : (first) => [first + Math.round(LOOP_MIN_S * fps), first + Math.round(LOOP_MAX_S * fps)],
-    });
-    kept = window(kept, start / fps, end / fps);
-    writeCast(cast, header, kept);
-    render(cast, gif, { lastFrame: 1 / fps, idleLimit: 60, fps });
-  } else {
-    writeCast(cast, header, kept);
-    render(cast, gif, { lastFrame: HOLD_S, idleLimit: IDLE_S, fps });
+    const driver: Driver = {
+      terminal,
+      mark(name) {
+        marks.set(name, (performance.now() - readyAt) / 1000);
+      },
+      async type(text) {
+        for (const char of text) {
+          await terminal.write(char);
+          await sleep(38 + jitter() * 70 + (char === " " ? 30 : 0));
+        }
+      },
+      async key(sequence, pauseMs = 0) {
+        await terminal.write(sequence);
+        await sleep(pauseMs || 120);
+      },
+      pause: sleep,
+      async wait(text, timeoutMs = 20_000) {
+        const start = Date.now();
+        while (!(await terminal.text()).includes(text)) {
+          if (Date.now() - start > timeoutMs)
+            throw new Error(`${scene.name}: "${text}" never showed\n${await terminal.text()}`);
+          await sleep(20);
+        }
+      },
+      async still(name) {
+        const svg = join(OUT, `${name}.svg`);
+        await terminal.screenshot(svg);
+        rasterise(svg);
+      },
+    };
+    await scene.play(driver);
+    await terminal.write(scene.quit ?? CTRL_D);
+
+    // asciinema writes the last events once the program exits.
+    let size = -1;
+    for (let tries = 0; tries < 40; tries++) {
+      await sleep(150);
+      const now = existsSync(cast) ? statSync(cast).size : -1;
+      if (now === size && now > 0) break;
+      size = now;
+    }
+    await terminal.closeQuiet();
+    const { header, events } = readCast(cast);
+    let kept = fromFirstFrame(untilExit(events), scene.ready);
+    const gif = join(OUT, `${scene.name}.gif`);
+    const fps = scene.fps ?? FPS;
+    if (scene.loop) {
+      const at = (name: string) => {
+        const seconds = marks.get(name);
+        if (seconds === undefined) throw new Error(`${scene.name}: no mark "${name}"`);
+        return Math.round(seconds * fps);
+      };
+      const { from, to } = scene.loop;
+      writeCast(cast, header, kept);
+      render(cast, gif, { lastFrame: 1 / fps, idleLimit: 60, fps });
+      const all = frames(gif, fps);
+      const [start, end] = bestLoop(all, {
+        from: from ? [at(from[0]), at(from[1])] : [0, all.length - 1],
+        to: to
+          ? () => [at(to[0]), at(to[1])]
+          : (first) => [first + Math.round(LOOP_MIN_S * fps), first + Math.round(LOOP_MAX_S * fps)],
+      });
+      kept = window(kept, start / fps, end / fps);
+      writeCast(cast, header, kept);
+      render(cast, gif, { lastFrame: 1 / fps, idleLimit: 60, fps });
+    } else {
+      writeCast(cast, header, kept);
+      render(cast, gif, { lastFrame: HOLD_S, idleLimit: IDLE_S, fps });
+    }
+    assertLoops(gif);
+  } finally {
+    await terminal.closeQuiet();
+    rmSync(join(home, ".."), { recursive: true, force: true });
   }
-  assertLoops(gif);
 }
 
 /** Frames per second a GIF is drawn at unless its scene asks for more. */
@@ -712,8 +721,25 @@ function rasterise(svg: string): void {
   ]);
 }
 
-mkdirSync(OUT, { recursive: true });
 const wanted = process.argv.slice(2);
+const names = scenes.map((scene) => scene.name);
+if (wanted.some((name) => name === "--help" || name === "-h")) {
+  process.stdout.write(`Usage: just demo [${names.join(" ")}]\n`);
+  process.exit(0);
+}
+const unknown = wanted.filter((name) => !names.includes(name));
+if (unknown.length) {
+  process.stderr.write(`Unknown scene: ${unknown.join(", ")}. Choose from: ${names.join(", ")}\n`);
+  process.exit(1);
+}
+const ASCIINEMA = nixBin("asciinema", "asciinema");
+const AGG = nixBin("asciinema-agg", "agg");
+const FFMPEG = nixBin("ffmpeg.bin", "ffmpeg");
+const NERD_FONT_DIR = join(
+  nixPath("nerd-fonts.jetbrains-mono"),
+  "share/fonts/truetype/NerdFonts/JetBrainsMono",
+);
+mkdirSync(OUT, { recursive: true });
 for (const scene of scenes.filter((each) => wanted.length === 0 || wanted.includes(each.name))) {
   process.stdout.write(`recording ${scene.name}\n`);
   try {

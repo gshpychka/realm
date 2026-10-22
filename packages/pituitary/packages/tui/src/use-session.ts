@@ -87,9 +87,12 @@ export function useSession(link: AgentLink): SessionController {
   const heardTotal = useRef(0);
 
   useEffect(() => {
+    let active = true;
     reduced.current = emptySession;
     built.current = null;
     setView(emptySession);
+    setState(null);
+    setStats(null);
     setExtensionUi(emptyExtensionUi);
     setClosed(null);
     const pacer = new EventPacer({
@@ -99,11 +102,13 @@ export function useSession(link: AgentLink): SessionController {
       onFlush: () => setView(reduced.current),
     });
     dispatch.current = (action) => {
+      if (!active) return;
       pacer.flush();
       reduced.current = reduce(reduced.current, action);
       setView(reduced.current);
     };
     const noted = (level: "info" | "warning" | "error", text: string) => {
+      if (!active) return;
       pacer.flush();
       reduced.current = note(reduced.current, level, text);
       setView(reduced.current);
@@ -122,13 +127,24 @@ export function useSession(link: AgentLink): SessionController {
     let syncing: Promise<void> | null = null;
     let again = false;
     let forced = false;
+    let statsRead = 0;
+    const readStats = () => {
+      const read = ++statsRead;
+      link.getSessionStats().then(
+        (next) => {
+          if (active && read === statsRead) setStats(next);
+        },
+        () => {},
+      );
+    };
     const once = async () => {
       const rebuild = forced;
       forced = false;
       const mark = heard;
       const next = await link.getState();
+      if (!active) return;
       setState(next);
-      link.getSessionStats().then(setStats, () => {});
+      readStats();
       if (built.current === null) return;
       const elsewhere = next.sessionId !== built.current;
       const still =
@@ -139,6 +155,7 @@ export function useSession(link: AgentLink): SessionController {
       const drifted = still && next.messageCount !== reduced.current.messages;
       if (!elsewhere && !drifted && !rebuild) return;
       const messages = await link.getMessages();
+      if (!active) return;
       if (heard !== mark) {
         forced ||= rebuild;
         again = still;
@@ -158,6 +175,7 @@ export function useSession(link: AgentLink): SessionController {
       setView(reduced.current);
     };
     sync.current = async (rebuild = false) => {
+      if (!active) return;
       forced ||= rebuild;
       if (syncing) {
         again = true;
@@ -168,7 +186,7 @@ export function useSession(link: AgentLink): SessionController {
           do {
             again = false;
             await once();
-          } while (again);
+          } while (active && again);
         } catch (cause) {
           noted("error", describe(cause));
         } finally {
@@ -183,7 +201,7 @@ export function useSession(link: AgentLink): SessionController {
       if (pending) return;
       pending = setTimeout(() => {
         pending = undefined;
-        link.getSessionStats().then(setStats, () => {});
+        readStats();
       }, 250);
     };
     const unsubscribeEvents = link.onEvent((event) => {
@@ -226,10 +244,11 @@ export function useSession(link: AgentLink): SessionController {
     });
     Promise.all([firstState, link.getMessages()])
       .then(([first, messages]) => {
+        if (!active) return;
         profile.mark("session-loaded");
         built.current = first.sessionId;
         setState(first);
-        link.getSessionStats().then(setStats, () => {});
+        readStats();
         if (messages.length === 0 || heard !== mark) return;
         pacer.flush();
         reduced.current = { ...restore(messages), waitingSince: reduced.current.waitingSince };
@@ -237,6 +256,7 @@ export function useSession(link: AgentLink): SessionController {
       })
       .catch((cause: unknown) => noted("error", describe(cause)));
     return () => {
+      active = false;
       unsubscribeEvents();
       unsubscribeUi();
       unsubscribeClose();
@@ -250,17 +270,21 @@ export function useSession(link: AgentLink): SessionController {
     async (text: string, options: { followUp?: boolean } = {}): Promise<boolean> => {
       const message = text.trim();
       if (message.length === 0) return true;
+      // Completions of this request belong to this mount, even if the link changes meanwhile.
+      const apply = dispatch.current;
+      const notify = noticeRef.current;
+      const resync = sync.current;
       if (message.startsWith("!")) {
         const excluded = message.startsWith("!!");
         const command = message.slice(excluded ? 2 : 1).trim();
         if (!command) return true;
         const request = `bash-${++commands.current}`;
-        dispatch.current({ type: "bash_start", request, command, excluded });
+        apply({ type: "bash_start", request, command, excluded });
         link
           .bash(request, command, excluded)
-          .then((result) => dispatch.current({ type: "bash_end", request, result }))
+          .then((result) => apply({ type: "bash_end", request, result }))
           .catch((cause: unknown) => {
-            dispatch.current({
+            apply({
               type: "bash_end",
               request,
               result: { output: describe(cause), cancelled: true, truncated: false },
@@ -273,25 +297,27 @@ export function useSession(link: AgentLink): SessionController {
       try {
         await link.prompt(message, options.followUp ? "followUp" : "steer");
       } catch (cause) {
-        noticeRef.current("error", describe(cause));
+        notify("error", describe(cause));
         return false;
       }
       // An extension command answers once its handler is done, which may have moved the session.
-      if (message.startsWith("/")) await sync.current();
+      if (message.startsWith("/")) await resync();
       return true;
     },
     [link],
   );
 
   const abort = useCallback(() => {
-    link.abort().catch((cause: unknown) => noticeRef.current("error", describe(cause)));
+    const notify = noticeRef.current;
+    link.abort().catch((cause: unknown) => notify("error", describe(cause)));
   }, [link]);
 
   const interrupt = useCallback(async () => {
+    const notify = noticeRef.current;
     // Taken ahead of the abort: pi's loop hands queued steering to a run that stops mid-tool.
     const [taken, stopped] = await Promise.allSettled([link.clearQueue(), link.abort()]);
     for (const result of [taken, stopped]) {
-      if (result.status === "rejected") noticeRef.current("error", describe(result.reason));
+      if (result.status === "rejected") notify("error", describe(result.reason));
     }
     if (taken.status === "rejected") return "";
     const queued = [...taken.value.steering, ...taken.value.followUp].join("\n\n");
@@ -301,7 +327,7 @@ export function useSession(link: AgentLink): SessionController {
       await link.prompt(queued);
       return "";
     } catch (cause) {
-      noticeRef.current("error", describe(cause));
+      notify("error", describe(cause));
       return queued;
     }
   }, [link]);
@@ -312,21 +338,30 @@ export function useSession(link: AgentLink): SessionController {
   useEffect(() => dispatch.current({ type: "waiting", waiting }), [waiting]);
 
   const abortRetry = useCallback(() => {
-    link.abortRetry().catch((cause: unknown) => noticeRef.current("error", describe(cause)));
+    const notify = noticeRef.current;
+    link.abortRetry().catch((cause: unknown) => notify("error", describe(cause)));
   }, [link]);
 
   const abortBash = useCallback(() => {
-    link.abortBash().catch((cause: unknown) => noticeRef.current("error", describe(cause)));
+    const notify = noticeRef.current;
+    link.abortBash().catch((cause: unknown) => notify("error", describe(cause)));
   }, [link]);
 
   const takeQueue = useCallback(async () => {
+    if (closed) {
+      const { steering, followUp } = reduced.current.queue;
+      dispatch.current({ type: "queue_taken" });
+      return [...steering, ...followUp].join("\n\n");
+    }
+    const notify = noticeRef.current;
     try {
       const { steering, followUp } = await link.clearQueue();
       return [...steering, ...followUp].join("\n\n");
-    } catch {
+    } catch (cause) {
+      notify("error", `could not take back queued messages: ${describe(cause)}`);
       return "";
     }
-  }, [link]);
+  }, [link, closed]);
 
   const refresh = useCallback((options?: { rebuild?: boolean }) => sync.current(options?.rebuild), []);
   const notify = useCallback(

@@ -1,6 +1,7 @@
 import { type MouseEvent, ScrollBoxRenderable } from "@opentui/core";
 import { memo, type ReactNode, useState } from "react";
 import { glyphs } from "../glyphs.ts";
+import { KeyHint } from "../keymap-context.tsx";
 import { palette, theme } from "../theme.ts";
 import { type Step, summary, type Work } from "../transcript.ts";
 import { Markdown } from "./markdown.tsx";
@@ -38,7 +39,11 @@ export function scrollWork(scroll: ScrollBoxRenderable, work: Pick<Work, "id">, 
   return true;
 }
 
-const SCROLLBAR = { trackOptions: { foregroundColor: palette.rule, backgroundColor: theme.bg } };
+// Percentage heights in both the content and scrollbar otherwise resolve to maxHeight,
+// turning a one-line box into a full-height empty viewport.
+const SCROLLBAR = {
+  trackOptions: { foregroundColor: palette.rule, backgroundColor: theme.bg, height: "auto" as const },
+};
 
 /**
  * A run's thinking, narration, and tool calls: one line saying what they come to, or that
@@ -116,7 +121,9 @@ function Title({
       height={1}
       flexShrink={0}
       backgroundColor={selected && !open ? palette.surface : undefined}
-      onMouseDown={onPress}
+      onMouseDown={(event) => {
+        if (event.button === 0) onPress();
+      }}
     >
       {open ? (
         <text fg={frame} flexShrink={0}>
@@ -159,6 +166,7 @@ function Body({
     <scrollbox
       id={id}
       maxHeight={rows}
+      contentOptions={{ minHeight: 0 }}
       stickyScroll
       stickyStart={start}
       scrollX={false}
@@ -209,7 +217,10 @@ function StepView({ step, whole, thinking }: { step: Step; whole: boolean; think
           <i>{step.text}</i>
         </text>
       ) : (
-        <text fg={theme.thinking}>{glyphs.thinking} thinking… · ctrl+t</text>
+        <text fg={theme.thinking}>
+          {glyphs.thinking} thinking…
+          <KeyHint action="app.thinking.toggle" />
+        </text>
       );
     case "text":
       return <Markdown content={step.text} />;

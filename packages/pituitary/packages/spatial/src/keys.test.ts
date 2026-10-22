@@ -25,6 +25,8 @@ describe("the keys bound by default", () => {
     expect(moveFor("q")).toBe(null);
     expect(moveFor("")).toBe(null);
     expect(moveFor("escape")).toBe(null);
+    expect(moveFor("toString")).toBe(null);
+    expect(moveFor("constructor")).toBe(null);
   });
 });
 

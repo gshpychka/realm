@@ -49,11 +49,26 @@ export function Popups({
     );
   }
   if (custom) return <CustomPanel view={custom} rows={rows - 2} />;
+  const compact = rows < 8;
   return (
     <>
-      {picker ? <Picker key={picker.title} spec={picker} rows={rows - 5} onClose={onClosePicker} /> : null}
+      {picker ? (
+        <Picker
+          key={picker.title}
+          spec={picker}
+          compact={compact}
+          rows={rows - (compact ? 3 : 5)}
+          onClose={onClosePicker}
+        />
+      ) : null}
       {checklist ? (
-        <Checklist key={checklist.title} spec={checklist} rows={rows - 6} onClose={onCloseChecklist} />
+        <Checklist
+          key={checklist.title}
+          spec={checklist}
+          compact={compact}
+          rows={rows - (compact ? 4 : 6)}
+          onClose={onCloseChecklist}
+        />
       ) : null}
       {completion && !picker && !checklist ? (
         <Suggestions items={completion.items} index={completion.index} rows={rows - 1} />

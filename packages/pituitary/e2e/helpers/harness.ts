@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { TuiTest } from "@microsoft/tui-test";
@@ -36,7 +44,7 @@ const SCRATCH = process.platform === "darwin" ? "/tmp" : tmpdir();
  * What describes the terminal the tests are run from, which OpenTUI reads to judge what its
  * terminal can draw. The UI runs in tui-test's terminal, which TERM and COLORTERM describe.
  */
-const OPERATOR_TERMINAL = [
+export const OPERATOR_TERMINAL = [
   "TERM_PROGRAM",
   "TERM_PROGRAM_VERSION",
   "TERM_FEATURES",
@@ -178,6 +186,8 @@ export interface BootOptions {
   /** Text on the first frame, which marks the UI as up. */
   ready: string;
   env?: Record<string, string>;
+  /** Run through a separate tmux server; env.TERM describes the outer test terminal. */
+  tmux?: boolean;
   cols?: number;
   rows?: number;
   /**
@@ -209,22 +219,42 @@ export async function boot(options: BootOptions): Promise<Harness> {
     cwd = REPO,
     ready,
     env = {},
+    tmux: throughTmux = false,
     cols = COLS,
     rows = ROWS,
     settle = true,
     record,
   } = options;
   const terminal = TuiTest.ephemeral("tui", { timeouts: { text: 15_000, idle: 15_000, ready: 30_000 } });
-  const command = ["env", ...OPERATOR_TERMINAL.flatMap((name) => ["-u", name]), "bun", entry, ...argv];
+  const multiplex = throughTmux ? isolatedTmux() : undefined;
+  const command = [
+    "env",
+    ...OPERATOR_TERMINAL.flatMap((name) => ["-u", name]),
+    ...(multiplex?.command ?? []),
+    "bun",
+    entry,
+    ...argv,
+  ];
   const [program = "env", ...args] = record ? recorded(command, record) : command;
-  await terminal.run(program, args, {
-    cols,
-    rows,
-    cwd,
-    env: { TERM: "xterm-256color", COLORTERM: "truecolor", SHELL: "/bin/sh", ...env },
-  });
-  await terminal.waitText(ready);
-  if (settle) await terminal.waitIdle();
+  try {
+    await terminal.run(program, args, {
+      cols,
+      rows,
+      cwd,
+      env: {
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor",
+        SHELL: "/bin/sh",
+        ...env,
+      },
+    });
+    await terminal.waitText(ready);
+    if (settle) await terminal.waitIdle();
+  } catch (error) {
+    await terminal.closeQuiet();
+    multiplex?.close();
+    throw error;
+  }
 
   const capture = async (name: string) => {
     const screen = await terminal.text();
@@ -248,7 +278,30 @@ export async function boot(options: BootOptions): Promise<Harness> {
       return screens;
     },
     close: async () => {
-      await terminal.closeQuiet();
+      try {
+        await terminal.closeQuiet();
+      } finally {
+        multiplex?.close();
+      }
+    },
+  };
+}
+
+/** A separate server using Realm's terminal settings, never the operator's tmux server. */
+function isolatedTmux() {
+  const scratch = mkdtempSync(join(SCRATCH, "pituitary-tmux-"));
+  const socket = join(scratch, "socket");
+  const config = join(scratch, "tmux.conf");
+  writeFileSync(
+    config,
+    `source-file ${quote(join(REPO, "../../modules/home-manager/tmux/tmux.conf"))}\n` +
+      'set -g default-terminal "tmux-256color"\nset -g status off\n',
+  );
+  return {
+    command: ["tmux", "-S", socket, "-f", config, "new-session", "-s", "ui"],
+    close() {
+      spawnSync("tmux", ["-S", socket, "kill-server"], { stdio: "ignore" });
+      rmSync(scratch, { recursive: true, force: true });
     },
   };
 }
@@ -267,6 +320,8 @@ export interface LaunchOptions {
   rows?: number;
   /** Extra environment for the UI process. */
   env?: Record<string, string>;
+  /** Run through a separate tmux server; env.TERM describes the outer test terminal. */
+  tmux?: boolean;
   /** Arguments for the UI itself, as `pituitary` would be given them. */
   argv?: string[];
   /**
@@ -318,6 +373,7 @@ export async function launch(options: LaunchOptions = {}): Promise<Launched> {
     cols = COLS,
     rows = ROWS,
     env = {},
+    tmux,
     prepare,
     argv = [],
     settle = true,
@@ -343,6 +399,7 @@ export async function launch(options: LaunchOptions = {}): Promise<Launched> {
     // The footer draws the working directory on the first frame, so it marks the app as
     // up regardless of how long the machine takes to start bun under parallel test load.
     ready: basename(PROJECT),
+    tmux,
     cols,
     rows,
     settle,
@@ -359,7 +416,7 @@ export async function launch(options: LaunchOptions = {}): Promise<Launched> {
       FAKE_GH_STATE: "none",
       FAKE_GH_LOG: join(home, "gh.log"),
       PI_AGENT_CMD: pi ? PI : "bun",
-      PI_AGENT_ARGS: pi ? pi.join(" ") : FAKE_AGENT,
+      PI_AGENT_ARGS_JSON: JSON.stringify(pi ?? [FAKE_AGENT]),
       PITUITARY_LOG: join(home, "tui.log"),
       PI_CODING_AGENT_SESSION_DIR: sessions,
       FAKE_PI_SCENARIO: scenario,

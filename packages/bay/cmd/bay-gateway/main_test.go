@@ -43,6 +43,7 @@ func TestLoadConfig(t *testing.T) {
 			"",
 		},
 		{"unknown field", `{` + base + `,"ntfyToken":"tk_secret"}`, config{}, "unknown field"},
+		{"a second value", `{` + base + `} {}`, config{}, "one JSON object"},
 		{"unknown ntfy field", `{` + base + `,"ntfy":{"url":"u","topic":"t","token":"tk_secret"}}`, config{}, "unknown field"},
 		{"no identity socket", `{"database":"/x.db"}`, config{}, "identitySocket"},
 		{"no database", `{"identitySocket":"/x.sock"}`, config{}, "database"},

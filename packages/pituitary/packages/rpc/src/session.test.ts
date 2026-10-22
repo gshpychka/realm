@@ -393,6 +393,22 @@ describe("what real pi sends", () => {
     expect(view.running).toBe(false);
     expect(view.entries[0]).toMatchObject({ running: false, cancelled: true });
   });
+
+  test("a disconnect closes the streamed reply and interrupts unfinished tools", () => {
+    const during = run([
+      { type: "agent_start" },
+      { type: "message_start", message: stored.assistant({}) },
+      { type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 99" } },
+    ]);
+    const view = reduce(during, { type: "closed" }, 100);
+    const assistant = view.entries.find((entry) => entry.kind === "assistant");
+    expect(assistant?.kind === "assistant" && assistant.done).toBe(true);
+    expect(assistant?.kind === "assistant" && assistant.tools[0]).toMatchObject({
+      state: "error",
+      endedAt: 100,
+      output: "interrupted",
+    });
+  });
 });
 
 describe("partialJson", () => {

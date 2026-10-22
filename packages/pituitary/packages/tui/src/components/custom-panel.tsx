@@ -2,6 +2,8 @@ import { type BoxRenderable, type OptimizedBuffer, RGBA } from "@opentui/core";
 import type { BridgeHost, CustomView } from "@pituitary/rpc";
 import { useEffect, useMemo, useState } from "react";
 import { parseAnsi, type Run } from "../ansi.ts";
+import { useKeyHint } from "../keymap-context.tsx";
+import { headCells } from "../text-width.ts";
 import { theme } from "../theme.ts";
 
 /** Marks where a focused pi-tui component keeps its cursor. */
@@ -22,22 +24,12 @@ export function visibleRows(lines: readonly string[], rows: number): readonly st
   return lines.slice(top, top + rows);
 }
 
-/** Cuts `text` to at most `columns` cells. */
-function clip(text: string, columns: number): string {
-  if (Bun.stringWidth(text) <= columns) return text;
-  let out = "";
-  for (const char of text) {
-    if (Bun.stringWidth(out + char) > columns) break;
-    out += char;
-  }
-  return out;
-}
-
 /**
  * An extension's own component, drawn from the rows it renders inside pi.
  * It holds the keyboard while open; keys reach the component through the bridge.
  */
 export function CustomPanel({ view, rows }: { view: CustomView; rows: number }) {
+  const close = useKeyHint("app.clear");
   const shown = visibleRows(view.lines, Math.max(1, rows));
   const parsed = useMemo(() => shown.map(parseAnsi), [shown]);
   const colours = useMemo(() => new Map<string, RGBA>(), []);
@@ -58,7 +50,7 @@ export function CustomPanel({ view, rows }: { view: CustomView; rows: number }) 
       for (const run of runs) {
         const room = this.width - column;
         if (room <= 0) break;
-        const cut = clip(run.text, room);
+        const cut = headCells(run.text, room);
         buffer.drawText(
           cut,
           this.x + column,
@@ -68,6 +60,7 @@ export function CustomPanel({ view, rows }: { view: CustomView; rows: number }) 
           run.attributes,
         );
         column += Bun.stringWidth(cut);
+        if (cut !== run.text) break;
       }
     });
   }
@@ -78,9 +71,10 @@ export function CustomPanel({ view, rows }: { view: CustomView; rows: number }) 
       flexShrink={0}
       border
       borderColor={theme.user}
+      backgroundColor={theme.bg}
       paddingLeft={1}
       paddingRight={1}
-      title=" ctrl+c closes "
+      title={close ? ` ${close} closes ` : undefined}
       titleAlignment="right"
     >
       {shown.length === 0 ? (

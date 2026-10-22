@@ -1,4 +1,5 @@
-import type { KeyEvent, TextareaRenderable } from "@opentui/core";
+import type { TextareaRenderable } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import type { EditorSeed } from "@pituitary/rpc";
 import {
   type Ref,
@@ -38,8 +39,6 @@ export interface EditorHandle {
   busy(): boolean;
   /** Resolves once `text()` shows every key sent so far. */
   settle(): Promise<void>;
-  /** Takes a key the app held back, as though it arrived now. */
-  press(key: KeyEvent): void;
   /** The draft with every key typed so far, leaving the editor empty. */
   take(): Promise<string>;
 }
@@ -70,6 +69,9 @@ export interface EditorProps {
  * editor takes over with the draft as it stood.
  */
 export function Editor(props: EditorProps) {
+  const { height } = useTerminalDimensions();
+  // Leave room for both frame rules, the footer, and a status line even in a short terminal.
+  const maxRows = Math.max(1, Math.min(8, height - 6));
   const [engine] = useState(takeEngine);
   const [plain, setPlain] = useState<string | null>(null);
   const noticed = useRef(props.onNotice);
@@ -90,12 +92,9 @@ export function Editor(props: EditorProps) {
     };
   }, [engine]);
 
-  if (plain !== null) return <PlainEditor {...props} initial={plain} />;
-  return <NvimEditor {...props} engine={engine} />;
+  if (plain !== null) return <PlainEditor {...props} initial={plain} maxRows={maxRows} />;
+  return <NvimEditor {...props} engine={engine} maxRows={maxRows} />;
 }
-
-/** Rows the editor grows to before it scrolls. */
-const MAX_ROWS = 8;
 
 const BINDINGS = [
   { name: "return", action: "submit" as const },
@@ -135,7 +134,6 @@ function plainHandle(
     pending: () => false,
     busy: () => false,
     settle: () => Promise.resolve(),
-    press: (key) => area.current?.handleKeyPress(key),
     take: () => {
       const draft = text();
       set("");
@@ -156,7 +154,8 @@ function PlainEditor({
   onChange,
   onEscapes,
   initial,
-}: EditorProps & { initial: string }) {
+  maxRows,
+}: EditorProps & { initial: string; maxRows: number }) {
   const area = useRef<TextareaRenderable | null>(null);
   const [rows, setRows] = useState(1);
   const [bash, setBash] = useState(false);
@@ -168,9 +167,11 @@ function PlainEditor({
     if (!field) return;
     changed.current?.(field.plainText, field.cursorOffset);
     // Counted from the text and the width it has, so the editor grows before the layout wraps it.
-    setRows(Math.min(MAX_ROWS, Math.max(1, rowsFor(field.plainText, field.width))));
+    setRows(Math.min(maxRows, Math.max(1, rowsFor(field.plainText, field.width))));
     setBash(field.plainText.startsWith("!"));
-  }, []);
+  }, [maxRows]);
+
+  useEffect(measure, [measure]);
 
   const set = useCallback(
     (text: string, cursor?: number) => {
@@ -196,10 +197,12 @@ function PlainEditor({
     onEscapes?.(1);
   }, []);
 
+  const shownRows = Math.min(rows, maxRows);
+
   return (
     <EditorFrame
       signal={{ command: bash }}
-      rows={rows}
+      rows={shownRows}
       note={note}
       confirm={confirm}
       mark={draftMark(bash, steering)}
@@ -208,7 +211,7 @@ function PlainEditor({
         ref={area}
         focused={focused}
         flexGrow={1}
-        height={rows}
+        height={shownRows}
         keyBindings={BINDINGS}
         textColor={theme.assistant}
         placeholderColor={theme.dim}

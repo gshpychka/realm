@@ -13,6 +13,7 @@ import (
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
 	"github.com/gshpychka/realm/packages/bay/internal/sessionapi"
+	"github.com/gshpychka/realm/packages/bay/internal/text"
 )
 
 const requestTimeout = 30 * time.Second
@@ -25,7 +26,7 @@ commands:
   send [-thread N] [-subject S] TO [MESSAGE...]
                                             send MESSAGE, or standard input, to a session or to operator
   inbox                                     list threads with unread messages
-  read THREAD                               print a thread's messages
+  read THREAD [-before MESSAGE]             print a thread's messages, or an earlier page
   mcp                                       serve the gateway's tools as an MCP server on standard input and output
 
 -json prints a command's output as JSON.
@@ -58,11 +59,11 @@ func (a *app) run(ctx context.Context, args []string) int {
 		a.usage(a.stdout)
 		return 0
 	case errors.Is(err, fault.Invalid):
-		fmt.Fprintf(a.stderr, "flare: %v\n\n", err)
+		fmt.Fprintf(a.stderr, "flare: %s\n\n", text.Printable(err.Error()))
 		a.usage(a.stderr)
 		return 2
 	default:
-		fmt.Fprintf(a.stderr, "flare: %v\n", err)
+		fmt.Fprintf(a.stderr, "flare: %s\n", text.Printable(err.Error()))
 		return 1
 	}
 }
@@ -79,6 +80,12 @@ func (a *app) dispatch(ctx context.Context, args []string) error {
 		return fmt.Errorf("%w: no command", fault.Invalid)
 	}
 	command, args := rest[0], rest[1:]
+	switch command {
+	case "whoami", "notify", "inbox", "read", "mcp":
+		if len(args) == 1 && (args[0] == "-h" || args[0] == "--help" || args[0] == "-help") {
+			return flag.ErrHelp
+		}
+	}
 	switch command {
 	case "whoami":
 		return a.whoami(ctx, args)

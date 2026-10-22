@@ -28,7 +28,6 @@ import { limitHeaders } from "../src/limits.ts";
 type CustomFactory = Parameters<ExtensionUIContext["custom"]>[0];
 type CustomOptions = NonNullable<Parameters<ExtensionUIContext["custom"]>[1]>;
 type TUI = Parameters<CustomFactory>[0];
-type Theme = Parameters<CustomFactory>[1];
 type Keybindings = Parameters<CustomFactory>[2];
 type Component = Awaited<ReturnType<CustomFactory>>;
 type OverlayHandle = Parameters<NonNullable<CustomOptions["onHandle"]>>[0];
@@ -76,12 +75,14 @@ interface Session {
   listeners: Set<InputListener>;
   width(): number;
   finish(result: unknown): void;
+  fail(cause: unknown): void;
 }
 
 /** A widget built from a component, redrawn into string rows. */
 interface Widget {
   component: Component;
   draw(): void;
+  dispose(): void;
 }
 
 export interface BridgeOptions {
@@ -131,8 +132,9 @@ export class Bridge {
 
   close(): void {
     this.drop();
-    for (const widget of this.widgets.values()) widget.component.dispose?.();
+    const widgets = [...this.widgets.values()];
     this.widgets.clear();
+    for (const widget of widgets) widget.dispose();
     this.socket.destroy();
   }
 
@@ -155,13 +157,14 @@ export class Bridge {
       custom: <T>(factory: CustomFactory, options?: CustomOptions) =>
         this.custom(factory, options, ui) as Promise<T>,
       setWidget: ((key: string, content: string[] | WidgetFactory | undefined, options?: WidgetOptions) => {
-        this.widgets.get(key)?.component.dispose?.();
+        const previous = this.widgets.get(key);
         this.widgets.delete(key);
+        previous?.dispose();
         if (typeof content !== "function") {
           setWidget(key, content, options);
           return;
         }
-        this.widget(key, content, ui.theme, (lines) => setWidget(key, lines, options));
+        this.widget(key, content, ui, (lines) => setWidget(key, lines, options));
       }) as ExtensionUIContext["setWidget"],
     };
   }
@@ -203,10 +206,19 @@ export class Bridge {
         finished = true;
         if (shown) {
           this.sessions.delete(id);
-          session.root.dispose?.();
+          try {
+            session.root.dispose?.();
+          } catch (cause) {
+            ui.notify(`extension screen cleanup failed: ${describe(cause)}`, "error");
+          }
           this.send({ type: "close", id });
         }
         resolve(result);
+      };
+      const fail = (cause: unknown) => {
+        if (finished) return;
+        ui.notify(`extension screen failed: ${describe(cause)}`, "error");
+        finish(undefined);
       };
       const session: Session = {
         root: blank(),
@@ -221,6 +233,7 @@ export class Bridge {
           return options?.overlay ? sizeOf(spec, this.columns) : this.columns;
         },
         finish,
+        fail,
       };
       const requestRender = () => this.schedule(id);
       Promise.resolve()
@@ -240,11 +253,26 @@ export class Bridge {
           this.send({ type: "open", id });
           this.draw(id);
         })
-        .catch(() => finish(undefined));
+        .catch(fail);
     });
   }
 
-  private widget(key: string, factory: WidgetFactory, theme: Theme, show: (lines: string[]) => void): void {
+  private widget(
+    key: string,
+    factory: WidgetFactory,
+    ui: ExtensionUIContext,
+    show: (lines: string[]) => void,
+  ): void {
+    const fail = (cause: unknown) => {
+      this.widgets.delete(key);
+      show([]);
+      ui.notify(`extension widget failed: ${describe(cause)}`, "error");
+      try {
+        session.root.dispose?.();
+      } catch {
+        /* The original failure is the useful diagnostic. */
+      }
+    };
     const session: Session = {
       root: blank(),
       overlays: [],
@@ -252,21 +280,41 @@ export class Bridge {
       listeners: new Set(),
       width: () => this.columns,
       finish: () => {},
+      fail,
     };
     let queued = false;
     // A draw queued before the widget was cleared or replaced must not bring it back.
     const draw = () => {
       queued = false;
-      if (this.widgets.get(key)?.component === session.root) show(session.root.render(this.columns));
+      if (this.widgets.get(key)?.component !== session.root) return;
+      try {
+        show(session.root.render(this.columns));
+      } catch (cause) {
+        fail(cause);
+      }
     };
     const host = this.host(session, () => {
       if (queued) return;
       queued = true;
       setImmediate(draw);
     });
-    session.root = factory(host, theme);
-    this.widgets.set(key, { component: session.root, draw });
-    draw();
+    try {
+      session.root = factory(host, ui.theme);
+      this.widgets.set(key, {
+        component: session.root,
+        draw,
+        dispose: () => {
+          try {
+            session.root.dispose?.();
+          } catch (cause) {
+            ui.notify(`extension widget cleanup failed: ${describe(cause)}`, "error");
+          }
+        },
+      });
+      draw();
+    } catch (cause) {
+      fail(cause);
+    }
   }
 
   /** The TUI a component is built against: it draws on request and reports the bridge's size. */
@@ -361,14 +409,18 @@ export class Bridge {
       case "input": {
         const session = this.sessions.get(message.id);
         if (!session) return;
-        this.schedule(message.id);
-        let data: string | undefined = message.data;
-        for (const listener of session.listeners) {
-          const result = listener(data);
-          if (result?.consume) return;
-          if (result?.data !== undefined) data = result.data;
+        try {
+          this.schedule(message.id);
+          let data: string | undefined = message.data;
+          for (const listener of session.listeners) {
+            const result = listener(data);
+            if (result?.consume) return;
+            if (result?.data !== undefined) data = result.data;
+          }
+          (session.focused ?? target(session)).handleInput?.(data);
+        } catch (cause) {
+          session.fail(cause);
         }
-        (session.focused ?? target(session)).handleInput?.(data);
         return;
       }
       case "cancel":
@@ -389,7 +441,11 @@ export class Bridge {
   private draw(id: string): void {
     const session = this.sessions.get(id);
     if (!session) return;
-    this.send({ type: "frame", id, lines: target(session).render(session.width()) });
+    try {
+      this.send({ type: "frame", id, lines: target(session).render(session.width()) });
+    } catch (cause) {
+      session.fail(cause);
+    }
   }
 
   private send(message: BridgeMessage): void {
@@ -402,6 +458,10 @@ export class Bridge {
     this.settle(false);
     for (const session of [...this.sessions.values()]) session.finish(undefined);
   }
+}
+
+function describe(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 /** The component that draws: the topmost visible overlay, or the root. */

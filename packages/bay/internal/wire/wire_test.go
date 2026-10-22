@@ -92,3 +92,22 @@ func TestReadRejectsUnknownFields(t *testing.T) {
 		t.Errorf("Read returned %v with %+v", err, in)
 	}
 }
+
+func TestReadRequiresOneBoundedJSONObject(t *testing.T) {
+	for _, body := range []string{
+		`null`, `[]`, `"name"`, `{}!`,
+		`{"name":"a"} {"name":"b"}`, `{"name":"a"} trailing`,
+		`{"name":"` + strings.Repeat("a", 1<<20) + `"}`,
+	} {
+		var in struct{ Name string }
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		if err := wire.Read(req, &in); !errors.Is(err, fault.Invalid) {
+			t.Errorf("Read accepted a malformed or oversized request (%d bytes): %v", len(body), err)
+		}
+	}
+	var in struct{ Name string }
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{\"name\":\"a\"}\n\t "))
+	if err := wire.Read(req, &in); err != nil || in.Name != "a" {
+		t.Fatalf("valid JSON followed by whitespace: %+v, %v", in, err)
+	}
+}

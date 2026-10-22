@@ -22,6 +22,7 @@ import { modelName } from "../model-names.ts";
 import { tilde } from "../place.ts";
 import { type ProviderMark, providerMark } from "../provider.ts";
 import { type Badge, badges, type Tone } from "../status.ts";
+import { ellipsize, headCells, tailCells } from "../text-width.ts";
 import { Link } from "./link.tsx";
 import { MascotSlot } from "./mascot.tsx";
 
@@ -98,15 +99,11 @@ export interface Row {
 const cells = (text: string) => Bun.stringWidth(text);
 const span = (segs: readonly Seg[]) => segs.reduce((sum, seg) => sum + cells(seg.text), 0);
 
-function clip(text: string, chars: number): string {
-  return text.length > chars ? `${text.slice(0, Math.max(0, chars - 1))}…` : text;
-}
-
 /** The end of `path` that fits `columns`, where the directory's own name is. */
 function tail(path: string, columns: number): string {
   if (cells(path) <= columns) return path;
   if (columns <= 1) return "…";
-  return `…${path.slice(path.length - (columns - 1))}`;
+  return `…${tailCells(path, columns - 1)}`;
 }
 
 /** The first `columns` of `segs`, the last kept cell an ellipsis when any are cut. */
@@ -116,9 +113,10 @@ function clipEnd(segs: readonly Seg[], columns: number): Seg[] {
   let room = columns - 1;
   for (const seg of segs) {
     if (room <= 0) break;
-    const text = [...seg.text].reduce((out, char) => (cells(out + char) <= room ? out + char : out), "");
+    const text = headCells(seg.text, room);
     kept.push({ ...seg, text });
     room -= cells(text);
+    if (text !== seg.text) break;
   }
   const last = kept.at(-1);
   return columns > 0 ? [...kept, { text: "…", fg: last?.fg, bg: last?.bg }] : [];
@@ -130,10 +128,10 @@ function clipStart(segs: readonly Seg[], columns: number): Seg[] {
   let room = columns;
   for (const seg of [...segs].reverse()) {
     if (room <= 0) break;
-    const chars = [...seg.text];
-    const text = cells(seg.text) <= room ? seg.text : chars.slice(chars.length - room).join("");
+    const text = tailCells(seg.text, room);
     kept.unshift({ ...seg, text });
     room -= cells(text);
+    if (text !== seg.text) break;
   }
   return kept;
 }
@@ -209,7 +207,7 @@ export function footerParts(
     name: state?.sessionName || null,
     badges: badges(statuses, turnStatuses).map((entry) => ({
       ...entry,
-      detail: entry.detail === null ? null : clip(entry.detail, DETAIL_CHARS),
+      detail: entry.detail === null ? null : ellipsize(entry.detail, DETAIL_CHARS),
     })),
     model: state?.model
       ? { mark: providerMark(state.model.provider), name: modelName(state.model.id) }
@@ -401,7 +399,7 @@ function budget(
         ],
     ...onCard.map((group) => group?.map((seg) => ({ ...seg, card: true })) ?? null),
   ];
-  const name = p.model && nameRoom !== 0 ? clip(p.model.name, nameRoom ?? p.model.name.length) : null;
+  const name = p.model && nameRoom !== 0 ? ellipsize(p.model.name, nameRoom ?? cells(p.model.name)) : null;
   const model: Seg[] = p.model
     ? [
         { text: p.model.mark.glyph, fg: c.brandMark ? (p.model.mark.colour ?? c.textRight) : c.textRight },
@@ -548,6 +546,7 @@ export function Footer(props: FooterProps) {
   const [open, setOpen] = useState(false);
   const rows = footerRows(footerParts(props, now), columns, STYLE, open);
   const toggle = (event: MouseEvent) => {
+    if (event.button !== 0) return;
     event.preventDefault();
     setOpen((was) => !was);
   };

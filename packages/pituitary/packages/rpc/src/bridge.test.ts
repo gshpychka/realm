@@ -73,6 +73,21 @@ describe("recordReader", () => {
 });
 
 describe("Bridge", () => {
+  test("closing the host closes a connection that has not identified itself", async () => {
+    const host = new BridgeHost();
+    const socket = connect(host.path);
+    socket.on("error", () => {});
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+    host.close();
+    try {
+      expect(await settleWithin(closed, 200)).toBeUndefined();
+    } finally {
+      socket.destroy();
+      host.close();
+    }
+  });
+
   test("a component opened before the connection is accepted waits for it, then takes keys", async () => {
     const { ui, host, latest } = pair();
     const result = ui.custom<string>((_tui, _theme, _keys, done) =>
@@ -85,6 +100,116 @@ describe("Bridge", () => {
     expect(view.lines).toEqual(["pick me"]);
     host.input(view.id, "\r");
     expect(await settleWithin(result)).toBe("picked");
+  });
+
+  test("a failed custom component reports its error and releases the waiting command", async () => {
+    const { ui, notices } = pair();
+    const result = ui.custom(() => {
+      throw new Error("cannot draw this view");
+    });
+    expect(await settleWithin(result)).toBeUndefined();
+    expect(notices).toContain("extension screen failed: cannot draw this view");
+  });
+
+  test("a failed input handler closes its screen instead of leaving pi waiting forever", async () => {
+    const { ui, host, latest, notices } = pair();
+    const result = ui.custom(() =>
+      component(
+        () => ["open"],
+        () => {
+          throw new Error("bad key");
+        },
+      ),
+    );
+    const view = await until(() => latest());
+    host.input(view.id, "x");
+    expect(await settleWithin(result, 200)).toBeUndefined();
+    expect(notices).toContain("extension screen failed: bad key");
+    await until(() => (latest() === undefined ? true : undefined));
+  });
+
+  test("a failed scheduled redraw closes its screen and reports the error", async () => {
+    const { ui, latest, notices } = pair();
+    let redraw = () => {};
+    let broken = false;
+    const result = ui.custom((tui) => {
+      redraw = () => tui.requestRender();
+      return component(() => {
+        if (broken) throw new Error("bad redraw");
+        return ["open"];
+      });
+    });
+    await until(() => latest());
+    broken = true;
+    redraw();
+    expect(await settleWithin(result)).toBeUndefined();
+    expect(notices).toContain("extension screen failed: bad redraw");
+  });
+
+  test("a widget that fails on a scheduled redraw is cleared and reports its error", async () => {
+    const { ui, widgets, notices } = pair();
+    let redraw = () => {};
+    let broken = false;
+    ui.setWidget("fragile", (tui: Tui) => {
+      redraw = () => tui.requestRender();
+      return component(() => {
+        if (broken) throw new Error("bad widget");
+        return ["working"];
+      });
+    });
+    expect(widgets.at(-1)).toEqual(["working"]);
+    broken = true;
+    redraw();
+    await until(() => (notices.length > 0 ? true : undefined));
+    expect(widgets.at(-1)).toEqual([]);
+    expect(notices).toContain("extension widget failed: bad widget");
+  });
+
+  test("a widget cleanup failure does not prevent its replacement or removal", () => {
+    const { ui, widgets, notices } = pair();
+    const fragile = () => ({
+      ...component(() => ["old"]),
+      dispose() {
+        throw new Error("bad cleanup");
+      },
+    });
+    ui.setWidget("fragile", fragile);
+    expect(() => ui.setWidget("fragile", () => component(() => ["new"]))).not.toThrow();
+    expect(widgets.at(-1)).toEqual(["new"]);
+    expect(notices).toContain("extension widget cleanup failed: bad cleanup");
+
+    ui.setWidget("fragile", fragile);
+    expect(() => ui.setWidget("fragile", undefined)).not.toThrow();
+    expect(widgets.at(-1)).toBeUndefined();
+  });
+
+  test("closing the bridge disposes every widget even if one cleanup fails", async () => {
+    const { ui, bridge, host, latest, notices } = pair();
+    const result = ui.custom(() => component(() => ["open"]));
+    await until(() => latest());
+    let disposed = 0;
+    ui.setWidget("fragile", () => ({
+      ...component(() => ["first"]),
+      dispose() {
+        throw new Error("bad cleanup");
+      },
+    }));
+    ui.setWidget("other", () => ({
+      ...component(() => ["second"]),
+      dispose() {
+        disposed++;
+      },
+    }));
+
+    expect(() => bridge.close()).not.toThrow();
+    expect(disposed).toBe(1);
+    expect(notices).toContain("extension widget cleanup failed: bad cleanup");
+    expect(await settleWithin(result, 200)).toBeUndefined();
+    await until(() => (latest() === undefined ? true : undefined));
+    // Repeated cleanup must neither resurrect a widget nor dispose it twice.
+    bridge.close();
+    expect(disposed).toBe(1);
+    host.close();
   });
 
   test("a frame of many multi-byte rows arrives intact", async () => {

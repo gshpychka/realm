@@ -42,7 +42,7 @@ const VALUE_FLAGS = new Set([
   "--tui-mode",
 ]);
 
-/** Flags that make pi print something and exit, which it does better on its own. */
+/** Flags that ask for pi's own output rather than this frontend. */
 const DIRECT_FLAGS = new Set([
   "--help",
   "-h",
@@ -52,6 +52,7 @@ const DIRECT_FLAGS = new Set([
   "-p",
   "--export",
   "--list-models",
+  "--mode",
 ]);
 
 /**
@@ -64,7 +65,20 @@ const DIRECT_FLAGS = new Set([
 export function resolveAgentCommand(argv: readonly string[] = process.argv.slice(2)): AgentCommand {
   const command = process.env.PI_AGENT_CMD ?? "pi";
   const raw = process.env.PI_AGENT_ARGS?.trim();
-  const args: string[] = raw ? raw.split(/\s+/) : [];
+  const encoded = process.env.PI_AGENT_ARGS_JSON;
+  let configured: string[] = raw ? raw.split(/\s+/) : [];
+  if (encoded !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(encoded);
+    } catch {
+      throw new Error("PI_AGENT_ARGS_JSON must be a JSON array of strings");
+    }
+    if (!Array.isArray(parsed) || parsed.some((arg) => typeof arg !== "string"))
+      throw new Error("PI_AGENT_ARGS_JSON must be a JSON array of strings");
+    configured = parsed;
+  }
+  const args = [...configured];
   const words: string[] = [];
   let resume = false;
   let direct = false;
@@ -90,7 +104,7 @@ export function resolveAgentCommand(argv: readonly string[] = process.argv.slice
     }
     words.push(arg);
   }
-  if (direct) return { command, args: [...argv], resume: false, prompt: null, direct };
+  if (direct) return { command, args: [...configured, ...argv], resume: false, prompt: null, direct };
   return { command, args, resume, prompt: words.length > 0 ? words.join(" ") : null, direct };
 }
 
@@ -116,11 +130,20 @@ export function resumeArgs(args: readonly string[], sessionFile: string | undefi
   const kept: string[] = [];
   for (let index = 0; index < args.length; index++) {
     const arg = args[index] ?? "";
-    const takesValue = SESSION_CHOICE.get(arg);
+    const equals = arg.indexOf("=");
+    const takesValue = SESSION_CHOICE.get(equals === -1 ? arg : arg.slice(0, equals));
     if (takesValue === undefined) kept.push(arg);
-    else if (takesValue) index++;
+    else if (takesValue && equals === -1) index++;
   }
   return sessionFile ? [...kept, "--session", sessionFile] : kept;
+}
+
+/** A resume command that can be pasted into a shell even when the path contains spaces or quotes. */
+export function resumeCommand(sessionFile: string): string {
+  const word = /^[a-zA-Z0-9_./-]+$/.test(sessionFile)
+    ? sessionFile
+    : `'${sessionFile.replaceAll("'", `'\\''`)}'`;
+  return `pituitary --session ${word}`;
 }
 
 export interface Log {
@@ -136,7 +159,11 @@ export interface Log {
 export function openLog(): Log {
   const path = process.env.PITUITARY_LOG;
   if (!path) return { write: () => {} };
-  mkdirSync(dirname(path), { recursive: true });
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+  } catch {
+    return { write: () => {} };
+  }
   return {
     write: (chunk) => {
       try {

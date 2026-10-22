@@ -2,6 +2,7 @@ import type { ToolView } from "@pituitary/rpc";
 import { memo } from "react";
 import { type Answer, type Details, detailsOf, fullOutputOf, type Task } from "../details.ts";
 import { glyphs } from "../glyphs.ts";
+import { KeyHint } from "../keymap-context.tsx";
 import { counted } from "../plural.ts";
 import { palette, theme } from "../theme.ts";
 import { filetypeOfCall, heading, preview, took, toolGlyph } from "../tools.ts";
@@ -122,7 +123,12 @@ function Output({ tool, expanded }: ToolCallProps) {
 }
 
 function More({ count }: { count: number }) {
-  return <text fg={theme.dim}>… {counted(count, "more line")} · ctrl+o</text>;
+  return (
+    <text fg={theme.dim}>
+      … {counted(count, "more line")}
+      <KeyHint action="app.tools.expand" />
+    </text>
+  );
 }
 
 /** Lines of a diff shown before it folds. */
@@ -186,7 +192,15 @@ const TASK_MARK = {
 } as const;
 
 /** The todo list; `selectable` where it is the todo call's own result. */
-export function Tasks({ tasks, selectable = false }: { tasks: readonly Task[]; selectable?: boolean }) {
+export function Tasks({
+  tasks,
+  selectable = false,
+  compact = false,
+}: {
+  tasks: readonly Task[];
+  selectable?: boolean;
+  compact?: boolean;
+}) {
   return (
     <box flexDirection="column">
       {tasks.flatMap((task) => {
@@ -194,7 +208,13 @@ export function Tasks({ tasks, selectable = false }: { tasks: readonly Task[]; s
         const mark = TASK_MARK[task.status] ?? TASK_MARK.pending;
         const label = task.status === "in_progress" && task.activeForm ? task.activeForm : task.subject;
         return [
-          <text key={String(task.id)} fg={mark.colour} selectable={selectable}>
+          <text
+            key={String(task.id)}
+            fg={mark.colour}
+            selectable={selectable}
+            truncate={compact}
+            wrapMode={compact ? "none" : "word"}
+          >
             {mark.glyph} {label}
           </text>,
         ];

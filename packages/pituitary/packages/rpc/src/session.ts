@@ -69,6 +69,8 @@ export type LocalAction =
   | { type: "bash_end"; request: string; result: BashResult }
   /** The agent process is gone, so nothing it was doing is still in progress. */
   | { type: "closed" }
+  /** Recovers the last known queue after the agent has disconnected. */
+  | { type: "queue_taken" }
   /** Whether a dialog pi waits on is open, which holds the run up until the operator answers. */
   | { type: "waiting"; waiting: boolean };
 
@@ -288,20 +290,35 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
         request: event.request,
       }));
 
-    case "closed":
+    case "closed": {
+      const closed = closeOpenAssistant(state);
       return {
-        ...closeOpenAssistant(state),
+        ...closed,
         running: false,
         phase: "idle",
         startedAt: null,
         retry: null,
         waited: 0,
+        waitingSince: null,
         output: emptySession.output,
         turn: null,
-        entries: state.entries.map((entry) =>
-          entry.kind === "bash" && entry.running ? { ...entry, running: false, cancelled: true } : entry,
-        ),
+        entries: closed.entries.map((entry) => {
+          if (entry.kind === "bash" && entry.running) return { ...entry, running: false, cancelled: true };
+          if (entry.kind !== "assistant") return entry;
+          return {
+            ...entry,
+            tools: entry.tools.map((tool) =>
+              tool.state === "running"
+                ? { ...tool, state: "error" as const, endedAt: now, output: tool.output || "interrupted" }
+                : tool,
+            ),
+          };
+        }),
       };
+    }
+
+    case "queue_taken":
+      return { ...state, queue: emptySession.queue };
 
     case "bash_execution_update":
       return patchBash(state, event.id, (entry) => ({ ...entry, output: tail(entry.output + event.delta) }));

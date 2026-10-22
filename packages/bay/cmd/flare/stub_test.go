@@ -31,6 +31,7 @@ type stub struct {
 	mu           sync.Mutex
 	requests     []request
 	sends        []sessionapi.SendInput
+	reads        []sessionapi.ReadInput
 	events       []sessionapi.Event
 	dials        int
 	threads      []messages.Thread
@@ -160,6 +161,7 @@ func (s *stub) inbox(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.Call
 func (s *stub) read(_ context.Context, _ *mcp.CallToolRequest, in sessionapi.ReadInput) (*mcp.CallToolResult, sessionapi.ReadOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.reads = append(s.reads, in)
 	if in.Thread != s.conversation.Thread.ID {
 		return nil, sessionapi.ReadOutput{}, fmt.Errorf("%w: thread %d", fault.NotFound, in.Thread)
 	}

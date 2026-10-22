@@ -49,9 +49,10 @@ const renderer = await createCliRenderer();
 createRoot(renderer).render(<App />);
 ```
 
-Arrows and `hjkl` walk, `-` widens out, `+` closes in. `lattice()` rejects a duplicate id, two
-panes on one position, and an empty set, so a plan that would render ambiguously fails at
-construction.
+Arrows and `hjkl` walk, `-` widens out, `+` closes in. Ctrl and Alt chords remain available to
+the pane. `lattice()` requires nonempty ids and safe integer coordinates, and rejects a duplicate
+id, two panes on one position, or an empty set. Pane objects retain their identity and rendering
+behavior; the lattice owns a copy of their collection.
 
 ## useNavigation
 

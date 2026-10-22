@@ -259,6 +259,17 @@ inputs.nixpkgs.lib.nixos.runTest {
           assert [(m["from"], m["to"], m["body"]) for m in conversation["messages"]] == [("one", "two", "hello")]
           guest("two", f"flare send -thread {sent['thread']} one hi")
 
+      with subtest("message cursors work through both clients and leave omitted messages unread"):
+          latest = json.loads(guest("one", f"flare -json send -thread {sent['thread']} two newest"))
+          page = json.loads(guest("two", f"flare -json read {sent['thread']} --before {latest['message']}"))
+          assert [m["body"] for m in page["messages"]] == ["hello", "hi"], page
+          inbox = json.loads(guest("two", "flare -json inbox"))
+          assert inbox["threads"][0]["unread"] == 1, inbox
+          operator_page = json.loads(bay(f"read {sent['thread']} --before {latest['message']} --json"))
+          assert [m["id"] for m in operator_page["messages"]] == [m["id"] for m in page["messages"]], operator_page
+          guest("two", f"flare read {sent['thread']}")
+          assert json.loads(guest("two", "flare -json inbox"))["threads"] == []
+
       with subtest("agents reach the gateway through the image's MCP config"):
           mcp = json.loads(guest("one", "cat /etc/bay/mcp.json"))["mcpServers"]["bay"]
           call = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "whoami", "arguments": {}}})

@@ -20,9 +20,9 @@ export function Suggestions({ items, index, rows = ROWS }: SuggestionsProps) {
   if (items.length === 0) return null;
   const shown = Math.max(1, Math.min(ROWS, rows, items.length));
   const top = Math.max(0, Math.min(index - Math.floor(shown / 2), items.length - shown));
-  const width = Math.min(32, Math.max(...items.map((item) => item.label.length)) + 2);
+  const width = Math.min(32, Math.max(...items.map((item) => Bun.stringWidth(item.label))) + 2);
   return (
-    <box flexDirection="column" flexShrink={0} paddingLeft={1} paddingRight={1}>
+    <box flexDirection="column" flexShrink={0} paddingLeft={1} paddingRight={1} backgroundColor={theme.bg}>
       {items.slice(top, top + shown).map((item, offset) => {
         const chosen = top + offset === index;
         return (

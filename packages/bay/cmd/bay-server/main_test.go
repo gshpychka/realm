@@ -52,6 +52,9 @@ func TestLoadConfigRejects(t *testing.T) {
 		"a bad duration":    `{"mirrorRefresh": "soon"}`,
 		"a number duration": `{"mirrorRefresh": 5}`,
 		"not json":          `project: bay`,
+		"a second value":    `{} {}`,
+		"a null config":     `null`,
+		"an empty config":   `{}`,
 	} {
 		file := writeConfig(t, content)
 		if _, err := loadConfig(file); err == nil || !strings.Contains(err.Error(), file) {

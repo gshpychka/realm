@@ -33,7 +33,7 @@ export interface Bindings {
  */
 export function moveFor(name: string, bindings: Bindings = {}): Move | null {
   const { keys = DEFAULT_KEYS, jumps = {} } = bindings;
-  const reach = jumps[name];
+  const reach = Object.hasOwn(jumps, name) ? jumps[name] : undefined;
   if (reach !== undefined) return { reach };
   if (keys === false) return null;
   const bound = { ...DEFAULT_KEYS, ...keys };

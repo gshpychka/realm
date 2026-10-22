@@ -137,3 +137,9 @@ The dev shell keeps caches, pi sessions, and artifacts inside the working tree. 
 gives each run a throwaway `HOME`, so a test reads and writes none of the operator's pi state,
 and starts the UI without the variables that describe the operator's own terminal (`TMUX`,
 `TERM_PROGRAM`, and the like), so OpenTUI judges tui-test's terminal by `TERM` and `COLORTERM`.
+
+Do not assume a particular terminal emulator at runtime. `e2e/terminal.test.ts` separately
+checks synchronized frames directly and through a real tmux server with Realm's settings
+using Ghostty and Alacritty terminal types. These are protocol and capability tests, not
+GUI emulator tests. They use a separate socket and configuration and never connect to
+the operator's tmux server.

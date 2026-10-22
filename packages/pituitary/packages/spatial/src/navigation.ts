@@ -86,6 +86,7 @@ export function useNavigation(of: Lattice, options: NavigationOptions = {}): Nav
   const toggleZoom = useCallback(() => setHeld(toggle), []);
 
   useKeyboard((key: KeyEvent) => {
+    if (key.ctrl || key.meta || key.option) return;
     const move = moveFor(key.name ?? "", { keys, jumps });
     if (move === null) return;
     if ("walk" in move) go(move.walk);

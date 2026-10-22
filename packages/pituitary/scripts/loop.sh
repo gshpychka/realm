@@ -20,13 +20,17 @@ gate() {
   local name=$1
   shift
   local log="artifacts/logs/$name.log"
+  local started=$SECONDS
+  printf '%-10s ' "$name"
   if "$@" >"$log" 2>&1; then
-    printf '| %s | pass | |\n' "$name" >>"$report.rows"
+    printf 'pass (%ss)\n' "$((SECONDS - started))"
+    printf '| %s | pass | %ss | [%s](logs/%s.log) |\n' "$name" "$((SECONDS - started))" "$name" "$name" >>"$report.rows"
     return 0
   fi
   status=1
   failed+=("$name")
-  printf '| %s | **fail** | `%s` |\n' "$name" "$log" >>"$report.rows"
+  printf 'FAIL (%ss) · %s\n' "$((SECONDS - started))" "$log"
+  printf '| %s | **fail** | %ss | [%s](logs/%s.log) |\n' "$name" "$((SECONDS - started))" "$name" "$name" >>"$report.rows"
   return 1
 }
 
@@ -35,7 +39,7 @@ gate() {
 gate install bun install --frozen-lockfile
 gate typecheck tsc -p .
 gate lint biome check .
-gate unit bun test packages/
+gate unit bun test packages/ scripts/
 gate e2e node --test --test-reporter=spec "e2e/**/*.test.ts"
 # Timings, one file at a time so no other test competes for the machine.
 gate perf node --test --test-concurrency=1 --test-reporter=spec "e2e/**/*.perf.ts"
@@ -46,8 +50,8 @@ gate module nix build "$realm_root#checks.$system.pituitary-home-manager" --no-l
 
 {
   printf '# Loop report\n\n'
-  printf '%s\n\n' "$(date -Is)"
-  printf '| gate | result | log |\n|---|---|---|\n'
+  printf '%s\n\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  printf '| gate | result | elapsed | log |\n|---|---|---|---|\n'
   cat "$report.rows"
   printf '\n'
 

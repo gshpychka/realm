@@ -1,5 +1,20 @@
-import { describe, expect, test } from "bun:test";
-import { resolveAgentCommand, resumeArgs } from "./config.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resolveAgentCommand, resumeArgs, resumeCommand } from "./config.ts";
+
+let oldArgs: string | undefined;
+let oldJson: string | undefined;
+beforeEach(() => {
+  oldArgs = process.env.PI_AGENT_ARGS;
+  oldJson = process.env.PI_AGENT_ARGS_JSON;
+  delete process.env.PI_AGENT_ARGS;
+  delete process.env.PI_AGENT_ARGS_JSON;
+});
+afterEach(() => {
+  if (oldArgs === undefined) delete process.env.PI_AGENT_ARGS;
+  else process.env.PI_AGENT_ARGS = oldArgs;
+  if (oldJson === undefined) delete process.env.PI_AGENT_ARGS_JSON;
+  else process.env.PI_AGENT_ARGS_JSON = oldJson;
+});
 
 describe("resumeArgs", () => {
   test("carries on in the session file, dropping what chose the first session", () => {
@@ -22,9 +37,55 @@ describe("resumeArgs", () => {
       "read",
     ]);
   });
+
+  test("drops session overrides using equals syntax without losing the following flag", () => {
+    expect(resumeArgs(["--model=sonnet", "--session=/old file", "--no-extensions"], "/new file")).toEqual([
+      "--no-extensions",
+      "--session",
+      "/new file",
+    ]);
+  });
+});
+
+test("resume commands quote shell syntax in session paths", () => {
+  expect(resumeCommand("/tmp/session.jsonl")).toBe("pituitary --session /tmp/session.jsonl");
+  expect(resumeCommand("/tmp/a user's $session.jsonl")).toBe(
+    "pituitary --session '/tmp/a user'\\''s $session.jsonl'",
+  );
 });
 
 describe("resolveAgentCommand", () => {
+  test("structured arguments preserve spaces and take precedence over legacy arguments", () => {
+    process.env.PI_AGENT_ARGS = "--name wrong";
+    process.env.PI_AGENT_ARGS_JSON = JSON.stringify(["--session-dir", "/some directory/sessions"]);
+    expect(resolveAgentCommand(["--continue"]).args).toEqual([
+      "--session-dir",
+      "/some directory/sessions",
+      "--continue",
+    ]);
+  });
+
+  test("direct commands retain the configured executable's arguments", () => {
+    process.env.PI_AGENT_ARGS_JSON = JSON.stringify(["/script with spaces.ts"]);
+    expect(resolveAgentCommand(["--version"]).args).toEqual(["/script with spaces.ts", "--version"]);
+  });
+
+  test("an explicitly requested output mode runs in pi without being overridden by the frontend", () => {
+    for (const mode of ["text", "json", "rpc"]) {
+      expect(resolveAgentCommand(["--mode", mode, "the prompt"])).toMatchObject({
+        direct: true,
+        args: ["--mode", mode, "the prompt"],
+        prompt: null,
+      });
+    }
+  });
+
+  test("rejects malformed structured arguments before starting the UI", () => {
+    for (const value of ["oops", "{}", '["ok",2]']) {
+      process.env.PI_AGENT_ARGS_JSON = value;
+      expect(() => resolveAgentCommand([])).toThrow("JSON array of strings");
+    }
+  });
   test("passes pi's own flags through, values included", () => {
     expect(resolveAgentCommand(["--continue", "--model", "sonnet", "--no-extensions"])).toMatchObject({
       args: ["--continue", "--model", "sonnet", "--no-extensions"],

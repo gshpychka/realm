@@ -6,6 +6,9 @@
   module ? import ../modules/home-manager/pituitary.nix,
 }:
 let
+  agent = pkgs.writeShellScript "pituitary-check-agent" ''
+    exec ${pkgs.jq}/bin/jq -cn --args '$ARGS.positional' -- "$@"
+  '';
   home = home-manager.lib.homeManagerConfiguration {
     inherit pkgs;
     modules = [
@@ -21,11 +24,16 @@ let
           nvimPackage = pkgs.neovim-unwrapped;
           ghPackage = pkgs.gh;
           agent = {
-            command = "/opt/pi/bin/pi";
+            command = toString agent;
             args = [
               "--no-extensions"
               "--thinking"
               "high"
+              "--session-dir"
+              "/some directory/pi sessions"
+              "--name"
+              "the 'quoted' session"
+              ""
             ];
           };
           glyphs = "plain";
@@ -76,8 +84,8 @@ pkgs.runCommand "pituitary-home-manager-check" { nativeBuildInputs = [ pkgs.jq ]
   expect() {
     grep -qF -- "$1" "$wrapper" || { echo "wrapper lacks: $1"; cat "$wrapper"; exit 1; }
   }
-  expect "PI_AGENT_CMD='/opt/pi/bin/pi'"
-  expect "PI_AGENT_ARGS='--no-extensions --thinking high'"
+  expect "PI_AGENT_CMD='${agent}'"
+  expect "PI_AGENT_ARGS_JSON="
   expect "PITUITARY_NVIM='${pkgs.neovim-unwrapped}/bin/nvim'"
   expect "PITUITARY_GH='${pkgs.gh}/bin/gh'"
   expect "PITUITARY_PLAIN_GLYPHS='1'"
@@ -103,6 +111,12 @@ pkgs.runCommand "pituitary-home-manager-check" { nativeBuildInputs = [ pkgs.jq ]
   expect "PITUITARY_PROFILE='/tmp/pituitary.profile'"
   expect "PITUITARY_KEYBINDINGS='/home/check/.config/pituitary/keybindings.json'"
   expect "PITUITARY_CHECK='set'"
+
+  # Exercise the installed wrapper and argument decoder together: shell quoting,
+  # embedded spaces, and an empty argument must survive both layers.
+  test "$("$wrapper" --version | jq -c .)" = ${
+    pkgs.lib.escapeShellArg (builtins.toJSON (config.programs.pituitary.agent.args ++ [ "--version" ]))
+  }
 
   bindings=${config.home-files}/.config/pituitary/keybindings.json
   test "$(jq -r '."app.model.select"' "$bindings")" = "alt+m"

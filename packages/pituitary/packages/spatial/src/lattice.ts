@@ -54,14 +54,18 @@ export function lattice<P extends Placed>(panes: readonly P[]): Lattice<P> {
   const ids = new Set<string>();
   const taken = new Map<string, string>();
   for (const pane of panes) {
+    if (!pane.id.trim()) throw new Error("a pane id must not be empty");
+    if (!pane.at.every(Number.isSafeInteger)) {
+      throw new Error(`pane "${pane.id}" needs an integer lattice position`);
+    }
     if (ids.has(pane.id)) throw new Error(`duplicate pane id "${pane.id}"`);
     ids.add(pane.id);
     const place = pane.at.join(",");
     const holder = taken.get(place);
-    if (holder) throw new Error(`panes "${holder}" and "${pane.id}" share position ${place}`);
+    if (holder !== undefined) throw new Error(`panes "${holder}" and "${pane.id}" share position ${place}`);
     taken.set(place, pane.id);
   }
-  // A copy, so the checks above hold for the life of the lattice.
+  // Own the collection while preserving pane objects, including custom render methods.
   return { panes: [...panes] };
 }
 

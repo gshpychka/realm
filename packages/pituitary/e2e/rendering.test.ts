@@ -18,13 +18,10 @@ test("a reply renders as markdown with highlighted code", async () => {
   const app = await launch({ scenario: "markdown" });
   await app.terminal.submit("plan it");
   await app.terminal.waitText("Keep the lower bound");
+  // Readable text draws immediately; syntax colours arrive with the parser's reply.
+  await app.terminal.expectText("export", { fg: "#fb4934", timeout: 5000 });
   const screen = await app.capture("markdown");
   assert.doesNotMatch(screen, /## Plan|\*\*limits|```/, `markdown syntax shown raw:\n${screen}`);
-  const cells = await app.terminal.cells(0, 0, 100, 28);
-  const keyword = cells.find(
-    (cell, index) => cell.char === "e" && cells[index + 1]?.char === "x" && cells[index + 5]?.char === "t",
-  );
-  assert.equal(keyword?.fg, "#fb4934", "the code block keyword is not highlighted");
   await app.close();
 });
 

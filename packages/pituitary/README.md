@@ -2,13 +2,7 @@
 
 An [OpenTUI](https://github.com/sst/opentui) frontend for the
 [pi coding agent](https://github.com/earendil-works/pi), driven over pi's JSONL RPC protocol, and
-the environment it is built in. Pituitary is maintained here as a Realm package; the former
-[`gshpychka/pituitary`](https://github.com/gshpychka/pituitary) repository is retired.
-Imported from commit `a0ebe85eccfe7192ae80b91f7c8ca16898d9aeaf` with its Bun workspaces intact.
-The local `margins` branch's `3b07d36` improvement is adapted to the current Work/Reply layout:
-reply, custom, summary, notice, and shell-output continuations align beyond their marks, with
-the current glyphs and text selection preserved. Narrow terminals and resizing have regression
-coverage.
+the environment it is built in. Pituitary is maintained as a package in Realm.
 
 ## Environment
 
@@ -18,6 +12,18 @@ package directory.
 
 The package and development shell support `x86_64-linux`, `aarch64-linux`, and
 `aarch64-darwin`. Intel macOS was removed from nixpkgs unstable in 26.11.
+
+Pituitary detects terminal capabilities rather than requiring a particular emulator.
+Tests normally isolate the terminal identity. Separate integration tests check complete
+redraws directly and through a real tmux server using Ghostty and Alacritty terminal
+types. These inspect the outer protocol stream, rather than launching GUI emulators.
+Realm explicitly enables Alacritty's synchronized-output capability in tmux, whose
+automatic detection otherwise misses it.
+
+The tracked OpenTUI patch in `patches/` keeps Markdown visible while syntax highlighting
+is pending, keeps wrapped measurement and drawing at the same width, and prevents
+disabled scrollbars from displacing the first frame. Native first-frame and resize tests
+cover these fixes; retain the patch on dependency updates until those tests pass without it.
 
 ```sh
 cd packages/pituitary             # from the Realm checkout
@@ -32,15 +38,16 @@ The shell provides bun (the UI runtime), Node 22 (the test runner), TypeScript, 
 ## The loop
 
 `just loop` runs every gate, continues past failures, and writes `artifacts/report.md`: a
-pass/fail table, the tail of the first failing log, and the rendered screen of every UI state the
+pass/fail table with elapsed times and log links, the tail of the first failing log, and the rendered screen of every UI state the
 e2e suite visited.
 
 | gate | what it covers |
 | --- | --- |
 | `just typecheck` | the whole tree against pi's own published types |
 | `just lint` | Biome lint, format, and import order |
-| `just unit` | protocol framing, the event reducer, and paced rendering |
+| `just unit` | protocol framing, state, native rendering, editor behavior, and development commands |
 | `just e2e` | the UI in a headless PTY through [tui-test](https://github.com/microsoft/tui-test) |
+| `just perf` | input latency, streaming, startup, and teardown budgets |
 | `just package` | the Realm package and its pinned production dependencies |
 | `just module` | every Home Manager option, configured wrapper, and keybindings |
 
@@ -49,11 +56,43 @@ Ways to look at the UI:
 ```sh
 just screens                       # every captured screen as text
 just tui start --scenario tool     # a live session to operate: just tui submit, key, screen --style
+just tui help                      # all driver commands and options
 just run tool 40                   # the UI in this terminal against a scripted agent
 just live                          # the UI against the real pi CLI
 ```
 
 `artifacts/screens/` holds a `.txt`, `.svg`, and `.png` per state.
+The driver accepts literal leading dashes after `--`, for example `just tui type -- --help`.
+Use a JSON array for pi arguments containing spaces:
+`just tui start --pi '["--no-session", "-e", "/path with spaces/extension.ts"]'`.
+`just demo --help` lists the recording scenes without building their tools; recordings use
+Realm's pinned nixpkgs and isolate terminal identity just as the tests do.
+
+### Iterating without a system rebuild
+
+`just live` and `just run` execute the checkout's TypeScript directly. After editing source,
+quit and rerun the command to load the changes; no package or system rebuild is needed.
+Use `just live --continue` to resume the latest saved session, or
+`just live --session /path/to/session.jsonl` to select one explicitly. `just run tool` uses the
+scripted agent, so layout experiments need no provider credentials or model calls.
+
+The dev shell puts sessions in this package's `.pi/sessions` and uses the workspace's pi
+dependency. To try the source UI with your installed pi and its usual session directory,
+run this from the project you want pi to work on, inside the dev shell:
+
+```sh
+env -u PI_CODING_AGENT_SESSION_DIR PI_AGENT_CMD=/absolute/path/to/installed/pi \
+  bun /absolute/path/to/realm/packages/pituitary/packages/tui/src/main.tsx --continue
+```
+
+Source launches read the UI's environment variables and normal keybindings file. Settings
+from Home Manager's installed wrapper are not automatically applied to them.
+
+`/reload` reloads pi's extensions, skills, prompts, themes, and context files; it does not
+reload Pituitary's UI source. Bun's bare `--watch` and `--hot` are not supported development
+launchers: a watch restart can interrupt the asynchronous agent and bridge cleanup, while
+hot mode reexecutes startup code that owns the renderer and child processes. Automatic
+reloading needs explicit cleanup and session handling first.
 
 ## Layout
 
@@ -76,6 +115,7 @@ nix run /path/to/realm#pituitary -- --continue     # any pi argument passes thro
 ```
 
 `pituitary` drives the `pi` on `PATH` with your own settings, extensions, and sessions.
+An explicit `--mode text|json|rpc`, like `--print`, `--help`, or `--version`, runs pi directly.
 
 ### Home Manager
 
@@ -96,7 +136,7 @@ so they reach pituitary and the pi it starts, and no other program.
   programs.pituitary = {
     enable = true;
     agent.command = "pi";                              # the pi executable, on PATH or absolute
-    agent.args = [ "--thinking" "high" ];              # one word each, ahead of pituitary's own
+    agent.args = [ "--thinking" "high" ];              # one argument per item, spaces preserved
     glyphs = "nerd-font";                              # or "plain" without a Nerd Font
     animations = true;                                 # false holds the fire on one frame
     fire.travels = true;                               # false keeps the fire in its corner while pi works
@@ -179,7 +219,7 @@ the default.
 Extension dialogs and widgets appear where pi's own interface puts them.
 
 The model's thinking, the words it writes on its way, and its tool calls sit in one rounded box
-per stretch of work, a third of the screen high, which follows the latest step while pi works.
+per stretch of work, growing up to a third of the screen high and following the latest step while pi works.
 Once the reply after it ends, the box folds to one line saying what it came to, such as
 `thought · 6 tools · 1 failed`. A click on that line opens or closes the box; the wheel scrolls an
 open box, then the conversation once the box reaches its end. ctrl+o opens every box at full
@@ -210,18 +250,25 @@ Bindings follow pi's action names, and `~/.pi/agent/keybindings.json` overrides 
 for pi; ctrl+f is pituitary's own `app.tools.browse`.
 
 `/model`, `/thinking`, `/new`, `/resume`, `/fork`, `/clone`, `/compact`, `/name`, `/session`,
-`/usage`, `/copy`, `/export`, `/settings`, `/hotkeys`, and `/quit` run here; every other
+`/usage`, `/copy`, `/export`, `/settings`, `/hotkeys`, `/tree`, `/reload`, `/changelog`,
+`/share`, `/scoped-models`, `/import`, `/trust`, `/debug`, and `/quit` run here; every other
 `/command` goes to pi, so extension commands, prompt templates, and skills work as they do in pi.
 `/` and `@` complete command names and file paths.
 
-Moving along the session tree, sharing, signing in, and reloading have no RPC command; the
-frontend says so and `pi` itself covers them.
+The extension bridge runs tree navigation and resource reloading inside pi; `/share` uses
+GitHub CLI to create a secret gist. `/login` and `/logout` hand the terminal to pi on the same
+session, then restore the frontend when pi exits.
 
 ## Talking to pi
 
 The UI spawns `pi --mode rpc` and reads line-delimited JSON from its stdout. `PI_AGENT_CMD` and
-`PI_AGENT_ARGS` redirect that to any process speaking the same protocol, which is how the tests
-substitute the scripted agent.
+`PI_AGENT_ARGS_JSON` redirect that to any process speaking the same protocol. The latter is a
+JSON array of strings, preserving spaces and empty arguments. Legacy `PI_AGENT_ARGS` accepts
+whitespace-separated words when the JSON variable is unset.
 
 Scripted agents are selected with `FAKE_PI_SCENARIO`; `FAKE_PI_DELAY_MS` spaces their events out
 so intermediate states are observable. Scenarios live in `packages/fake-pi/scenarios`.
+
+The former [`gshpychka/pituitary`](https://github.com/gshpychka/pituitary) repository is retired.
+Its source was imported at `a0ebe85eccfe7192ae80b91f7c8ca16898d9aeaf`, with the local
+`margins` branch's `3b07d36` continuation alignment adapted to the current layout.

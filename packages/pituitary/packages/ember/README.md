@@ -60,6 +60,9 @@ set of options suits a strip and a tile.
 | `colours` | `FLAME` | heat-to-colour stops, coolest first |
 | `pace` · `still` | 70 ms · false | step interval · hold one warmed frame |
 
+Resizing a `Fire` resamples its existing heat, keeping the flame continuous. Changing its seed or
+mapping starts a fresh hearth; removing a tuning prop restores its default as the fire burns.
+
 ## Mappings
 
 | mapping | pixels per cell | spent on |

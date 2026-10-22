@@ -239,8 +239,8 @@ export class DraftEngine {
   /** The draft as it stands after every key sent so far, cleared for the next one. */
   take(): Promise<string> {
     this.asked++;
-    this.current = EMPTY;
-    this.announce();
+    // Keep the last acknowledged draft until nvim confirms the clear. If it dies while
+    // answering, the plain editor must still be able to recover what was on screen.
     return this.fromNormal(() => this.lua("return pi_draft.take()")).then((text) => String(text ?? ""));
   }
 

@@ -1,6 +1,7 @@
 import type { Widget } from "@pituitary/rpc";
 import type { Task } from "../details.ts";
 import { glyphs } from "../glyphs.ts";
+import { counted } from "../plural.ts";
 import { theme } from "../theme.ts";
 import { Tasks } from "./tool-call.tsx";
 
@@ -8,22 +9,31 @@ import { Tasks } from "./tool-call.tsx";
 export function Widgets({
   widgets,
   placement,
+  rows = Number.POSITIVE_INFINITY,
 }: {
   widgets: readonly Widget[];
   placement: Widget["placement"];
+  rows?: number;
 }) {
   const shown = widgets.filter((widget) => widget.placement === placement);
-  if (shown.length === 0) return null;
+  const lines = shown.flatMap((widget) =>
+    widget.lines.map((line, index) => ({ key: `${widget.key}-${index}`, line })),
+  );
+  if (lines.length === 0 || rows <= 0) return null;
+  const kept = lines.slice(0, rows < lines.length ? Math.max(0, rows - 1) : rows);
+  const hidden = lines.length - kept.length;
   return (
     <box flexDirection="column" flexShrink={0} paddingLeft={1} paddingRight={1}>
-      {shown.flatMap((widget) =>
-        widget.lines.map((line, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: widget lines are identified by position
-          <text key={`${widget.key}-${index}`} fg={theme.dim} truncate wrapMode="none">
-            {line}
-          </text>
-        )),
-      )}
+      {kept.map(({ key, line }) => (
+        <text key={key} fg={theme.dim} truncate wrapMode="none">
+          {line}
+        </text>
+      ))}
+      {hidden > 0 ? (
+        <text fg={theme.dim} truncate wrapMode="none">
+          … {counted(hidden, "more widget line")}
+        </text>
+      ) : null}
     </box>
   );
 }
@@ -44,18 +54,24 @@ export function besideTodo(widgets: readonly Widget[], tasks: readonly Task[]): 
 const PANEL_TASKS = 8;
 
 /** The agent's todo list while any of it is still open. */
-export function TodoPanel({ tasks }: { tasks: readonly Task[] }) {
-  const open = tasks.filter((task) => task.status !== "completed");
-  if (open.length === 0) return null;
-  const done = tasks.length - open.length;
-  const shown = tasks.slice(0, PANEL_TASKS);
+export function TodoPanel({ tasks, rows = PANEL_TASKS + 1 }: { tasks: readonly Task[]; rows?: number }) {
+  const kept = tasks.filter((task) => task.status !== "deleted");
+  const open = kept.filter((task) => task.status !== "completed");
+  if (open.length === 0 || rows <= 0) return null;
+  const done = kept.length - open.length;
+  // Current work must stay visible even after a long prefix of completed tasks.
+  const shown = [
+    ...open.filter((task) => task.status === "in_progress"),
+    ...open.filter((task) => task.status !== "in_progress"),
+    ...kept.filter((task) => task.status === "completed"),
+  ].slice(0, Math.max(0, Math.min(PANEL_TASKS, rows - 1)));
   return (
     <box flexDirection="column" flexShrink={0} paddingLeft={1} paddingRight={1}>
-      <text fg={theme.dim}>
-        {glyphs.todo} todo {done}/{tasks.length}
-        {tasks.length > shown.length ? ` · ${tasks.length - shown.length} more` : ""}
+      <text fg={theme.dim} truncate wrapMode="none">
+        {glyphs.todo} todo {done}/{kept.length}
+        {kept.length > shown.length ? ` · ${kept.length - shown.length} more` : ""}
       </text>
-      <Tasks tasks={shown} />
+      <Tasks tasks={shown} compact />
     </box>
   );
 }

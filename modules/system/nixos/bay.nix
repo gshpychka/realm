@@ -179,7 +179,7 @@ let
   programType = types.submodule {
     options = {
       command = mkOption {
-        type = types.listOf types.str;
+        type = types.nonEmptyListOf types.str;
         description = "Command line that launches the program.";
       };
       resume = mkOption {

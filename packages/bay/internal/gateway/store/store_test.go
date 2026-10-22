@@ -46,7 +46,7 @@ func send(t *testing.T, s *store.Store, from, to gateway.Participant, thread int
 
 func conversation(t *testing.T, s *store.Store, viewer gateway.Participant, thread int64) messages.Conversation {
 	t.Helper()
-	c, err := s.Conversation(context.Background(), viewer, thread)
+	c, err := s.Conversation(context.Background(), viewer, thread, 0)
 	if err != nil {
 		t.Fatalf("Conversation(%s, thread %d): %v", viewer.Name, thread, err)
 	}
@@ -179,7 +179,7 @@ func TestStrangerCannotWriteToAThread(t *testing.T) {
 func TestStrangerCannotReadAThread(t *testing.T) {
 	s := open(t)
 	m := send(t, s, alice, bob, 0, "", "private")
-	_, err := s.Conversation(context.Background(), carol, m.Thread)
+	_, err := s.Conversation(context.Background(), carol, m.Thread, 0)
 	if !errors.Is(err, fault.Forbidden) {
 		t.Fatalf("Conversation by a stranger returned %v, want fault.Forbidden", err)
 	}
@@ -195,7 +195,7 @@ func TestUnknownThread(t *testing.T) {
 		if _, err := s.Send(context.Background(), alice, bob, thread, "", "hi"); !errors.Is(err, fault.NotFound) {
 			t.Errorf("Send to thread %d returned %v, want fault.NotFound", thread, err)
 		}
-		if _, err := s.Conversation(context.Background(), operator, thread); !errors.Is(err, fault.NotFound) {
+		if _, err := s.Conversation(context.Background(), operator, thread, 0); !errors.Is(err, fault.NotFound) {
 			t.Errorf("Conversation of thread %d returned %v, want fault.NotFound", thread, err)
 		}
 	}
@@ -463,7 +463,7 @@ func TestIdentityIsTheIDNotTheName(t *testing.T) {
 
 	// A later session reusing the name has a new ID.
 	successor := gateway.Participant{ID: "id-alice-2", Name: "alice"}
-	if _, err := s.Conversation(context.Background(), successor, m.Thread); !errors.Is(err, fault.Forbidden) {
+	if _, err := s.Conversation(context.Background(), successor, m.Thread, 0); !errors.Is(err, fault.Forbidden) {
 		t.Errorf("Conversation by a session reusing a name returned %v, want fault.Forbidden", err)
 	}
 	if _, err := s.Send(context.Background(), successor, bob, m.Thread, "", "hi"); !errors.Is(err, fault.Forbidden) {
@@ -623,5 +623,49 @@ func TestConversationCarriesTheLatestMessagesWithinItsBudget(t *testing.T) {
 	lone := send(t, s, alice, bob, 0, "one", full)
 	if c := conversation(t, s, bob, lone.Thread); len(c.Messages) != 1 || c.Earlier != 0 {
 		t.Fatalf("a thread of one full message carried %d messages, %d earlier", len(c.Messages), c.Earlier)
+	}
+}
+
+func TestConversationPagesPreserveUnreadMessages(t *testing.T) {
+	s := open(t)
+	body := strings.Repeat("x", messages.MaxBody)
+	var sent []messages.Message
+	var thread int64
+	for range 10 {
+		m := send(t, s, alice, bob, thread, "large thread", body)
+		thread = m.Thread
+		sent = append(sent, m)
+	}
+	var before int64
+	seen := map[int64]bool{}
+	for _, want := range []struct{ count, earlier, unread int }{{4, 6, 6}, {4, 2, 3}, {2, 0, 1}} {
+		page, err := s.Conversation(context.Background(), bob, thread, before)
+		if err != nil || len(page.Messages) != want.count || page.Earlier != want.earlier || page.Thread.Unread != want.count {
+			t.Fatalf("page before %d: %d messages, %d earlier, %d marked read, err %v", before, len(page.Messages), page.Earlier, page.Thread.Unread, err)
+		}
+		for i, m := range page.Messages {
+			if seen[m.ID] || (i > 0 && page.Messages[i-1].ID >= m.ID) {
+				t.Fatalf("duplicate or unsorted message %d", m.ID)
+			}
+			seen[m.ID] = true
+		}
+		if box := inbox(t, s, bob); len(box) != 1 || box[0].Unread != want.unread {
+			t.Fatalf("after reading a page: inbox %+v, want %d unread", box, want.unread)
+		}
+		before = page.Messages[0].ID
+		if len(seen) == 4 {
+			// A new reply while paging must remain unread until its own page is read.
+			send(t, s, alice, bob, thread, "", "new reply")
+		}
+	}
+	if len(seen) != len(sent) {
+		t.Fatalf("read %d unique messages, want %d", len(seen), len(sent))
+	}
+	if page, err := s.Conversation(context.Background(), bob, thread, before); err != nil || len(page.Messages) != 0 || page.Earlier != 0 || page.Thread.Unread != 0 {
+		t.Fatalf("before the first message: %+v, %v", page, err)
+	}
+	conversation(t, s, bob, thread)
+	if box := inbox(t, s, bob); len(box) != 0 {
+		t.Fatalf("new reply remains unread after latest page: %+v", box)
 	}
 }

@@ -30,7 +30,7 @@ let
     PITUITARY_FOOTER_HEARTH = toString cfg.footer.hearth;
   }
   // lib.optionalAttrs (cfg.agent.args != [ ]) {
-    PI_AGENT_ARGS = lib.concatStringsSep " " cfg.agent.args;
+    PI_AGENT_ARGS_JSON = builtins.toJSON cfg.agent.args;
   }
   // lib.optionalAttrs (cfg.nvimPackage != null) {
     PITUITARY_NVIM = lib.getExe' cfg.nvimPackage "nvim";
@@ -103,7 +103,7 @@ in
       };
 
       args = mkOption {
-        type = types.listOf (types.strMatching "[^[:space:]]+");
+        type = types.listOf types.str;
         default = [ ];
         example = [
           "--model"
@@ -112,8 +112,8 @@ in
           "high"
         ];
         description = ''
-          Arguments given to pi ahead of the ones on pituitary's command line. Each is one word:
-          pituitary splits them on whitespace.
+          Arguments given to pi ahead of the ones on pituitary's command line. Each list item
+          is one argument; spaces, quotes, and empty arguments are preserved.
         '';
       };
     };

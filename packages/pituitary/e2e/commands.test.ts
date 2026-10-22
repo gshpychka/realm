@@ -5,7 +5,7 @@ import { after, test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { launch, press } from "./helpers/harness.ts";
+import { launch, PROJECT, press } from "./helpers/harness.ts";
 import { re } from "./helpers/pattern.ts";
 
 const DOWN = "\x1b[B";
@@ -157,12 +157,53 @@ test("a command pi owns goes to pi", async () => {
   await app.close();
 });
 
+test("an open completion list leaves modified shortcuts to the app", async () => {
+  const app = await launch({ scenario: "hello" });
+  await app.terminal.type("/mo");
+  await app.terminal.waitText("/model [provider/id]");
+  await app.terminal.write(SHIFT_TAB);
+  await app.terminal.waitText(`fake-model-1 ${glyphs.thinking} high`);
+  const screen = await app.capture("completion-modified-shortcut");
+  assert.match(screen, /» \/mo/, screen);
+  await app.close();
+});
+
 test("@ completes a file path from the working tree", async () => {
   const app = await launch({ scenario: "hello" });
   await app.terminal.type("look at @srcmain");
   await app.terminal.waitText("@src/main.ts");
   await app.terminal.write(TAB);
   await app.terminal.waitText("» look at @src/main.ts");
+  await app.close();
+});
+
+test("quoted file mentions complete paths with spaces", async () => {
+  const app = await launch({
+    scenario: "hello",
+    prepare: (_home, _sessions, cwd) => writeFileSync(join(cwd, "docs", "user guide.md"), "guide"),
+  });
+  await app.terminal.type('look @"docs/user ');
+  await app.terminal.waitText('@"docs/user guide.md"');
+  await app.terminal.write(TAB);
+  await app.terminal.waitText('» look @"docs/user guide.md"');
+  const screen = await app.capture("mention-quoted-path");
+  assert.match(screen, /» look @"docs\/user guide.md"/, screen);
+  await app.close();
+});
+
+test("a new mention finds files created since the previous completion", async () => {
+  const app = await launch({ scenario: "hello" });
+  await app.terminal.type("@srcmain");
+  await app.terminal.waitText("@src/main.ts");
+  await app.terminal.write("\x03");
+  await app.terminal.waitText("ask pi");
+  writeFileSync(join(app.home, PROJECT, "newly-created.txt"), "new file");
+  await app.terminal.type("@newly");
+  await app.terminal.waitText("@newly-created.txt");
+  await app.terminal.write(TAB);
+  await app.terminal.waitText("» @newly-created.txt");
+  const screen = await app.capture("mention-new-file");
+  assert.match(screen, /» @newly-created.txt/, screen);
   await app.close();
 });
 

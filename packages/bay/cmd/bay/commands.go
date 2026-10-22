@@ -81,8 +81,8 @@ var commands = []subcommand{
 	},
 	{
 		name:    "read",
-		args:    "THREAD [--json]",
-		summary: "print a thread's messages",
+		args:    "THREAD [--before MESSAGE] [--json]",
+		summary: "print a thread's latest messages, or the page before MESSAGE",
 		run:     (*cli).read,
 	},
 	{
@@ -98,7 +98,7 @@ func usage(w io.Writer) {
 	for _, cmd := range commands {
 		fmt.Fprintf(w, "  %s\n      %s\n", cmd.synopsis(), cmd.summary)
 	}
-	fmt.Fprint(w, "  help\n      show this list\n\n")
+	fmt.Fprint(w, "  help [COMMAND]\n      show this list or a command's usage\n\n")
 	fmt.Fprint(w, "rm asks before deleting a session, and end and resume --snapshot before deleting snapshots; --yes skips the question.\n")
 	fmt.Fprint(w, "--json prints the server's answer as JSON.\n")
 	fmt.Fprintf(w, "bay reaches the Bay server on the unix socket $BAY_SOCKET, %s when unset.\n", defaultSocket)

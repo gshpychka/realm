@@ -1,4 +1,4 @@
-import { useKeyboard } from "@opentui/react";
+import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useMemo, useState } from "react";
 import { type Checked, checkAll, clearAll, isChecked, ordered, reorder, toggle } from "../checklist.ts";
 import { palette, theme } from "../theme.ts";
@@ -39,11 +39,14 @@ export function Checklist({
   spec,
   onClose,
   rows = ROWS,
+  compact = false,
 }: {
   spec: ChecklistSpec;
   onClose(): void;
   rows?: number;
+  compact?: boolean;
 }) {
+  const { width } = useTerminalDimensions();
   const [checked, setChecked] = useState<Checked>(spec.checked);
   const [dirty, setDirty] = useState(false);
   const [query, setQuery] = useState("");
@@ -59,15 +62,25 @@ export function Checklist({
       return words.every((word) => haystack.includes(word));
     });
   }, [checked, all, byValue, query]);
-  const index = Math.min(selected, Math.max(0, shown.length - 1));
-  const height = Math.max(2, Math.min(ROWS, rows));
+  const index = Math.max(0, Math.min(selected, shown.length - 1));
+  const height = Math.max(1, Math.min(ROWS, rows));
   const top = Math.max(0, Math.min(index - Math.floor(height / 2), shown.length - height));
   const visible = shown.slice(top, top + height);
   const current = shown[index];
 
-  const change = (next: Checked) => {
+  const change = (next: Checked, focus = current) => {
     setChecked(next);
     setDirty(true);
+    // Checking changes the list's order; keep the same item under the cursor.
+    const visible = new Set(shown);
+    setSelected(
+      Math.max(
+        0,
+        ordered(next, all)
+          .filter((value) => visible.has(value))
+          .indexOf(focus ?? ""),
+      ),
+    );
   };
 
   useKeyboard((key) => {
@@ -82,10 +95,9 @@ export function Checklist({
       const next = reorder(checked, current, delta);
       if (next === checked) return;
       change(next);
-      setSelected(Math.max(0, Math.min(shown.length - 1, index + delta)));
     } else if (key.name === "up") {
       key.preventDefault();
-      setSelected(index === 0 ? shown.length - 1 : index - 1);
+      setSelected(Math.max(0, index === 0 ? shown.length - 1 : index - 1));
     } else if (key.name === "down") {
       key.preventDefault();
       setSelected(index >= shown.length - 1 ? 0 : index + 1);
@@ -94,7 +106,7 @@ export function Checklist({
       setSelected(
         Math.max(0, Math.min(shown.length - 1, index + (key.name === "pageup" ? -height : height))),
       );
-    } else if (key.name === "return") {
+    } else if (key.name === "return" || key.name === "kpenter") {
       key.preventDefault();
       if (current) change(toggle(checked, all, current));
     } else if (key.ctrl && key.name === "a") {
@@ -127,12 +139,20 @@ export function Checklist({
     <box
       flexDirection="column"
       flexShrink={0}
-      border
+      // An empty side list keeps a coloured OpenTUI box explicitly borderless.
+      border={compact ? [] : true}
       borderColor={theme.user}
+      backgroundColor={theme.bg}
       paddingLeft={1}
       paddingRight={1}
+      onMouseScroll={(event) => {
+        const direction = event.scroll?.direction;
+        if (direction !== "up" && direction !== "down") return;
+        event.stopPropagation();
+        setSelected(Math.max(0, Math.min(shown.length - 1, index + (direction === "up" ? -1 : 1))));
+      }}
     >
-      <text fg={theme.user}>
+      <text fg={theme.user} truncate wrapMode="none">
         {spec.title}
         {spec.note ? <span fg={theme.dim}> · {spec.note}</span> : null}
       </text>
@@ -142,7 +162,10 @@ export function Checklist({
           focused
           flexGrow={1}
           placeholder="type to narrow"
-          onInput={(value: string) => setQuery(value)}
+          onInput={(value: string) => {
+            setQuery(value);
+            setSelected(0);
+          }}
         />
       </box>
       {visible.length === 0 ? <text fg={theme.dim}>nothing matches</text> : null}
@@ -151,10 +174,25 @@ export function Checklist({
         const item = byValue.get(value);
         const on = isChecked(checked, value);
         return (
-          <box key={value} flexDirection="row" backgroundColor={chosen ? palette.rule : undefined}>
-            <text fg={chosen ? theme.assistant : theme.dim}>{chosen ? "▸ " : "  "}</text>
-            <text fg={on && item ? palette.yellow : theme.dim}>{on ? "✓ " : "· "}</text>
-            <text fg={item ? theme.assistant : theme.dim} truncate>
+          <box
+            key={value}
+            flexDirection="row"
+            height={1}
+            backgroundColor={chosen ? palette.rule : undefined}
+            onMouseDown={(event) => {
+              if (event.button === 0) {
+                event.preventDefault();
+                change(toggle(checked, all, value), value);
+              }
+            }}
+          >
+            <text fg={chosen ? theme.assistant : theme.dim} width={2} flexShrink={0} wrapMode="none">
+              {chosen ? "▸ " : "  "}
+            </text>
+            <text fg={on && item ? palette.yellow : theme.dim} width={2} flexShrink={0} wrapMode="none">
+              {on ? "✓ " : "· "}
+            </text>
+            <text fg={item ? theme.assistant : theme.dim} flexGrow={1} minWidth={0} truncate wrapMode="none">
               {item?.label ?? value}
               {item ? (
                 <Detail text={item.detail ?? ""} icon={item.icon} />
@@ -165,17 +203,22 @@ export function Checklist({
           </box>
         );
       })}
-      <text fg={theme.dim}>
-        {count}
-        {dirty ? <span fg={palette.yellow}> · unsaved</span> : null} · enter check · ctrl+s save · esc close
+      <text fg={theme.dim} truncate wrapMode="none">
+        {width < 64 ? `ctrl+s save · ${count}` : count}
+        {dirty && width >= 64 ? <span fg={palette.yellow}> · unsaved</span> : null}
+        {width < 64 ? "" : " · enter check · ctrl+s save · esc close"}
       </text>
-      <text fg={theme.dim}>
-        {[
-          "ctrl+a all",
-          "ctrl+x none",
-          ...(spec.groupName ? [`ctrl+p ${spec.groupName}`] : []),
-          "alt+↑↓ reorder",
-        ].join(" · ")}
+      <text fg={theme.dim} truncate wrapMode="none">
+        {width < 64 ? (
+          <>enter check · esc close{dirty ? <span fg={palette.yellow}> · unsaved</span> : null}</>
+        ) : (
+          [
+            "ctrl+a all",
+            "ctrl+x none",
+            ...(spec.groupName ? [`ctrl+p ${spec.groupName}`] : []),
+            "alt+↑↓ reorder",
+          ].join(" · ")
+        )}
       </text>
     </box>
   );

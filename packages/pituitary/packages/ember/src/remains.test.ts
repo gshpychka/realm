@@ -5,6 +5,12 @@ import { FLAME, glow } from "./ramp.ts";
 import { billow, plume, puffs, smokeRamp } from "./smoke.ts";
 
 describe("coals", () => {
+  test("a coal with no cooling time is already out on its first frame", () => {
+    const [coal] = bank(1, { cooling: 0 });
+    if (!coal) throw new Error("no coal");
+    expect(smoulder(coal, 0)).toMatchObject({ heat: 0, gone: 1 });
+    expect(coalLights([coal], 0)).toEqual([]);
+  });
   test("a bed holds one coal per cell, each one to three eighths high", () => {
     const bed = bank(12);
     expect(bed).toHaveLength(12);
@@ -105,6 +111,11 @@ describe("smoke", () => {
 });
 
 describe("cinders", () => {
+  test("a cinder with no lifetime never draws an invalid heat", () => {
+    const [cinder] = cinders(4, 1, { life: 0 });
+    if (!cinder) throw new Error("no cinder");
+    expect(flight(cinder, cinder.born)).toBeNull();
+  });
   test("rise about a row and a half a second, drifting a little", () => {
     for (const cinder of cinders(4, 8)) {
       const start = flight(cinder, cinder.born);

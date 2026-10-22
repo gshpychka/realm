@@ -42,12 +42,27 @@ func Fail(w http.ResponseWriter, err error) {
 	Write(w, status, failure{Error: err.Error()})
 }
 
-// Read decodes the request body into v, rejecting unknown fields.
+// Read decodes one JSON object into v, rejecting unknown fields, trailing values
+// and requests larger than 1 MiB. Escaped message bodies fit within this limit.
 func Read(r *http.Request, v any) error {
-	dec := json.NewDecoder(r.Body)
+	const maxRequest = 1 << 20
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxRequest+1))
+	if err != nil {
+		return fmt.Errorf("%w: request body: %v", fault.Invalid, err)
+	}
+	if len(data) > maxRequest {
+		return fmt.Errorf("%w: request body exceeds %d bytes", fault.Invalid, maxRequest)
+	}
+	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
+		return fmt.Errorf("%w: request body must be a JSON object", fault.Invalid)
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		return fmt.Errorf("%w: request body: %v", fault.Invalid, err)
+	}
+	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("%w: request body must contain one JSON object", fault.Invalid)
 	}
 	return nil
 }

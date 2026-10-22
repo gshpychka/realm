@@ -13,7 +13,7 @@ import type { SessionController } from "../use-session.ts";
 import { assertCarriesOver, busyWith } from "./carry-over.ts";
 import { HANDOFF } from "./commands.ts";
 import { writeDebug } from "./debug.ts";
-import { importSession } from "./import.ts";
+import { importSession, sessionCwd } from "./import.ts";
 import { enabledModels, scopedModels } from "./scoped-models.ts";
 import { shareSession } from "./share.ts";
 import { treeRows } from "./tree.ts";
@@ -363,13 +363,21 @@ function sessionDir(state: RpcSessionState | null): string | undefined {
   return process.env.PI_CODING_AGENT_SESSION_DIR;
 }
 
-async function sessionItems(
+export async function sessionItems(
   state: RpcSessionState | null,
   dir: string | undefined,
   all: boolean,
 ): Promise<PickItem[]> {
   const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-  const sessions = all ? await SessionManager.listAll(dir) : await SessionManager.list(process.cwd(), dir);
+  let sessions: Awaited<ReturnType<typeof SessionManager.list>>;
+  if (all) {
+    // pi distinguishes its per-project default folders from a custom flat session folder.
+    // Creating a fresh manager obtains that default through the public API; it creates the
+    // directory but writes no session until a reply is appended, and never opens an existing file.
+    const cwd = state?.sessionFile ? (sessionCwd(state.sessionFile) ?? process.cwd()) : process.cwd();
+    const defaults = SessionManager.create(cwd);
+    sessions = await SessionManager.listAll(dir === defaults.getSessionDir() ? undefined : dir);
+  } else sessions = await SessionManager.list(process.cwd(), dir);
   return sessions.map((info) => ({
     label: info.name || oneLine(info.firstMessage) || "(empty)",
     detail: `${ago(info.modified)} · ${info.messageCount} messages${all && info.cwd ? ` · ${tilde(info.cwd)}` : ""}`,

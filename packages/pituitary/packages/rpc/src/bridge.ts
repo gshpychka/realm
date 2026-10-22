@@ -37,6 +37,8 @@ export class BridgeHost {
   private readonly server: Server;
   private readonly directory: string;
   private socket: Socket | null = null;
+  /** Includes connections still waiting to identify themselves. */
+  private readonly sockets = new Set<Socket>();
   private views: CustomView[] = [];
   private readonly listeners = new Set<(views: readonly CustomView[]) => void>();
   private readonly connects = new Set<() => void>();
@@ -109,19 +111,31 @@ export class BridgeHost {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.socket?.destroy();
+    for (const socket of this.sockets) socket.destroy();
+    this.sockets.clear();
+    this.socket = null;
+    this.update([]);
     this.server.close();
     rmSync(this.directory, { recursive: true, force: true });
   }
 
   /** A connection is held apart until its first record carries the token. */
   private accept(socket: Socket): void {
+    if (this.closed) {
+      socket.destroy();
+      return;
+    }
+    this.sockets.add(socket);
     let proven = false;
     const timer = setTimeout(() => socket.destroy(), HELLO_MS);
     socket.on(
       "data",
       recordReader<BridgeMessage>((message) => {
         if (socket.destroyed) return;
+        if (!message || typeof message !== "object" || typeof message.type !== "string") {
+          socket.destroy();
+          return;
+        }
         if (proven) {
           if (this.socket === socket) this.receive(message);
           return;
@@ -138,6 +152,7 @@ export class BridgeHost {
     socket.on("error", () => {});
     socket.on("close", () => {
       clearTimeout(timer);
+      this.sockets.delete(socket);
       if (this.socket !== socket) return;
       this.socket = null;
       this.update([]);
@@ -164,10 +179,12 @@ export class BridgeHost {
   private receive(message: BridgeMessage): void {
     switch (message.type) {
       case "open":
+        if (typeof message.id !== "string" || this.views.some((view) => view.id === message.id)) return;
         this.opened++;
         this.update([...this.views, { id: message.id, lines: [] }]);
         return;
       case "frame":
+        if (!Array.isArray(message.lines) || message.lines.some((line) => typeof line !== "string")) return;
         this.update(
           this.views.map((view) => (view.id === message.id ? { ...view, lines: message.lines } : view)),
         );
