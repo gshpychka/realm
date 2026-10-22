@@ -288,6 +288,11 @@ shell safety and private-state fixture suites, including real local encrypted
 restoration, without touching a live controller or block device. Both Linux
 architectures expose the same CLI and migration checks.
 
+[The live-change workbook](drift-workbook.md) compares a fresh cold capture with
+the branch and records decisions for additions, edits and removals. Use
+`home-assistant-migrate config-drift` for YAML differences and the workbook's
+separate inventory for UI state, custom code and apps.
+
 The offline config check is exposed as `checks.x86_64-linux.home-assistant-config`
 and `checks.aarch64-linux.home-assistant-config`. Run it as a release gate on the
 available Linux builder; it is not retained in the Pi's runtime closure. It validates native HA schemas, custom integration

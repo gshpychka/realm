@@ -9,7 +9,7 @@ pkgs.runCommand "home-assistant-migration-qa"
       jq
       mosquitto
       openssh
-      python3
+      (python3.withPackages (ps: [ ps.pyyaml ]))
       restic
       ripgrep
       rsync
@@ -27,5 +27,6 @@ pkgs.runCommand "home-assistant-migration-qa"
     python ${./test_inventory_helpers.py} ${../../migration/collect-yasno.sh} ${../../migration/glances-map.sh}
     python ${./test_install_target.py} ${../../migration/install-target.sh}
     python ${./test_capture_restore.py} ${../../migration}
+    python ${./test_config_drift.py} ${../../migration}
     touch $out
   ''

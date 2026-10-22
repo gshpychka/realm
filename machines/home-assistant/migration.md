@@ -243,6 +243,14 @@ boot/data serials/WWNs; `SHA256SUMS` covers archives and metadata. HA config
 includes auth/registries, SQLite/WAL, ZHA, dashboards, media and journals.
 Separate archives retain Matter `/data`, broker/Tailscale/SSH/MCP app state,
 Bluetooth, original backups and mounted media/share/ssl.
+`docker-inspect.json` inventories every current container, including apps outside
+those six roles; their additional data is not silently treated as migrated.
+
+Now complete [the live-change workbook](drift-workbook.md). It compares this
+fresh capture with the branch by automation ID, script key, scene ID and the
+remaining YAML, and accounts separately for UI state, custom code and apps.
+Reference preflight alone cannot detect an unported new automation or an edited
+action. Resolve every difference before choosing the final build revision.
 
 Preflight exit 1 produces concrete findings; exit 2 means invalid input and stops
 this procedure. Read `jq '.findings' "$WORK/rehearsal-preflight.json"`. Resolve
@@ -534,12 +542,38 @@ YASNO_ENTRY_ID=$("$TOOLS" tool yq -r '.yasno_address_guard.entry_id' "$WORK/cred
   --output "$WORK/final-secrets.yaml" --plan "$WORK/final-yasno-name-plan.json"
 install -m600 "$WORK/final-secrets.yaml" "$WORK/credentials-native/secrets.yaml"
 "$TOOLS" credentials "$WORK/credentials-native" "$WORK/credentials-final"
+drift_status=0
+"$TOOLS" config-drift --snapshot "$FINAL_SNAPSHOT" --declarations "$WORK/declarations.json" \
+  --output "$WORK/drift-final" || drift_status=$?
+test "$drift_status" -le 1
+```
+
+Review every row in `drift-final/workbook.md` against the resolved rehearsal
+workbook. Stage its exact decision template:
+
+```sh
+cp -a "$WORK/drift-final/decisions-template.json" "$WORK/drift-final-decisions.json"
+```
+
+Fill/verify its decisions and allowed inventory acknowledgements in a local
+editor. Keep the runtime checklist at `$WORK/runtime-decisions.md`. Validate the
+final ledger and prove recovery with:
+
+```sh
+"$TOOLS" config-drift --snapshot "$FINAL_SNAPSHOT" --declarations "$WORK/declarations.json" \
+  --decisions "$WORK/drift-final-decisions.json" --output "$WORK/drift-final-accounted"
 "$TOOLS" seal "$WORK/final" "$WORK/backup-workstation" "$WORK/final-encrypted-proof" \
   "$WORK/credentials-final" "$WORK/rclone.conf" "$WORK/outbound_key" \
   "$WORK/outbound_known_hosts" "$WORK/mqtt-ha.json" "$WORK/glances.json" \
   "$WORK/final-reconcile.json" "$WORK/ha-token" \
-  "$WORK/mqtt-client-ledger.json" "$WORK/endpoint-plan.json" "$WORK/haos-emergency-kit"
+  "$WORK/mqtt-client-ledger.json" "$WORK/endpoint-plan.json" "$WORK/haos-emergency-kit" \
+  "$WORK/drift-final-accounted" "$WORK/drift-final-decisions.json" "$WORK/runtime-decisions.md"
 ```
+
+Require exit 0 and include the validated report in the encrypted recovery proof.
+If an item changed after rehearsal, recover source using section 13, integrate
+and verify that change with the workbook, then repeat capture into a new
+directory. Do not edit fingerprints to accept stale decisions.
 
 Compare `final-preflight.json` with the resolved rehearsal findings. Only the
 exact already-planned native endpoint/Supervisor cleanup and staged outbound

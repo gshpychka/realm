@@ -202,7 +202,15 @@ trap recover EXIT
 trap 'exit 1' HUP INT TERM
 # Preserve original images, mounts, labels, environment and restart state as
 # private evidence. Docker inspect may contain tokens, so it never goes to logs.
-docker inspect "$core" "$matter" "$mqtt" "$tailscale" "$ssh_addon" "$mcp" hassio_supervisor > "$stage/docker-inspect.json"
+set --
+while IFS= read -r container; do
+  case "$container" in ''|*[!A-Za-z0-9_.-]*) fail 'invalid container name in complete app inventory' ;; esac
+  set -- "$@" "$container"
+done <<CONTAINERS
+$(docker ps --all --format '{{.Names}}')
+CONTAINERS
+[ "$#" -gt 0 ] || fail 'complete container inventory is empty'
+docker inspect "$@" > "$stage/docker-inspect.json"
 {
   uname -m; uname -r; cat /etc/os-release
   if [ -r /proc/device-tree/model ]; then tr '\000' '\n' < /proc/device-tree/model; fi

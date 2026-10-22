@@ -34,7 +34,7 @@ pkgs.writeShellApplication {
     openssh
     parted
     podman
-    python3
+    (python3.withPackages (ps: [ ps.pyyaml ]))
     rclone
     restic
     ripgrep

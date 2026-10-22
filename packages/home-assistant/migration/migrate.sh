@@ -98,6 +98,7 @@ Usage: home-assistant-migrate PHASE ARGUMENTS
   recover-source [ARGS...]                Restore recorded HAOS services; --help
   unpack CAPTURE OUTPUT                  Verify/extract private config.tar for audit
   preflight SNAPSHOT                     Read-only declared-reference audit
+  config-drift [ARGS...]                  Fresh-capture YAML comparison and resolution workbook
   mqtt-passwords USERS.json OUTPUT        Hash complete [{username,password}] client set
   credentials INPUT_DIR OUTPUT_DIR       Validate and stage all six native runtime files
   prepare-yasno [ARGS...]                 Derive private guard configuration; --help
@@ -234,6 +235,7 @@ preflight)
   [[ $# == 1 && -n ${HA_MIGRATION_PREFLIGHT:-} ]] || die 'use packaged app: preflight SNAPSHOT'
   exec "$HA_MIGRATION_PREFLIGHT" "$1"
   ;;
+config-drift) exec bash "$scripts/config-drift.sh" "$@" ;;
 mqtt-passwords)
   [[ $# == 2 ]] || die 'mqtt-passwords USERS.json OUTPUT'
   private_file "$1"

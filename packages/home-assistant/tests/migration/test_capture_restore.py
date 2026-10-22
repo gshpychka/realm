@@ -257,6 +257,8 @@ class CaptureRestore(unittest.TestCase):
         self.assertIn(
             "docker start other_addon", (self.root / "operations").read_text()
         )
+        containers = json.loads((self.output / "docker-inspect.json").read_text())
+        self.assertIn("other_addon", {entry["Name"] for entry in containers})
         inventory = json.loads((self.output / "inventory.json").read_text())
         self.assertEqual(inventory["disk"]["serial"], "OLD-SERIAL")
         self.assertEqual(
