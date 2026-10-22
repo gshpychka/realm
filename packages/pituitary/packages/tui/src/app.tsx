@@ -2,7 +2,7 @@ import type { BoxRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core
 import { usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
 import type { AgentLink, BridgeHost } from "@pituitary/rpc";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { builtin } from "./commands/commands.ts";
+import { BUILTINS, builtin } from "./commands/commands.ts";
 import { frameRows } from "./commands/debug.ts";
 import { runCommand } from "./commands/run-command.ts";
 import { useCommands } from "./commands/use-commands.ts";
@@ -37,6 +37,8 @@ import { useSession } from "./use-session.ts";
 
 export interface AppProps {
   link: AgentLink;
+  /** The worker's workspace. Local filesystem helpers run only when it shares this machine. */
+  workspace?: { cwd: string; local: boolean; label?: string };
   onQuit(): void;
   /** Told the file pi keeps the session in as it changes, so any way out can offer to resume it. */
   onSessionFile?(file: string | undefined): void;
@@ -91,6 +93,7 @@ export function App({
   bridge,
   onHandoff,
   onRestart,
+  workspace = { cwd: process.cwd(), local: true },
 }: AppProps) {
   const session = useSession(link);
   const sessionFile = session.state?.sessionFile;
@@ -133,11 +136,16 @@ export function App({
   const away = taken || browsing;
   const offers = useOffers({ away, queued });
   const recall = useRecall(editor, view.entries, offers);
-  const cwd = process.cwd();
-  const branch = useBranch(link, cwd);
-  const pull = usePullRequest(link, cwd, branch);
-  const { commands, reread } = useCommands(link, state?.sessionId);
-  const completions = useCompletion(editor, commands, cwd);
+  const cwd = workspace.cwd;
+  const localCwd = workspace.local ? cwd : null;
+  const branch = useBranch(link, localCwd);
+  const pull = usePullRequest(link, localCwd, branch);
+  const { commands: listedCommands, reread } = useCommands(link, state?.sessionId);
+  const commands = useMemo(
+    () => (workspace.local ? listedCommands : listedCommands.filter((command) => !command.localOnly)),
+    [listedCommands, workspace.local],
+  );
+  const completions = useCompletion(editor, commands, localCwd);
   const workingRows = statusUp(view, closed) ? (closed || !TRAVELS ? 1 : 2) : 0;
   const room = Math.max(0, screenRows - draftRows - footerRows - workingRows);
   const popup = taken || Boolean(completions.completion && !away);
@@ -200,7 +208,23 @@ export function App({
   }, [keymap]);
 
   const command = useCallback(
-    (name: string, args = "") =>
+    (name: string, args = "") => {
+      if (!workspace.local && BUILTINS.some((command) => command.name === name && command.localOnly)) {
+        session.notify(
+          "warning",
+          name === "model"
+            ? "The model is declared by this agent's role. Start a new run to change it."
+            : `/${name} requires a local session.`,
+        );
+        return;
+      }
+      if (!workspace.local && name === "export" && args.endsWith(".jsonl")) {
+        session.notify(
+          "warning",
+          "JSONL export requires a local session. HTML exports are saved in the agent workspace.",
+        );
+        return;
+      }
       void runCommand(name, args, {
         link,
         session,
@@ -221,8 +245,21 @@ export function App({
         reloadCommands: reread,
         limits: () => bridge?.limits() ?? null,
         screen: () => frameRows(renderer.currentRenderBuffer),
-      }),
-    [link, session, renderer, onQuit, onHandoff, onRestart, hotkeys, state?.sessionFile, bridge, reread],
+      });
+    },
+    [
+      link,
+      session,
+      renderer,
+      onQuit,
+      onHandoff,
+      onRestart,
+      hotkeys,
+      state?.sessionFile,
+      bridge,
+      reread,
+      workspace.local,
+    ],
   );
 
   const toBottom = () => {
@@ -370,10 +407,15 @@ export function App({
       return true;
     },
     "app.model.select": runs("model"),
-    "app.model.cycleForward": () =>
-      cycle(link.call({ type: "cycle_model" }), (result) =>
+    "app.model.cycleForward": () => {
+      if (!workspace.local) {
+        command("model");
+        return true;
+      }
+      return cycle(link.call({ type: "cycle_model" }), (result) =>
         result ? `model: ${modelTitle(result.model)}` : "only one model is available",
-      ),
+      );
+    },
     "app.session.new": runs("new"),
     "app.session.resume": runs("resume"),
     "app.session.fork": runs("fork"),
@@ -475,6 +517,7 @@ export function App({
             ref={scroll}
             entries={view.entries}
             running={view.running}
+            local={workspace.local}
             display={display}
             window={window}
             browsing={browsing}
@@ -545,6 +588,7 @@ export function App({
               statuses={extensionUi.statuses}
               turnStatuses={extensionUi.turnStatuses}
               cwd={cwd}
+              location={workspace.local ? undefined : (workspace.label ?? "agent")}
               branch={branch}
               pull={pull}
               limits={limits}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
 	"github.com/gshpychka/realm/packages/bay/internal/guest"
+	"github.com/gshpychka/realm/packages/bay/internal/machines"
 	"github.com/gshpychka/realm/packages/bay/internal/records"
 )
 
@@ -52,6 +53,9 @@ type Program struct {
 	// Connect is a predefined command that opens the program's persistent endpoint.
 	// It runs as the session user, separately from the program itself.
 	Connect []string
+	Machine string
+	// MaxConnections defaults to one. All bridges are bounded and closed together.
+	MaxConnections int
 }
 
 // Status is the state of a session's instance.
@@ -66,7 +70,7 @@ const (
 // Instances are the VMs backing sessions, each named after its session; names are DNS labels.
 type Instances interface {
 	// Create clones the warm base into a stopped instance that carries sessionID.
-	Create(ctx context.Context, name, sessionID string) error
+	Create(ctx context.Context, name, sessionID string, machine *machines.Selection) error
 	// Start boots the instance, restoring its memory when it has saved memory, and returns once its guest takes
 	// commands. restored reports whether memory was restored.
 	Start(ctx context.Context, name string) (restored bool, err error)
@@ -112,8 +116,11 @@ type Repos interface {
 // Config is what a Service runs with.
 type Config struct {
 	Programs map[string]Program
+	Machines map[string]machines.Definition
 	// MaxRunning caps the sessions running at once; it is at least 1.
 	MaxRunning int
+	// MaxMemory caps the sum of admitted memory limits in GiB; zero is legacy count-only admission.
+	MaxMemory int
 	// Reserved are names no session can take.
 	Reserved []string
 }
@@ -132,9 +139,9 @@ type Service struct {
 	// busy holds the sessions with an operation in flight.
 	busy map[string]bool
 	// starting holds the sessions with a running slot reserved.
-	starting map[string]bool
+	starting map[string]int
 	// connections holds the live bridges cancelled before lifecycle changes.
-	connections map[string]*programConnection
+	connections map[string]map[*programConnection]struct{}
 }
 
 // New returns a Service over the given store, instances and repos, or an error for a Config that breaks the
@@ -142,6 +149,12 @@ type Service struct {
 func New(store *records.Store, instances Instances, repos Repos, config Config, log *slog.Logger) (*Service, error) {
 	if config.MaxRunning < 1 {
 		return nil, fmt.Errorf("max running sessions must be at least 1, not %d", config.MaxRunning)
+	}
+	if config.MaxMemory < 0 || (config.MaxMemory > 0 && len(config.Machines) == 0) {
+		return nil, errors.New("memory admission needs a non-negative budget and a machine catalog")
+	}
+	if err := machines.ValidateCatalog(config.Machines); err != nil {
+		return nil, err
 	}
 	for name, program := range config.Programs {
 		if name == "" {
@@ -155,6 +168,18 @@ func New(store *records.Store, instances Instances, repos Repos, config Config, 
 		}
 		if err := validCommand(program.Connect); err != nil {
 			return nil, fmt.Errorf("program %s: connect: %w", name, err)
+		}
+		if program.MaxConnections < 0 {
+			return nil, fmt.Errorf("program %s: maxConnections must be positive", name)
+		}
+		if program.Machine != "" || len(config.Machines) > 0 {
+			key := program.Machine
+			if key == "" {
+				key = machines.Default
+			}
+			if _, ok := config.Machines[key]; !ok {
+				return nil, fmt.Errorf("program %s: undeclared machine %q", name, key)
+			}
 		}
 		for _, path := range program.History {
 			if path == "." || !fs.ValidPath(path) || strings.ContainsRune(path, '\x00') {
@@ -170,8 +195,8 @@ func New(store *records.Store, instances Instances, repos Repos, config Config, 
 		log:         log,
 		maxHistory:  2 << 30,
 		busy:        map[string]bool{},
-		starting:    map[string]bool{},
-		connections: map[string]*programConnection{},
+		starting:    map[string]int{},
+		connections: map[string]map[*programConnection]struct{}{},
 	}, nil
 }
 
@@ -180,6 +205,7 @@ const operationTimeout = 15 * time.Minute
 
 // StartSpec describes a new session.
 type StartSpec struct {
+	MachineRevision string
 	// Program names a program definition. With neither Program nor Command the session runs a login shell.
 	Program string
 	Command []string
@@ -202,14 +228,31 @@ func (s *Service) Start(ctx context.Context, name string, spec StartSpec) (Sessi
 	}
 	defer release()
 
-	unreserve, err := s.reserve(ctx, name)
+	rec, err := s.record(name)
+	fresh := errors.Is(err, fault.NotFound)
+	if err != nil && !fresh {
+		return Session{}, err
+	}
+	memory := s.machineMemory(rec)
+	if fresh || rec.Machine == nil {
+		program := rec.Program.Definition
+		if fresh {
+			program = spec.Program
+		}
+		machine, err := s.selectMachine(program, spec.MachineRevision)
+		if err != nil {
+			return Session{}, err
+		}
+		if machine != nil {
+			memory = machine.Resources.Memory
+		}
+	}
+	unreserve, err := s.reserve(ctx, name, memory)
 	if err != nil {
 		return Session{}, err
 	}
 	defer unreserve()
 
-	rec, err := s.record(name)
-	fresh := errors.Is(err, fault.NotFound)
 	switch {
 	case fresh:
 		if rec, err = s.newRecord(ctx, name, spec); err != nil {
@@ -226,6 +269,22 @@ func (s *Service) Start(ctx context.Context, name string, spec StartSpec) (Sessi
 		}
 		if status != InstanceAbsent {
 			return Session{}, fmt.Errorf("%w: session %s has not ended", fault.Conflict, name)
+		}
+		if rec.Machine == nil && len(s.config.Machines) > 0 {
+			machine, err := s.selectMachine(rec.Program.Definition, spec.MachineRevision)
+			if err != nil {
+				return Session{}, err
+			}
+			program, err := s.program(rec)
+			if err != nil {
+				return Session{}, err
+			}
+			if rec, err = s.records.PinMachine(name, *machine, snapshotProgram(program)); err != nil {
+				return Session{}, err
+			}
+		}
+		if spec.MachineRevision != "" && (rec.Machine == nil || rec.Machine.Revision != spec.MachineRevision) {
+			return Session{}, fmt.Errorf("%w: session %s is pinned to a different machine revision", fault.Conflict, name)
 		}
 	}
 	if err := s.boot(ctx, rec, fresh); err != nil {
@@ -251,6 +310,10 @@ func (s *Service) newRecord(ctx context.Context, name string, spec StartSpec) (r
 			return records.Record{}, fmt.Errorf("%w: no program definition named %q", fault.Invalid, spec.Program)
 		}
 	}
+	machine, err := s.selectMachine(spec.Program, spec.MachineRevision)
+	if err != nil {
+		return records.Record{}, err
+	}
 	seen := map[[2]string]bool{}
 	for _, ref := range spec.Repos {
 		key := [2]string{ref.Owner, ref.Name}
@@ -263,7 +326,15 @@ func (s *Service) newRecord(ctx context.Context, name string, spec StartSpec) (r
 		ID:      newID(),
 		Name:    name,
 		Program: records.Program{Definition: spec.Program, Command: spec.Command},
+		Machine: machine,
 		Created: time.Now().UTC(),
+	}
+	if machine != nil {
+		program, err := s.program(rec)
+		if err != nil {
+			return records.Record{}, err
+		}
+		rec.Program.Runtime = snapshotProgram(program)
 	}
 	for _, ref := range spec.Repos {
 		repo, err := s.repos.Resolve(ctx, ref)
@@ -287,7 +358,7 @@ func (s *Service) boot(ctx context.Context, rec records.Record, fresh bool) erro
 	if err != nil {
 		return err
 	}
-	if err := s.instances.Create(ctx, rec.Name, rec.ID); err != nil {
+	if err := s.instances.Create(ctx, rec.Name, rec.ID, rec.Machine); err != nil {
 		return err
 	}
 	if _, err := s.instances.Start(ctx, rec.Name); err != nil {
@@ -372,15 +443,24 @@ func (s *Service) rollback(rec records.Record, fresh bool) {
 	}
 }
 
-// Suspend saves a running session's disk and memory and stops its instance.
-func (s *Service) Suspend(ctx context.Context, name string) error {
+// Suspend saves a running session's disk and memory and stops its instance. An optional expected ID binds the
+// operation to its record, so reusing a removed name cannot suspend a different session.
+func (s *Service) Suspend(ctx context.Context, name string, expectedID ...string) error {
 	ctx, cancel := detach(ctx)
 	defer cancel()
-	release, err := s.claim(name)
+	release, err := s.claimSession(name, false)
 	if err != nil {
 		return err
 	}
 	defer release()
+	rec, err := s.record(name)
+	if err != nil {
+		return err
+	}
+	if len(expectedID) > 0 && expectedID[0] != "" && rec.ID != expectedID[0] {
+		return fmt.Errorf("%w: session %s has a different ID", fault.Conflict, name)
+	}
+	s.disconnectConnections(name)
 	if err := s.require(ctx, name, InstanceRunning); err != nil {
 		return err
 	}
@@ -416,7 +496,7 @@ func (s *Service) Resume(ctx context.Context, name, snapshot string, discard []s
 	if snapshot == "" && status == InstanceRunning {
 		return s.relaunchStopped(ctx, rec)
 	}
-	unreserve, err := s.reserve(ctx, name)
+	unreserve, err := s.reserve(ctx, name, s.machineMemory(rec))
 	if err != nil {
 		return err
 	}
@@ -529,10 +609,10 @@ func (s *Service) Snap(ctx context.Context, name, snapshot string) (string, erro
 
 // End saves the program's history into the session's record and deletes its instance with its snapshots.
 // acknowledged must name exactly the session's snapshots.
-func (s *Service) End(ctx context.Context, name string, acknowledged []string) error {
+func (s *Service) End(ctx context.Context, name string, acknowledged []string, expectedID ...string) error {
 	ctx, cancel := detach(ctx)
 	defer cancel()
-	release, err := s.claim(name)
+	release, err := s.claimSession(name, false)
 	if err != nil {
 		return err
 	}
@@ -541,6 +621,10 @@ func (s *Service) End(ctx context.Context, name string, acknowledged []string) e
 	if err != nil {
 		return err
 	}
+	if len(expectedID) > 0 && expectedID[0] != "" && rec.ID != expectedID[0] {
+		return fmt.Errorf("%w: session %s has a different ID", fault.Conflict, name)
+	}
+	s.disconnectConnections(name)
 	status, err := s.instances.Status(ctx, name)
 	if err != nil {
 		return err
@@ -561,7 +645,7 @@ func (s *Service) End(ctx context.Context, name string, acknowledged []string) e
 	}
 	if len(program.History) > 0 {
 		if status == InstanceStopped {
-			unreserve, err := s.reserve(ctx, name)
+			unreserve, err := s.reserve(ctx, name, s.machineMemory(rec))
 			if err != nil {
 				return err
 			}
@@ -716,6 +800,9 @@ func (s *Service) require(ctx context.Context, name string, want Status) error {
 }
 
 func (s *Service) program(rec records.Record) (Program, error) {
+	if p := rec.Program.Runtime; p != nil {
+		return Program{Command: p.Command, Resume: p.Resume, History: p.History, Monitor: p.Monitor, Connect: p.Connect, MaxConnections: p.MaxConnections}, nil
+	}
 	if rec.Program.Definition == "" {
 		// only a program definition turns terminal alerts off
 		return Program{Command: rec.Program.Command, Monitor: true}, nil
@@ -727,8 +814,34 @@ func (s *Service) program(rec records.Record) (Program, error) {
 	return program, nil
 }
 
+func snapshotProgram(p Program) *records.ProgramDefinition {
+	return &records.ProgramDefinition{Command: p.Command, Resume: p.Resume, History: p.History, Monitor: p.Monitor, Connect: p.Connect, MaxConnections: p.MaxConnections}
+}
+
+func (s *Service) selectMachine(program, expected string) (*machines.Selection, error) {
+	if len(s.config.Machines) == 0 {
+		if expected != "" {
+			return nil, fmt.Errorf("%w: no machine revisions are declared", fault.Conflict)
+		}
+		return nil, nil
+	}
+	name := s.config.Programs[program].Machine
+	if name == "" {
+		name = machines.Default
+	}
+	machine, ok := s.config.Machines[name]
+	if !ok {
+		return nil, fmt.Errorf("%w: undeclared machine %q", fault.Invalid, name)
+	}
+	if expected != "" && machine.Revision != expected {
+		return nil, fmt.Errorf("%w: program's machine revision changed; reload its catalog", fault.Conflict)
+	}
+	return &machines.Selection{Name: name, Definition: machine}, nil
+}
+
 func (s *Service) connectable(rec records.Record) bool {
-	return rec.Program.Definition != "" && len(s.config.Programs[rec.Program.Definition].Connect) > 0
+	p, err := s.program(rec)
+	return err == nil && len(p.Connect) > 0
 }
 
 func (p Program) resume() []string {
@@ -768,13 +881,11 @@ func (s *Service) claimSession(name string, disconnect bool) (release func(), er
 		return nil, fmt.Errorf("%w: another operation on session %s is in progress", fault.Conflict, name)
 	}
 	s.busy[name] = true
-	connection := s.connections[name]
 	s.mu.Unlock()
 	// A bridge must leave the old instance before an operation can replace it or
 	// roll it back. The program is independent of this short-lived connection.
-	if disconnect && connection != nil {
-		connection.Close()
-		<-connection.done
+	if disconnect {
+		s.disconnectConnections(name)
 	}
 	return func() {
 		s.mu.Lock()
@@ -783,8 +894,23 @@ func (s *Service) claimSession(name string, disconnect bool) (release func(), er
 	}, nil
 }
 
+func (s *Service) disconnectConnections(name string) {
+	s.mu.Lock()
+	connections := make([]*programConnection, 0, len(s.connections[name]))
+	for connection := range s.connections[name] {
+		connections = append(connections, connection)
+	}
+	s.mu.Unlock()
+	for _, connection := range connections {
+		connection.Close()
+	}
+	for _, connection := range connections {
+		<-connection.done
+	}
+}
+
 // reserve holds a running slot for the session named name until release is called.
-func (s *Service) reserve(ctx context.Context, name string) (release func(), err error) {
+func (s *Service) reserve(ctx context.Context, name string, memory int) (release func(), err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	statuses, err := s.instances.Statuses(ctx)
@@ -793,20 +919,42 @@ func (s *Service) reserve(ctx context.Context, name string) (release func(), err
 	}
 	// every other session holding a slot counts once, whether or not its instance runs yet
 	running := len(s.starting)
+	usedMemory := 0
+	for _, reserved := range s.starting {
+		usedMemory += reserved
+	}
 	for other, status := range statuses {
-		if status == InstanceRunning && other != name && !s.starting[other] {
+		_, starting := s.starting[other]
+		if status == InstanceRunning && other != name && !starting {
 			running++
+			if s.config.MaxMemory > 0 {
+				rec, err := s.record(other)
+				if err != nil {
+					return nil, err
+				}
+				usedMemory += s.machineMemory(rec)
+			}
 		}
 	}
 	if running >= s.config.MaxRunning {
 		return nil, fmt.Errorf("%w: %d of %d sessions are running", fault.Conflict, running, s.config.MaxRunning)
 	}
-	s.starting[name] = true
+	if s.config.MaxMemory > 0 && usedMemory+memory > s.config.MaxMemory {
+		return nil, fmt.Errorf("%w: %d of %d GiB is admitted; session %s needs %d GiB", fault.Conflict, usedMemory, s.config.MaxMemory, name, memory)
+	}
+	s.starting[name] = memory
 	return func() {
 		s.mu.Lock()
 		delete(s.starting, name)
 		s.mu.Unlock()
 	}, nil
+}
+
+func (s *Service) machineMemory(rec records.Record) int {
+	if rec.Machine != nil {
+		return rec.Machine.Resources.Memory
+	}
+	return s.config.Machines[machines.Default].Resources.Memory
 }
 
 var (
@@ -822,6 +970,9 @@ func (s *Service) validName(name string) error {
 	}
 	if slices.Contains(s.config.Reserved, name) {
 		return fmt.Errorf("%w: %q is reserved", fault.Invalid, name)
+	}
+	if strings.HasPrefix(name, machines.BasePrefix) {
+		return fmt.Errorf("%w: names starting with %q are reserved", fault.Invalid, machines.BasePrefix)
 	}
 	return nil
 }

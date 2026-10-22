@@ -78,7 +78,14 @@ let
         "/home/dev/.local/state/pituitary/worker.sock"
       ];
     resume = builder.program.command == builder.program.resume;
-    history = builder.program.history == [ ".local/state/pituitary" ];
+    history =
+      builder.program.history == [
+        ".local/state/pituitary/worker.json"
+        ".local/state/pituitary/role.json"
+        ".local/state/pituitary/commands.json"
+        ".local/state/pituitary/sessions"
+        ".local/state/pituitary/agent"
+      ];
     unknownTool = rejects { tools = [ "arbitrary-host-tool" ]; };
     malformedModel = rejects { model = "missing-provider"; };
     credentialPath = rejects { credentials = [ "/run/secrets/token" ]; };

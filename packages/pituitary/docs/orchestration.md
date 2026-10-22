@@ -27,7 +27,8 @@ initial coordinator/worker lifecycle.
 
 - Pituitary has a polished OpenTUI frontend, a typed Pi RPC client, a transcript reducer,
   an extension UI bridge, a scripted agent, terminal integration tests, and performance
-  budgets. `packages/tui/src/main.tsx` currently owns the agent process; quitting closes it.
+  budgets. Ordinary RPC use owns its agent process; managed UI connections attach to an
+  independent persistent worker and detach on exit.
 - `packages/tui/src/use-session.ts` owns execution synchronization inside React. The
   `AgentLink` interface and existing conversation rendering provide a migration seam.
 - Pinned Pi 0.87.1 exposes `createAgentSession`, `AgentSessionRuntime`, persistent native
@@ -37,10 +38,11 @@ initial coordinator/worker lifecycle.
   program history, suspend/resume, snapshots, and an operator-only Unix-socket interface.
 - Bay's gateway derives the sender from the live VM's vsock identity. It owns durable
   threaded mail and exposes it through MCP and `flare`.
-- Bay currently uses one guest image/base and one resource profile. Programs are launch,
-  resume, history, and monitoring definitions, without a structured connection.
-- Bay's public session representation omits its existing durable record ID. Messages
-  have backward pagination, but no non-mutating forward subscription or send deduplication.
+- Bay selects declared machine images and allocations per program, pins them in session
+  records, and prepares immutable warm bases shared by equal images and allocations.
+  Programs define launch, resume, durable history, monitoring, and bounded connections.
+- Bay exposes durable record and machine identities. Messages have backward pagination,
+  but no non-mutating forward subscription or send deduplication.
 - Credential delivery and workspace import/export are still planned. Ending a session
   saves selected program history and destroys unexported workspace changes.
 - Bay is disabled in reaper's configuration; its configured program is Claude. Enabling
@@ -394,22 +396,44 @@ needs testing.
   to be implemented.
 - `lib.pituitaryAgent` evaluates real NixOS modules and independently produces a role
   manifest, image, and program definition. Metadata-only changes preserve machine image
-  identity. A separately packaged worker excludes frontend dependencies. The full host
-  agent catalog, manifest delivery, and multi-machine Bay selection remain planned.
+  identity. The host `services.pituitary.agents` catalog now composes these outputs into
+  Bay machines/programs and a separate runtime manifest. Delegation references are
+  validated during host evaluation. The worker package includes only its own entry
+  dependencies and RPC support, so host CLI edits do not rebuild guest images.
+- `agents` lists catalog entries; `run --agent ROLE --repo OWNER/REPO@REF` launches the
+  selected Bay program. Runs freeze the role, machine revision, endpoint, and record
+  identity. The worker requires immutable role initialization before opening its native
+  conversation; model, instructions, and built-in tools apply there, including direct
+  Bash commands. Credential profile requests are rejected before launch while delivery
+  remains unimplemented.
+- `recover` reconciles an interrupted Bay launch against its recorded target and can
+  initialize its existing running worker. It never relaunches ended or missing work.
+  Desired stopped state is durable, so later observation cannot revive a stopped run.
+  Stopping a Bay run shuts down its worker and suspends the identified VM, retaining
+  the workspace until results can be exported. Explicit Bay `end` or `rm` remains
+  destructive to unexported workspace changes; artifact transfer is a later milestone.
+  There is still no continuously running scheduler or autonomous delegation loop.
 - Bay exposes stable record identity and connection capability, a predefined program
   connector over its operator interface, and a stdio CLI adapter. Disconnecting leaves
   the persistent program alive; lifecycle changes and server shutdown retire bridges.
+  Connections are bounded per program; Pituitary allows its input controller and
+  observers to coexist. Bay pins image/resource revisions, prepares immutable warm
+  bases, and admits sessions against both count and actual pinned memory budgets.
+  Saved worker history excludes process locks, socket files, and reclamation state.
   The connection checks the record ID. Snapshot/attempt incarnation fencing remains
   part of the future managed orchestration layer.
 - Ordinary Pituitary retains the stock-Pi RPC path while native parity develops.
   Initial managed mode controls resource discovery and preserves conversation identity;
   custom component screens, terminal takeover, and branching use the ordinary path.
 - Delegation, peer-message wakeups, credential delivery, immutable result transfer,
-  verification/integration, automatic catalog launches, and the final team UI remain
+  verification/integration, and the final team UI remain
   later milestones. Bay has not been activated on reaper by this change.
-- Integrated milestone validation: 696 unit tests, 242 terminal tests, 16 performance
+- First milestone validation: 696 unit tests, 242 terminal tests, 16 performance
   checks, package/module builds, the declarative machine check, source checks, and
   all-systems Nix evaluation passed. Bay's Go race/vet checks and all 18 nested VM
   scenarios passed. The first batch exposed a test-fixture type assertion and import
   ordering; only the affected static gates were rerun after correction. No model
   provider calls were used.
+- Second milestone implementation is ready for integrated validation. Its host catalog,
+  machine selection, role initialization, and recovery checks are verified together at
+  that boundary; the first milestone's figures above do not describe this new batch.

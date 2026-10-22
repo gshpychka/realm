@@ -45,6 +45,15 @@ func Fail(w http.ResponseWriter, err error) {
 // Read decodes one JSON object into v, rejecting unknown fields, trailing values
 // and requests larger than 1 MiB. Escaped message bodies fit within this limit.
 func Read(r *http.Request, v any) error {
+	return read(r, v, false)
+}
+
+// ReadOptional applies Read's validation when a body is present, accepting an empty body as no options.
+func ReadOptional(r *http.Request, v any) error {
+	return read(r, v, true)
+}
+
+func read(r *http.Request, v any, optional bool) error {
 	const maxRequest = 1 << 20
 	data, err := io.ReadAll(io.LimitReader(r.Body, maxRequest+1))
 	if err != nil {
@@ -53,7 +62,11 @@ func Read(r *http.Request, v any) error {
 	if len(data) > maxRequest {
 		return fmt.Errorf("%w: request body exceeds %d bytes", fault.Invalid, maxRequest)
 	}
-	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
+	trimmed := bytes.TrimSpace(data)
+	if optional && len(trimmed) == 0 {
+		return nil
+	}
+	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return fmt.Errorf("%w: request body must be a JSON object", fault.Invalid)
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))

@@ -83,6 +83,7 @@ export async function createNativeEngine(context: WorkerEngineContext): Promise<
     settingsManager: settings,
     resourceLoader: loader,
     model,
+    tools: context.role?.tools,
   });
   const dialogs = new Map<string, (response: RpcExtensionUIResponse) => void>();
   const request = (payload: UiPayload): string => {
@@ -217,6 +218,12 @@ export async function createNativeEngine(context: WorkerEngineContext): Promise<
   return {
     snapshot: () => snapshotNativeSession(session),
     call: async (command) => {
+      if (context.role) {
+        if (command.type === "set_model" || command.type === "cycle_model")
+          throw new Error("the model is declared by the agent role; start a new attempt to change it");
+        if (command.type === "bash" && !context.role.tools.includes("bash"))
+          throw new Error("the agent role does not enable the bash tool");
+      }
       const operation = nativeCall(session, command, context.onEvent);
       active.add(operation);
       try {

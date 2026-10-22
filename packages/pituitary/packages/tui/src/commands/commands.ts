@@ -6,16 +6,29 @@ export interface Command {
   source: "builtin" | "extension" | "prompt" | "skill";
   /** A hint at what follows the name, for a command that takes arguments. */
   args?: string;
+  /** Reads local session/configuration files, needs the local bridge, or changes the managed conversation. */
+  localOnly?: boolean;
 }
 
 /** Commands this client runs itself; pi runs nothing named like these over RPC. */
 export const BUILTINS: readonly Command[] = [
-  { name: "model", description: "choose the model", source: "builtin", args: "[provider/id]" },
+  {
+    name: "model",
+    description: "choose the model",
+    source: "builtin",
+    args: "[provider/id]",
+    localOnly: true,
+  },
   { name: "thinking", description: "choose the thinking level", source: "builtin", args: "[level]" },
-  { name: "new", description: "start a new session", source: "builtin" },
-  { name: "resume", description: "open an earlier session", source: "builtin" },
-  { name: "fork", description: "start a new session from an earlier prompt", source: "builtin" },
-  { name: "clone", description: "copy this session into a new one", source: "builtin" },
+  { name: "new", description: "start a new session", source: "builtin", localOnly: true },
+  { name: "resume", description: "open an earlier session", source: "builtin", localOnly: true },
+  {
+    name: "fork",
+    description: "start a new session from an earlier prompt",
+    source: "builtin",
+    localOnly: true,
+  },
+  { name: "clone", description: "copy this session into a new one", source: "builtin", localOnly: true },
   {
     name: "compact",
     description: "summarise the session to free context",
@@ -29,13 +42,24 @@ export const BUILTINS: readonly Command[] = [
     description: "how near the subscription's usage limits are, and extra usage",
     source: "builtin",
   },
-  { name: "tree", description: "move to another point of the session tree", source: "builtin" },
+  {
+    name: "tree",
+    description: "move to another point of the session tree",
+    source: "builtin",
+    localOnly: true,
+  },
   {
     name: "reload",
     description: "reload extensions, skills, prompts, themes, and context files",
     source: "builtin",
+    localOnly: true,
   },
-  { name: "changelog", description: "what changed in the latest version of pi", source: "builtin" },
+  {
+    name: "changelog",
+    description: "what changed in the latest version of pi",
+    source: "builtin",
+    localOnly: true,
+  },
   { name: "copy", description: "copy the last reply to the clipboard", source: "builtin" },
   { name: "export", description: "export the session as HTML", source: "builtin", args: "[path]" },
   { name: "settings", description: "compaction, retry, and queue settings", source: "builtin" },
@@ -46,17 +70,24 @@ export const BUILTINS: readonly Command[] = [
     description: "sign in to a provider, in pi itself",
     source: "builtin",
     args: "[provider]",
+    localOnly: true,
   },
-  { name: "logout", description: "sign out of a provider, in pi itself", source: "builtin" },
-  { name: "share", description: "share the session as a secret gist", source: "builtin" },
-  { name: "scoped-models", description: "choose the models ctrl+p cycles", source: "builtin" },
+  { name: "logout", description: "sign out of a provider, in pi itself", source: "builtin", localOnly: true },
+  { name: "share", description: "share the session as a secret gist", source: "builtin", localOnly: true },
+  {
+    name: "scoped-models",
+    description: "choose the models ctrl+p cycles",
+    source: "builtin",
+    localOnly: true,
+  },
   {
     name: "import",
     description: "replace this session with a session file",
     source: "builtin",
     args: "<path>",
+    localOnly: true,
   },
-  { name: "trust", description: "trust this project's own files", source: "builtin" },
+  { name: "trust", description: "trust this project's own files", source: "builtin", localOnly: true },
   { name: "debug", description: "write the screen and messages to a debug log", source: "builtin" },
 ];
 

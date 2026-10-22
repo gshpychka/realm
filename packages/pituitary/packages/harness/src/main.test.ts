@@ -25,6 +25,36 @@ test("managed runtime state can be isolated without changing Pi state", () => {
   );
 });
 
+test("declared agents select a catalog and accept several pinned repositories", () => {
+  expect(
+    parseCommand(
+      [
+        "run",
+        "--agent",
+        "builder",
+        "--repo",
+        "owner/one@abc",
+        "--repo",
+        "owner/two@def",
+        "--catalog",
+        "/tmp/agents.json",
+        "Build it",
+      ],
+      {},
+    ),
+  ).toMatchObject({
+    verb: "run",
+    agent: "builder",
+    repos: ["owner/one@abc", "owner/two@def"],
+    catalogFile: "/tmp/agents.json",
+    prompt: "Build it",
+  });
+  expect(parseCommand(["agents", "--json"], {})).toMatchObject({ verb: "agents", json: true });
+  expect(parseCommand(["recover", "builder"], {})).toMatchObject({ verb: "recover", name: "builder" });
+  expect(() => parseCommand(["run", "--repo", "owner/repo"], {})).toThrow("requires --agent");
+  expect(() => parseCommand(["agents", "builder"], {})).toThrow("does not take a run name");
+});
+
 test("named commands preserve their target while options appear on either side", () => {
   expect(parseCommand(["inspect", "--json", "review", "--state", "/tmp/review state"], {})).toEqual({
     verb: "inspect",

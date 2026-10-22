@@ -9,6 +9,7 @@
   },
   "exports": {
     "./protocol": "./src/protocol.ts",
+    "./runtime": "./src/runtime.ts",
     "./worker": "./src/worker.ts",
     "./worker-client": "./src/worker-client.ts"
   },

@@ -37,12 +37,12 @@ func (o operatorAPI) Start(ctx context.Context, name string, start api.Start) (a
 	if err != nil {
 		return api.Session{}, err
 	}
-	s, err := o.svc.Start(ctx, name, sessions.StartSpec{Program: start.Program, Command: start.Command, Repos: refs})
+	s, err := o.svc.Start(ctx, name, sessions.StartSpec{Program: start.Program, Command: start.Command, Repos: refs, MachineRevision: start.MachineRevision})
 	return toAPI(s), err
 }
 
-func (o operatorAPI) Suspend(ctx context.Context, name string) error {
-	return o.svc.Suspend(ctx, name)
+func (o operatorAPI) Suspend(ctx context.Context, name string, r api.Suspend) error {
+	return o.svc.Suspend(ctx, name, r.ID)
 }
 
 func (o operatorAPI) Resume(ctx context.Context, name string, r api.Resume) error {
@@ -55,7 +55,7 @@ func (o operatorAPI) Snap(ctx context.Context, name string, s api.Snap) (api.Sna
 }
 
 func (o operatorAPI) End(ctx context.Context, name string, e api.End) error {
-	return o.svc.End(ctx, name, e.Snapshots)
+	return o.svc.End(ctx, name, e.Snapshots, e.ID)
 }
 
 func (o operatorAPI) Remove(ctx context.Context, name string) error {
@@ -96,6 +96,10 @@ func toAPI(s sessions.Session) api.Session {
 	}
 	for _, r := range s.Repos {
 		out.Repos = append(out.Repos, toAPIRepo(r))
+	}
+	if s.Machine != nil {
+		out.Machine = s.Machine.Name
+		out.MachineRevision = s.Machine.Revision
 	}
 	return out
 }

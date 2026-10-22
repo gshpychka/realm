@@ -41,24 +41,24 @@ in
         "write"
       ];
       description = ''
-        Requested built-in Pi tools recorded in the manifest. Applying this list requires runtime catalog
-        support; it does not restrict shell commands.
+        Built-in Pi tools applied when this role initializes its worker. Allowing Bash does not restrict
+        which commands that tool can execute.
       '';
     };
     delegatesTo = mkOption {
       type = uniqueListOf name;
       default = [ ];
       description = ''
-        Requested agent definition names recorded in the manifest. Target resolution and delegation
-        enforcement require runtime catalog support.
+        Agent definition names recorded in the manifest and validated by the host catalog. Autonomous
+        delegation dispatch is not implemented yet.
       '';
     };
     credentials = mkOption {
       type = uniqueListOf (types.strMatching "[a-zA-Z0-9][a-zA-Z0-9_.-]*");
       default = [ ];
       description = ''
-        Requested credential profile names recorded in the manifest. Profile resolution and delivery
-        require runtime catalog support; credential values and host file paths are not accepted.
+        Credential profile names recorded in the manifest. Delivery is not implemented, so nonempty
+        requests are rejected before launch. Credential values and host file paths are not accepted.
       '';
     };
   };

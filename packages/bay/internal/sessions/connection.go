@@ -10,8 +10,8 @@ import (
 )
 
 // Connect opens the configured program endpoint, never an arbitrary guest command.
-// Only one operator connection may control a program at a time. Closing it leaves
-// the program running; lifecycle changes close it before touching its instance.
+// The configured limit bounds operator bridges. Closing them leaves the program
+// running; lifecycle changes close them before touching its instance.
 func (s *Service) Connect(ctx context.Context, name, id string) (io.ReadWriteCloser, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -43,14 +43,21 @@ func (s *Service) Connect(ctx context.Context, name, id string) (io.ReadWriteClo
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.connections[name] != nil {
-		return nil, fmt.Errorf("%w: session %s already has a program connection", fault.Conflict, name)
+	limit := program.MaxConnections
+	if limit == 0 {
+		limit = 1
+	}
+	if len(s.connections[name]) >= limit {
+		return nil, fmt.Errorf("%w: session %s has reached its limit of %d program connections", fault.Conflict, name, limit)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	in, input := io.Pipe()
 	output, out := io.Pipe()
 	c := &programConnection{input: input, output: output, cancel: cancel, done: make(chan struct{})}
-	s.connections[name] = c
+	if s.connections[name] == nil {
+		s.connections[name] = map[*programConnection]struct{}{}
+	}
+	s.connections[name][c] = struct{}{}
 	go func() {
 		g := guest.New(func(ctx context.Context, argv []string, stdin io.Reader, stdout io.Writer) error {
 			return s.instances.Connect(ctx, name, id, argv, stdin, stdout)
@@ -60,7 +67,10 @@ func (s *Service) Connect(ctx context.Context, name, id string) (io.ReadWriteClo
 		out.CloseWithError(err)
 		cancel()
 		s.mu.Lock()
-		delete(s.connections, name)
+		delete(s.connections[name], c)
+		if len(s.connections[name]) == 0 {
+			delete(s.connections, name)
+		}
 		close(c.done)
 		s.mu.Unlock()
 	}()

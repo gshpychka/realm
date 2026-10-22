@@ -5,6 +5,7 @@ import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeSessionState, type RpcExtensionUIRequest, type RpcSessionState } from "@pituitary/rpc";
+import { type AgentManifest, agentManifestDigest } from "./protocol.ts";
 import { startWorker, type Worker, type WorkerEngineContext } from "./worker.ts";
 import { connectWorker, type WorkerClient } from "./worker-client.ts";
 
@@ -94,6 +95,101 @@ async function client(worker: Worker, control = true): Promise<WorkerClient> {
   cleanup.push(() => connected.close());
   return connected;
 }
+
+const reviewer: AgentManifest = {
+  schemaVersion: 1,
+  name: "reviewer",
+  description: "Review changes",
+  instructions: "Read the exact change and report concrete bugs.",
+  model: null,
+  tools: ["read", "grep"],
+  delegatesTo: [],
+  credentials: ["models"],
+};
+
+test("a managed worker binds its role before creating Pi and survives restart unchanged", async () => {
+  const root = directory();
+  const engine = scripted();
+  let creations = 0;
+  const options = {
+    socketPath: join(root, "worker.sock"),
+    stateDirectory: root,
+    cwd: root,
+    roleRequired: true,
+    engineFactory: async (context: WorkerEngineContext) => {
+      creations++;
+      return engine.factory(context);
+    },
+  };
+  const worker = await startWorker(options);
+  cleanup.push(() => worker.close());
+  const first = await client(worker);
+  expect(creations).toBe(0);
+  await expect(first.prompt("too early")).rejects.toThrow("requires an agent role");
+  const initialize = { type: "initialize" as const, manifest: reviewer };
+  expect(await first.request(initialize, "initialize")).toMatchObject({
+    roleDigest: agentManifestDigest(reviewer),
+    sessionId: fakeSessionState.sessionId,
+  });
+  expect(creations).toBe(1);
+  expect(engine.context.role).toEqual(reviewer);
+  expect(engine.context.instructions).toBe(reviewer.instructions);
+  expect(worker.identity.roleDigest).toBe(agentManifestDigest(reviewer));
+  expect(statSync(join(root, "role.json")).mode & 0o777).toBe(0o600);
+  await first.request(initialize, "initialize");
+  expect(creations).toBe(1);
+  await expect(
+    first.request({ ...initialize, manifest: { ...reviewer, instructions: "changed" } }),
+  ).rejects.toThrow("another agent role");
+  await first.close();
+  await worker.close();
+  const replacement = await startWorker(options);
+  cleanup.push(() => replacement.close());
+  expect(creations).toBe(2);
+  const second = await client(replacement);
+  expect(second.identity.roleDigest).toBe(agentManifestDigest(reviewer));
+  await second.request(initialize, "initialize");
+  expect(creations).toBe(2);
+  await second.prompt("review now");
+  expect(engine.prompts).toBe(1);
+});
+
+test("role initialization requires the controller and cannot convert a local conversation", async () => {
+  const { worker, options } = await fakeWorker();
+  const observer = await client(worker, false);
+  await expect(observer.request({ type: "initialize", manifest: reviewer })).rejects.toThrow(
+    "does not control",
+  );
+  const controller = await client(worker);
+  await expect(controller.request({ type: "initialize", manifest: reviewer })).rejects.toThrow(
+    "local conversation",
+  );
+  await controller.close();
+  await observer.close();
+  await worker.close();
+  await expect(startWorker({ ...options, roleRequired: true })).rejects.toThrow("saved local conversation");
+});
+
+test("missing or changed saved roles cannot silently alter a resumed native conversation", async () => {
+  const root = directory();
+  const options = {
+    socketPath: join(root, "worker.sock"),
+    stateDirectory: root,
+    cwd: root,
+    roleRequired: true,
+    engineFactory: scripted().factory,
+  };
+  const worker = await startWorker(options);
+  cleanup.push(() => worker.close());
+  const controller = await client(worker);
+  await controller.request({ type: "initialize", manifest: reviewer });
+  await controller.close();
+  await worker.close();
+  writeFileSync(join(root, "role.json"), JSON.stringify({ ...reviewer, tools: ["bash"] }));
+  await expect(startWorker(options)).rejects.toThrow("saved agent role changed");
+  rmSync(join(root, "role.json"));
+  await expect(startWorker(options)).rejects.toThrow("saved agent role is missing");
+});
 
 test("detaching releases input ownership and keeps the same running agent", async () => {
   const { worker, engine } = await fakeWorker();

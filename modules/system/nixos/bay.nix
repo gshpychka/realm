@@ -28,18 +28,31 @@ let
   gatewaySocket = "/run/bay-gateway/operator.sock";
   bridgeAddress = builtins.head (lib.splitString "/" cfg.network.address);
 
+  machines = lib.mapAttrs (_: import ../../../packages/bay/machine.nix) cfg.machines;
+  # Aliases with the same image and resources share one immutable warm base. Preparing
+  # them sequentially avoids booting every agent's full memory reservation at once.
+  bases = lib.listToAttrs (
+    lib.mapAttrsToList (name: machine: {
+      name = machines.${name}.base;
+      value = { inherit name machine; };
+    }) cfg.machines
+  );
+
   serverConfig = json.generate "bay-server.json" {
     incusSocket = "/var/lib/incus/unix.socket";
     inherit project base gatewaySocket;
     records = "/var/lib/bay/sessions";
     mirrors = "/var/lib/bay/mirrors";
     inherit (cfg) mirrorRefresh;
-    inherit (cfg.sessions) maxRunning;
+    inherit (cfg.sessions) maxRunning maxMemory;
+    inherit machines;
     programs = lib.mapAttrs (_: p: {
       inherit (p)
         command
         resume
         connect
+        machine
+        maxConnections
         history
         monitor
         ;
@@ -197,6 +210,16 @@ let
           connection; terminal attachment remains available.
         '';
       };
+      machine = mkOption {
+        type = types.str;
+        default = "default";
+        description = "Declared machine this program runs in; its image and resource revision are pinned when a session is created.";
+      };
+      maxConnections = mkOption {
+        type = types.ints.positive;
+        default = 1;
+        description = "Maximum simultaneous connections to the program's predefined connector.";
+      };
       history = mkOption {
         type = types.listOf types.str;
         default = [ ];
@@ -283,12 +306,57 @@ in
         default = 8;
         description = "Sessions that may run at once; suspended sessions do not count.";
       };
+      maxMemory = mkOption {
+        type = types.ints.positive;
+        default = cfg.sessions.maxRunning * cfg.sessions.memory;
+        defaultText = lib.literalExpression "config.services.bay.sessions.maxRunning * config.services.bay.sessions.memory";
+        description = "Total running and starting session memory, in GiB, using each session's pinned machine allocation; suspended sessions do not count.";
+      };
     };
 
     programs = mkOption {
       type = types.attrsOf programType;
       default = { };
       description = "Program definitions sessions start by name. A session started with a bare command launches it fresh on every start, with `monitor` on.";
+    };
+
+    machines = mkOption {
+      type = types.attrsOf (
+        types.submodule {
+          options = {
+            metadata = mkOption {
+              type = types.path;
+              description = "Incus image metadata tarball.";
+            };
+            disk = mkOption {
+              type = types.path;
+              description = "Incus guest disk image.";
+            };
+            resources = {
+              cpus = mkOption {
+                type = types.ints.positive;
+                default = cfg.sessions.cpus;
+                description = "vCPUs reserved for this machine's sessions.";
+              };
+              memory = mkOption {
+                type = types.ints.positive;
+                default = cfg.sessions.memory;
+                description = "Memory per session, in GiB.";
+              };
+              disk = mkOption {
+                type = types.ints.positive;
+                default = cfg.sessions.disk;
+                description = "Root disk per session, in GiB.";
+              };
+            };
+          };
+        }
+      );
+      default = { };
+      description = ''
+        Named session machines. Equal images and resource allocations share an immutable warm base.
+        The default machine comes from guest.modules and the session resource defaults.
+      '';
     };
 
     guest.modules = mkOption {
@@ -330,6 +398,10 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    services.bay.machines.default = {
+      metadata = lib.mkDefault image.metadata;
+      disk = lib.mkDefault image.disk;
+    };
     assertions = [
       {
         assertion = config.users.users ? ${cfg.operator};
@@ -341,7 +413,15 @@ in
         assertion = !config.networking.nftables.flushRuleset;
         message = "Bay needs networking.nftables.flushRuleset = false, which keeps Incus's nftables tables across firewall reloads.";
       }
-    ];
+    ]
+    ++ lib.mapAttrsToList (name: _: {
+      assertion = builtins.match "[a-z]([a-z0-9-]{0,61}[a-z0-9])?" name != null;
+      message = "services.bay.machines.${name} must have a lowercase DNS-label name.";
+    }) cfg.machines
+    ++ lib.mapAttrsToList (name: program: {
+      assertion = builtins.hasAttr program.machine cfg.machines;
+      message = "services.bay.programs.${name}.machine names undeclared machine ${program.machine}.";
+    }) cfg.programs;
 
     boot.supportedFilesystems.zfs = true;
     networking.nftables.enable = true;
@@ -478,14 +558,28 @@ in
     };
 
     systemd.services.bay-base = {
-      description = "Bay's warm base, booted once from the session image";
+      description = "Bay's declared warm bases, booted once from their session images";
       wantedBy = [ "multi-user.target" ];
       after = [ "bay-platform.service" ];
       requires = [ "bay-platform.service" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${bay}/bin/bay-server base -config ${serverConfig} -metadata ${image.metadata} -disk ${image.disk}";
+        ExecStart = map (
+          { name, machine }:
+          lib.escapeShellArgs [
+            "${bay}/bin/bay-server"
+            "base"
+            "-config"
+            (toString serverConfig)
+            "-machine"
+            name
+            "-metadata"
+            (toString machine.metadata)
+            "-disk"
+            (toString machine.disk)
+          ]
+        ) (builtins.attrValues bases);
         User = "bay";
         Group = "bay";
         TimeoutStartSec = "30min";

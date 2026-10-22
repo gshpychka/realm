@@ -11,7 +11,45 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { fakeModels, stored } from "@pituitary/rpc";
-import { snapshotNativeSession } from "./pi-engine.ts";
+import { createNativeEngine, snapshotNativeSession } from "./pi-engine.ts";
+import type { AgentManifest } from "./protocol.ts";
+
+test("a declared role cannot gain an undeclared shell or change model through interactive RPC", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-role-"));
+  const role: AgentManifest = {
+    schemaVersion: 1,
+    name: "reader",
+    description: "Read a change",
+    instructions: "Inspect the supplied change.",
+    model: null,
+    tools: ["read", "grep"],
+    delegatesTo: [],
+    credentials: [],
+  };
+  const engine = await createNativeEngine({
+    cwd: root,
+    stateDirectory: root,
+    configDirectory: join(root, "config"),
+    authFile: join(root, "auth.json"),
+    instructions: role.instructions,
+    role,
+    onEvent: () => {},
+    onUiRequest: () => {},
+    onUiClose: () => {},
+  });
+  try {
+    await expect(engine.call({ type: "bash", command: "touch should-not-exist" })).rejects.toThrow(
+      "does not enable",
+    );
+    await expect(engine.call({ type: "set_model", provider: "any", modelId: "other" })).rejects.toThrow(
+      "declared by the agent role",
+    );
+    await expect(engine.call({ type: "cycle_model" })).rejects.toThrow("declared by the agent role");
+  } finally {
+    await engine.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("a native snapshot captures a live SDK reply and queue without sharing mutable state", async () => {
   const root = mkdtempSync(join(tmpdir(), "pi-snapshot-"));

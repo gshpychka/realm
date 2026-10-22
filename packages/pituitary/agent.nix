@@ -23,6 +23,7 @@ let
   worker = lib.getExe workerPackage;
   command = [
     worker
+    "--role-required"
     "--socket"
     socket
     "--state"
@@ -61,7 +62,15 @@ assert lib.assertMsg (builtins.match "[a-zA-Z][a-zA-Z0-9_-]*" name != null)
       "--socket"
       socket
     ];
-    history = [ ".local/state/pituitary" ];
+    # Process ownership and sockets belong to an instance, never restored history.
+    history = map (path: ".local/state/pituitary/${path}") [
+      "worker.json"
+      "role.json"
+      "commands.json"
+      "sessions"
+      "agent"
+    ];
     monitor = false;
+    maxConnections = 8;
   };
 }

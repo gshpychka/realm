@@ -55,6 +55,13 @@ function rows(
 const all = (list: Row[]) => list.flatMap((row) => [...row.left, ...row.right]);
 const find = (list: Row[], wanted: string) => all(list).find((seg) => seg.text === wanted);
 
+test("a remote workspace names the agent and keeps its absolute guest path", () => {
+  const remote = footerParts(props({ cwd: "/work", location: "builder", branch: null, pull: null }), NOW);
+  expect(remote.path).toBe("builder:/work");
+  expect(remote.branch).toBeNull();
+  expect(remote.pull).toBeNull();
+});
+
 describe("footerStyle", () => {
   test("defaults to arrows, ember, and an eight-cell hearth, as does an unknown value", () => {
     const fallback = footerStyle({});

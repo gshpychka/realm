@@ -207,22 +207,23 @@ function Bash({ entry, expanded, escapes }: { entry: BashEntry; expanded: boolea
   );
 }
 
-const EDITOR_KEYS = [
-  ["enter", "send"],
-  ["shift+enter  ctrl+j", "new line"],
-  ["!cmd  !!cmd", "run a command, kept in or out of context"],
-  ["/  @", "commands, and files to mention"],
-  ["pgup  pgdn", "scroll"],
-] as const;
+const editorKeys = (local: boolean) =>
+  [
+    ["enter", "send"],
+    ["shift+enter  ctrl+j", "new line"],
+    ["!cmd  !!cmd", "run a command, kept in or out of context"],
+    [local ? "/  @" : "/", local ? "commands, and files to mention" : "commands"],
+    ["pgup  pgdn", "scroll"],
+  ] as const;
 
 /** The empty conversation: where to start, and the keys. */
-export function Welcome({ escapes }: { escapes: string }) {
+export function Welcome({ escapes, local = true }: { escapes: string; local?: boolean }) {
   const { width } = useTerminalDimensions();
   const bindings = useKeymap();
   const bound = (action: Action) => keyHint(bindings, action) ?? "";
   const interrupt = bound("app.interrupt");
   const rows: readonly (readonly [string, string])[] = [
-    ...EDITOR_KEYS,
+    ...editorKeys(local),
     [bound("app.message.followUp"), "queue a follow-up while pi works"],
     [
       interrupt ? escapes : "",
@@ -233,8 +234,8 @@ export function Welcome({ escapes }: { escapes: string }) {
     [bound("app.tools.expand"), "open every box of work at full length"],
     [bound("app.tools.browse"), "step through boxes: ↑↓ enter j k"],
     [bound("app.thinking.toggle"), "show or hide thinking"],
-    [bound("app.model.select"), "pick a model"],
-    [bound("app.model.cycleForward"), "take the next model"],
+    [local ? bound("app.model.select") : "", "pick a model"],
+    [local ? bound("app.model.cycleForward") : "", "take the next model"],
     [bound("app.editor.external"), "edit in $VISUAL"],
     [
       [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
@@ -252,7 +253,7 @@ export function Welcome({ escapes }: { escapes: string }) {
       paddingRight={1}
     >
       <text fg={theme.dim} flexShrink={0}>
-        Ask pi something to get started.
+        {local ? "Ask pi something to get started." : "Ask this agent something to get started."}
       </text>
       <box flexDirection="column" flexShrink={0} marginTop={1}>
         {rows
@@ -282,6 +283,8 @@ export interface ConversationProps {
   entries: Entry[];
   /** A run is in progress. */
   running: boolean;
+  /** Local sessions can complete paths and choose models from the operator's configuration. */
+  local?: boolean;
   display: Display;
   /** How many of the latest entries are drawn; the earlier ones wait for the operator to scroll back. */
   window: number;
@@ -447,6 +450,7 @@ function useWalk({ browsing, boxes, scroll, isOpen, toggle, onLeave }: Walking) 
 export function Conversation({
   entries,
   running,
+  local,
   display,
   window,
   browsing,
@@ -462,7 +466,7 @@ export function Conversation({
   const { isOpen, toggle } = useOpenBoxes(whole);
   const { selected, resized } = useWalk({ browsing, boxes, scroll: ref, isOpen, toggle, onLeave });
 
-  if (entries.length === 0) return <Welcome escapes={display.escapes} />;
+  if (entries.length === 0) return <Welcome escapes={display.escapes} local={local} />;
   const rows = boxRows(height);
   return (
     <scrollbox

@@ -21,11 +21,14 @@ import { dirname, join, resolve } from "node:path";
 import { encodeJsonLine, type RpcExtensionUIRequest, type RpcSessionState } from "@pituitary/rpc";
 import { createNativeEngine } from "./pi-engine.ts";
 import {
+  type AgentManifest,
+  agentManifestDigest,
   type ClientRecord,
   canonical,
   isReadCommand,
   MAX_CLIENT_BACKLOG_BYTES,
   type ServerRecord,
+  validateAgentManifest,
   WORKER_PROTOCOL_VERSION,
   type WorkerCommand,
   type WorkerEngine,
@@ -45,6 +48,8 @@ export interface StartWorkerOptions {
   instructions?: string;
   configDirectory?: string;
   authFile?: string;
+  /** Managed guests accept a role over their authenticated controller connection before creating Pi. */
+  roleRequired?: boolean;
   engineFactory?: (context: WorkerEngineContext) => Promise<WorkerEngine>;
 }
 
@@ -151,8 +156,11 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
   }
 
   const metadataPath = join(stateDirectory, "worker.json");
+  const rolePath = join(stateDirectory, "role.json");
   const ledgerPath = join(stateDirectory, "commands.json");
   let engine: WorkerEngine | undefined;
+  let role: AgentManifest | undefined;
+  let initialization: Promise<void> | undefined;
   const sockets = new Set<Socket>();
   const connections = new Set<Socket>();
   let controller: Socket | null = null;
@@ -225,7 +233,12 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
         closeSync(transcript);
       }
     }
-    identity = { ...identity, sessionId: state.sessionId, sessionFile: state.sessionFile };
+    identity = {
+      ...identity,
+      sessionId: state.sessionId,
+      sessionFile: state.sessionFile,
+      ...(role && state.model ? { model: `${state.model.provider}/${state.model.id}` } : {}),
+    };
     atomicJson(metadataPath, identity);
   };
 
@@ -236,6 +249,7 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
       sockets.clear();
       if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
       try {
+        await initialization?.catch(() => {});
         await engine?.close();
         await Promise.allSettled([...pending.values()]);
         await remember();
@@ -253,6 +267,23 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
     if (existsSync(metadataPath)) previous = JSON.parse(readFileSync(metadataPath, "utf8")) as WorkerIdentity;
     if (previous && previous.cwd !== resolve(options.cwd))
       throw new Error("worker state belongs to another directory");
+    if (existsSync(rolePath)) {
+      if (statSync(rolePath).size > 2 * 1024 * 1024)
+        throw new Error("saved agent manifest exceeds its limit");
+      role = validateAgentManifest(JSON.parse(readFileSync(rolePath, "utf8")));
+      if (previous && previous.roleDigest !== agentManifestDigest(role))
+        throw new Error("the saved agent role changed; explicit recovery is required");
+    } else if (previous?.roleDigest) {
+      throw new Error("the saved agent role is missing; explicit recovery is required");
+    }
+    if (options.roleRequired && previous && !role)
+      throw new Error(
+        "a saved local conversation cannot become a managed agent; start a new worker state directory",
+      );
+    if (options.roleRequired && !role && options.sessionFile)
+      throw new Error("a new managed worker cannot import another native conversation");
+    if ((role || options.roleRequired) && (options.model !== undefined || options.instructions !== undefined))
+      throw new Error("managed agent model and instructions must come from its role manifest");
     if (
       previous &&
       options.sessionFile &&
@@ -289,46 +320,55 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
       pid: process.pid,
       cwd: resolve(options.cwd),
       sessionId: previous?.sessionId ?? randomUUID(),
+      ...(role ? { roleDigest: agentManifestDigest(role) } : {}),
     };
-    engine = await (options.engineFactory ?? createNativeEngine)({
-      cwd: identity.cwd,
-      stateDirectory,
-      sessionFile: options.sessionFile ?? previous?.sessionFile,
-      sessionId: previous?.sessionId,
-      model: options.model,
-      instructions: options.instructions,
-      configDirectory: options.configDirectory,
-      authFile: options.authFile,
-      onEvent: (event) => {
-        publish({ type: "event", sequence: ++sequence, event });
-        if (event.type === "agent_settled" || event.type === "session_info_changed") {
-          void remember().catch(() => {});
-        }
-      },
-      onUiRequest: (request) => {
-        if ("timeout" in request && request.timeout && request.timeout > 0)
-          dialogDeadlines.set(request.id, Date.now() + request.timeout);
-        const key =
-          request.method === "setStatus"
-            ? `status:${request.statusKey}`
-            : request.method === "setWidget"
-              ? `widget:${request.widgetKey}`
-              : request.method === "setTitle"
-                ? "title"
-                : undefined;
-        if (key) {
-          const previous = displayIds.get(key);
-          if (previous) uiRequests.delete(previous);
-          displayIds.set(key, request.id);
-        }
-        // Editor edits and notifications are actions, not state to repeat on attachment.
-        if (request.method !== "notify" && request.method !== "set_editor_text")
-          uiRequests.set(request.id, request);
-        publish({ type: "ui", sequence: ++sequence, request });
-      },
-      onUiClose: uiClose,
-    });
-    await remember();
+    const initializeEngine = (): Promise<void> => {
+      if (initialization) return initialization;
+      initialization = (async () => {
+        engine = await (options.engineFactory ?? createNativeEngine)({
+          cwd: identity.cwd,
+          stateDirectory,
+          sessionFile: options.sessionFile ?? previous?.sessionFile,
+          sessionId: previous?.sessionId,
+          model: role ? (role.model ?? previous?.model) : options.model,
+          instructions: role?.instructions ?? options.instructions,
+          role,
+          configDirectory: options.configDirectory,
+          authFile: options.authFile,
+          onEvent: (event) => {
+            publish({ type: "event", sequence: ++sequence, event });
+            if (event.type === "agent_settled" || event.type === "session_info_changed") {
+              void remember().catch(() => {});
+            }
+          },
+          onUiRequest: (request) => {
+            if ("timeout" in request && request.timeout && request.timeout > 0)
+              dialogDeadlines.set(request.id, Date.now() + request.timeout);
+            const key =
+              request.method === "setStatus"
+                ? `status:${request.statusKey}`
+                : request.method === "setWidget"
+                  ? `widget:${request.widgetKey}`
+                  : request.method === "setTitle"
+                    ? "title"
+                    : undefined;
+            if (key) {
+              const previous = displayIds.get(key);
+              if (previous) uiRequests.delete(previous);
+              displayIds.set(key, request.id);
+            }
+            // Editor edits and notifications are actions, not state to repeat on attachment.
+            if (request.method !== "notify" && request.method !== "set_editor_text")
+              uiRequests.set(request.id, request);
+            publish({ type: "ui", sequence: ++sequence, request });
+          },
+          onUiClose: uiClose,
+        });
+        await remember();
+      })();
+      return initialization;
+    };
+    if (role || !options.roleRequired) await initializeEngine();
     if (existsSync(socketPath)) {
       const info = lstatSync(socketPath);
       if (!info.isSocket() || info.uid !== process.getuid?.())
@@ -362,7 +402,10 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
         if (running) return running;
         throw new Error("command outcome is uncertain");
       }
-      const recorded = !isReadCommand(command) && command.type !== "shutdown";
+      // Initialization has its own immutable durable binding. Repeating it reconciles a crash
+      // between saving the role and saving a transport receipt without an uncertain outcome.
+      const recorded =
+        !isReadCommand(command) && command.type !== "shutdown" && command.type !== "initialize";
       if (recorded) {
         if (ledger.size >= LEDGER_CAPACITY)
           throw new Error("worker command ledger is full; start a new worker state directory");
@@ -380,10 +423,29 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
         try {
           // A bash update's UI correlation ID is separate from the durable transport receipt.
           let data: unknown;
-          if (command.type === "get_snapshot") {
+          if (command.type === "initialize") {
+            const manifest = validateAgentManifest(command.manifest);
+            const digest = agentManifestDigest(manifest);
+            if (role && agentManifestDigest(role) !== digest)
+              throw new Error("this worker is already bound to another agent role; start a new attempt");
+            if (!role) {
+              if (engine || !options.roleRequired)
+                throw new Error(
+                  "a local conversation cannot be rebound to an agent role; start a managed worker",
+                );
+              role = manifest;
+              atomicJson(rolePath, role);
+              identity = { ...identity, roleDigest: digest };
+            }
+            await initializeEngine();
+            data = { roleDigest: digest, sessionId: identity.sessionId, sessionFile: identity.sessionFile };
+          } else if (command.type !== "shutdown" && !engine) {
+            throw new Error("this worker requires an agent role; initialize it before sending commands");
+          } else if (command.type === "get_snapshot") {
             if (!engine?.snapshot) throw new Error("this worker engine does not support an atomic snapshot");
             data = { ...engine.snapshot(), sequence };
           } else if (command.type !== "shutdown") {
+            await initialization;
             data = await engine?.call({ ...command, id: command.id ?? id });
           }
           response = { type: "result", id, success: true, data };
@@ -468,7 +530,8 @@ export async function startWorker(options: StartWorkerOptions): Promise<Worker> 
                   "detach",
                   "dialogs",
                   "single-controller",
-                  ...(engine?.snapshot ? ["atomic-snapshot"] : []),
+                  "immutable-role",
+                  ...(engine?.snapshot || (!engine && !options.engineFactory) ? ["atomic-snapshot"] : []),
                 ],
               });
               continue;
@@ -550,15 +613,21 @@ function describe(cause: unknown): string {
 async function main(argv: string[]): Promise<void> {
   if (argv.includes("--help") || argv.includes("-h")) {
     process.stdout.write(
-      "Usage: pituitary-worker serve --socket PATH --state DIR --cwd DIR\n       pituitary-worker connect --socket PATH\n\nserve keeps one native Pi session alive independently of its clients.\nconnect relays the versioned worker protocol over stdin/stdout. Disconnecting detaches.\n\nServe options: --session PATH --model PROVIDER/MODEL --instructions-file PATH\n",
+      "Usage: pituitary-worker serve --socket PATH --state DIR --cwd DIR\n       pituitary-worker connect --socket PATH\n\nserve keeps one native Pi session alive independently of its clients.\nconnect relays the versioned worker protocol over stdin/stdout. Disconnecting detaches.\n\nServe options: --session PATH --model PROVIDER/MODEL --instructions-file PATH --role-required\n",
     );
     return;
   }
   const mode = argv[0] === "serve" || argv[0] === "connect" ? argv.shift() : "serve";
   const values = new Map<string, string>();
-  for (let index = 0; index < argv.length; index += 2) {
+  let roleRequired = false;
+  for (let index = 0; index < argv.length; index++) {
     const flag = argv[index];
-    const value = argv[index + 1];
+    if (flag === "--role-required") {
+      if (roleRequired || mode === "connect") throw new Error("--role-required is only valid once for serve");
+      roleRequired = true;
+      continue;
+    }
+    const value = argv[++index];
     if (
       !flag ||
       !["--socket", "--state", "--cwd", "--session", "--model", "--instructions-file"].includes(flag) ||
@@ -596,6 +665,7 @@ async function main(argv: string[]): Promise<void> {
     socketPath,
     stateDirectory,
     cwd,
+    roleRequired,
     sessionFile: values.get("--session"),
     model: values.get("--model"),
     instructions: instructionsFile ? readFileSync(instructionsFile, "utf8") : undefined,

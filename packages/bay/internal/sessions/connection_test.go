@@ -128,3 +128,30 @@ func TestLifecycleClosesConnectionWithoutBlocking(t *testing.T) {
 		})
 	}
 }
+
+func TestConnectionLimitAllowsObserversAndClosesEveryBridge(t *testing.T) {
+	svc, _, _ := machineService(t, 16)
+	session := mustStart(t, svc, "one", StartSpec{Program: "agent"})
+	first, err := svc.Connect(context.Background(), "one", session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.Connect(context.Background(), "one", session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { first.Close(); second.Close() })
+	if _, err := svc.Connect(context.Background(), "one", session.ID); err == nil {
+		t.Fatal("third bridge exceeded the configured limit")
+	}
+	if err := svc.Suspend(context.Background(), "one"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []io.ReadWriteCloser{first, second} {
+		select {
+		case <-c.(*programConnection).done:
+		case <-time.After(time.Second):
+			t.Fatal("lifecycle left a bridge running")
+		}
+	}
+}

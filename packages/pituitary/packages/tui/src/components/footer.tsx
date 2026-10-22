@@ -34,6 +34,8 @@ export interface FooterProps {
   /** Extension statuses by key as the current turn began. */
   turnStatuses: Readonly<Record<string, string>>;
   cwd: string;
+  /** The remote agent whose filesystem contains cwd. */
+  location?: string;
   branch: string | null;
   /** The pull request opened from the branch, when GitHub has one. */
   pull?: PullRequest | null;
@@ -195,13 +197,13 @@ export interface Parts {
 }
 
 export function footerParts(
-  { state, stats, statuses, turnStatuses, cwd, branch, pull, limits }: FooterProps,
+  { state, stats, statuses, turnStatuses, cwd, location, branch, pull, limits }: FooterProps,
   now: number,
 ): Parts {
   const thinking = state?.thinkingLevel && state.thinkingLevel !== "off" ? state.thinkingLevel : null;
   const percent = stats?.contextUsage?.percent ?? null;
   return {
-    path: tilde(cwd),
+    path: location ? `${location}:${cwd}` : tilde(cwd),
     branch: branch || null,
     pull: branch && pull ? pull : null,
     name: state?.sessionName || null,

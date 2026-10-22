@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +16,49 @@ afterEach(() => {
 });
 
 describe("durable local runs", () => {
+  test("an existing run store migrates without losing native history or stop intent", () => {
+    const root = directory();
+    const old = new Database(join(root, "runs.sqlite"));
+    old.exec(`CREATE TABLE runs (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, cwd TEXT NOT NULL,
+      directory TEXT NOT NULL, socket TEXT NOT NULL, status TEXT NOT NULL,
+      created TEXT NOT NULL, session_id TEXT, pid INTEGER, prompt TEXT,
+      prompt_status TEXT, error TEXT
+    ); PRAGMA user_version=1;`);
+    old
+      .query("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(
+        "old",
+        "old",
+        root,
+        root,
+        "/tmp/old.sock",
+        "stopped",
+        "2026-10-22",
+        "native-conversation",
+        42,
+        "objective",
+        "accepted",
+        null,
+      );
+    old.close();
+    const store = new RunStore(root);
+    try {
+      expect(store.get("old")).toMatchObject({
+        sessionId: "native-conversation",
+        status: "stopped",
+        desired: "stopped",
+        execution: { kind: "local" },
+        promptStatus: "accepted",
+      });
+      const created = store.create({ name: "new", cwd: root });
+      expect(created.desired).toBe("running");
+      expect(store.list()).toHaveLength(2);
+    } finally {
+      store.close();
+    }
+  });
+
   test("run identity and transitions survive a new runtime connection", () => {
     const root = directory();
     let store = new RunStore(root);

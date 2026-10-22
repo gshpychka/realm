@@ -2,9 +2,21 @@ import { Database } from "bun:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { AgentDefinition } from "./catalog.ts";
 
-export type RunStatus = "starting" | "ready" | "busy" | "stopped" | "unreachable" | "failed";
+export type RunStatus = "starting" | "ready" | "busy" | "stopping" | "stopped" | "unreachable" | "failed";
 export type PromptStatus = "pending" | "dispatching" | "accepted" | "uncertain" | null;
+
+export interface BayExecution {
+  kind: "bay";
+  socket: string;
+  command: string;
+  sessionName: string;
+  recordId: string | null;
+  agent: AgentDefinition;
+  repos: readonly string[];
+}
+export type RunExecution = { kind: "local" } | BayExecution;
 
 /** A run describes work. The worker and its native conversation have separate lifetimes. */
 export interface Run {
@@ -14,12 +26,14 @@ export interface Run {
   directory: string;
   socket: string;
   status: RunStatus;
+  desired: "running" | "stopped";
   created: string;
   sessionId: string | null;
   pid: number | null;
   prompt: string | null;
   promptStatus: PromptStatus;
   error: string | null;
+  execution: RunExecution;
 }
 
 export interface RunEvent {
@@ -30,7 +44,9 @@ export interface RunEvent {
   data: Record<string, unknown>;
 }
 
-type RunChanges = Partial<Pick<Run, "status" | "sessionId" | "pid" | "promptStatus" | "error">>;
+type RunChanges = Partial<
+  Pick<Run, "status" | "desired" | "sessionId" | "pid" | "promptStatus" | "error" | "execution">
+>;
 
 export function privateDirectory(path: string): void {
   mkdirSync(path, { recursive: true, mode: 0o700 });
@@ -66,7 +82,7 @@ export class RunStore {
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;");
     const version =
       this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version ?? 0;
-    if (version > 1) {
+    if (version > 3) {
       this.db.close();
       throw new Error(`Run database version ${version} requires a newer Pituitary`);
     }
@@ -82,11 +98,27 @@ export class RunStore {
         type TEXT NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS events_run ON events(run_id, sequence);
-      PRAGMA user_version=1;
     `);
+    this.db
+      .transaction(() => {
+        const current =
+          this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version ?? 0;
+        if (current < 2)
+          this.db.exec('ALTER TABLE runs ADD COLUMN execution TEXT NOT NULL DEFAULT \'{"kind":"local"}\';');
+        if (current < 3)
+          this.db.exec(
+            "ALTER TABLE runs ADD COLUMN desired TEXT NOT NULL DEFAULT 'running'; UPDATE runs SET desired='stopped' WHERE status='stopped'; PRAGMA user_version=3;",
+          );
+      })
+      .immediate();
   }
 
-  create(input: { name?: string; cwd: string; prompt?: string }): Run {
+  create(input: {
+    name?: string;
+    cwd: string;
+    prompt?: string;
+    bay?: Omit<BayExecution, "kind" | "sessionName" | "recordId">;
+  }): Run {
     const id = randomUUID();
     const name = input.name ?? id.slice(0, 8);
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(name)) {
@@ -103,12 +135,16 @@ export class RunStore {
       directory: join(this.root, "runs", id),
       socket: join(socketDirectory(this.root), `${id}.sock`),
       status: "starting",
+      desired: "running",
       created: new Date().toISOString(),
       sessionId: null,
       pid: null,
       prompt: input.prompt ?? null,
       promptStatus: input.prompt ? "pending" : null,
       error: null,
+      execution: input.bay
+        ? { ...input.bay, kind: "bay", sessionName: `pituitary-${id}`, recordId: null }
+        : { kind: "local" },
     };
     this.db
       .transaction(() => {
@@ -116,7 +152,9 @@ export class RunStore {
           throw new Error(`Run ${name} already exists; attach to it or choose another name`);
         try {
           this.db
-            .query("INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            .query(`INSERT INTO runs
+              (id, name, cwd, directory, socket, status, created, session_id, pid, prompt, prompt_status, error, execution, desired)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
             .run(
               run.id,
               run.name,
@@ -130,13 +168,15 @@ export class RunStore {
               run.prompt,
               run.promptStatus,
               run.error,
+              JSON.stringify(run.execution),
+              run.desired,
             );
         } catch (error) {
           if (this.find(name))
             throw new Error(`Run ${name} already exists; attach to it or choose another name`);
           throw error;
         }
-        this.append(run.id, "run_created", { cwd, name, prompt: run.prompt });
+        this.append(run.id, "run_created", { cwd, name, prompt: run.prompt, execution: run.execution });
       })
       .immediate();
     return run;
@@ -170,8 +210,19 @@ export class RunStore {
         if (patch === null) return current;
         const run = { ...current, ...patch };
         this.db
-          .query("UPDATE runs SET status=?, session_id=?, pid=?, prompt_status=?, error=? WHERE id=?")
-          .run(run.status, run.sessionId, run.pid, run.promptStatus, run.error, run.id);
+          .query(
+            "UPDATE runs SET status=?, session_id=?, pid=?, prompt_status=?, error=?, execution=?, desired=? WHERE id=?",
+          )
+          .run(
+            run.status,
+            run.sessionId,
+            run.pid,
+            run.promptStatus,
+            run.error,
+            JSON.stringify(run.execution),
+            run.desired,
+            run.id,
+          );
         this.append(id, type, patch);
         return run;
       })
@@ -212,11 +263,13 @@ function decode(row: Record<string, unknown>): Run {
     directory: String(row.directory),
     socket: String(row.socket),
     status: row.status as RunStatus,
+    desired: row.desired as Run["desired"],
     created: String(row.created),
     sessionId: row.session_id as string | null,
     pid: row.pid as number | null,
     prompt: row.prompt as string | null,
     promptStatus: row.prompt_status as PromptStatus,
     error: row.error as string | null,
+    execution: JSON.parse(row.execution as string) as RunExecution,
   };
 }

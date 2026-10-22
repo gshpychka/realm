@@ -3,16 +3,19 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { plain } from "@pituitary/rpc";
+import { loadCatalog } from "./catalog.ts";
 import { Runtime } from "./runtime.ts";
 import type { Run } from "./store.ts";
 
-const VERBS = ["run", "attach", "runs", "inspect", "stop"] as const;
+const VERBS = ["run", "attach", "runs", "agents", "inspect", "recover", "stop"] as const;
 type Verb = (typeof VERBS)[number];
 const HELP = `Usage:
-  pituitary run [--name NAME] [--cwd DIR] [--detach] [OBJECTIVE]
+  pituitary run [--agent ROLE] [--repo OWNER/NAME@REF] [--name NAME] [--cwd DIR] [--detach] [OBJECTIVE]
+  pituitary agents [--json] [--catalog FILE]
   pituitary attach RUN
   pituitary runs [--json]
   pituitary inspect RUN [--json]
+  pituitary recover RUN
   pituitary stop RUN
 
 Runs keep their worker alive when the terminal closes. Stop ends the worker explicitly.
@@ -24,9 +27,19 @@ export type Command = {
   state: string;
   help: false;
 } & (
-  | { verb: "run"; name?: string; cwd: string; prompt?: string; detach: boolean }
+  | {
+      verb: "run";
+      name?: string;
+      cwd: string;
+      prompt?: string;
+      detach: boolean;
+      agent?: string;
+      repos: string[];
+      catalogFile?: string;
+    }
   | { verb: "runs"; json: boolean }
-  | { verb: Exclude<Verb, "run" | "runs">; name: string; json: boolean }
+  | { verb: "agents"; json: boolean; catalogFile?: string }
+  | { verb: Exclude<Verb, "run" | "runs" | "agents">; name: string; json: boolean }
 );
 
 type Help = { help: true; state: string };
@@ -49,6 +62,9 @@ export function parseCommand(
   let detach = false;
   let json = false;
   let help = false;
+  let agent: string | undefined;
+  let catalogFile: string | undefined;
+  const repos: string[] = [];
   const words: string[] = [];
   const seen = new Set<string>();
   const remaining = args.slice(1).values();
@@ -65,33 +81,56 @@ export function parseCommand(
       help = true;
       continue;
     }
-    if (seen.has(arg)) throw new Error(`Option ${arg} was supplied more than once`);
+    if (seen.has(arg) && arg !== "--repo") throw new Error(`Option ${arg} was supplied more than once`);
     seen.add(arg);
     if (arg === "--detach" && verb === "run") {
       detach = true;
       continue;
     }
-    if (arg === "--json" && ["runs", "inspect"].includes(verb)) {
+    if (arg === "--json" && ["runs", "agents", "inspect"].includes(verb)) {
       json = true;
       continue;
     }
-    if (arg === "--state" || ((arg === "--cwd" || arg === "--name") && verb === "run")) {
+    if (
+      arg === "--state" ||
+      (["--cwd", "--name", "--agent", "--repo"].includes(arg) && verb === "run") ||
+      (arg === "--catalog" && ["run", "agents"].includes(verb))
+    ) {
       const value = remaining.next().value;
       if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
       if (arg === "--state") state = resolve(value);
       if (arg === "--cwd") cwd = resolve(value);
       if (arg === "--name") name = value;
+      if (arg === "--agent") agent = value;
+      if (arg === "--repo") repos.push(value);
+      if (arg === "--catalog") catalogFile = resolve(value);
       continue;
     }
     throw new Error(`Unknown option ${arg} for ${verb}`);
   }
   if (help) return { help: true, state };
   if (verb === "run") {
-    return { verb, state, name, cwd, prompt: words.join(" ") || undefined, detach, help: false };
+    if (repos.length && !agent) throw new Error("--repo requires --agent");
+    return {
+      verb,
+      state,
+      name,
+      cwd,
+      prompt: words.join(" ") || undefined,
+      detach,
+      agent,
+      repos,
+      catalogFile,
+      help: false,
+    };
   }
   if (verb === "runs") {
     if (words.length) throw new Error("runs does not take a run name");
     return { verb, state, json, help: false };
+  }
+  if (verb === "agents") {
+    if (words.length) throw new Error("agents does not take a run name");
+    return { verb, state, json, catalogFile, help: false };
   }
   const target = words[0];
   if (words.length !== 1 || !target) throw new Error(`${verb} requires exactly one run name or ID`);
@@ -108,10 +147,27 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     process.stdout.write(HELP);
     return;
   }
-  const runtime = new Runtime({ stateDirectory: command.state });
+  if (command.verb === "agents") {
+    const catalog = loadCatalog(command.catalogFile);
+    if (command.json) process.stdout.write(`${JSON.stringify(catalog, null, 2)}\n`);
+    else
+      for (const [name, agent] of Object.entries(catalog.agents))
+        process.stdout.write(`${name.padEnd(18)} ${plain(agent.manifest.description)}\n`);
+    return;
+  }
+  const runtime = new Runtime({
+    stateDirectory: command.state,
+    catalogFile: command.verb === "run" ? command.catalogFile : undefined,
+  });
   try {
     if (command.verb === "run") {
-      const run = await runtime.start({ name: command.name, cwd: command.cwd, prompt: command.prompt });
+      const run = await runtime.start({
+        name: command.name,
+        cwd: command.cwd,
+        prompt: command.prompt,
+        agent: command.agent,
+        repos: command.repos,
+      });
       if (command.detach) process.stdout.write(`${run.name}\n`);
       else await attach(run, command.state);
     } else if (command.verb === "attach") {
@@ -133,13 +189,24 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       else {
         process.stdout.write(`${run.name} · ${run.status}\n${plain(run.cwd)}\n`);
         if (run.sessionId) process.stdout.write(`Conversation: ${run.sessionId}\n`);
+        if (run.execution.kind === "bay")
+          process.stdout.write(
+            `Agent: ${run.execution.agent.manifest.name}\nBay session: ${run.execution.sessionName}\n`,
+          );
         if (run.promptStatus) process.stdout.write(`Initial prompt: ${run.promptStatus}\n`);
         if (run.error) process.stdout.write(`Attention: ${plain(run.error)}\n`);
         process.stdout.write(`History: ${events.length} recorded transitions\n`);
       }
+    } else if (command.verb === "recover") {
+      const run = await runtime.recover(command.name);
+      process.stdout.write(`Recovered ${run.name}.\n`);
     } else {
       const run = await runtime.stop(command.name);
-      process.stdout.write(`Stopped ${run.name}. Conversation history is in ${plain(run.directory)}.\n`);
+      process.stdout.write(
+        run.execution.kind === "bay"
+          ? `Stopped ${run.name}. Bay retains session ${run.execution.sessionName} and its workspace.\n`
+          : `Stopped ${run.name}. Conversation history is in ${plain(run.directory)}.\n`,
+      );
     }
   } finally {
     runtime.close();
@@ -147,7 +214,9 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
 }
 
 async function attach(run: Run, state: string): Promise<void> {
-  process.env.PITUITARY_WORKER_SOCKET = run.socket;
+  if (run.execution.kind === "local") process.env.PITUITARY_WORKER_SOCKET = run.socket;
+  else delete process.env.PITUITARY_WORKER_SOCKET;
+  process.env.PITUITARY_RUN_ID = run.id;
   process.env.PITUITARY_RUN_NAME = run.name;
   process.env.PITUITARY_STATE_DIR = resolve(state);
   process.chdir(run.cwd);

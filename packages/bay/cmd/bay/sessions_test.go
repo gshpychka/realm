@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -176,6 +177,20 @@ func TestSuspend(t *testing.T) {
 	}
 	if !slices.Equal(h.svc.calls, []string{"Suspend foo"}) {
 		t.Errorf("calls = %q", h.svc.calls)
+	}
+	if h.svc.gotSuspend.ID != "" {
+		t.Errorf("CLI supplied an unexpected record precondition: %+v", h.svc.gotSuspend)
+	}
+}
+
+func TestSuspendClientForwardsRecordID(t *testing.T) {
+	h := newHarness(t)
+	c := api.NewClient(os.Getenv("BAY_SOCKET"))
+	if err := c.Suspend(context.Background(), "foo", "record-id"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(h.svc.calls, []string{"Suspend foo"}) || h.svc.gotSuspend.ID != "record-id" {
+		t.Fatalf("calls = %q, options = %+v", h.svc.calls, h.svc.gotSuspend)
 	}
 }
 

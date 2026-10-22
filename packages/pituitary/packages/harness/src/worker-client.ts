@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { connect, type Socket } from "node:net";
+import { connect } from "node:net";
+import type { Duplex } from "node:stream";
 import {
   type AgentLink,
   type AgentSnapshot,
@@ -41,7 +42,7 @@ export class WorkerClient implements AgentLink {
   getSnapshot?: () => Promise<AgentSnapshot>;
 
   constructor(
-    private readonly socket: Socket,
+    private readonly socket: Duplex,
     control: boolean,
     timeout = 10_000,
   ) {
@@ -134,9 +135,8 @@ export class WorkerClient implements AgentLink {
       });
       socket.on("error", (error) => fail(`worker connection failed: ${error.message}`));
       socket.on("close", () => fail("worker connection closed"));
-      socket.once("connect", () => {
-        socket.write(encodeJsonLine({ type: "hello", version: WORKER_PROTOCOL_VERSION, control }));
-      });
+      // Socket queues this until connected; pipes are already writable.
+      socket.write(encodeJsonLine({ type: "hello", version: WORKER_PROTOCOL_VERSION, control }));
     });
   }
 

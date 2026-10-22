@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
+	"github.com/gshpychka/realm/packages/bay/internal/machines"
 	"github.com/gshpychka/realm/packages/bay/internal/records"
 )
 
@@ -77,6 +78,7 @@ type fakeInstance struct {
 	guest   [][]string
 	history string
 	files   string
+	machine *machines.Selection
 }
 
 func newFakeInstances() *fakeInstances {
@@ -91,13 +93,13 @@ func (f *fakeInstances) get(name string) (*fakeInstance, error) {
 	return inst, nil
 }
 
-func (f *fakeInstances) Create(_ context.Context, name, sessionID string) error {
+func (f *fakeInstances) Create(_ context.Context, name, sessionID string, machine *machines.Selection) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.instances[name]; ok {
 		return fmt.Errorf("instance %s exists", name)
 	}
-	f.instances[name] = &fakeInstance{sessionID: sessionID, cid: uint32(100 + len(f.instances))}
+	f.instances[name] = &fakeInstance{sessionID: sessionID, cid: uint32(100 + len(f.instances)), machine: machine}
 	return nil
 }
 

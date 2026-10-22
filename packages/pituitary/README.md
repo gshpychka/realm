@@ -122,7 +122,7 @@ nix run /path/to/realm#pituitary -- --continue     # any pi argument passes thro
 `pituitary` drives the `pi` on `PATH` with your own settings, extensions, and sessions.
 An explicit `--mode text|json|rpc`, like `--print`, `--help`, or `--version`, runs pi directly.
 
-### Managed local runs
+### Managed runs
 
 ```sh
 pituitary run --name review                    # opens a persistent native conversation
@@ -135,16 +135,42 @@ pituitary stop audit
 
 Closing the managed UI detaches; the worker continues. Attaching again opens the same
 conversation. One client controls input while observers can inspect it. `stop` explicitly
-ends the worker and retains its conversation and run journal. Run names stay reserved so
+shuts down the worker and retains its conversation and run journal. Run names stay reserved so
 reconnecting cannot silently target later work with the same name.
 
-These are local workers running with the operator's permissions. Bay-backed scheduling,
-delegation, and result integration are later milestones. The native worker uses existing
-Pi credentials and model preferences, with controlled resource discovery: ambient
+Without `--agent`, these are local workers running with the operator's permissions.
+The native worker uses existing Pi credentials and model preferences, with controlled resource discovery: ambient
 extensions, skills, and prompt templates are disabled for this initial managed mode.
 Custom component screens, terminal takeover, and conversation branching remain available
 through ordinary Pituitary. `PI_AGENT_CMD` and `PI_AGENT_ARGS_JSON` configure that ordinary
 RPC path; managed runs use the pinned SDK.
+
+Declared agents run inside their Bay machines:
+
+```sh
+pituitary agents
+pituitary run --agent reviewer --repo gshpychka/realm@main --name isolated-review
+pituitary recover isolated-review             # reconcile an interrupted launch
+pituitary agents --catalog ./agents.json --json
+```
+
+`--catalog FILE` or `PITUITARY_CATALOG` selects a resolved catalog without evaluating
+repository code. A run freezes its role, machine revision, Bay endpoint, and session
+identity. Attaching and inspecting use that saved target. `recover` can reconcile an
+interrupted launch and initialize its existing running worker; it never relaunches an
+ended session or replaces a missing worker. `stop` records the desired stopped state
+before contacting the worker, so a late observation cannot revive it. For Bay runs it
+then suspends the identified VM, preserving its workspace. Result export is not yet
+implemented; an explicit Bay `end` or `rm` can discard workspace changes that have not
+been copied out.
+
+Role initialization fixes the model, instructions, and tool selection for the worker's
+conversation. A read-only role cannot bypass its tool selection through the operator's
+`!` shell command. Tool restrictions do not sandbox commands when the role permits Bash.
+Named credential delivery is not implemented: agents requesting a nonempty `credentials`
+list are rejected before launch. Fresh guests still need provider access supplied
+separately. Automatic delegation, a background scheduler, and result integration remain
+later milestones.
 
 `--state DIR` or `PITUITARY_STATE_DIR` selects an isolated run store. Its default is
 `$XDG_STATE_HOME/pituitary` or `~/.local/state/pituitary`. Credentials stay outside saved
@@ -154,9 +180,54 @@ credential and model-preference sources.
 From the checkout, `just harness run --name review` and `just harness attach review`
 execute source without a system rebuild. The dev shell keeps managed state in `.pi/runs`.
 
-### Declaring an agent machine
+### Declaring agent machines
 
-Realm exposes `lib.pituitaryAgent` to evaluate an agent as a real NixOS guest:
+The host module registers agents, their real NixOS machines, and their Bay programs:
+
+```nix
+{
+  imports = [ realm.nixosModules.pituitary ];
+  networking.hostId = "8425e349"; # Bay's ZFS storage needs a host ID
+  services.bay.network.address = "10.80.0.1/24";
+  services.pituitary = {
+    enable = true;
+    operator = "alice";
+    agents = {
+      reviewer = { pkgs, ... }: {
+        environment.systemPackages = [ pkgs.ripgrep pkgs.go ];
+        pituitary.agent = {
+          description = "Review a change and its evidence.";
+          instructions = "Find concrete defects in the supplied result.";
+          model = "anthropic/your-chosen-model";
+          tools = [ "read" "grep" ];
+        };
+      };
+      builder = {
+        imports = [ ./agents/development-machine.nix ];
+        pituitary.agent = {
+          instructions = "Implement one reviewed result.";
+          delegatesTo = [ "reviewer" ];
+        };
+      };
+    };
+  };
+}
+```
+
+Each entry accepts ordinary NixOS imports, packages, and services. The module enables
+Bay, installs the client defaults and `/etc/pituitary/agents.json`, and validates
+delegation references. `delegatesTo` describes future dispatch authority; no autonomous
+delegation is started by declaring it. Configure Bay storage, networking, and capacity
+for the host before enabling the service. This change does not enable Bay on reaper.
+
+Equal machines share an image and, with equal resource allocations, an immutable warm
+base. Role instructions, model, tools, and delegation metadata stay in the runtime
+catalog; editing them does not rebuild guest images. Host CLI changes also stay outside
+the worker package. Machine image/resource revisions are pinned in Bay session records;
+updates prepare new bases and retain earlier ones for existing sessions.
+
+For direct composition, `lib.pituitaryAgent` evaluates one machine without registering
+or launching it:
 
 ```nix
 realm.lib.pituitaryAgent {
@@ -181,8 +252,7 @@ The result exposes `system`, `image`, `manifest`, `manifestFile`, and a Bay `pro
 definition with launch/resume/connect commands. The worker package contains no OpenTUI
 or frontend tools. Role metadata stays in the separate manifest: changing instructions
 or a model preserves the machine image, while changing its packages changes that image.
-Automatic catalog registration, manifest delivery, and Bay's selection of different
-agent machines are subsequent steps; this evaluator does not launch sessions.
+The host module composes these outputs into the runtime catalog and Bay declarations.
 
 ### Home Manager
 

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, extend } from "@opentui/react";
+import { Runtime } from "@pituitary/harness/runtime";
 import { connectWorker } from "@pituitary/harness/worker-client";
 import {
   type AgentLink,
@@ -25,6 +26,8 @@ mark("modules");
 const log = openLog();
 const agent = resolveAgentCommand();
 const workerSocket = process.env.PITUITARY_WORKER_SOCKET;
+const managedRun = process.env.PITUITARY_RUN_ID;
+const managed = Boolean(workerSocket || managedRun);
 
 if (agent.direct) {
   const run = spawnSync(agent.command, agent.args, { stdio: "inherit" });
@@ -34,7 +37,7 @@ if (agent.direct) {
 // A rejection nobody handled belongs in the log; on screen it would cover the UI.
 process.on("unhandledRejection", (reason) => log.write(`unhandled rejection: ${String(reason)}\n`));
 
-const bridge = workerSocket ? undefined : new BridgeHost();
+const bridge = managed ? undefined : new BridgeHost();
 bridge?.onConnect(() => mark("bridge-connected"));
 // Anthropic has not published these headers, so the log keeps the names and values seen,
 // whenever the set of names changes.
@@ -64,7 +67,29 @@ function startAgent(args: readonly string[]): PiRpcClient {
   return started;
 }
 
-let client: AgentLink = workerSocket ? await connectWorker(workerSocket) : startAgent(agent.args);
+let client: AgentLink;
+let workspace: AppProps["workspace"];
+if (managedRun) {
+  const runtime = new Runtime({ stateDirectory: process.env.PITUITARY_STATE_DIR as string });
+  try {
+    const run = runtime.store.get(managedRun);
+    const attached = await runtime.connect(run, true);
+    client = attached;
+    workspace = {
+      cwd: attached.identity.cwd,
+      local: run.execution.kind === "local",
+      ...(run.execution.kind === "bay" ? { label: run.execution.agent.manifest.name } : {}),
+    };
+  } finally {
+    runtime.close();
+  }
+} else if (workerSocket) {
+  const attached = await connectWorker(workerSocket);
+  client = attached;
+  workspace = { cwd: attached.identity.cwd, local: true };
+} else {
+  client = startAgent(agent.args);
+}
 mark("agent-spawned");
 prewarm();
 
@@ -103,7 +128,7 @@ const quit = () => {
     mark("agent-closed");
     bridge?.close();
     mark("bridge-closed");
-    if (workerSocket) {
+    if (managed) {
       const name = process.env.PITUITARY_RUN_NAME;
       process.stdout.write(
         name
@@ -163,13 +188,14 @@ const render = (startWith: AppProps["startWith"] = {}) =>
   root.render(
     <App
       link={client}
+      workspace={workspace}
       bridge={bridge}
       onQuit={quit}
       onSessionFile={(file) => {
         sessionFile = file;
       }}
-      onHandoff={workerSocket ? undefined : (text, sessionFile) => void handoff(text, sessionFile)}
-      onRestart={workerSocket ? undefined : (notice, sessionFile) => void restart(notice, sessionFile)}
+      onHandoff={managed ? undefined : (text, sessionFile) => void handoff(text, sessionFile)}
+      onRestart={managed ? undefined : (notice, sessionFile) => void restart(notice, sessionFile)}
       startWith={startWith}
     />,
   );
