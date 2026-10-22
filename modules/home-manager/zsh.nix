@@ -213,6 +213,25 @@ in
         zle -N zle-keymap-select _set_vi_cursor_shape
         zle -N zle-line-init _set_vi_cursor_shape
 
+        # A remote program (tmux, nvim) whose SSH connection drops never sends
+        # the sequences that undo the input modes it enabled, so they persist in
+        # the local terminal:
+        # - mouse reporting: ZLE's vi keymap swallows the reports, but a
+        #   cooked-mode tty (e.g. the next ssh while it authenticates) echoes
+        #   them as ^[[<35;x;yM
+        # - extended keyboard encoding: keys arrive as escape sequences, whose
+        #   leading ESC switches ZLE from viins to vicmd
+        # After ssh exits, this turns off X10/normal/button/any-event mouse
+        # tracking and SGR encoding, resets xterm modifyOtherKeys, and sets the
+        # kitty keyboard protocol flags to 0.
+        ssh() {
+          command ssh "$@"
+          local rc=$?
+          # /dev/tty keeps the sequences out of redirected output
+          print -n '\e[?9l\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[>4m\e[=0;1u' 2>/dev/null >/dev/tty
+          return $rc
+        }
+
         function cd() {
           builtin cd "$@" && ls
         }
