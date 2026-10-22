@@ -36,6 +36,10 @@ let
       # use the already-tested native packages without changing their tests.
       textual = reuseNative "textual" previous.textual;
       memray = reuseNative "memray" previous.memray;
+      # These optional test graphs also have unchanged native runtimes. Keep
+      # them shared instead of duplicating Django/benchmark checks under QEMU.
+      django = reuseNative "django" previous.django;
+      pytest-benchmark = reuseNative "pytest-benchmark" previous.pytest-benchmark;
       pymodbus = ps.callPackage ./core-dependencies/pymodbus { inherit (previous) pymodbus; };
       pyrate-limiter = ps.callPackage ./core-dependencies/pyrate-limiter {
         inherit (previous) pyrate-limiter;
