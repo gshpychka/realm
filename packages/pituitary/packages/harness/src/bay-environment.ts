@@ -138,7 +138,6 @@ export class BayExecutionEnv implements ExecutionEnv {
     const task = this.writeQueue.then(async () => {
       const stream = await this.connect();
       const bytes = Buffer.from(JSON.stringify(frame) + "\n");
-      if (bytes.length > 1024 * 1024) throw new Error("Bay environment request exceeded its byte limit");
       if (!stream.write(bytes)) await once(stream, "drain");
     });
     this.writeQueue = task.catch(() => {});
@@ -156,6 +155,9 @@ export class BayExecutionEnv implements ExecutionEnv {
     if (this.disposing || context.abortSignal?.aborted) throw new FileError("aborted", "Operation aborted");
     if (this.pending.size >= 128) throw new FileError("invalid", "Too many concurrent environment requests");
     const id = ++this.sequence;
+    const request = { id, op, ...params };
+    if (Buffer.byteLength(JSON.stringify(request)) + 1 > 1024 * 1024)
+      throw new FileError("invalid", "Bay environment request exceeded its byte limit");
     return new Promise<Frame>((resolve, reject) => {
       let aborted = false;
       const abort = () => {
@@ -183,7 +185,7 @@ export class BayExecutionEnv implements ExecutionEnv {
         output,
       });
       context.abortSignal?.addEventListener("abort", abort, { once: true });
-      void this.write({ id, op, ...params }).catch((error) => this.fail(error));
+      void this.write(request).catch((error) => this.fail(error));
       if (context.abortSignal?.aborted) abort();
     });
   }
@@ -422,20 +424,23 @@ export class BayExecutionEnv implements ExecutionEnv {
     if (!parent.ok) return parent;
     const opened = await this.file<number>("openWrite", { path: this.path(path), append }, context, path);
     if (!opened.ok) return opened;
-    try {
-      for (let offset = 0; offset < bytes.length; offset += CHUNK) {
-        const result = await this.file<void>(
-          "writeChunk",
-          { handle: opened.value, data: bytes.subarray(offset, offset + CHUNK).toString("base64") },
-          context,
-          path,
-        );
-        if (!result.ok) return result;
-      }
-      return success(undefined);
-    } finally {
-      await this.file("close", { handle: opened.value }, withoutAbortSignal(context), path);
+    let result = success<void>(undefined);
+    for (let offset = 0; offset < bytes.length; offset += CHUNK) {
+      result = await this.file<void>(
+        "writeChunk",
+        { handle: opened.value, data: bytes.subarray(offset, offset + CHUNK).toString("base64") },
+        context,
+        path,
+      );
+      if (!result.ok) break;
     }
+    const closed = await this.file<void>(
+      "close",
+      { handle: opened.value },
+      withoutAbortSignal(context),
+      path,
+    );
+    return result.ok ? closed : result;
   }
 
   writeFile(path: string, content: string | Uint8Array, context: Context): Promise<Result<void, FileError>> {
@@ -574,10 +579,14 @@ export class BayExecutionEnv implements ExecutionEnv {
       }
       // Finish already queued frames before EOF; new calls are refused above.
       await Promise.race([this.writeQueue, deadline]);
+      const stream = this.stream;
+      if (this.closed || stream.readableEnded) {
+        if (!stream.readableEnded) throw this.closed;
+        return;
+      }
       this.closed = new Error("Bay environment closed");
       for (const waiter of this.pending.values()) waiter.reject(this.closed);
       this.pending.clear();
-      const stream = this.stream;
       // EOF follows the helper's command cleanup, unlike a local socket close.
       const ended = new Promise<void>((resolve, reject) => {
         stream.once("end", resolve);
