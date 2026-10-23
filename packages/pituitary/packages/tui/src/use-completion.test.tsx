@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createTestRenderer } from "@opentui/core/testing";
@@ -9,6 +10,7 @@ import { useCompletion } from "./use-completion.ts";
 
 test("a completed frontend scan cannot offer files to a remote workspace", async () => {
   const directory = mkdtempSync("/tmp/pituitary-completion-");
+  execFileSync("git", ["init", "-q", directory]);
   writeFileSync(join(directory, "HOST_ONLY_SECRET.ts"), "operator file");
   const editor = createRef<EditorHandle>();
   let completion!: ReturnType<typeof useCompletion>;
