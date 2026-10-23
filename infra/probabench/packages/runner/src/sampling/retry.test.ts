@@ -40,7 +40,6 @@ describe("withProviderRetry", () => {
     [retries, "500", responseError(500)],
     [retries, "503", responseError(503)],
     [retries, "529", responseError(529)],
-    [retries, "a 429 with an undecodable body", responseError(429, {}, "Decode")],
     [aborts, "a 200 with an undecodable body", responseError(200, {}, "Decode")],
     [retries, "a transport failure", requestError("Transport")],
     [retries, "a timeout", new Cause.TimeoutException()],

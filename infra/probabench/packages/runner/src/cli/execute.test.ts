@@ -39,6 +39,7 @@ describe("executePlan", () => {
       return Effect.gen(function* () {
         const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a", "vendor/b")));
         expect(error._tag).toBe("HttpResponseError");
+        expect(error.message).toContain("No auth");
         const { runs } = yield* readResults(path);
         expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a"]);
       }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));

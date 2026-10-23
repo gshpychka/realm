@@ -34,8 +34,6 @@ const isTransient = (failure: ProviderFailure): boolean => {
     case "HttpRequestError":
       return failure.reason === "Transport";
     case "HttpResponseError": {
-      // By status alone: a 429 or 500 whose body is not OpenRouter's JSON error arrives
-      // with reason "Decode".
       const { status } = failure.response;
       return status === 408 || status === 429 || status >= 500;
     }

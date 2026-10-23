@@ -3,7 +3,7 @@
 import type * as LanguageModel from "@effect/ai/LanguageModel";
 import * as OpenRouterClient from "@effect/ai-openrouter/OpenRouterClient";
 import * as OpenRouterLanguageModel from "@effect/ai-openrouter/OpenRouterLanguageModel";
-import type * as HttpClient from "@effect/platform/HttpClient";
+import * as HttpClient from "@effect/platform/HttpClient";
 import * as Config from "effect/Config";
 import * as Data from "effect/Data";
 import * as Layer from "effect/Layer";
@@ -40,13 +40,22 @@ const modelConfig = ({ reasoning }: ModelSeries, maxTokens: number): ModelConfig
     ? { max_tokens: NO_REASONING_MAX_TOKENS, reasoning: { enabled: false } }
     : { max_tokens: maxTokens, reasoning: { effort: reasoning } };
 
-/** The client every series' model shares; building it reads the key from the environment. */
+/**
+ * The client every series' model shares; building it reads the key from the environment.
+ *
+ * The adapter decodes a 400, 401, 429 or 500 into an HttpResponseError without
+ * OpenRouter's error body, so the printed failure would not say why, for example
+ * that a model ID is unknown. Failing every non-2xx in the HTTP client instead sends
+ * it through HttpResponseError.fromResponseError, which keeps the status and
+ * Retry-After and appends the body to the message.
+ */
 export const openrouterClientLayer: Layer.Layer<
   OpenRouterClient.OpenRouterClient,
   MissingApiKey,
   HttpClient.HttpClient
 > = OpenRouterClient.layerConfig({
   apiKey: Config.redacted(Config.nonEmptyString("OPENROUTER_API_KEY")),
+  transformClient: HttpClient.filterStatusOk,
 }).pipe(Layer.mapError(() => new MissingApiKey()));
 
 export const openrouterModelLayer = (
