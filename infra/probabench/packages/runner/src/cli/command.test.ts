@@ -10,7 +10,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { MISSING_MODEL_MESSAGE } from "../plan/plan";
 import { ResultsStore } from "../store/results-store";
-import { benchCommand, DEFAULT_OUT, NON_TTY_MESSAGE } from "./command";
+import { benchCommand, HISTORY_PATH, NON_TTY_MESSAGE } from "./command";
 
 // Vitest's stdin is not a TTY, so these cover the non-interactive path.
 const runCommand = (args: readonly string[]) =>
@@ -43,7 +43,6 @@ describe("probabench command", () => {
     ["concurrency", "0"],
     ["max-tokens", "0"],
     ["reasoning", "bogus"],
-    ["out", ""],
   ] as const) {
     it.effect(`rejects --${flag} ${JSON.stringify(value)} before planning`, () =>
       Effect.gen(function* () {
@@ -75,8 +74,8 @@ describe("probabench command", () => {
     }),
   );
 
-  it("defaults --out to the workspace's tracked history", () => {
-    expect(existsSync(DEFAULT_OUT)).toBe(true);
+  it("writes to the workspace's tracked history", () => {
+    expect(existsSync(HISTORY_PATH)).toBe(true);
   });
 
   it.effect("lists aliases without credentials", () => runCommand(["--list"]));

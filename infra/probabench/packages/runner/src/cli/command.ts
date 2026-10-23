@@ -23,7 +23,7 @@ import { executePlan } from "./execute";
  * from this file rather than the working directory; command.test.ts checks that it
  * exists.
  */
-export const DEFAULT_OUT = fileURLToPath(
+export const HISTORY_PATH = fileURLToPath(
   new URL(`../../../../data/${RESULTS_FILE}`, import.meta.url),
 );
 
@@ -81,14 +81,6 @@ const options = {
       "Override reasoning mode (model IDs default to off; aliases keep their own).",
     ),
   ),
-  out: Options.text("out").pipe(
-    // An empty path would pass the preflight and fail only when saving a paid run.
-    Options.withSchema(
-      Schema.NonEmptyString.annotations({ message: () => "--out must be a file path." }),
-    ),
-    Options.withDefault(DEFAULT_OUT),
-    Options.withDescription(`History file (default: the workspace's data/${RESULTS_FILE}).`),
-  ),
   yes: Options.boolean("yes").pipe(
     Options.withAlias("y"),
     Options.withDescription("Skip final confirmation."),
@@ -113,7 +105,7 @@ export const benchCommand = Command.make("probabench", options, (flags) =>
         concurrency: flags.concurrency,
         maxTokens: flags.maxTokens,
       },
-      out: flags.out,
+      out: HISTORY_PATH,
     });
     yield* Console.log(describePlan(plan));
     if (flags.dryRun) return;
