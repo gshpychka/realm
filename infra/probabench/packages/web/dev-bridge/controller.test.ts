@@ -2,8 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { EventEmitter, once } from "node:events";
 import { PassThrough } from "node:stream";
 import { setImmediate as flush } from "node:timers/promises";
+import { afterEach, beforeEach, describe, expect, it, vi } from "@effect/vitest";
 import { benchArgs, formatPointProgress, Probability } from "@probabench/domain";
-import { describe, expect, it, vi } from "vitest";
 import { createBenchController } from "./controller";
 
 const request = {
@@ -35,21 +35,21 @@ const exit = async (child: FakeChild, code: number | null) => {
   child.emit("close", code);
 };
 
-const withFake = (configured = true) => {
-  const child = fakeChild();
+const withFake = ({ configured = true, started = true } = {}) => {
+  const child = fakeChild({ started });
   const launch = vi.fn((_args: readonly string[]) => child as unknown as ChildProcess);
   return { child, launch, controller: createBenchController({ configured, launch }) };
 };
 
 describe("createBenchController", () => {
   it("does not launch before a key is configured", () => {
-    const { launch, controller } = withFake(false);
+    const { launch, controller } = withFake({ configured: false });
     expect(controller.status().configured).toBe(false);
     expect(() => controller.start(request)).toThrow("OPENROUTER_API_KEY");
     expect(launch).not.toHaveBeenCalled();
   });
 
-  it("passes the request as runner flags with --yes and the runner's own --out", () => {
+  it("passes the request as runner flags plus --yes, leaving --out at the runner's default", () => {
     const { launch, controller } = withFake();
     controller.start({ ...request, reasoning: "low" });
     expect(launch).toHaveBeenCalledWith([...benchArgs({ ...request, reasoning: "low" }), "--yes"]);
@@ -103,6 +103,34 @@ describe("createBenchController", () => {
     expect(controller.status().job?.status).toBe("cancelled");
   });
 
+  describe("after a cancel", () => {
+    // setImmediate stays real, so exit() still flushes the streams.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("kills a runner that ignores SIGTERM, signalling each once", () => {
+      const { child, controller } = withFake();
+      controller.start(request);
+      controller.cancel();
+      controller.cancel();
+      vi.advanceTimersByTime(3_000);
+      expect(child.kill.mock.calls).toEqual([["SIGTERM"], ["SIGKILL"]]);
+    });
+
+    it("does not SIGKILL a runner that exits in time", async () => {
+      const { child, controller } = withFake();
+      controller.start(request);
+      controller.cancel();
+      await exit(child, 0);
+      vi.advanceTimersByTime(3_000);
+      expect(child.kill.mock.calls).toEqual([["SIGTERM"]]);
+    });
+  });
+
   it("answers a cancel with no run with the current status", () => {
     const { controller } = withFake();
     expect(controller.cancel()).toEqual({ configured: true, job: null });
@@ -119,11 +147,7 @@ describe("createBenchController", () => {
   });
 
   it("explains a runner that never started", async () => {
-    const child = fakeChild({ started: false });
-    const controller = createBenchController({
-      configured: true,
-      launch: () => child as unknown as ChildProcess,
-    });
+    const { child, controller } = withFake({ started: false });
     controller.start(request);
     child.emit("error", new Error("spawn bun ENOENT"));
     await exit(child, -2);
