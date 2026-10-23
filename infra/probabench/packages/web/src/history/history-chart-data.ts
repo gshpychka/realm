@@ -42,7 +42,7 @@ const timeTickFormat = (span: number): Intl.DateTimeFormat =>
         },
   );
 
-/** Each model owns its timeline. Null errors break lines; timestamp ties retain append order. */
+/** Each model owns its timeline; a null error breaks its line. */
 export const buildHistoryChartModel = (
   runs: readonly Run[],
   styles: ReadonlyMap<string, ModelStyle>,

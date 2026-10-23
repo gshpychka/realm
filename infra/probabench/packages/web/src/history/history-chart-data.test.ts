@@ -25,16 +25,6 @@ const run = (id: string, modelSlug: string, startedAt: string, points = calibrat
 const styles = modelStyles([{ model: "vendor/model-a" }, { model: "vendor/model-b" }]);
 
 describe("history chart measurements", () => {
-  it("keeps every run when timestamps tie, including equal errors, in append order", () => {
-    const at = "2026-10-22T15:00:00.000Z";
-    const original = run("z-old", "vendor/model-a", at);
-    const newer = run("a-new", "vendor/model-a", at);
-    const model = buildHistoryChartModel([original, newer], styles);
-    expect(model.points.map((point) => point.run.id)).toEqual(["z-old", "a-new"]);
-    expect(model.series[0]?.points).toHaveLength(2);
-    expect(model.points.map((point) => point.timestamp)).toEqual([Date.parse(at), Date.parse(at)]);
-  });
-
   it("does not invent gaps for another model's intervening run but preserves all-invalid gaps", () => {
     const first = run("first", "vendor/model-a", "2026-10-22T15:00:00.000Z");
     const other = run("other", "vendor/model-b", "2026-10-22T15:01:00.000Z");

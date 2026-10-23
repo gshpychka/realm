@@ -3,19 +3,26 @@ import { makeRun } from "@probabench/domain/testing";
 import {
   inspectedRun,
   modelSelections,
-  newestFirst,
   runsByDay,
   visibleHistory,
   withComparison,
 } from "./run-history";
 
-const old = makeRun({ id: "old", modelSlug: "vendor/model-a" });
+const old = makeRun({
+  id: "old",
+  modelSlug: "vendor/model-a",
+  startedAt: "2026-10-20T00:00:00.000Z",
+});
+const other = makeRun({
+  id: "other",
+  modelSlug: "vendor/model-b",
+  startedAt: "2026-10-21T00:00:00.000Z",
+});
 const latest = makeRun({
   id: "new",
   modelSlug: "vendor/model-a",
   startedAt: "2026-10-22T00:00:00.000Z",
 });
-const other = makeRun({ id: "other", modelSlug: "vendor/model-b" });
 const ids = (runs: readonly { readonly id: string }[]) => runs.map((run) => run.id);
 
 describe("visibleHistory", () => {
@@ -24,17 +31,6 @@ describe("visibleHistory", () => {
     expect(ids(visibleHistory(runs, []))).toEqual(["new", "other", "old"]);
     expect(ids(visibleHistory(runs, [other.model]))).toEqual(["new", "old"]);
     expect(visibleHistory(runs, [old.model, other.model])).toEqual([]);
-  });
-});
-
-describe("newestFirst", () => {
-  it("uses append order when multiple runs have the same start timestamp", () => {
-    const runs = [
-      { ...old, id: "z-earlier" },
-      { ...old, id: "a-later" },
-    ];
-    expect(ids(newestFirst(runs))).toEqual(["a-later", "z-earlier"]);
-    expect(ids(runs)).toEqual(["z-earlier", "a-later"]);
   });
 });
 

@@ -1,8 +1,8 @@
 import type { Run } from "@probabench/domain";
 
-/** Reversing first makes the stable sort put later-appended runs first among equal timestamps. */
+/** Latest start first. */
 export const newestFirst = (runs: readonly Run[]): Run[] =>
-  runs.toReversed().sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  runs.toSorted((a, b) => b.startedAt.localeCompare(a.startedAt));
 
 /** The model filter shared by the history graph, list and inspector. */
 export const visibleHistory = (runs: readonly Run[], hidden: readonly string[]): Run[] => {

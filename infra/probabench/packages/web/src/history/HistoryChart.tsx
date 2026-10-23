@@ -72,7 +72,6 @@ const emptyPlot = (points: readonly HistoryPoint[]) => {
   return null;
 };
 
-/** Per-model timelines keep a break for each run without valid replies, and every run on a tied timestamp. */
 export function HistoryChart({
   runs,
   styles,
