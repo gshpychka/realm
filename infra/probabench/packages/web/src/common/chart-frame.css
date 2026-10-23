@@ -49,8 +49,8 @@
     margin-right: -7px;
   }
 }
-/* Keep the focus ring inside the svg, which fills its box. */
-.recharts-surface:focus {
+/* Keep the chart's focus ring inside its svg, which fills the plot. */
+.plot svg:focus-visible {
   outline-offset: -2px;
 }
 .plot-empty {
