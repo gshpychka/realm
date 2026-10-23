@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Job } from "../bridge/protocol";
 import type { Bridge } from "../bridge/use-bridge";
 import { JobProgress } from "./JobProgress";
-import { initialSettings, SetupForm } from "./SetupForm";
+import { SetupForm } from "./SetupForm";
+import { DEFAULT_SETTINGS } from "./settings";
 import "./setup.css";
 
 const heading = (job: Job | null): string => {
@@ -27,7 +28,7 @@ export function RunSetup({
   const dialog = useRef<HTMLDialogElement>(null);
   const latest = bridge.connection.kind === "local" ? bridge.connection.status.job : null;
   // Kept here rather than in SetupForm, so viewing a job and coming back keeps the edits.
-  const [settings, setSettings] = useState(initialSettings);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [setAsideJobId, setSetAsideJobId] = useState<string | null>(null);
   const job =
     latest && (latest.status === "running" || latest.id !== setAsideJobId) ? latest : null;

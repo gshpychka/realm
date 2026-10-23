@@ -14,24 +14,7 @@ import { BenchRequest, BROWSER_LIMITS, firstIssue } from "../bridge/protocol";
 import type { Bridge, Connection } from "../bridge/use-bridge";
 import { count } from "../common/format";
 import { FormError } from "./FormError";
-import { DEFAULT_REQUEST, presetFor } from "./run-settings";
-
-/** What the form edits. Number fields can hold 0 or NaN while the user types. */
-export interface Settings {
-  readonly model: string;
-  readonly trialsPerStep: number;
-  readonly stepPercent: number;
-  readonly concurrency: number;
-  readonly reasoning: ReasoningMode | undefined;
-  /** Whether the custom sampling inputs are open. */
-  readonly custom: boolean;
-}
-
-export const initialSettings: Settings = {
-  ...DEFAULT_REQUEST,
-  reasoning: undefined,
-  custom: false,
-};
+import { presetFor, type Settings } from "./settings";
 
 const submitLabel = (connection: Connection["kind"], pending: boolean): string =>
   connection === "connecting" ? "Connecting…" : pending ? "Starting…" : "Start benchmark";
