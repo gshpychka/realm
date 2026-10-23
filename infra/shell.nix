@@ -19,12 +19,13 @@ let
     p.tailscale_tailscale
   ]);
   # sops exec-env takes one command string, which a shell re-parses, so each
-  # argument is requoted with printf %q
+  # argument is requoted with bash's ${*@Q}, which, unlike printf %q, expands to
+  # nothing when there are no arguments
   sopsExecEnv =
     name: envFile: command:
     pkgs.writeShellScriptBin name ''
       ${lib.getExe pkgs.sops} exec-env "$REPO_ROOT/secrets/infra/${envFile}" \
-        "${command} $(printf '%q ' "$@")"
+        "${command} ''${*@Q}"
     '';
 in
 pkgs.mkShell {
