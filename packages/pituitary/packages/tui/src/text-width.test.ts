@@ -11,3 +11,11 @@ test("clipping preserves wide and composed graphemes without skipping over them"
   expect(tailCells("資料", -2)).toBe("");
   expect(ellipsize("資料", 1)).toBe("…");
 });
+
+test("clipping measures the accumulated regional-indicator sequences", () => {
+  for (const clip of [headCells, tailCells, ellipsize]) {
+    for (let width = 0; width <= 8; width++) {
+      expect(Bun.stringWidth(clip("🇺🇦a🇺🇦b🇺🇦", width))).toBeLessThanOrEqual(width);
+    }
+  }
+});
