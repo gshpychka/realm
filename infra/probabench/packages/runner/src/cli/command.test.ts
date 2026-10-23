@@ -2,6 +2,7 @@ import * as Command from "@effect/cli/Command";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as NodeContext from "@effect/platform-node/NodeContext";
 import { describe, expect, it } from "@effect/vitest";
+import { benchArgs } from "@probabench/domain";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -75,16 +76,15 @@ describe("probabench command", () => {
 
   it.effect("lists aliases without credentials", () => runCommand(["--list"]));
 
-  it.effect("dry-runs any OpenRouter model ID without credentials or confirmation", () =>
+  it.effect("parses the flags the dev bridge and setup form build, without credentials", () =>
     runCommand([
-      "--model",
-      "vendor/future-model:free",
-      "--step",
-      "30",
-      "--trials",
-      "2",
-      "--reasoning",
-      "low",
+      ...benchArgs({
+        model: "vendor/future-model:free",
+        trialsPerStep: 2,
+        stepPercent: 30,
+        concurrency: 5,
+        reasoning: "low",
+      }),
       "--dry-run",
     ]),
   );

@@ -52,19 +52,6 @@ export const BridgeRequest = BenchRequest.pipe(
 );
 export type BridgeRequest = typeof BridgeRequest.Type;
 
-/** Runner flags for a request: the bridge spawns them, and the form prints them as a command. */
-export const benchArgs = (request: BenchRequest): string[] => [
-  "--model",
-  request.model,
-  "--trials",
-  String(request.trialsPerStep),
-  "--step",
-  String(request.stepPercent),
-  "--concurrency",
-  String(request.concurrency),
-  ...(request.reasoning === undefined ? [] : ["--reasoning", request.reasoning]),
-];
-
 /** One run started from the page, with the tail of the runner's output. */
 export const Job = Schema.Struct({
   id: Schema.String,

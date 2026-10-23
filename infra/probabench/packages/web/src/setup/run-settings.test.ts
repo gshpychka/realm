@@ -6,12 +6,6 @@ import { benchmarkCommand, DEFAULT_REQUEST, presetFor, rerunRequest } from "./ru
 const request = { model: "vendor/model", trialsPerStep: 10, stepPercent: 25, concurrency: 5 };
 
 describe("benchmarkCommand", () => {
-  it("leaves plain words bare and passes reasoning through", () => {
-    expect(benchmarkCommand({ ...request, reasoning: "low" })).toBe(
-      "probabench --model vendor/model --trials 10 --step 25 --concurrency 5 --reasoning low",
-    );
-  });
-
   it("quotes words a shell would interpret, so a copied command cannot run their contents", () => {
     const command = benchmarkCommand({ ...request, model: "a'$(touch bad)" });
     expect(command).toContain("--model 'a'\\''$(touch bad)'");

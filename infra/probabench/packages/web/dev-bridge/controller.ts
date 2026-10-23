@@ -3,8 +3,8 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { stripVTControlCharacters } from "node:util";
-import { parsePointProgress } from "@probabench/domain";
-import { type BridgeRequest, type BridgeStatus, benchArgs, type Job } from "../src/bridge/protocol";
+import { benchArgs, parsePointProgress } from "@probabench/domain";
+import type { BridgeRequest, BridgeStatus, Job } from "../src/bridge/protocol";
 
 export class RequestError extends Error {
   constructor(

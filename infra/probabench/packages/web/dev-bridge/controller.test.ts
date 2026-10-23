@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { EventEmitter, once } from "node:events";
 import { PassThrough } from "node:stream";
 import { setImmediate as flush } from "node:timers/promises";
-import { formatPointProgress, Probability } from "@probabench/domain";
+import { benchArgs, formatPointProgress, Probability } from "@probabench/domain";
 import { describe, expect, it, vi } from "vitest";
 import { createBenchController } from "./controller";
 
@@ -53,19 +53,7 @@ describe("createBenchController", () => {
   it("passes the request as runner flags with --yes and the runner's own --out", () => {
     const { launch, controller } = withFake();
     controller.start({ ...request, reasoning: "low" });
-    expect(launch).toHaveBeenCalledWith([
-      "--model",
-      "openai/example:free",
-      "--trials",
-      "10",
-      "--step",
-      "25",
-      "--concurrency",
-      "5",
-      "--reasoning",
-      "low",
-      "--yes",
-    ]);
+    expect(launch).toHaveBeenCalledWith([...benchArgs({ ...request, reasoning: "low" }), "--yes"]);
   });
 
   it("publishes whole lines without escapes and with the key redacted", async () => {

@@ -1,9 +1,15 @@
 // What the setup form starts from and what it shows: presets, defaults and the
 // terminal command for a request.
-import { MODEL_ALIASES, type Run, SAMPLING_PRESETS, type SamplingPreset } from "@probabench/domain";
+import {
+  benchArgs,
+  MODEL_ALIASES,
+  type Run,
+  SAMPLING_PRESETS,
+  type SamplingPreset,
+} from "@probabench/domain";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { BenchRequest, benchArgs } from "../bridge/protocol";
+import { BenchRequest } from "../bridge/protocol";
 
 /** A request handed to the setup form; a new key makes the form take it again. */
 export type BenchmarkDraft = BenchRequest & { readonly key: string };
