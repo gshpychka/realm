@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -8,6 +8,7 @@ import {
   defineExtension,
   defineTool,
   Harness,
+  LiveDoc,
   MemoryStorage,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -301,6 +302,7 @@ test("an archived partial survives a different completed assistant with the same
     control: true,
     onRecord: () => {},
   });
+  const archivedRecords: ConversationUpdate[] = [];
   let archive: Awaited<ReturnType<typeof openConversation>> | undefined;
   try {
     await active.call({ type: "prompt", message: "Continue" });
@@ -317,17 +319,123 @@ test("an archived partial survives a different completed assistant with the same
       models,
       identity: { ...identity, archived: true },
       control: false,
-      onRecord: () => {},
+      onRecord: (record) => archivedRecords.push(record),
     });
     const snapshot = await archive.snapshot();
     expect(JSON.stringify(snapshot.messages)).toContain("An older reply");
     expect(JSON.stringify(snapshot.messages)).toContain("Interrupted");
     expect(snapshot.state.isStreaming).toBe(false);
     expect(snapshot.streamingMessage).toBeUndefined();
+    await conversation.abort(context);
+    expect(await archive.snapshot()).toEqual(snapshot);
+    expect(archivedRecords).toEqual([]);
   } finally {
     await archive?.close();
     await active.close();
     await conversation.abort(context);
+    await harness.close(context);
+  }
+});
+
+test("presentation names notify every native attachment and retry snapshots retain their deadline", async () => {
+  const models = createModels(),
+    harness = await Harness.open(new MemoryStorage(), { models, registry: createRegistry() }, context);
+  const conversation = await harness.root(context, { agent: {} }),
+    records: ConversationUpdate[] = [];
+  const options = {
+    harness,
+    conversation,
+    models,
+    identity,
+    control: true,
+    onRecord: (record: ConversationUpdate) => records.push(record),
+  };
+  const first = await openConversation(options),
+    second = await openConversation(options);
+  try {
+    await first.snapshot();
+    await second.snapshot();
+    await first.call({ type: "set_session_name", name: "Shared native name" });
+    expect(
+      records.filter((record) => record.type === "event" && record.event.type === "session_info_changed"),
+    ).toHaveLength(2);
+    expect((await second.snapshot()).state.sessionName).toBe("Shared native name");
+    const at = Date.now() + 10_000;
+    await conversation.commit(async (tx) => {
+      (await tx.doc(LiveDoc, conversation.id)).generation = {
+        attempt: 2,
+        retry: { at, error: "Try again later" },
+      };
+    }, context);
+    expect((await second.snapshot()).retry).toEqual({ attempt: 2, at, errorMessage: "Try again later" });
+  } finally {
+    await first.close();
+    await second.close();
+    await harness.close(context);
+  }
+});
+
+test("native overflow snapshots rebase later tool output updates", async () => {
+  const models = createModels(),
+    harness = await Harness.open(new MemoryStorage(), { models, registry: createRegistry() }, context);
+  const conversation = await harness.root(context, { agent: {} });
+  await conversation.commit(async (tx) => {
+    (await tx.doc(LiveDoc, conversation.id)).tools = [
+      { callId: "call", name: "echo", status: "running", output: "old" },
+    ];
+  }, context);
+  let release!: () => void, acquired!: () => void;
+  const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+    paused = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+  const projection = spyOn(harness, "snapshot").mockImplementationOnce(async () => {
+    acquired();
+    await gate;
+    return undefined;
+  });
+  const records: ConversationUpdate[] = [];
+  const opening = openConversation({
+    harness,
+    conversation,
+    models,
+    identity,
+    control: true,
+    onRecord: (record) => records.push(record),
+  });
+  await paused;
+  for (let index = 0; index < 101; index++)
+    await conversation.commit(async (tx) => {
+      (await tx.doc(LiveDoc, conversation.id)).tools![0]!.output = `new${index}`;
+    }, context);
+  release();
+  const bridge = await opening;
+  try {
+    const until = async (done: () => boolean) => {
+      const deadline = Date.now() + 1000;
+      while (!done()) {
+        if (Date.now() > deadline) throw new Error("Native watch update did not arrive");
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+    };
+    await until(() => records.some((record) => record.type === "snapshot"));
+    await conversation.commit(async (tx) => {
+      (await tx.doc(LiveDoc, conversation.id)).tools![0]!.output += "+";
+    }, context);
+    await until(() =>
+      records.some((record) => record.type === "event" && record.event.type === "tool_execution_update"),
+    );
+    const update = records.findLast(
+      (record) => record.type === "event" && record.event.type === "tool_execution_update",
+    );
+    expect(update).toMatchObject({
+      event: { partialResult: { content: [{ type: "text", text: "new100+" }] } },
+    });
+  } finally {
+    projection.mockRestore();
+    await bridge.close();
     await harness.close(context);
   }
 });

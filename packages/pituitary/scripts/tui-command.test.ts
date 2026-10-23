@@ -34,6 +34,8 @@ describe("development CLI arguments", () => {
       expect(() => parseCommand(["start", `--cols=${value}`])).toThrow("positive integer");
     }
     expect(parseCommand(["start", "--delay", "0"]).options.delay).toBe("0");
+    expect(parseCommand(["start", "--delay", "2147483647"]).options.delay).toBe("2147483647");
+    expect(() => parseCommand(["start", "--delay", "2147483648"])).toThrow("at most 2147483647");
     expect(() => parseCommand(["start", "--delay=-1"])).toThrow("nonnegative integer");
     expect(() => parseCommand(["resize", "1000000000", "1000000000"])).toThrow("at most 1000");
     expect(() => parseCommand(["start", "--settle", "no"])).toThrow("true or false");

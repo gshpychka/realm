@@ -340,3 +340,11 @@ describe("parts", () => {
     expect(at(93)).toBe(gruvbox.bright_red);
   });
 });
+
+test("assembled flag footer rows fit without additive width assumptions", () => {
+  const parts = footerParts(props({ state: null, stats: null, cwd: "/🇺🇦a🇺🇦", branch: "🇺🇦" }));
+  for (const palette of PALETTE_NAMES)
+    for (let columns = 1; columns <= 40; columns++)
+      for (const row of footerRows(parts, columns, footerStyle({ PITUITARY_FOOTER_PALETTE: palette }), false))
+        expect(Bun.stringWidth(text(row.left) + text(row.right)) + row.hearth).toBeLessThanOrEqual(columns);
+});
