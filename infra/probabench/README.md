@@ -99,7 +99,10 @@ bun run check   # types, tests and the production build; no test calls OpenRoute
 
 `nix build .#checks.x86_64-linux.probabench` runs the same check offline from
 `bun.nix`, which `bun install` regenerates; commit it with `bun.lock`. `nix fmt`
-formats with Realm's Biome config, and `nix flake check` lints with it.
+formats with Realm's Biome config, and `nix flake check` lints with it. Biome's
+noDescendingSpecificity is off for these stylesheets: classes style their own
+children (`.x > span`), which the rule reports as conflicts between unrelated
+elements.
 
 Imported from the standalone probabench repository at `3694e6a`; that
 repository and its flake are retired.

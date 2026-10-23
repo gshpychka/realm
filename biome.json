@@ -21,10 +21,19 @@
   },
   "linter": {
     "rules": {
-      "preset": "recommended",
-      "style": {
-        "noDescendingSpecificity": "off"
+      "preset": "recommended"
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["infra/probabench/**/*.css"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
       }
     }
-  }
+  ]
 }
