@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { duraOptions, piCommand, resumePiArgs } from "./cli.ts";
 import { PiConversation, type PiUiRequest } from "./pi.ts";
@@ -29,15 +31,69 @@ test("regular Pi keeps its executable, options and positional task separate", ()
   ).toEqual(["--extension", "mine.ts", "--session", "/tmp/session"]);
 });
 
-test("Dura is explicitly selected and requires its state", () => {
+test("Dura is selected only by --dura, not its environment defaults", () => {
   expect(duraOptions([], {})).toBeUndefined();
-  expect(duraOptions(["--dura", "team", "--state", "/tmp/state", "--watch"], {})).toEqual({
+  expect(
+    duraOptions(["--model", "provider/model", "fix the tests"], {
+      DURA_STATE_DIR: "/tmp/state",
+      DURA_RUNTIME_SOCKET: "/tmp/runtime.sock",
+    }),
+  ).toBeUndefined();
+});
+
+test("Dura uses its canonical local state without requiring --state or --socket", () => {
+  expect(duraOptions(["--dura", "team"], {})).toEqual({
+    run: "team",
+    state: join(homedir(), ".local", "state", "dura"),
+    watch: false,
+  });
+  expect(duraOptions(["--dura", "team"], { XDG_STATE_HOME: "/tmp/xdg-state" })).toEqual({
+    run: "team",
+    state: "/tmp/xdg-state/dura",
+    watch: false,
+  });
+});
+
+test("Dura state selection prefers --state, then DURA_STATE_DIR, then XDG state", () => {
+  const environment = { DURA_STATE_DIR: "/tmp/configured-state", XDG_STATE_HOME: "/tmp/xdg-state" };
+  expect(duraOptions(["--dura", "team"], environment)).toEqual({
+    run: "team",
+    state: "/tmp/configured-state",
+    watch: false,
+  });
+  expect(duraOptions(["--dura", "team", "--state", "/tmp/state", "--watch"], environment)).toEqual({
     run: "team",
     state: "/tmp/state",
     watch: true,
   });
-  expect(() => duraOptions(["--dura", "team"], {})).toThrow("--state");
-  expect(() => duraOptions(["--dura", "team", "--state"], {})).toThrow("requires a value");
+});
+
+test("Dura sockets remain explicit and do not require --state", () => {
+  const environment = { XDG_STATE_HOME: "/tmp/xdg-state", DURA_RUNTIME_SOCKET: "/tmp/configured.sock" };
+  expect(duraOptions(["--dura", "team"], environment)).toEqual({
+    run: "team",
+    state: "/tmp/xdg-state/dura",
+    socket: "/tmp/configured.sock",
+    watch: false,
+  });
+  expect(
+    duraOptions(["--dura", "team", "--socket", "/tmp/tunnel.sock", "--task", "child-task"], environment),
+  ).toEqual({
+    run: "team",
+    state: "/tmp/xdg-state/dura",
+    socket: "/tmp/tunnel.sock",
+    task: "child-task",
+    watch: false,
+  });
+});
+
+test("Dura rejects unknown options and missing values even with state defaults", () => {
+  for (const flag of ["--dura", "--state", "--task", "--socket"]) {
+    const argv = flag === "--dura" ? [flag] : ["--dura", "team", flag];
+    expect(() => duraOptions(argv, {})).toThrow(`${flag} requires a value`);
+    expect(() => duraOptions([...argv, "--watch"], {})).toThrow(`${flag} requires a value`);
+  }
+  expect(() => duraOptions(["--dura", "team", "--unknown"], {})).toThrow("Unknown Dura frontend option");
 });
 
 test("Pi RPC preserves arguments and extension requests emitted during startup", async () => {

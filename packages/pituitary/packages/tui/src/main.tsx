@@ -23,7 +23,7 @@ const argv = process.argv.slice(2);
 try {
   if (argv.includes("--help") || argv.includes("-h")) {
     process.stdout.write(
-      `Pituitary — your terminal frontend for Pi and Dura\n\n  pituitary [Pi options] [task]\n  pituitary --dura RUN --state DIRECTORY [--task TASK] [--socket PATH] [--watch]\n\nPlain Pituitary uses your Pi settings, extensions, sessions and /login.\nDura connects to a durable team; closing the frontend leaves its work running.\n\nPi options:\n`,
+      `Pituitary — your terminal frontend for Pi and Dura\n\n  pituitary [Pi options] [task]\n  pituitary --dura RUN [--state DIRECTORY] [--task TASK] [--socket PATH] [--watch]\n\nPlain Pituitary uses your Pi settings, extensions, sessions and /login.\nDura connects to a durable team; closing the frontend leaves its work running.\nDura state: --state DIRECTORY, then DURA_STATE_DIR, then $XDG_STATE_HOME/dura\n(or ~/.local/state/dura when XDG_STATE_HOME is unset).\nDura socket: --socket PATH or DURA_RUNTIME_SOCKET; otherwise use the local state socket.\n\nPi options:\n`,
     );
     const command = piCommand(["--help"]);
     process.exit(spawnSync(command.command, command.args, { stdio: "inherit" }).status ?? 1);

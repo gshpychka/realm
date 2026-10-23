@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 export interface PiCommand {
   command: string;
   args: string[];
@@ -110,10 +113,12 @@ export function duraOptions(
     if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
     options[key] = value;
   }
-  options.state ??= environment.DURA_STATE_DIR;
+  options.state ??=
+    environment.DURA_STATE_DIR ??
+    join(environment.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "dura");
   options.socket ??= environment.DURA_RUNTIME_SOCKET;
-  if (!options.run || !options.state)
-    throw new Error("Use pituitary --dura RUN --state DIRECTORY [--task TASK] [--socket PATH] [--watch]");
+  if (!options.run)
+    throw new Error("Use pituitary --dura RUN [--state DIRECTORY] [--task TASK] [--socket PATH] [--watch]");
   return options as DuraOptions;
 }
 
