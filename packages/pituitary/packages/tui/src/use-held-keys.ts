@@ -19,7 +19,7 @@ export function useHeldKeys(
   holding: boolean,
   /** A new operator dialog must not receive keys meant for the draft. */
   boundary: object | null = null,
-): void {
+): (work: Promise<void>) => void {
   const held = useRef<{ key: KeyEvent; boundary: object | null }[]>([]);
   const replaying = useRef(false);
   const mounted = useRef(true);
@@ -41,15 +41,20 @@ export function useHeldKeys(
     };
   }, []);
 
+  // Commands submitted by the editor can start after its global key handler returns.
+  // Register that work immediately, before another key can reach the draft.
+  const waitFor = (work: Promise<void>) => {
+    if (pending.current === work) return;
+    pending.current = work;
+    const done = () => {
+      if (pending.current === work) pending.current = null;
+      if (mounted.current) release((count) => count + 1);
+    };
+    void work.then(done, done);
+  };
   const dispatch = (key: KeyEvent) => {
     const work = latest.current(key);
-    if (work) {
-      pending.current = work;
-      void work.finally(() => {
-        if (pending.current === work) pending.current = null;
-        if (mounted.current) release((count) => count + 1);
-      });
-    }
+    if (work) waitFor(work);
   };
 
   useKeyboard((key) => {
@@ -57,8 +62,9 @@ export function useHeldKeys(
       dispatch(key);
       return;
     }
-    const waiting = pending.current || held.current.length > 0 || (!typed(key) && editor.current?.busy());
-    if (!waiting || !holding) {
+    const waiting =
+      pending.current || held.current.length > 0 || (holding && !typed(key) && editor.current?.busy());
+    if (!waiting) {
       dispatch(key);
       return;
     }
@@ -90,4 +96,5 @@ export function useHeldKeys(
     }
     if (held.current.length > 0 && !pending.current) release((count) => count + 1);
   }, [released]);
+  return waitFor;
 }
