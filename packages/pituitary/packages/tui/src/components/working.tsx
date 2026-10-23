@@ -3,6 +3,7 @@ import type { SessionView } from "@pituitary/rpc";
 import { type ReactNode, useEffect, useState } from "react";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
+import { useKeyHint } from "../keymap-context.tsx";
 import { palette, theme } from "../theme.ts";
 import { type WorkingLine, workingLine } from "../working.ts";
 import { MascotSlot, useMascotTakes } from "./mascot.tsx";
@@ -40,19 +41,25 @@ export function statusUp(view: SessionView, closed: string | null): boolean {
  * key hint takes the line's words, and the fire stays while pi works.
  */
 export function Working({ view, hint, closed, escapes }: WorkingProps) {
+  const clear = useKeyHint("app.clear");
+  const exit = useKeyHint("app.exit");
   const now = useNow(view.running || view.retry !== null || view.phase === "compacting");
   const { width } = useTerminalDimensions();
   const beside = useMascotTakes("working") ? BESIDE_FIRE : PADDING;
   const tick = Math.floor(now / 1000);
-  if (closed)
-    return <Line text={hint ?? "pi stopped · ctrl+c twice to quit"} tone={hint ? theme.dim : theme.error} />;
+  if (closed) {
+    const quit = clear ? `${clear} twice to quit` : exit ? `${exit} to quit` : null;
+    return (
+      <Line text={hint ?? `pi stopped${quit ? ` · ${quit}` : ""}`} tone={hint ? theme.dim : theme.error} />
+    );
+  }
   if (view.retry) {
     const wait = Math.max(0, Math.ceil((view.retry.at - now) / 1000));
     return (
       <Busy
         text={
           hint ??
-          `${glyphs.retrying} retrying ${view.retry.attempt}/${view.retry.maxAttempts} in ${wait}s · ${escapes} cancels · ${explain(view.retry.error).text}`
+          `${glyphs.retrying} retrying ${view.retry.attempt}/${view.retry.maxAttempts} in ${wait}s${escapes ? ` · ${escapes} cancels` : ""} · ${explain(view.retry.error).text}`
         }
         tone={hint ? theme.dim : theme.error}
         tick={tick}
@@ -62,7 +69,7 @@ export function Working({ view, hint, closed, escapes }: WorkingProps) {
   if (view.phase === "compacting")
     return (
       <Busy
-        text={hint ?? `${glyphs.compacting} compacting · ${escapes} cancels`}
+        text={hint ?? `${glyphs.compacting} compacting${escapes ? ` · ${escapes} cancels` : ""}`}
         tone={hint ? theme.dim : theme.tool}
         tick={tick}
       />

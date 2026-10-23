@@ -39,6 +39,7 @@ export interface KeyLike {
 const ALIASES = new Map([
   ["esc", "escape"],
   ["enter", "return"],
+  ["kpenter", "return"],
   ["pgup", "pageup"],
   ["pgdn", "pagedown"],
 ]);
@@ -48,11 +49,11 @@ export function matches(key: KeyLike, binding: string): boolean {
   const parts = binding.toLowerCase().split("+");
   const name = parts.pop() ?? "";
   const mods = new Set(parts);
+  if (!name || [...mods].some((mod) => !["ctrl", "alt", "meta", "shift"].includes(mod))) return false;
   const want = ALIASES.get(name) ?? name;
-  // Terminals report shift+tab as a key of its own.
-  if (want === "tab" && mods.has("shift") && key.name === "tab" && key.shift) return !key.ctrl && !key.meta;
+  const actual = ALIASES.get(key.name) ?? key.name;
   return (
-    key.name === want &&
+    actual === want &&
     Boolean(key.ctrl) === mods.has("ctrl") &&
     Boolean(key.meta) === (mods.has("alt") || mods.has("meta")) &&
     Boolean(key.shift) === mods.has("shift")
@@ -73,11 +74,31 @@ export function actionFor(keymap: Keymap, key: KeyLike): Action | null {
  */
 export function keymap(overrides: Record<string, unknown> = {}): Keymap {
   const map = { ...ACTIONS } as Keymap;
+  const assigned = new Map<string, Action>();
   for (const [action, value] of Object.entries(overrides)) {
     const keys = keysOf(value);
-    if (action in ACTIONS && keys) map[action as Action] = keys;
+    if (Object.hasOwn(ACTIONS, action) && keys) {
+      map[action as Action] = keys;
+      for (const key of keys) assigned.set(bindingId(key), action as Action);
+    }
+  }
+  // A deliberate binding wins over another action's default, including actions later in
+  // the table. Otherwise assigning a key can look valid in /hotkeys while doing something else.
+  for (const action of Object.keys(map) as Action[]) {
+    map[action] = map[action].filter((key) => {
+      const owner = assigned.get(bindingId(key));
+      return owner === undefined || owner === action;
+    });
   }
   return map;
+}
+
+/** A binding's identity, independent of modifier order and accepted aliases. */
+function bindingId(binding: string): string {
+  const parts = binding.toLowerCase().split("+");
+  const name = parts.pop() ?? "";
+  const mods = [...new Set(parts.map((part) => (part === "meta" ? "alt" : part)))].sort();
+  return [...mods, ALIASES.get(name) ?? name].join("+");
 }
 
 /** An override's keys: one key, or a list of them; anything else overrides nothing. */
@@ -100,7 +121,11 @@ export function loadKeymap(
   agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
   own = ownKeybindingsFile(),
 ): Keymap {
-  return keymap({ ...readBindings(join(agentDir, "keybindings.json")), ...readBindings(own) });
+  const local = readBindings(own);
+  const inherited = Object.fromEntries(
+    Object.entries(readBindings(join(agentDir, "keybindings.json"))).filter(([action]) => !Object.hasOwn(local, action)),
+  );
+  return keymap({ ...inherited, ...local });
 }
 
 /** A keybindings file's action map; empty when the file is absent or malformed. */

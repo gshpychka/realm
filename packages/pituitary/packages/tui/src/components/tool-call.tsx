@@ -2,6 +2,7 @@ import type { ToolView } from "@pituitary/rpc";
 import { memo } from "react";
 import { type Answer, type Details, detailsOf, fullOutputOf, type Task } from "../details.ts";
 import { glyphs } from "../glyphs.ts";
+import { KeyHint } from "../keymap-context.tsx";
 import { counted } from "../plural.ts";
 import { palette, theme } from "../theme.ts";
 import { filetypeOfCall, heading, preview, took, toolGlyph } from "../tools.ts";
@@ -122,7 +123,12 @@ function Output({ tool, expanded }: ToolCallProps) {
 }
 
 function More({ count }: { count: number }) {
-  return <text fg={theme.dim}>… {counted(count, "more line")} · ctrl+o</text>;
+  return (
+    <text fg={theme.dim}>
+      … {counted(count, "more line")}
+      <KeyHint action="app.tools.expand" />
+    </text>
+  );
 }
 
 /** Lines of a diff shown before it folds. */
