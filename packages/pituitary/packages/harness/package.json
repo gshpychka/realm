@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./agent": "./src/agent.ts",
-    "./conversation": "./src/conversation.ts"
+    "./conversation": "./src/conversation.ts",
+    "./runtime": "./src/runtime.ts"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",
