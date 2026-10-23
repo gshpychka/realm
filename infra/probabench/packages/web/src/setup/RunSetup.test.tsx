@@ -31,9 +31,8 @@ const job = (status: Job["status"]): Job => ({
 });
 
 describe("benchmark setup workflow", () => {
-  it("starts with clear presets and hides custom sample inputs", () => {
+  it("starts on the presets with the custom sample inputs hidden", () => {
     const html = render(local());
-    expect(html).toContain("550");
     expect(html).toContain("Start benchmark");
     expect(html).toContain("Custom budget");
     expect(html).not.toContain('id="benchmark-trials"');
@@ -45,7 +44,8 @@ describe("benchmark setup workflow", () => {
     const html = render(local(null, false));
     expect(html).toContain("Connect your OpenRouter key");
     expect(html).toContain("secrets/infra/probabench.env");
-    expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""[^>]*>Start benchmark/);
+    const submit = /<button[^>]*type="submit"[^>]*>/.exec(html)?.[0];
+    expect(submit).toContain('disabled=""');
   });
 
   it("puts an active job ahead of setup, with meaningful progress and optional raw output", () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import { MODEL_ALIASES } from "@probabench/domain";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
 import { BenchRequest, firstIssue } from "./protocol";
@@ -16,12 +17,13 @@ const problem = (value: unknown) =>
   });
 
 describe("BenchRequest", () => {
-  it.each([request, { ...request, model: "gpt-5-mini-low" }, { ...request, reasoning: "xhigh" }])(
-    "accepts %j",
-    (value) => {
-      expect(problem(value)).toBeNull();
-    },
-  );
+  it.each([
+    request,
+    { ...request, model: MODEL_ALIASES[0].alias },
+    { ...request, reasoning: "xhigh" },
+  ])("accepts %j", (value) => {
+    expect(problem(value)).toBeNull();
+  });
 
   it.each([
     [null, "Expected"],
