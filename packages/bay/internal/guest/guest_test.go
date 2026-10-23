@@ -72,6 +72,35 @@ func TestOperationsRunBaySession(t *testing.T) {
 	}
 }
 
+func TestSnapshotReadinessRequiresAnIdleJobServiceSet(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip(err)
+	}
+	root := t.TempDir()
+	systemctl := "#!" + bash + "\n[ \"$*\" = \"list-units --plain --no-legend --state=activating,active,deactivating bay-job-*\" ] || exit 99\nprintf '%s' \"$BAY_TEST_JOBS\"\nexit \"$BAY_TEST_STATUS\"\n"
+	if err := os.WriteFile(filepath.Join(root, "systemctl"), []byte(systemctl), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, jobs, status string
+		success            bool
+	}{
+		{"idle", "", "0", true},
+		{"active job", "bay-job-one.service loaded active running detached job", "0", false},
+		{"unavailable service manager", "", "1", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := exec.Command(bash, "-e", "../../bay-session.sh", "snapshot-ready")
+			command.Env = append(os.Environ(), "PATH="+root, "BAY_TEST_JOBS="+test.jobs, "BAY_TEST_STATUS="+test.status)
+			output, err := command.CombinedOutput()
+			if (err == nil) != test.success {
+				t.Fatalf("snapshot readiness: %v %s", err, output)
+			}
+		})
+	}
+}
+
 func TestAttachCommand(t *testing.T) {
 	if got := AttachCommand(); !slices.Equal(got, []string{"bay-session", "attach"}) {
 		t.Fatalf("AttachCommand = %q", got)
@@ -130,34 +159,5 @@ func TestFailuresNameTheOperation(t *testing.T) {
 		if !errors.Is(err, boom) || !strings.HasPrefix(err.Error(), "bay-session "+name+": ") {
 			t.Errorf("%s failed with %v, want its cause under the operation's name", name, err)
 		}
-	}
-}
-
-func TestSnapshotReadinessRequiresAnIdleJobServiceSet(t *testing.T) {
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip(err)
-	}
-	root := t.TempDir()
-	systemctl := "#!" + bash + "\n[ \"$*\" = \"list-units --plain --no-legend --state=activating,active,deactivating bay-job-*\" ] || exit 99\nprintf '%s' \"$BAY_TEST_JOBS\"\nexit \"$BAY_TEST_STATUS\"\n"
-	if err := os.WriteFile(filepath.Join(root, "systemctl"), []byte(systemctl), 0700); err != nil {
-		t.Fatal(err)
-	}
-	for _, test := range []struct {
-		name, jobs, status string
-		success            bool
-	}{
-		{"idle", "", "0", true},
-		{"active job", "bay-job-one.service loaded active running detached job", "0", false},
-		{"unavailable service manager", "", "1", false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			command := exec.Command(bash, "-e", "../../bay-session.sh", "snapshot-ready")
-			command.Env = append(os.Environ(), "PATH="+root, "BAY_TEST_JOBS="+test.jobs, "BAY_TEST_STATUS="+test.status)
-			output, err := command.CombinedOutput()
-			if (err == nil) != test.success {
-				t.Fatalf("snapshot readiness: %v %s", err, output)
-			}
-		})
 	}
 }

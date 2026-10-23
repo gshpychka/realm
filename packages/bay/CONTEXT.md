@@ -64,10 +64,14 @@ _Avoid_: stopped, terminated, closed
 > **Dev:** "If I end a session, can I get back to the exact screen it had?"
 > **Operator:** "No, suspend it for that. Ending keeps the **Session record**, so starting it again gives a fresh **Instance** with the same repos, credentials and history, and the **Program** picks up its conversation."
 
-## Flagged ambiguities
+## Invariants
 
-- "session" and "instance" were used interchangeably: resolved, a **Session** is the operator-facing unit and an **Instance** is the VM backing it while it runs or is suspended.
-- "agent" was used for the session's program and for a messaging participant: resolved, the coding agent is the session's **Program**, and the messaging participant is the **Session**.
-- "owner" appeared as session metadata and as the GitHub owner in a repo path: resolved, sessions carry no owner (there is one **Operator**), and owner means only a repo's GitHub owner.
-- "stopped", "terminated" and "ended" were offered for the same state: resolved, the state is **Ended**.
-- "bay" named both the operator's client of the Bay server and the command inside sessions: resolved, the command inside sessions is **flare**, and `bay` runs only on reaper.
+- A **Session** and its disposable **Instance** have different lifetimes. Ending destroys the workspace; suspending preserves it.
+- A session record pins its machine revision, resource allocation, repository commits, and resolved program commands at creation.
+- The stable record ID survives instance replacement; the host execution generation advances before a fresh launch or explicit resume. Snapshot restore cannot rewind host authority.
+- The **Session** participates in Bay mail. Its **Program** may be a coding agent, a shell, or any terminal application.
+- Names are readable addresses; record IDs own inboxes. Reusing a removed name grants no access to its earlier record's mail.
+- The operator socket alone exposes machine lifecycle, immutable transfer, detached jobs, and the generic execution environment. The guest gateway exposes authenticated mail and notifications.
+- The execution environment is unprivileged and connection-scoped. Model state, conversations, task recovery, and orchestration remain application responsibilities.
+- There is one **Operator**. Repository owner means only the owner component of a repository's remote path.
+- **flare** runs inside sessions; **bay** is the operator client.

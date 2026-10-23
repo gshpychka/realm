@@ -141,3 +141,7 @@ func (r resolver) Session(ctx context.Context, name string) (identity.Session, e
 func toIdentity(rec records.Record) identity.Session {
 	return identity.Session{ID: rec.ID, Name: rec.Name, Generation: rec.Generation}
 }
+
+func (a operatorAPI) Environment(ctx context.Context, name string, expected identity.Precondition, revision string) (io.ReadWriteCloser, error) {
+	return a.svc.Environment(ctx, name, expected, revision)
+}

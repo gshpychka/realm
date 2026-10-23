@@ -28,6 +28,14 @@ func TestExecutionGenerationFencesLifecycleAndConnections(t *testing.T) {
 	if err != nil || current.Generation != 2 {
 		t.Fatalf("resumed session = %+v, %v", current, err)
 	}
+	if _, err := svc.Environment(ctx, "one", identity.Precondition{ID: first.ID, Generation: &first.Generation}, first.Machine.Revision); err == nil {
+		t.Fatal("stale execution connected")
+	}
+	connection, err := svc.Environment(ctx, "one", identity.Precondition{ID: current.ID, Generation: &current.Generation}, current.Machine.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
 	stale := identity.Precondition{ID: first.ID, Generation: &first.Generation}
 	operations := map[string]func() error{
 		"suspend": func() error { return svc.Suspend(ctx, "one", stale) },
@@ -40,6 +48,11 @@ func TestExecutionGenerationFencesLifecycleAndConnections(t *testing.T) {
 	for name, operation := range operations {
 		t.Run(name, func(t *testing.T) {
 			wantKind(t, operation(), fault.Conflict)
+			select {
+			case <-connection.(*environmentConnection).done:
+				t.Fatal("stale lifecycle call disconnected current execution")
+			default:
+			}
 		})
 	}
 	if rec, err := store.Get("one"); err != nil || rec.Generation != 2 {

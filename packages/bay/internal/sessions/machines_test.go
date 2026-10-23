@@ -124,8 +124,18 @@ func TestEndIdentityPreconditionLeavesReplacementRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	replacement := mustStart(t, svc, "one", StartSpec{Program: "agent"})
-	err := svc.End(context.Background(), "one", nil, identity.Precondition{ID: first.ID})
+	connection, err := svc.Environment(context.Background(), "one", identity.Precondition{ID: replacement.ID, Generation: &replacement.Generation}, replacement.Machine.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { connection.Close() })
+	err = svc.End(context.Background(), "one", nil, identity.Precondition{ID: first.ID})
 	wantKind(t, err, fault.Conflict)
+	select {
+	case <-connection.(*environmentConnection).done:
+		t.Fatal("stale end disconnected the replacement's client")
+	default:
+	}
 	if !instances.instances["one"].program {
 		t.Fatal("stale end stopped the replacement")
 	}
@@ -141,12 +151,27 @@ func TestSuspendIdentityPreconditionLeavesReplacementRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	replacement := mustStart(t, svc, "one", StartSpec{Program: "agent"})
+	connection, err := svc.Environment(context.Background(), "one", identity.Precondition{ID: replacement.ID, Generation: &replacement.Generation}, replacement.Machine.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { connection.Close() })
 	wantKind(t, svc.Suspend(context.Background(), "one", identity.Precondition{ID: first.ID}), fault.Conflict)
+	select {
+	case <-connection.(*environmentConnection).done:
+		t.Fatal("stale suspend disconnected the replacement's client")
+	default:
+	}
 	if !instances.instances["one"].running || !instances.instances["one"].program {
 		t.Fatal("stale suspend stopped the replacement")
 	}
 	if err := svc.Suspend(context.Background(), "one", identity.Precondition{ID: replacement.ID}); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-connection.(*environmentConnection).done:
+	default:
+		t.Fatal("suspend left a bridge open")
 	}
 	inst := instances.instances["one"]
 	if inst.running || !inst.saved || !inst.program {

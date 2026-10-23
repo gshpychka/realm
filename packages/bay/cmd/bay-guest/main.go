@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/gshpychka/realm/packages/bay/internal/environment"
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
 	"github.com/gshpychka/realm/packages/bay/internal/operations"
 )
@@ -22,6 +23,13 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) == 2 && os.Args[1] == "environment-files" {
+		if os.Geteuid() == 0 {
+			return fmt.Errorf("environment must run unprivileged")
+		}
+		return environment.ServeFiles(os.Stdin, os.Stdout)
+	}
+
 	flags := flag.NewFlagSet("bay-guest", flag.ContinueOnError)
 	root := flags.String("root", "/var/lib/bay", "operator storage")
 	work := flags.String("work", "/work", "workspace directory")
@@ -34,7 +42,7 @@ func run() error {
 	}
 	args := flags.Args()
 	if len(args) != 2 {
-		return fmt.Errorf("usage: bay-guest [OPTIONS] put-blob|capture|capture-info|read-capture|start-job|job|run-job ID")
+		return fmt.Errorf("usage: bay-guest [OPTIONS] put-blob|capture|capture-info|read-capture|start-job|job|run-job|environment ID")
 	}
 	g := operations.Guest{Root: *root, Work: *work, User: *user, Home: *home, RecordID: *record, Generation: *generation}
 	g.Launch = func(id string) error {
@@ -57,6 +65,14 @@ func run() error {
 	var result any
 	var err error
 	switch args[0] {
+	case "environment":
+		if err := nonRootUser(*user); err != nil {
+			return err
+		}
+		return environmentBridge(*user, *home, *work)
+	case "environment-supervisor":
+		return superviseEnvironment(*user, *home, *work)
+
 	case "put-blob":
 		result, err = g.PutBlob(args[1], os.Stdin)
 	case "capture":
