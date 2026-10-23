@@ -20,9 +20,7 @@ const MAX_LOG_CHARS = 64_000;
 /** A stuck provider request must not keep a paid run alive after a cancel. */
 const KILL_AFTER_MS = 3_000;
 
-const keepTail = (log: string): string =>
-  // log always ends in a newline, so the cut lands at the start of a whole line.
-  log.length > MAX_LOG_CHARS ? log.slice(log.indexOf("\n", log.length - MAX_LOG_CHARS) + 1) : log;
+const keepTail = (log: string): string => log.slice(-MAX_LOG_CHARS);
 
 export function createBenchController({
   configured,

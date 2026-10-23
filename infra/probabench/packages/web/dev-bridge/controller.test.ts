@@ -69,11 +69,14 @@ describe("createBenchController", () => {
     });
   });
 
-  it("keeps whole lines from the end of a long log", async () => {
+  it("keeps the end of a long log, even one long line", async () => {
     const { child, controller } = withFake();
     controller.start(request);
-    await write(child, `${"a".repeat(40_000)}\n${"b".repeat(40_000)}\n`);
-    expect(controller.status().job?.log).toBe(`${"b".repeat(40_000)}\n`);
+    await write(child, `${"a".repeat(40_000)}\n${"b".repeat(70_000)}\n`);
+    const log = controller.status().job?.log ?? "";
+    expect(log.length).toBeLessThanOrEqual(64_000);
+    expect(log.endsWith("b\n")).toBe(true);
+    expect(log).not.toContain("a");
   });
 
   it("reports the latest finished point from the runner's progress lines", async () => {
