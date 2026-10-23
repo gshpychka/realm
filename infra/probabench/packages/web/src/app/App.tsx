@@ -1,7 +1,6 @@
 import { Result, useRxRefresh, useRxValue } from "@effect-rx/rx-react";
 import type { Run } from "@probabench/domain";
 import { useMemo, useState } from "react";
-import type { BenchRequest } from "../bridge/protocol";
 import { useBridge } from "../bridge/use-bridge";
 import { CalibrationPage } from "../calibration/CalibrationPage";
 import { modelStyles } from "../common/palette";
@@ -9,7 +8,6 @@ import { resultsRx } from "../common/results";
 import { HistoryPage } from "../history/HistoryPage";
 import { MethodPage } from "../method/MethodPage";
 import { RunSetup } from "../setup/RunSetup";
-import type { BenchmarkDraft } from "../setup/run-settings";
 import { EmptyNotebook } from "./EmptyNotebook";
 import { Hero } from "./Hero";
 import { NotebookTabs } from "./NotebookTabs";
@@ -48,15 +46,10 @@ export function App() {
   const bridge = useBridge(refresh);
   const [view, update] = useNotebookView();
   const [setupOpen, setSetupOpen] = useState(false);
-  const [draft, setDraft] = useState<BenchmarkDraft | undefined>();
   const runs = Result.isSuccess(result) ? result.value.runs : NO_RUNS;
   const styles = useMemo(() => modelStyles(runs), [runs]);
 
   const openSetup = () => setSetupOpen(true);
-  const rerun = (request: BenchRequest) => {
-    setDraft({ ...request, key: crypto.randomUUID() });
-    openSetup();
-  };
   const panel = () => {
     if (view.tab === "method") return <MethodPage />;
     if (Result.isInitial(result)) return <NotebookLoading />;
@@ -64,9 +57,7 @@ export function App() {
     if (runs.length === 0)
       return <EmptyNotebook onNew={openSetup} onMethod={() => update({ tab: "method" })} />;
     if (view.tab === "history")
-      return (
-        <HistoryPage runs={runs} styles={styles} view={view} update={update} onRerun={rerun} />
-      );
+      return <HistoryPage runs={runs} styles={styles} view={view} update={update} />;
     return <CalibrationPage runs={runs} styles={styles} view={view} update={update} />;
   };
 
@@ -99,12 +90,10 @@ export function App() {
         </button>
       </footer>
       <RunSetup
-        key={draft?.key ?? "new"}
         open={setupOpen}
         onClose={() => setSetupOpen(false)}
         bridge={bridge}
         modelSuggestions={runs.map((run) => run.modelSlug)}
-        draft={draft}
         onViewResults={() => {
           setSetupOpen(false);
           update({ tab: "history", runId: null, query: "", hidden: [] });

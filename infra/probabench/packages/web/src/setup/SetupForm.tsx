@@ -28,17 +28,10 @@ export interface Settings {
   readonly custom: boolean;
 }
 
-/** A draft's settings, opening the custom inputs when no preset matches; else the defaults. */
-export const initialSettings = (draft: BenchRequest | undefined): Settings => {
-  const { model, trialsPerStep, stepPercent, concurrency, reasoning } = draft ?? DEFAULT_REQUEST;
-  return {
-    model,
-    trialsPerStep,
-    stepPercent,
-    concurrency,
-    reasoning,
-    custom: draft !== undefined && presetFor(draft) === undefined,
-  };
+export const initialSettings: Settings = {
+  ...DEFAULT_REQUEST,
+  reasoning: undefined,
+  custom: false,
 };
 
 export const submitLabel = (

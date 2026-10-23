@@ -4,26 +4,18 @@ import {
   benchArgs,
   DEFAULT_PRESET,
   MODEL_ALIASES,
-  type Run,
   SAMPLING_PRESETS,
   type SamplingPreset,
 } from "@probabench/domain";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
-import { BenchRequest } from "../bridge/protocol";
-
-/** A request handed to the setup form; a new key makes the form take it again. */
-export type BenchmarkDraft = BenchRequest & { readonly key: string };
-
-/** Gentler than the CLI default; saved runs do not record concurrency, so reruns use it too. */
-const BROWSER_CONCURRENCY = 5;
+import type { BenchRequest } from "../bridge/protocol";
 
 /** A new benchmark starts from the first alias and the default preset. */
 export const DEFAULT_REQUEST: BenchRequest = {
   model: MODEL_ALIASES[0].alias,
   trialsPerStep: DEFAULT_PRESET.trialsPerStep,
   stepPercent: DEFAULT_PRESET.stepPercent,
-  concurrency: BROWSER_CONCURRENCY,
+  // Gentler than the CLI default.
+  concurrency: 5,
 };
 
 export const presetFor = ({
@@ -32,18 +24,6 @@ export const presetFor = ({
 }: Pick<BenchRequest, "trialsPerStep" | "stepPercent">): SamplingPreset | undefined =>
   SAMPLING_PRESETS.find(
     (preset) => preset.trialsPerStep === trialsPerStep && preset.stepPercent === stepPercent,
-  );
-
-/** A saved run's settings as a new request, or null when the form cannot express them. */
-export const rerunRequest = (run: Run): BenchRequest | null =>
-  Option.getOrNull(
-    Schema.decodeOption(BenchRequest)({
-      model: run.modelSlug,
-      trialsPerStep: run.trialsPerStep,
-      stepPercent: run.stepPercent,
-      concurrency: BROWSER_CONCURRENCY,
-      reasoning: run.reasoning,
-    }),
   );
 
 /** Plain words stay bare; anything else is single-quoted, apostrophes included, for POSIX shells. */

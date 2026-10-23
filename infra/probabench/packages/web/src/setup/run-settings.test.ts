@@ -1,7 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { makeRun } from "@probabench/domain/testing";
-import { BROWSER_LIMITS } from "../bridge/protocol";
-import { benchmarkCommand, DEFAULT_REQUEST, presetFor, rerunRequest } from "./run-settings";
+import { benchmarkCommand, DEFAULT_REQUEST, presetFor } from "./run-settings";
 
 const request = { model: "vendor/model", trialsPerStep: 10, stepPercent: 25, concurrency: 5 };
 
@@ -17,24 +15,5 @@ describe("presetFor", () => {
   it("names the preset a request's sampling matches", () => {
     expect(presetFor(DEFAULT_REQUEST)?.label).toBe("Standard");
     expect(presetFor({ trialsPerStep: 17, stepPercent: 30 })).toBeUndefined();
-  });
-});
-
-describe("rerunRequest", () => {
-  it("repeats a saved run's model, sampling and reasoning", () => {
-    const run = makeRun({ reasoning: "low" });
-    expect(rerunRequest(run)).toEqual({
-      model: run.modelSlug,
-      trialsPerStep: run.trialsPerStep,
-      stepPercent: run.stepPercent,
-      concurrency: DEFAULT_REQUEST.concurrency,
-      reasoning: "low",
-    });
-  });
-
-  it("offers no rerun the form cannot express", () => {
-    expect(
-      rerunRequest(makeRun({ modelSlug: `vendor/${"m".repeat(BROWSER_LIMITS.modelLength)}` })),
-    ).toBeNull();
   });
 });

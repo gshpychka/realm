@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { Job } from "../bridge/protocol";
 import type { Bridge } from "../bridge/use-bridge";
 import { JobProgress } from "./JobProgress";
-import type { BenchmarkDraft } from "./run-settings";
 import { initialSettings, SetupForm } from "./SetupForm";
 import "./setup.css";
 
@@ -11,31 +10,25 @@ const heading = (job: Job | null): string => {
   return job.status === "running" ? "Benchmark in progress." : "Benchmark update.";
 };
 
-/**
- * The benchmark dialog: the latest job while it runs or until it is set aside, else the
- * setup form. Key it by the draft, so each Run again starts from that run's settings.
- */
+/** The benchmark dialog: the latest job while it runs or until it is set aside, else the setup form. */
 export function RunSetup({
   open,
   onClose,
   onViewResults,
   bridge,
   modelSuggestions,
-  draft,
 }: {
   open: boolean;
   onClose: () => void;
   onViewResults: () => void;
   bridge: Bridge;
   modelSuggestions: readonly string[];
-  draft: BenchmarkDraft | undefined;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const latest = bridge.connection.kind === "local" ? bridge.connection.status.job : null;
   // Kept here rather than in SetupForm, so viewing a job and coming back keeps the edits.
-  const [settings, setSettings] = useState(() => initialSettings(draft));
-  // A rerun draft sets the finished job aside, so the form shows at once.
-  const [setAsideJobId, setSetAsideJobId] = useState(() => (draft ? (latest?.id ?? null) : null));
+  const [settings, setSettings] = useState(initialSettings);
+  const [setAsideJobId, setSetAsideJobId] = useState<string | null>(null);
   const job =
     latest && (latest.status === "running" || latest.id !== setAsideJobId) ? latest : null;
   useEffect(() => {

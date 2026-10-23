@@ -1,7 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { makeRun } from "@probabench/domain/testing";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BROWSER_LIMITS } from "../bridge/protocol";
 import { RunDetail } from "./RunDetail";
 
 const run = makeRun({
@@ -10,22 +9,13 @@ const run = makeRun({
     { x: 1, outcomes: [{ invalidText: "x" }, { invalidText: "y" }] },
   ],
 });
-const render = (item = run) =>
-  renderToStaticMarkup(<RunDetail run={item} onCompare={() => {}} onRerun={() => {}} />);
 
 describe("RunDetail", () => {
   it("summarizes the run's reasoning, mean calibration error and valid replies", () => {
-    const html = render();
+    const html = renderToStaticMarkup(<RunDetail run={run} onCompare={() => {}} />);
     expect(html).toContain("reasoning off");
     expect(html).toContain("100.0 pp");
     expect(html).toContain("25%");
     expect(html).toContain("1 valid / 4");
-  });
-
-  it("offers a rerun only when the setup form can express the run", () => {
-    expect(render()).toContain("Run again");
-    expect(
-      render(makeRun({ modelSlug: `vendor/${"m".repeat(BROWSER_LIMITS.modelLength)}` })),
-    ).not.toContain("Run again");
   });
 });

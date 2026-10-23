@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Job } from "../bridge/protocol";
 import type { Bridge, Connection } from "../bridge/use-bridge";
 import { RunSetup } from "./RunSetup";
-import type { BenchmarkDraft } from "./run-settings";
 import { submitLabel } from "./SetupForm";
 
 const bridge = (connection: Connection): Bridge => ({
@@ -16,7 +15,7 @@ const bridge = (connection: Connection): Bridge => ({
 const local = (job: Job | null = null, configured = true) =>
   bridge({ kind: "local", status: { configured, job }, reconnecting: false });
 const published = bridge({ kind: "published" });
-const render = (connection: Bridge, draft?: BenchmarkDraft) =>
+const render = (connection: Bridge) =>
   renderToStaticMarkup(
     <RunSetup
       open
@@ -24,7 +23,6 @@ const render = (connection: Bridge, draft?: BenchmarkDraft) =>
       onViewResults={() => {}}
       bridge={connection}
       modelSuggestions={[]}
-      draft={draft}
     />,
   );
 const job = (status: Job["status"]): Job => ({
@@ -75,35 +73,6 @@ describe("benchmark setup workflow", () => {
     const html = render(local(job("completed")));
     expect(html).toMatch(/<button[^>]*class="button primary"[^>]*>View results/);
     expect(html).toContain("Set up another");
-    expect(html).not.toContain('id="benchmark-model"');
-  });
-
-  it("prefills a rerun draft and deliberately exposes a non-preset sampling budget", () => {
-    const html = render(local(job("completed")), {
-      key: "rerun-one",
-      model: "vendor/model",
-      trialsPerStep: 17,
-      stepPercent: 30,
-      concurrency: 3,
-      reasoning: "low",
-    });
-    expect(html).toContain('value="vendor/model"');
-    expect(html).toContain('id="benchmark-trials"');
-    expect(html).toContain('value="17"');
-    expect(html).toContain('value="30"');
-    expect(html).toContain("Start benchmark");
-    expect(html).not.toContain("View results");
-  });
-
-  it("keeps a running job ahead of a rerun draft", () => {
-    const html = render(local(job("running")), {
-      key: "rerun-two",
-      model: "vendor/model",
-      trialsPerStep: 10,
-      stepPercent: 25,
-      concurrency: 5,
-    });
-    expect(html).toContain("Cancel run");
     expect(html).not.toContain('id="benchmark-model"');
   });
 });

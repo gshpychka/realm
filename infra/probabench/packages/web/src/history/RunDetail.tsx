@@ -1,20 +1,8 @@
 import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
-import type { BenchRequest } from "../bridge/protocol";
 import { count, date, modelName, percent, time } from "../common/format";
-import { rerunRequest } from "../setup/run-settings";
 
-export function RunDetail({
-  run,
-  onCompare,
-  onRerun,
-}: {
-  run: Run;
-  onCompare: () => void;
-  onRerun: (request: BenchRequest) => void;
-}) {
+export function RunDetail({ run, onCompare }: { run: Run; onCompare: () => void }) {
   const summary = summarizeRun(run);
-  // Null for a run the setup form cannot express, which then offers no rerun.
-  const rerun = rerunRequest(run);
   return (
     <section className="card run-detail" aria-label={`Run details for ${run.model}`}>
       <p className="eyebrow">Selected run</p>
@@ -68,13 +56,6 @@ export function RunDetail({
       <button type="button" className="button secondary full-width" onClick={onCompare}>
         View on calibration chart <span aria-hidden="true">↗</span>
       </button>
-      {rerun ? (
-        <div className="run-actions">
-          <button type="button" className="text-button" onClick={() => onRerun(rerun)}>
-            Run again <span aria-hidden="true">↗</span>
-          </button>
-        </div>
-      ) : null}
       <p className="detail-note">
         Mean calibration error averages the absolute difference between target and observed
         frequency across targets with valid replies. Compare like-for-like grids and budgets.

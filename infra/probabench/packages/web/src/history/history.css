@@ -326,15 +326,6 @@
   font: 11px / 1.8 var(--mono);
   color: var(--text-3);
 }
-.run-actions {
-  display: flex;
-  padding-top: 16px;
-  margin-top: 18px;
-  border-top: 1px solid var(--line);
-}
-.run-actions .text-button {
-  font-size: 12px;
-}
 .detail-note {
   font-size: 12px;
   line-height: 1.8;

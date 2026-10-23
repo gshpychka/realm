@@ -1,7 +1,6 @@
 import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
 import { lazy, useMemo, useRef } from "react";
 import { type NotebookView, tabId, toggleHidden, type UpdateView } from "../app/notebook-view";
-import type { BenchRequest } from "../bridge/protocol";
 import { ChartBoundary } from "../common/chart-frame";
 import { count, date, modelName, percent, samplingText, time } from "../common/format";
 import { Measurements } from "../common/Measurements";
@@ -22,13 +21,11 @@ export function HistoryPage({
   styles,
   view,
   update,
-  onRerun,
 }: {
   runs: readonly Run[];
   styles: ReadonlyMap<string, ModelStyle>;
   view: NotebookView;
   update: UpdateView;
-  onRerun: (request: BenchRequest) => void;
 }) {
   const inspector = useRef<HTMLElement>(null);
   const inspect = (run: Run) => {
@@ -111,7 +108,7 @@ export function HistoryPage({
       <div className="history-layout">
         {inspected ? (
           <aside className="history-inspector" ref={inspector}>
-            <RunDetail run={inspected} onCompare={() => compare(inspected)} onRerun={onRerun} />
+            <RunDetail run={inspected} onCompare={() => compare(inspected)} />
             <details className="card inspector-measurements">
               <summary>
                 Inspect measurements{" "}
