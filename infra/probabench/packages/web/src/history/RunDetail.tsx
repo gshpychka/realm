@@ -1,67 +1,7 @@
-import {
-  measurePoint,
-  ResultsJson,
-  type Run,
-  SCHEMA_VERSION,
-  summarizeRun,
-} from "@probabench/domain";
-import * as Schema from "effect/Schema";
+import { type Run, summarizeRun } from "@probabench/domain";
+import type { BenchRequest } from "../bridge/protocol";
 import { count, date, gap, modelName, percent, time } from "../common/format";
 import { rerunRequest } from "../setup/run-settings";
-
-export function Measurements({ run }: { run: Run }) {
-  return (
-    // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll wide measurement tables.
-    <section className="table-scroll" tabIndex={0} aria-label={`Measurements for ${run.model}`}>
-      <table className="measurement-table">
-        <caption className="sr-only">
-          Measured sampling frequencies for {run.model}, {date(run.startedAt)} {time(run.startedAt)}{" "}
-          UTC
-        </caption>
-        <thead>
-          <tr>
-            {["Target", "Observed", "95% interval", "Ones / valid", "Invalid"].map((heading) => (
-              <th key={heading} scope="col">
-                {heading}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {run.points.map((point) => {
-            const { observed, interval, ones, valid, invalid, total } = measurePoint(point);
-            return (
-              <tr key={point.x}>
-                <th scope="row">{percent(point.x, 0)}</th>
-                <td className="table-observed">
-                  {observed === null ? "No valid replies" : percent(observed)}
-                </td>
-                <td>{interval ? `${percent(interval[0], 0)}–${percent(interval[1], 0)}` : "—"}</td>
-                <td>
-                  {count(ones)} / {count(valid)}
-                </td>
-                <td>
-                  {count(invalid)} / {count(total)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </section>
-  );
-}
-
-function downloadRun(run: Run) {
-  const contents = `${Schema.encodeSync(ResultsJson)({ schemaVersion: SCHEMA_VERSION, runs: [run] })}\n`;
-  const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `probabench-${run.id.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 100)}.json`;
-  link.click();
-  // Keep the object URL alive until the browser has started the download.
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 export function RunDetail({
   run,
@@ -69,11 +9,12 @@ export function RunDetail({
   onRerun,
 }: {
   run: Run;
-  onCompare?: () => void;
-  onRerun?: () => void;
+  onCompare: () => void;
+  onRerun: (request: BenchRequest) => void;
 }) {
   const summary = summarizeRun(run);
-  const canRerun = rerunRequest(run) !== null;
+  // Null for a run the setup form cannot express, which then offers no rerun.
+  const rerun = rerunRequest(run);
   return (
     <section className="run-detail" aria-label={`Run details for ${run.model}`}>
       <p className="eyebrow">Selected observation</p>
@@ -124,21 +65,16 @@ export function RunDetail({
           </dd>
         </div>
       </dl>
-      {onCompare ? (
-        <button type="button" className="button secondary full-width" onClick={onCompare}>
-          View on calibration chart <span aria-hidden="true">↗</span>
-        </button>
-      ) : null}
-      <div className="run-actions">
-        {onRerun && canRerun ? (
-          <button type="button" className="text-button" onClick={onRerun}>
+      <button type="button" className="button secondary full-width" onClick={onCompare}>
+        View on calibration chart <span aria-hidden="true">↗</span>
+      </button>
+      {rerun ? (
+        <div className="run-actions">
+          <button type="button" className="text-button" onClick={() => onRerun(rerun)}>
             Run again <span aria-hidden="true">↗</span>
           </button>
-        ) : null}
-        <button type="button" className="text-button" onClick={() => downloadRun(run)}>
-          Download JSON <span aria-hidden="true">↓</span>
-        </button>
-      </div>
+        </div>
+      ) : null}
       <p className="detail-note">
         Mean gap averages the absolute difference between target and observed frequency across
         targets with valid replies. Compare like-for-like grids and budgets.

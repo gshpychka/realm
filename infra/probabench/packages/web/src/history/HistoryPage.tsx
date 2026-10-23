@@ -1,13 +1,14 @@
 import { type Run, summarizeRun } from "@probabench/domain";
 import { lazy, useMemo, useRef } from "react";
-import type { NotebookView, useNotebookView } from "../app/notebook-view";
+import { type NotebookView, tabId, toggleHidden, type UpdateView } from "../app/notebook-view";
+import type { BenchRequest } from "../bridge/protocol";
 import { ChartBoundary } from "../common/chart-frame";
 import { count, date, gap, modelName, percent, samplingText, time } from "../common/format";
+import { Measurements } from "../common/Measurements";
 import { type ModelStyle, styleOf } from "../common/palette";
-import { visibleHistory } from "../common/run-history";
-import { Measurements, RunDetail } from "./RunDetail";
+import { inspectedRun, runsByDay, visibleHistory, withComparison } from "../common/run-history";
+import { RunDetail } from "./RunDetail";
 
-type UpdateView = ReturnType<typeof useNotebookView>[1];
 const HistoryChart = lazy(() =>
   import("./HistoryChart").then((module) => ({ default: module.HistoryChart })),
 );
@@ -17,15 +18,13 @@ export function HistoryPage({
   styles,
   view,
   update,
-  onCompare,
   onRerun,
 }: {
   runs: readonly Run[];
   styles: ReadonlyMap<string, ModelStyle>;
   view: NotebookView;
   update: UpdateView;
-  onCompare: (run: Run) => void;
-  onRerun: (run: Run) => void;
+  onRerun: (request: BenchRequest) => void;
 }) {
   const inspector = useRef<HTMLElement>(null);
   const inspect = (run: Run) => {
@@ -39,18 +38,20 @@ export function HistoryPage({
       });
     }
   };
+  const compare = (run: Run) => {
+    update({
+      tab: "calibration",
+      comparisons: withComparison(view.comparisons, runs, run),
+      hidden: view.hidden.filter((model) => model !== run.model),
+    });
+    document.getElementById(tabId("calibration"))?.focus();
+  };
+  const clearFilters = () => update({ query: "", hidden: [] }, "replace");
   const visible = useMemo(
     () => visibleHistory(runs, view.query, view.hidden),
     [runs, view.query, view.hidden],
   );
-  const inspected = visible.find((run) => run.id === view.runId) ?? visible[0];
-  const days = new Map<string, Run[]>();
-  for (const run of visible) {
-    const key = run.startedAt.slice(0, 10);
-    const group = days.get(key) ?? [];
-    group.push(run);
-    days.set(key, group);
-  }
+  const inspected = inspectedRun(visible, view.runId);
   return (
     <section className="history-page">
       <h2 className="sr-only">Run history</h2>
@@ -69,11 +70,7 @@ export function HistoryPage({
           {count(visible.length)} / {count(runs.length)} runs
         </span>
         {view.query || view.hidden.length > 0 ? (
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => update({ query: "", hidden: [] }, "replace")}
-          >
+          <button type="button" className="text-button" onClick={clearFilters}>
             Clear filters
           </button>
         ) : null}
@@ -88,23 +85,14 @@ export function HistoryPage({
         </header>
         <fieldset className="history-graph-legend">
           <legend className="sr-only">Models shown in history</legend>
-          {[...new Set(runs.map((run) => run.model))].map((model) => (
+          {[...styles].map(([model, style]) => (
             <button
               key={model}
               type="button"
               aria-pressed={!view.hidden.includes(model)}
-              onClick={() =>
-                update(
-                  {
-                    hidden: view.hidden.includes(model)
-                      ? view.hidden.filter((item) => item !== model)
-                      : [...view.hidden, model],
-                  },
-                  "replace",
-                )
-              }
+              onClick={() => update({ hidden: toggleHidden(view.hidden, model) }, "replace")}
             >
-              <span className="color-dot" style={{ background: styleOf(styles, model).color }} />
+              <span className="color-dot" style={{ background: style.color }} />
               {modelName(model)}
             </button>
           ))}
@@ -126,11 +114,7 @@ export function HistoryPage({
       <div className="history-layout">
         {inspected ? (
           <aside className="history-inspector" ref={inspector}>
-            <RunDetail
-              run={inspected}
-              onCompare={() => onCompare(inspected)}
-              onRerun={() => onRerun(inspected)}
-            />
+            <RunDetail run={inspected} onCompare={() => compare(inspected)} onRerun={onRerun} />
             <details className="inspector-measurements">
               <summary>
                 Inspect measurements <span aria-hidden="true">+</span>
@@ -144,19 +128,15 @@ export function HistoryPage({
             <div className="search-empty">
               <h3>No matching runs.</h3>
               <p>Show more models or clear the search to see their history.</p>
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => update({ query: "", hidden: [] }, "replace")}
-              >
+              <button type="button" className="text-button" onClick={clearFilters}>
                 Clear filters
               </button>
             </div>
           ) : (
-            [...days].map(([day, items]) => (
+            runsByDay(visible).map(([day, items]) => (
               <section key={day} className="timeline-day">
                 <h3>
-                  {date(items[0]?.startedAt ?? day)}
+                  {date(day)}
                   <span>UTC</span>
                 </h3>
                 <ol>

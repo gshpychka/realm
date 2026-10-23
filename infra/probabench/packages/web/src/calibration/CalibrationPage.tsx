@@ -1,6 +1,6 @@
-import { type Results, type Run, summarizeRun } from "@probabench/domain";
-import { lazy, Suspense, useId, useMemo } from "react";
-import type { NotebookView, useNotebookView } from "../app/notebook-view";
+import { type Run, summarizeRun } from "@probabench/domain";
+import { lazy, useId, useMemo } from "react";
+import { type NotebookView, toggleHidden, type UpdateView } from "../app/notebook-view";
 import { ChartBoundary } from "../common/chart-frame";
 import {
   count,
@@ -12,96 +12,39 @@ import {
   time,
   timestamp,
 } from "../common/format";
-import { LoadBoundary } from "../common/LoadBoundary";
-import { modelStyles, styleOf } from "../common/palette";
-import { groupHistory, selectedRuns } from "../common/run-history";
-import { Measurements } from "../history/RunDetail";
+import { Measurements } from "../common/Measurements";
+import { type ModelStyle, styleOf } from "../common/palette";
+import { modelSelections, withComparison } from "../common/run-history";
 
-type UpdateView = ReturnType<typeof useNotebookView>[1];
 const CalibrationChart = lazy(() =>
   import("./CalibrationChart").then((module) => ({ default: module.CalibrationChart })),
 );
-const History = lazy(() =>
-  import("../history/HistoryPage").then((module) => ({ default: module.HistoryPage })),
-);
 
 export function CalibrationPage({
-  results,
+  runs,
+  styles,
   view,
   update,
-  onRerun,
 }: {
-  results: Results;
+  runs: readonly Run[];
+  styles: ReadonlyMap<string, ModelStyle>;
   view: NotebookView;
   update: UpdateView;
-  onRerun: (run: Run) => void;
 }) {
-  const groups = useMemo(() => groupHistory(results.runs), [results]);
-  const styles = useMemo(() => modelStyles(results.runs), [results]);
   const descriptionId = useId();
   const selections = useMemo(
-    () =>
-      new Map(
-        results.runs
-          .filter((run) => view.comparisons.includes(run.id))
-          .map((run) => [run.model, run.id]),
-      ),
-    [results, view.comparisons],
+    () => modelSelections(runs, view.comparisons),
+    [runs, view.comparisons],
   );
   const hidden = useMemo(() => new Set(view.hidden), [view.hidden]);
   const chosen = useMemo(
-    () => selectedRuns(groups, selections, hidden),
-    [groups, selections, hidden],
+    () => selections.filter(({ model }) => !hidden.has(model)).map(({ selected }) => selected),
+    [selections, hidden],
   );
-  const toggle = (model: string) =>
-    update(
-      {
-        hidden: hidden.has(model)
-          ? view.hidden.filter((item) => item !== model)
-          : [...view.hidden, model],
-      },
-      "replace",
-    );
-  const comparisonsWith = (run: Run) => [
-    ...view.comparisons.filter(
-      (id) => !results.runs.some((item) => item.id === id && item.model === run.model),
-    ),
-    run.id,
-  ];
   const select = (id: string) => {
-    const run = results.runs.find((item) => item.id === id);
-    if (run) update({ comparisons: comparisonsWith(run) });
+    const run = runs.find((item) => item.id === id);
+    if (run) update({ comparisons: withComparison(view.comparisons, runs, run) });
   };
-  const compare = (run: Run) => {
-    update({
-      tab: "calibration",
-      comparisons: comparisonsWith(run),
-      hidden: view.hidden.filter((model) => model !== run.model),
-    });
-    document.getElementById("tab-calibration")?.focus();
-  };
-  if (view.tab === "history")
-    return (
-      <LoadBoundary surface="notebook">
-        <Suspense
-          fallback={
-            <div className="chart-loading" role="status">
-              <span className="loading-line" />
-              Loading the run history…
-            </div>
-          }
-        >
-          <History
-            runs={results.runs}
-            styles={styles}
-            view={view}
-            update={update}
-            onCompare={compare}
-            onRerun={onRerun}
-          />
-        </Suspense>
-      </LoadBoundary>
-    );
   return (
     <section className="calibration-page">
       <h2 className="sr-only">Calibration</h2>
@@ -135,7 +78,7 @@ export function CalibrationPage({
               Calibrated sampling · y = x
             </span>
             <span className="mono">
-              {chosen.length} / {groups.length} models
+              {chosen.length} / {selections.length} models
             </span>
           </div>
           <p id={descriptionId} className="chart-description">
@@ -151,7 +94,7 @@ export function CalibrationPage({
               className="text-button tiny"
               onClick={() =>
                 update(
-                  { hidden: hidden.size > 0 ? [] : groups.map((group) => group.model) },
+                  { hidden: hidden.size > 0 ? [] : selections.map(({ model }) => model) },
                   "replace",
                 )
               }
@@ -161,40 +104,35 @@ export function CalibrationPage({
           </div>
           <fieldset className="model-fieldset">
             <legend className="sr-only">Models shown in chart</legend>
-            {groups.map((group) => {
-              const run =
-                group.runs.find((item) => item.id === selections.get(group.model)) ?? group.runs[0];
-              if (!run) return null;
-              const summary = summarizeRun(run);
-              const active = !hidden.has(group.model);
+            {selections.map(({ model, runs: history, selected }) => {
+              const summary = summarizeRun(selected);
+              const active = !hidden.has(model);
+              const { color } = styleOf(styles, model);
               return (
-                <div className={`model-item ${active ? "active" : ""}`} key={group.model}>
+                <div className={`model-item ${active ? "active" : ""}`} key={model}>
                   <button
                     type="button"
                     className="model-toggle"
                     aria-pressed={active}
-                    onClick={() => toggle(group.model)}
+                    onClick={() => update({ hidden: toggleHidden(view.hidden, model) }, "replace")}
                   >
                     <span
                       className="model-check"
-                      style={{
-                        color: styleOf(styles, group.model).color,
-                        borderColor: active ? styleOf(styles, group.model).color : undefined,
-                      }}
+                      style={{ color, borderColor: active ? color : undefined }}
                     >
                       {active ? "✓" : ""}
                     </span>
                     <span>
-                      <strong>{modelName(group.model)}</strong>
+                      <strong>{modelName(model)}</strong>
                       <span>
                         {count(summary.valid)} / {count(summary.total)} valid replies
                       </span>
                     </span>
                   </button>
                   <label className="run-select">
-                    <span className="sr-only">Run for {group.model}</span>
-                    <select value={run.id} onChange={(event) => select(event.target.value)}>
-                      {group.runs.map((item, index) => (
+                    <span className="sr-only">Run for {model}</span>
+                    <select value={selected.id} onChange={(event) => select(event.target.value)}>
+                      {history.map((item, index) => (
                         <option key={item.id} value={item.id}>
                           {index === 0 ? "Latest · " : ""}
                           {date(item.startedAt)} · {time(item.startedAt)} · {shortId(item.id)}

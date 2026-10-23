@@ -1,18 +1,10 @@
 import type { Run } from "@probabench/domain";
 
-export interface ModelHistory {
-  readonly model: string;
-  readonly runs: readonly Run[];
-}
-
-/** Append order breaks timestamp ties: a later saved run stays the latest snapshot. */
+/** Reversing first makes the stable sort put later-appended runs first among equal timestamps. */
 export const newestFirst = (runs: readonly Run[]): Run[] =>
-  runs
-    .map((run, index) => ({ run, index }))
-    .sort((a, b) => b.run.startedAt.localeCompare(a.run.startedAt) || b.index - a.index)
-    .map(({ run }) => run);
+  runs.toReversed().sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 
-/** Graph, archive list, inspector and copied links use the same visible run set. */
+/** The search and model filters shared by the history graph, list and inspector. */
 export const visibleHistory = (
   runs: readonly Run[],
   query: string,
@@ -27,25 +19,55 @@ export const visibleHistory = (
   );
 };
 
-export const groupHistory = (runs: readonly Run[]): ModelHistory[] => {
-  const groups = new Map<string, Run[]>();
+/** The run the history inspector shows: the linked one while visible, else the newest. */
+export const inspectedRun = (visible: readonly Run[], runId: string | null): Run | undefined =>
+  visible.find((run) => run.id === runId) ?? visible[0];
+
+export interface ModelSelection {
+  readonly model: string;
+  /** Newest first. */
+  readonly runs: readonly [Run, ...Run[]];
+  /** The compared run, else the latest. */
+  readonly selected: Run;
+}
+
+/** Every model with the run the calibration chart compares, in latest-run order. */
+export const modelSelections = (
+  runs: readonly Run[],
+  comparisons: readonly string[],
+): ModelSelection[] => {
+  const groups = new Map<string, [Run, ...Run[]]>();
   for (const run of newestFirst(runs)) {
-    const history = groups.get(run.model) ?? [];
-    history.push(run);
-    groups.set(run.model, history);
+    const group = groups.get(run.model);
+    if (group) group.push(run);
+    else groups.set(run.model, [run]);
   }
-  return [...groups].map(([model, history]) => ({ model, runs: history }));
+  const compared = new Set(comparisons);
+  return [...groups].map(([model, history]) => ({
+    model,
+    runs: history,
+    selected: history.find((run) => compared.has(run.id)) ?? history[0],
+  }));
 };
 
-/** Select one snapshot per model while preserving explicit historical selections. */
-export const selectedRuns = (
-  groups: readonly ModelHistory[],
-  selections: ReadonlyMap<string, string>,
-  hidden: ReadonlySet<string>,
-): Run[] =>
-  groups.flatMap((group) => {
-    if (hidden.has(group.model)) return [];
-    const selected =
-      group.runs.find((run) => run.id === selections.get(group.model)) ?? group.runs[0];
-    return selected ? [selected] : [];
-  });
+/** The comparisons with `run` in place of any other run of its model. */
+export const withComparison = (
+  comparisons: readonly string[],
+  runs: readonly Run[],
+  run: Run,
+): string[] => [
+  ...comparisons.filter((id) => !runs.some((item) => item.id === id && item.model === run.model)),
+  run.id,
+];
+
+/** Runs grouped by UTC day in their given order; a canonical ISO timestamp starts with the day. */
+export const runsByDay = (runs: readonly Run[]): [day: string, runs: Run[]][] => {
+  const days = new Map<string, Run[]>();
+  for (const run of runs) {
+    const day = run.startedAt.slice(0, 10);
+    const group = days.get(day);
+    if (group) group.push(run);
+    else days.set(day, [run]);
+  }
+  return [...days];
+};

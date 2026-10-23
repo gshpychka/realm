@@ -13,4 +13,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), devBridgePlugin()],
   // devBridgePlugin's isLocalRequest guard assumes this loopback-only bind.
   server: { host: "127.0.0.1" },
+  // Effect and React make up most of the entry chunk; recharts, the other heavy
+  // dependency, loads with the charts.
+  build: { chunkSizeWarningLimit: 600 },
 });
