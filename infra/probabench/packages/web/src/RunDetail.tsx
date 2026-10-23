@@ -6,8 +6,8 @@ import {
   summarizeRun,
 } from "@probabench/domain";
 import * as Schema from "effect/Schema";
-import { validateBenchmarkOptions } from "./benchmark";
 import { date, modelName, number, percent, time } from "./format";
+import { rerunRequest } from "./setup/run-settings";
 
 export const gap = (value: number | null): string =>
   value === null ? "—" : `${(value * 100).toFixed(1)} pp`;
@@ -76,13 +76,7 @@ export function RunDetail({
   onRerun?: () => void;
 }) {
   const summary = summarizeRun(run);
-  const canRerun =
-    validateBenchmarkOptions({
-      model: run.modelSlug,
-      trialsPerStep: run.trialsPerStep,
-      stepPercent: run.stepPercent,
-      concurrency: 5,
-    }) === null;
+  const canRerun = rerunRequest(run) !== null;
   return (
     <section className="run-detail" aria-label={`Run details for ${run.model}`}>
       <p className="eyebrow">Selected observation</p>

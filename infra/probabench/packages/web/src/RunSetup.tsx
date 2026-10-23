@@ -7,20 +7,25 @@ import {
   StepPercent,
   TrialsPerStep,
 } from "@probabench/domain";
+import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
+  BenchRequest,
+  BROWSER_LIMITS,
+  BridgeRequest,
+  firstIssue,
+  type Job,
+} from "./bridge/protocol";
+import type { Bridge } from "./bridge/use-bridge";
+import { number, time } from "./format";
+import {
   type BenchmarkDraft,
   benchmarkCommand,
-  type Job,
-  jobPointProgress,
-  MAX_BROWSER_SAMPLES,
-  MAX_MODEL_LENGTH,
+  DEFAULT_REQUEST,
   PRESET_DESCRIPTIONS,
-  validateBenchmarkOptions,
-} from "./benchmark";
-import { number, time } from "./format";
-import type { Bridge } from "./use-benchmark";
+  presetFor,
+} from "./setup/run-settings";
 
 function JobProgress({
   job,
@@ -38,8 +43,9 @@ function JobProgress({
   const log = useRef<HTMLPreElement>(null);
   const follow = useRef(true);
   const [cancelling, setCancelling] = useState(false);
-  const progress = jobPointProgress(job.log);
+  const progress = job.progress;
   const running = job.status === "running";
+  const reconnecting = bridge.connection.kind === "local" && bridge.connection.reconnecting;
   useEffect(() => {
     if (job.log && follow.current && log.current) log.current.scrollTop = log.current.scrollHeight;
   }, [job.log]);
@@ -75,6 +81,9 @@ function JobProgress({
               : "Any model sweeps already saved remain in history."}
         </p>
         <span className="muted">Started {time(job.startedAt)} UTC</span>
+        {reconnecting ? (
+          <span className="muted">The dev bridge is not answering. Reconnecting…</span>
+        ) : null}
       </div>
       {running ? (
         <progress
@@ -170,18 +179,13 @@ export function RunSetup({
   const dialog = useRef<HTMLDialogElement>(null);
   const commandField = useRef<HTMLTextAreaElement>(null);
   const consumedDraft = useRef(draft?.key);
-  const [model, setModel] = useState(draft?.model ?? MODEL_ALIASES[0].alias);
-  const [trialsPerStep, setTrialsPerStep] = useState(draft?.trialsPerStep ?? 50);
-  const [stepPercent, setStepPercent] = useState(draft?.stepPercent ?? 10);
-  const [concurrency, setConcurrency] = useState(draft?.concurrency ?? 5);
-  const [reasoning, setReasoning] = useState<ReasoningMode | "">(draft?.reasoning ?? "");
-  const [custom, setCustom] = useState(
-    draft !== undefined &&
-      !SAMPLING_PRESETS.some(
-        (preset) =>
-          preset.trialsPerStep === draft.trialsPerStep && preset.stepPercent === draft.stepPercent,
-      ),
-  );
+  const initial = draft ?? DEFAULT_REQUEST;
+  const [model, setModel] = useState(initial.model);
+  const [trialsPerStep, setTrialsPerStep] = useState(initial.trialsPerStep);
+  const [stepPercent, setStepPercent] = useState(initial.stepPercent);
+  const [concurrency, setConcurrency] = useState(initial.concurrency);
+  const [reasoning, setReasoning] = useState<ReasoningMode | "">(initial.reasoning ?? "");
+  const [custom, setCustom] = useState(draft !== undefined && !presetFor(draft));
   const [showJob, setShowJob] = useState(draft === undefined);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -190,24 +194,25 @@ export function RunSetup({
     Schema.is(TrialsPerStep)(trialsPerStep) && Schema.is(StepPercent)(stepPercent)
       ? planBudget({ trialsPerStep, stepPercent })
       : { points: 0, samples: 0, attempts: 0 };
-  const options = {
+  const request = {
     model: model.trim(),
     trialsPerStep,
     stepPercent,
     concurrency,
     ...(reasoning ? { reasoning } : {}),
   };
-  const command = benchmarkCommand(options);
-  const validationError = validateBenchmarkOptions(options);
-  const published = bridge.mode === "published";
-  const localReady = bridge.mode === "local" && bridge.status?.configured === true;
-  const overBudget = !published && budget.samples > MAX_BROWSER_SAMPLES;
-  const job = bridge.status?.job;
+  const command = benchmarkCommand(request);
+  const { connection } = bridge;
+  const published = connection.kind === "published";
+  const local = connection.kind === "local" ? connection.status : null;
+  const localReady = local?.configured === true;
+  // A copied command only has to be one the form can express; a browser run also has a budget.
+  const checked = Schema.validateEither(published ? BenchRequest : BridgeRequest)(request);
+  const validationError = Either.isLeft(checked) ? firstIssue(checked.left) : null;
+  const job = local?.job;
   const showingJob = job && (job.status === "running" || showJob);
-  const selectedPreset = SAMPLING_PRESETS.find(
-    (preset) => preset.trialsPerStep === trialsPerStep && preset.stepPercent === stepPercent,
-  )?.id;
-  const canSubmit = !bridge.pending && !validationError && !overBudget && (published || localReady);
+  const selectedPreset = presetFor(request)?.id;
+  const canSubmit = !bridge.pending && !validationError && (published || localReady);
 
   useEffect(() => {
     const element = dialog.current;
@@ -222,12 +227,7 @@ export function RunSetup({
     setStepPercent(draft.stepPercent);
     setConcurrency(draft.concurrency);
     setReasoning(draft.reasoning ?? "");
-    setCustom(
-      !SAMPLING_PRESETS.some(
-        (preset) =>
-          preset.trialsPerStep === draft.trialsPerStep && preset.stepPercent === draft.stepPercent,
-      ),
-    );
+    setCustom(!presetFor(draft));
     setShowJob(false);
   }, [draft]);
   useEffect(() => {
@@ -256,12 +256,13 @@ export function RunSetup({
     event.preventDefault();
     if (!canSubmit) return;
     if (published) await copy();
-    else if (await bridge.start(options)) setShowJob(true);
+    else if (await bridge.start(request)) setShowJob(true);
   };
   const preview = (
     <>
       <p className="helper">
-        From your ProbaBench project folder. The CLI previews the plan and asks for confirmation.
+        In the Realm infra shell (<code>nix develop .#infra</code>). The CLI previews the plan and
+        asks for confirmation.
       </p>
       <textarea
         ref={commandField}
@@ -357,7 +358,7 @@ export function RunSetup({
                 onChange={(event) => setModel(event.target.value)}
                 placeholder="anthropic/claude-haiku-4.5"
                 required
-                maxLength={MAX_MODEL_LENGTH}
+                maxLength={BROWSER_LIMITS.modelLength}
                 autoComplete="off"
                 spellCheck={false}
                 disabled={bridge.pending}
@@ -375,7 +376,7 @@ export function RunSetup({
                 {[...new Set(modelSuggestions)]
                   .filter(
                     (slug) =>
-                      slug.length <= MAX_MODEL_LENGTH &&
+                      slug.length <= BROWSER_LIMITS.modelLength &&
                       !MODEL_ALIASES.some((alias) => alias.alias === slug),
                   )
                   .map((slug) => (
@@ -429,7 +430,7 @@ export function RunSetup({
                       id="benchmark-trials"
                       type="number"
                       min={1}
-                      max={10000}
+                      max={BROWSER_LIMITS.trialsPerStep}
                       step={1}
                       value={trialsPerStep}
                       onChange={(event) => setTrialsPerStep(Number(event.target.value))}
@@ -464,7 +465,7 @@ export function RunSetup({
                       id="benchmark-concurrency"
                       type="number"
                       min={1}
-                      max={50}
+                      max={BROWSER_LIMITS.concurrency}
                       step={1}
                       value={concurrency}
                       onChange={(event) => setConcurrency(Number(event.target.value))}
@@ -514,20 +515,15 @@ export function RunSetup({
                   {validationError}
                 </p>
               ) : null}
-              {overBudget ? (
-                <p role="alert" className="form-error">
-                  Browser runs support {number(MAX_BROWSER_SAMPLES)} samples. Choose a smaller
-                  budget, or use the terminal command.
-                </p>
-              ) : null}
-              {bridge.mode === "local" && !localReady ? (
+              {local && !local.configured ? (
                 <div className="environment-note">
                   <span className="status-dot" />
                   <div>
                     <strong>Connect your OpenRouter key</strong>
                     <p>
-                      Add <code>OPENROUTER_API_KEY=your-key</code> to <code>.env.local</code> in the
-                      ProbaBench folder. Then check the connection; no restart needed.
+                      This dev server has no <code>OPENROUTER_API_KEY</code>. Restart it with{" "}
+                      <code>bun run dev</code>, which decrypts{" "}
+                      <code>secrets/infra/probabench.env</code>.
                     </p>
                   </div>
                 </div>
@@ -543,24 +539,18 @@ export function RunSetup({
                     ? "Run this command locally with your OpenRouter key. Charges depend on generated tokens."
                     : "Your key stays on the local server. OpenRouter charges for generated tokens."}
                 </p>
-                {bridge.mode === "local" && !localReady ? (
-                  <button type="button" className="button primary" onClick={bridge.refresh}>
-                    Check connection ↻
-                  </button>
-                ) : (
-                  <button type="submit" className="button primary" disabled={!canSubmit}>
-                    {bridge.mode === "checking"
-                      ? "Checking runner…"
-                      : bridge.pending
-                        ? "Starting…"
-                        : published
-                          ? copied
-                            ? "Copied ✓"
-                            : "Copy command"
-                          : "Start benchmark"}
-                    <span aria-hidden="true">{published ? "⧉" : "↗"}</span>
-                  </button>
-                )}
+                <button type="submit" className="button primary" disabled={!canSubmit}>
+                  {connection.kind === "connecting"
+                    ? "Checking runner…"
+                    : bridge.pending
+                      ? "Starting…"
+                      : published
+                        ? copied
+                          ? "Copied ✓"
+                          : "Copy command"
+                        : "Start benchmark"}
+                  <span aria-hidden="true">{published ? "⧉" : "↗"}</span>
+                </button>
               </div>
               {published ? (
                 <section
@@ -572,11 +562,8 @@ export function RunSetup({
               ) : null}
               {published ? (
                 <p className="helper setup-local-link">
-                  To run directly from this page, start <code>bun run dev</code> in your local
-                  workspace.{" "}
-                  <button type="button" className="text-button" onClick={bridge.refresh}>
-                    Check connection ↻
-                  </button>
+                  To run benchmarks from this page, start <code>bun run dev</code> in your local
+                  workspace and open its local URL.
                 </p>
               ) : null}
             </form>

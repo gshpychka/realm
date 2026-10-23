@@ -1,13 +1,13 @@
 import { Result, useRxRefresh, useRxValue } from "@effect-rx/rx-react";
 import { type Run, summarizeRun } from "@probabench/domain";
 import { type KeyboardEvent, lazy, Suspense, useEffect, useState } from "react";
-import type { BenchmarkOptions } from "./benchmark";
+import { type Connection, useBridge } from "./bridge/use-bridge";
 import { date, number, time } from "./format";
 import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "./history";
 import { LoadBoundary } from "./LoadBoundary";
 import { useNotebookView } from "./notebook-view";
 import { resultsRx } from "./results-rx";
-import { useBenchmarkBridge } from "./use-benchmark";
+import { type BenchmarkDraft, rerunRequest } from "./setup/run-settings";
 
 const Method = lazy(() => import("./Method").then((module) => ({ default: module.Method })));
 const Workspace = lazy(() =>
@@ -19,6 +19,11 @@ const TABS = [
   { id: "history", label: "Run history" },
   { id: "method", label: "Method" },
 ] as const;
+const CONNECTION_LABEL = {
+  published: "Published notebook",
+  connecting: "Connecting",
+  local: "Local workspace",
+} as const satisfies Record<Connection["kind"], string>;
 function NotebookLoading() {
   return (
     <div className="notebook-loading" role="status">
@@ -80,12 +85,14 @@ function EmptyNotebook({ onNew, onMethod }: { onNew: () => void; onMethod: () =>
 export function App() {
   const result = useRxValue(resultsRx);
   const refresh = useRxRefresh(resultsRx);
-  const bridge = useBenchmarkBridge(refresh);
+  const bridge = useBridge(refresh);
+  const local = bridge.connection.kind === "local" ? bridge.connection.status : null;
+  const running = local?.job?.status === "running";
   const [view, update] = useNotebookView();
   const tab = view.tab;
   const [setup, setSetup] = useState(false);
   const [setupLoaded, setSetupLoaded] = useState(false);
-  const [draft, setDraft] = useState<(BenchmarkOptions & { key: string }) | undefined>();
+  const [draft, setDraft] = useState<BenchmarkDraft | undefined>();
   const [linkStatus, setLinkStatus] = useState<{ url: string; message: string } | null>(null);
   useEffect(() => {
     if (linkStatus?.message !== "View link copied") return;
@@ -97,14 +104,9 @@ export function App() {
     setSetup(true);
   };
   const repeatRun = (run: Run) => {
-    setDraft({
-      key: crypto.randomUUID(),
-      model: run.modelSlug,
-      trialsPerStep: run.trialsPerStep,
-      stepPercent: run.stepPercent,
-      concurrency: 5,
-      reasoning: run.reasoning,
-    });
+    const request = rerunRequest(run);
+    if (request === null) return;
+    setDraft({ ...request, key: crypto.randomUUID() });
     openSetup();
   };
   const copyView = async () => {
@@ -180,25 +182,19 @@ export function App() {
           proba<span>bench</span>
         </a>
         <div className="header-actions">
-          {bridge.status?.job?.status === "running" ? (
+          {running ? (
             <button type="button" className="connection running" onClick={openSetup}>
               <span className="status-dot pulse" />
               Benchmark running
             </button>
           ) : (
             <span className="connection">
-              <span
-                className={`status-dot ${bridge.mode === "local" && bridge.status?.configured ? "ready" : ""}`}
-              />
-              {bridge.mode === "checking"
-                ? "Connecting"
-                : bridge.mode === "local"
-                  ? "Local workspace"
-                  : "Published notebook"}
+              <span className={`status-dot ${local?.configured ? "ready" : ""}`} />
+              {CONNECTION_LABEL[bridge.connection.kind]}
             </span>
           )}
           <button type="button" className="button primary" onClick={openSetup}>
-            {bridge.status?.job?.status === "running" ? "View progress" : "New benchmark"}
+            {running ? "View progress" : "New benchmark"}
             <span aria-hidden="true">↗</span>
           </button>
         </div>
