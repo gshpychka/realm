@@ -1,3 +1,4 @@
+import { OutputBuffer } from "@earendil-works/chord/output";
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
 import {
@@ -48,13 +49,19 @@ const find = defineTool({
   description:
     "Find files by glob relative to the assigned workspace. Respects ignore files and does not follow symbolic links.",
   parameters: Type.Object({
-    pattern: Type.String({ description: "Glob such as **/*.ts or **/package.json" }),
+    pattern: Type.String({
+      description: "Glob such as **/*.ts or **/package.json; ':' is not supported",
+      pattern: "^[^:]+$",
+    }),
     path,
   }),
   replay: "safe",
   outputLimits: { maxBytes: 65536, maxLines: 2000 },
   execute: async (args, api, context) => {
     if (!api.env) throw new Error("This agent has no filesystem environment");
+    const root = await api.env.fileInfo(args.path ?? ".", context);
+    if (!root.ok) throw root.error;
+    if (root.value.kind === "symlink") throw new Error("The find root cannot be a symbolic link");
     const result = await api.env.exec(
       [
         "rg",
@@ -87,18 +94,25 @@ const grep = defineTool({
   parameters: Type.Object({
     pattern: Type.String(),
     path,
-    glob: Type.Optional(Type.String()),
+    glob: Type.Optional(Type.String({ description: "File glob; ':' is not supported", pattern: "^[^:]+$" })),
     ignoreCase: Type.Optional(Type.Boolean()),
     literal: Type.Optional(Type.Boolean()),
     context: Type.Optional(Type.Integer({ minimum: 0, maximum: 20 })),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
+    limit: Type.Optional(
+      Type.Integer({ minimum: 1, maximum: 2000, description: "Maximum output lines, including context" }),
+    ),
   }),
   replay: "safe",
   outputLimits: { maxBytes: 65536, maxLines: 2000 },
   execute: async (args, api, context) => {
     if (!api.env) throw new Error("This agent has no filesystem environment");
+    const output = new OutputBuffer({ maxBytes: 65536, maxLines: args.limit ?? 100, retain: "head" });
     const command = [
       "rg",
+      "--hidden",
+      "--glob",
+      "!.git",
+      "--with-filename",
       "--line-number",
       "--no-heading",
       "--color",
@@ -118,13 +132,18 @@ const grep = defineTool({
       command,
       {
         timeout: 30,
-        window: api.outputWindow,
-        onOutput: (chunk, _context, info) => api.output(chunk, info.skipped),
+        onOutput: (chunk) => output.push(chunk),
       },
       context,
     );
     if (!result.ok) throw result.error;
-    return { isError: result.value.exitCode > 1, details: { exitCode: result.value.exitCode } };
+    output.end();
+    const retained = output.snapshot();
+    return {
+      output: [{ type: "text", text: retained.text }],
+      isError: result.value.exitCode > 1,
+      details: { exitCode: result.value.exitCode, truncated: retained.droppedBytes > 0 },
+    };
   },
 });
 /** One registry, filtered directly by each declarative role's tool names. */
