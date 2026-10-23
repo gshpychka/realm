@@ -12,3 +12,9 @@ test("scrubbing keeps an own __proto__ key without changing the record's prototy
   expect(Object.getOwnPropertyDescriptor(result, "__proto__")?.value.text).toBe("safe");
   expect(Object.hasOwn(result.nested, "__proto__")).toBe(true);
 });
+
+test("scrubbing removes terminal controls from nested record keys", () => {
+  expect(scrub({ "unsafe\x1b[2J": { "nested\x07key": 1 } }) as unknown).toEqual({
+    unsafe: { nestedkey: 1 },
+  });
+});
