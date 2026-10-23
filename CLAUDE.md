@@ -9,7 +9,7 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
 - `modules/system/` - System-level modules, split into `common/`, `darwin/`, and `nixos/`
 - `modules/home-manager/` - home-manager configs (neovim, zsh, tmux, git, and other user tooling)
 - `overlays/` - Package overlays
-- `packages/` - Custom package definitions and application source: `pituitary/` (Bun workspace for the pi frontend) and `bay/` (Go module for isolated VM sessions, including its guest image)
+- `packages/` - Custom package definitions and application source: `pituitary/` (Bun workspace for the Pi Durable harness and terminal UI) and `bay/` (Go module for isolated NixOS execution environments)
 - `secrets/` - SOPS encrypted secrets
 - `tests/` - NixOS VM tests, exposed as flake checks
 - `infra/` - Cloud infrastructure: Terraform units (GCP VM for buoy, Cloudflare DNS and tunnels), the bootstrap GCE image under `infra/nixos/`, and the `link-sanitizer/` Alchemy stack (Telegram bot on AWS Lambda)
@@ -23,6 +23,9 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
 - Weird / non-obvious things should be explained clearly in comments
 - Refactoring should not be feared
 - Assumptions about functionality should be avoided, or at least documented explicitly
+- Treat the code as fully greenfield. Describe and implement the steady state only: no legacy paths, backwards compatibility, migrations, or upgrade scaffolding.
+- Prefer deleting code to preserving it. Use upstream capabilities directly; retain custom machinery only when the steady-state design needs it.
+- Treat checks and builds as expensive. Batch validation at major milestones; use focused reruns only to resolve concrete failures.
 
 ## Machines
 - eve: M2 Pro MacBook (aarch64-darwin)
@@ -44,8 +47,7 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
     - Build with `nix build .#iso`; SSH into the booted installer via `ssh nixos@iso`
 
 ## Notes
-- Pituitary and Bay are maintained here; do not restore their former flake inputs. Their public modules are `modules/home-manager/pituitary.nix` and `modules/system/nixos/bay.nix`.
+- Pituitary and Bay are maintained here; do not restore their former flake inputs. Public modules are `modules/home-manager/pituitary.nix`, `modules/system/nixos/pituitary.nix`, and `modules/system/nixos/bay.nix`.
 - Use `nix develop .#pituitary` and `cd packages/pituitary && just loop` for its complete development loop. Bay's `nix build .#bay` runs its Go tests; `.#checks.x86_64-linux.bay-vm` exercises nested VMs and needs KVM.
 - Nix only sees files that are tracked by git - run `git add` after creating new files before checking config
-- Check config after making non-trivial changes: `nix flake check --all-systems --no-build`
-- Perform a full build if on the relevant machine: `nix flake check`
+- At a major configuration milestone, evaluate with `nix flake check --all-systems --no-build`; build the relevant packages and checks together.
