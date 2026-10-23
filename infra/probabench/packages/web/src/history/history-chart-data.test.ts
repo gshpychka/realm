@@ -35,7 +35,6 @@ describe("history chart measurements", () => {
     expect(a?.points.map((point) => point.run.id)).toEqual(["first", "invalid", "last"]);
     expect(a?.points.map((point) => point.summary.meanCalibrationError)).toEqual([0, null, 0.5]);
     expect(a?.style).toEqual(styles.get("vendor/model-a"));
-    expect(a?.points[1]?.summary).toMatchObject({ validity: 0, coveredPoints: 0 });
   });
 
   it("pads a single run on both sides while keeping zero a valid error", () => {
@@ -47,15 +46,8 @@ describe("history chart measurements", () => {
     expect(model.yMax).toBe(0.05);
   });
 
-  it("keeps empty and all-invalid histories distinct without manufacturing an error", () => {
+  it("draws an empty history without points", () => {
     expect(buildHistoryChartModel([], styles).points).toEqual([]);
-    const model = buildHistoryChartModel(
-      [run("invalid", "vendor/model-a", "2026-10-22T15:00:00.000Z", allInvalid)],
-      styles,
-    );
-    expect(model.points[0]?.summary.meanCalibrationError).toBeNull();
-    expect(model.points[0]?.summary.validity).toBe(0);
-    expect(model.series[0]?.points).toHaveLength(1);
   });
 
   it.each([

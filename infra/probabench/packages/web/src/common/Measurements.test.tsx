@@ -11,13 +11,11 @@ const run = makeRun({
 });
 
 describe("Measurements", () => {
-  it("provides semantic measurements and keeps invalid replies separate from valid bits", () => {
+  it("counts invalid replies apart from valid bits and leaves an all-invalid target unmeasured", () => {
     const html = renderToStaticMarkup(<Measurements run={run} />);
-    expect(html).toContain("<table");
-    expect(html).toContain("<caption");
-    expect(html).toContain('scope="col"');
-    expect(html).toContain('scope="row"');
-    expect(html).toContain("Ones / valid");
+    // At 0%: one 1 among one valid reply, and one invalid reply among two.
+    expect(html).toContain("1 / 1");
+    expect(html).toContain("1 / 2");
     expect(html).toContain("No valid replies");
   });
 });

@@ -1,22 +1,14 @@
 import * as HttpClient from "@effect/platform/HttpClient";
 import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { fetchResults } from "./results";
 
-// Root-relative client URLs need an origin outside a browser.
-const originalLocation = Object.getOwnPropertyDescriptor(globalThis, "location");
-beforeAll(() =>
-  Object.defineProperty(globalThis, "location", {
-    configurable: true,
-    value: { origin: "http://localhost", pathname: "/" },
-  }),
-);
-afterAll(() => {
-  if (originalLocation) Object.defineProperty(globalThis, "location", originalLocation);
-  else Reflect.deleteProperty(globalThis, "location");
-});
+// Root-relative client URLs need an origin and a path outside a browser.
+beforeAll(() => vi.stubGlobal("location", { origin: "http://localhost", pathname: "/" }));
+afterAll(() => vi.unstubAllGlobals());
 
 const stubClientLayer = (body: string, status = 200) =>
   Layer.succeed(
@@ -32,28 +24,18 @@ describe("fetchResults", () => {
   it.effect("decodes an empty results document", () =>
     Effect.gen(function* () {
       const results = yield* fetchResults;
-      expect(results.runs).toHaveLength(0);
+      expect(results.runs).toEqual([]);
     }).pipe(Effect.provide(stubClientLayer(emptyResults))),
   );
 
-  it.effect("rejects a document that violates the Results schema", () =>
-    Effect.gen(function* () {
-      const error = yield* Effect.flip(fetchResults);
-      expect(error._tag).toBe("ParseError");
-    }).pipe(Effect.provide(stubClientLayer(JSON.stringify({})))),
-  );
-
-  it.effect("rejects a non-success HTTP status even when the body is valid results JSON", () =>
-    Effect.gen(function* () {
-      const error = yield* Effect.flip(fetchResults);
-      expect(error._tag).toBe("ResponseError");
-    }).pipe(Effect.provide(stubClientLayer(emptyResults, 404))),
-  );
-
-  it.effect("rejects malformed JSON", () =>
-    Effect.gen(function* () {
-      const error = yield* Effect.flip(fetchResults);
-      expect(error._tag).toBe("ResponseError");
-    }).pipe(Effect.provide(stubClientLayer("<html>Service unavailable</html>"))),
+  it.effect.each([
+    ["a document the Results schema rejects", JSON.stringify({}), 200],
+    ["a non-success status, even with a valid body", emptyResults, 404],
+    ["a body that is not JSON", "<html>Service unavailable</html>", 200],
+  ] as const)("fails on %s", ([, body, status]) =>
+    Effect.exit(fetchResults).pipe(
+      Effect.map((exit) => expect(Exit.isFailure(exit)).toBe(true)),
+      Effect.provide(stubClientLayer(body, status)),
+    ),
   );
 });

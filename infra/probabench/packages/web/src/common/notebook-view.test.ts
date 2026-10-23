@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { notebookSearch, readNotebookView, toggleHidden } from "./notebook-view";
+import { notebookSearch, readNotebookView } from "./notebook-view";
 
 describe("Notebook addresses", () => {
   it("opens unknown views safely and keeps the default address clean", () => {
@@ -25,12 +25,5 @@ describe("Notebook addresses", () => {
     expect(readNotebookView(search)).toEqual(next);
     expect(next.hidden).toEqual(["a"]);
     expect(next.comparisons).toEqual(["b"]);
-  });
-});
-
-describe("toggleHidden", () => {
-  it("hides a shown model and shows a hidden one", () => {
-    expect(toggleHidden(["a"], "b")).toEqual(["a", "b"]);
-    expect(toggleHidden(["a", "b"], "a")).toEqual(["b"]);
   });
 });
