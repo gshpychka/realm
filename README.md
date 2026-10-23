@@ -21,6 +21,7 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
 | Path | Contents |
 | --- | --- |
 | `machines/` | One directory per host |
+| `agents/` | Pituitary roles, NixOS execution environments, and verification |
 | `modules/common/` | Typed `my.*` globals: domain, user, SSH keys, build servers |
 | `modules/system/` | NixOS and nix-darwin modules |
 | `modules/home-manager/` | neovim, zsh, tmux, git, coding agents |
@@ -32,23 +33,29 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
 
 ## Applications
 
-[Pituitary](packages/pituitary) is the OpenTUI frontend for pi.
-[Bay](packages/bay) runs disposable, isolated VM sessions for terminal programs;
-its guest-side command is `flare`. Their source, modules, tests and development
-environments live here. The former standalone repositories are retired.
+| Start here | What you get | First step |
+| --- | --- | --- |
+| [Pituitary](packages/pituitary#start-a-conversation) | A durable coding conversation with a terminal interface | `nix run .#pituitary` |
+| [Bay](packages/bay#try-a-session) | An isolated NixOS session for a shell, editor, or coding agent | Enable the host, then `bay start scratch` |
+| [Agents](agents) | A team that delegates, retains code, and verifies results | Import the starter team into `services.pituitary.agents` |
+
+Pituitary owns conversations and orchestration; Bay owns execution environments.
+Use either independently, or combine them with [NixOS agent declarations](agents).
+Each folder opens with its own quickstart. Pituitary's guide includes a
+[credential-free terminal demo](packages/pituitary#try-it-without-credentials).
 
 ```sh
 nix run .#pituitary
 nix build .#bay .#flare                    # Linux
-nix develop .#pituitary                   # then: cd packages/pituitary && just loop
+nix develop .#pituitary                   # then: cd packages/pituitary && bun install && just run tool
 nix develop .#bay                         # then: cd packages/bay && go test ./...
 ```
 
-The flake exports `homeManagerModules.pituitary` (`programs.pituitary`) and
-`nixosModules.bay` (`services.bay`). Realm imports them with its regular module
-trees; host preferences stay in `machines/`. Each package README records its
-source revision and development workflow. `lib.bayGuestImage` builds a standalone
-Bay guest image.
+The flake exports `homeManagerModules.pituitary` (`programs.pituitary`),
+`nixosModules.pituitary` (`services.pituitary`), and `nixosModules.bay`
+(`services.bay`). Realm imports these with its regular module trees; enabling a
+service is a host decision in `machines/`. `lib.bayGuestImage` builds a standalone
+Bay guest image. The former standalone Bay and Pituitary repositories are retired.
 
 ## Usage
 
