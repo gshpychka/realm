@@ -1,6 +1,6 @@
 import { type Run, summarizeRun } from "@probabench/domain";
 import type { BenchRequest } from "../bridge/protocol";
-import { count, date, gap, modelName, percent, time } from "../common/format";
+import { calibrationErrorText, count, date, modelName, percent, time } from "../common/format";
 import { rerunRequest } from "../setup/run-settings";
 
 export function RunDetail({
@@ -17,7 +17,7 @@ export function RunDetail({
   const rerun = rerunRequest(run);
   return (
     <section className="card run-detail" aria-label={`Run details for ${run.model}`}>
-      <p className="eyebrow">Selected observation</p>
+      <p className="eyebrow">Selected run</p>
       <h3>{modelName(run.model)}</h3>
       <p className="model-slug">{run.modelSlug}</p>
       <div className="detail-timestamp">
@@ -29,8 +29,8 @@ export function RunDetail({
       </div>
       <div className="detail-stats">
         <div>
-          <span>Mean calibration gap</span>
-          <strong>{gap(summary.meanCalibrationError)}</strong>
+          <span>Mean calibration error</span>
+          <strong>{calibrationErrorText(summary.meanCalibrationError)}</strong>
         </div>
         <div>
           <span>Valid replies</span>
@@ -76,8 +76,8 @@ export function RunDetail({
         </div>
       ) : null}
       <p className="detail-note">
-        Mean gap averages the absolute difference between target and observed frequency across
-        targets with valid replies. Compare like-for-like grids and budgets.
+        Mean calibration error averages the absolute difference between target and observed
+        frequency across targets with valid replies. Compare like-for-like grids and budgets.
       </p>
     </section>
   );

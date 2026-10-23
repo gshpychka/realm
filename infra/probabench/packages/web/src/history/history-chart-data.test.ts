@@ -25,7 +25,7 @@ const run = (id: string, model: string, startedAt: string, points = calibrated) 
 const styles = modelStyles([{ model: "model-a" }, { model: "model-b" }]);
 
 describe("history chart measurements", () => {
-  it("keeps every execution when timestamps tie, including equal scores, in archive order", () => {
+  it("keeps every run when timestamps tie, including equal errors, in append order", () => {
     const at = "2026-10-22T15:00:00.000Z";
     const original = run("z-old", "model-a", at);
     const newer = run("a-new", "model-a", at);
@@ -43,27 +43,27 @@ describe("history chart measurements", () => {
     const model = buildHistoryChartModel([last, first, other, failed], styles);
     const a = model.series.find((item) => item.model === "model-a");
     expect(a?.points.map((point) => point.run.id)).toEqual(["first", "invalid", "last"]);
-    expect(a?.points.map((point) => point.score)).toEqual([0, null, 0.5]);
+    expect(a?.points.map((point) => point.calibrationError)).toEqual([0, null, 0.5]);
     expect(a?.style).toEqual(styles.get("model-a"));
     expect(a?.points[1]?.summary).toMatchObject({ validity: 0, coveredPoints: 0 });
   });
 
-  it("pads a single observation on both sides while keeping zero a valid score", () => {
+  it("pads a single run on both sides while keeping zero a valid error", () => {
     const item = run("only", "model-a", "2026-10-22T15:00:00.000Z");
     const model = buildHistoryChartModel([item], styles);
     expect(model.domain[0]).toBeLessThan(Date.parse(item.startedAt));
     expect(model.domain[1]).toBeGreaterThan(Date.parse(item.startedAt));
-    expect(model.points[0]?.score).toBe(0);
-    expect(model.upperScore).toBe(0.05);
+    expect(model.points[0]?.calibrationError).toBe(0);
+    expect(model.yMax).toBe(0.05);
   });
 
-  it("keeps empty and all-invalid histories distinct without manufacturing a score", () => {
+  it("keeps empty and all-invalid histories distinct without manufacturing an error", () => {
     expect(buildHistoryChartModel([], styles).points).toEqual([]);
     const model = buildHistoryChartModel(
       [run("invalid", "model-a", "2026-10-22T15:00:00.000Z", allInvalid)],
       styles,
     );
-    expect(model.points[0]?.score).toBeNull();
+    expect(model.points[0]?.calibrationError).toBeNull();
     expect(model.points[0]?.summary.validity).toBe(0);
     expect(model.series[0]?.points).toHaveLength(1);
   });

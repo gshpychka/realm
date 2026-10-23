@@ -13,7 +13,7 @@ const render = (item = run) =>
   renderToStaticMarkup(<RunDetail run={item} onCompare={() => {}} onRerun={() => {}} />);
 
 describe("RunDetail", () => {
-  it("summarizes the run's reasoning, mean gap and valid replies", () => {
+  it("summarizes the run's reasoning, mean calibration error and valid replies", () => {
     const html = render();
     expect(html).toContain("off reasoning");
     expect(html).toContain("100.0 pp");

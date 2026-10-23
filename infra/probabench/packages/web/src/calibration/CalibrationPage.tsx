@@ -3,9 +3,9 @@ import { lazy, useId, useMemo } from "react";
 import { type NotebookView, toggleHidden, type UpdateView } from "../app/notebook-view";
 import { ChartBoundary } from "../common/chart-frame";
 import {
+  calibrationErrorText,
   count,
   date,
-  gap,
   modelName,
   samplingText,
   shortId,
@@ -76,7 +76,7 @@ export function CalibrationPage({
           <div className="chart-caption">
             <span className="reference-key">
               <span aria-hidden="true" />
-              Calibrated sampling · y = x
+              Calibrated sampling (y = x)
             </span>
             <span className="mono">
               {chosen.length} / {selections.length} models
@@ -143,7 +143,7 @@ export function CalibrationPage({
             })}
           </fieldset>
           <p className="panel-note">
-            Colour identifies a model. A saved run captures one set of settings and samples.
+            Color identifies a model. A saved run captures one set of settings and samples.
           </p>
         </aside>
       </div>
@@ -168,9 +168,9 @@ export function CalibrationPage({
                 />
                 <strong>{modelName(run.model)}</strong>
                 <span className="measurement-date">{timestamp(run.startedAt)}</span>
-                <span className="measurement-gap">
-                  {gap(summarizeRun(run).meanCalibrationError)}
-                  <small>mean gap</small>
+                <span className="measurement-error">
+                  {calibrationErrorText(summarizeRun(run).meanCalibrationError)}
+                  <small>mean error</small>
                 </span>
                 <span className="expand-sign" aria-hidden="true">
                   +

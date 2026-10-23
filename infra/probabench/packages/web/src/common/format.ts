@@ -21,8 +21,8 @@ export const percent = (value: number | null, digits = 1): string =>
     ? "—"
     : `${(value * 100).toLocaleString("en-US", { maximumFractionDigits: digits })}%`;
 
-/** Mean calibration gap in percentage points. */
-export const gap = (value: number | null, empty = "—"): string =>
+/** A calibration error, given as a fraction, in percentage points. */
+export const calibrationErrorText = (value: number | null, empty = "—"): string =>
   value === null ? empty : `${(value * 100).toFixed(1)} pp`;
 
 export const date = (iso: string): string => DATE.format(new Date(iso));

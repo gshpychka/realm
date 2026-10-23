@@ -16,11 +16,11 @@ import { ResultsStore, type ResultsStoreError } from "../store/results-store";
 
 const describeCompletedRun = (run: Run, out: string): string => {
   const { valid, total, meanCalibrationError } = summarizeRun(run);
-  const gap =
+  const error =
     meanCalibrationError === null ? "n/a" : `${(meanCalibrationError * 100).toFixed(1)} pp`;
   return (
     `[${run.model}] run ${run.id} complete: ${valid}/${total} valid, ` +
-    `mean calibration gap ${gap} → saved to ${out}`
+    `mean calibration error ${error} → saved to ${out}`
   );
 };
 

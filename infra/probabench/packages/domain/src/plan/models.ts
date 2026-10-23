@@ -9,7 +9,7 @@ export interface ModelAlias {
   readonly reasoning?: ReasoningEffort;
 }
 
-/** Convenient starting points; any OpenRouter vendor/model slug also works. */
+/** Convenient starting points; any OpenRouter model ID also works. */
 export const MODEL_ALIASES: readonly [ModelAlias, ...ModelAlias[]] = [
   { alias: "claude-haiku-4.5", slug: "anthropic/claude-haiku-4.5" },
   { alias: "claude-sonnet-4.5", slug: "anthropic/claude-sonnet-4.5" },
@@ -26,7 +26,7 @@ export const isModelSlug = (value: string): boolean =>
   /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value);
 
 /**
- * One alias or vendor/model slug: exactly the single tokens the runner resolves.
+ * One alias or OpenRouter model ID: exactly the single tokens the runner resolves.
  * Neither form can start with "-" or contain a comma or whitespace, so a token is
  * also safe to pass as one command-line argument.
  */

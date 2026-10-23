@@ -3,7 +3,15 @@ import { lazy, useMemo, useRef } from "react";
 import { type NotebookView, tabId, toggleHidden, type UpdateView } from "../app/notebook-view";
 import type { BenchRequest } from "../bridge/protocol";
 import { ChartBoundary } from "../common/chart-frame";
-import { count, date, gap, modelName, percent, samplingText, time } from "../common/format";
+import {
+  calibrationErrorText,
+  count,
+  date,
+  modelName,
+  percent,
+  samplingText,
+  time,
+} from "../common/format";
 import { Measurements } from "../common/Measurements";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { inspectedRun, runsByDay, visibleHistory, withComparison } from "../common/run-history";
@@ -76,7 +84,7 @@ export function HistoryPage({
         <header className="chart-heading">
           <div>
             <h3>Calibration, over time</h3>
-            <p>Mean calibration gap · lower means closer to the requested probabilities</p>
+            <p>Mean calibration error · lower means closer to the requested probabilities</p>
           </div>
           <span className="tag">UTC timeline</span>
         </header>
@@ -161,7 +169,7 @@ export function HistoryPage({
                             </span>
                           </span>
                           <span className="history-row-metric">
-                            <strong>{gap(summary.meanCalibrationError)}</strong>
+                            <strong>{calibrationErrorText(summary.meanCalibrationError)}</strong>
                             <span>{percent(summary.validity, 0)} valid</span>
                           </span>
                           <span className="row-arrow" aria-hidden="true">

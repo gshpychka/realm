@@ -55,9 +55,9 @@ const IsoTimestamp = Schema.String.pipe(
   ),
 );
 
-/** One immutable sweep of one model series over its full probability grid. */
+/** One immutable run: a model series sampled over its full probability grid. */
 export const Run = Schema.Struct({
-  /** Identifies this execution; a series keeps every earlier run. */
+  /** Unique in the history; a series keeps every earlier run. */
   id: Schema.NonEmptyTrimmedString,
   /**
    * Series key that groups runs: modelSlug, plus ` [reasoning=<mode>]` unless reasoning
@@ -91,7 +91,7 @@ export const Run = Schema.Struct({
 export type Run = typeof Run.Type;
 
 /**
- * The append-only history document. Models can repeat; execution IDs cannot.
+ * The append-only history document. Models can repeat; run IDs cannot.
  * Decoding ignores unknown keys.
  */
 export const Results = Schema.Struct({

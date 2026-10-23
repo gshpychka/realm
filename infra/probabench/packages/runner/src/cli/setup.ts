@@ -1,5 +1,5 @@
 // Guided setup: what an interactive terminal is asked when no --model is given.
-// It runs offline, offering the aliases or any OpenRouter vendor/model slug.
+// It runs offline, offering the aliases or any OpenRouter model ID.
 import * as Prompt from "@effect/cli/Prompt";
 import {
   ALL_TARGETS,
@@ -36,12 +36,12 @@ const sizeChoices: ReadonlyArray<Prompt.Prompt.SelectChoice<Sizing | "custom">> 
 ];
 
 const promptCustomModels = Prompt.text({
-  message: "OpenRouter vendor/model slug (comma-separated for several)",
+  message: "OpenRouter model ID, vendor/model (comma-separated for several)",
   validate: (list) => {
     const { targets, unknown } = selectTargets(splitModels(list));
     return targets.length > 0 && unknown.length === 0
       ? Effect.succeed(list)
-      : Effect.fail("Enter a listed alias or an OpenRouter vendor/model slug.");
+      : Effect.fail("Enter a listed alias or an OpenRouter model ID (vendor/model).");
   },
 }).pipe(Effect.map(splitModels));
 

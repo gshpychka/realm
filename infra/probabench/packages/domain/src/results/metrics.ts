@@ -74,8 +74,8 @@ export interface RunSummary {
 }
 
 /**
- * Summarize a sweep without hiding failures. Each covered point has equal weight,
- * so higher validity at one target cannot dominate the score. All-invalid points
+ * Summarize a run without hiding failures. Each covered point has equal weight,
+ * so higher validity at one target cannot dominate the mean. All-invalid points
  * are left out of the error and show up in coveredPoints instead. Finite-sample
  * noise remains; compare runs together with coverage and validity.
  */

@@ -61,15 +61,15 @@ export function MethodPage() {
           <p>
             A model that gives valid bits rarely can appear calibrated on the few replies that
             remain. Inspect the valid reply fraction and the number of targets with valid samples
-            alongside the mean calibration gap.
+            alongside the mean calibration error.
           </p>
         </article>
         <article>
           <h3>Compare like with like.</h3>
           <p>
-            The mean gap averages absolute frequency error across recorded targets with valid
-            replies. Different target grids and sample budgets change what it measures. This
-            notebook preserves run settings so those differences stay visible.
+            The mean calibration error averages absolute frequency error across recorded targets
+            with valid replies. Different target grids and sample budgets change what it measures.
+            This notebook preserves run settings so those differences stay visible.
           </p>
         </article>
       </div>

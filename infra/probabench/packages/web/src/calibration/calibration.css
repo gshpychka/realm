@@ -287,7 +287,7 @@
     display: none;
   }
 }
-.measurement-gap {
+.measurement-error {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -305,7 +305,7 @@
     font-size: 12px;
   }
 }
-.measurement-gap small {
+.measurement-error small {
   font: 11px / 1.6 var(--mono);
   color: var(--muted);
 }

@@ -9,7 +9,7 @@ const COLORS = [
   "#e78a4e",
   "#89b482",
 ] as const;
-/** Once every colour is in use, a reused colour gets the next dash pattern. */
+/** Once every color is in use, a reused color gets the next dash pattern. */
 const DASHES = ["none", "8 4", "2 4", "8 3 2 3"] as const;
 
 export interface ModelStyle {

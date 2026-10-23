@@ -26,7 +26,7 @@ function NotebookOverview({ runs }: { runs: readonly Run[] }) {
       <p className="overview-date">
         {latest ? (
           <>
-            Last observation
+            Last run
             <time dateTime={latest.startedAt}>
               {date(latest.startedAt)} <span>· {time(latest.startedAt)} UTC</span>
             </time>

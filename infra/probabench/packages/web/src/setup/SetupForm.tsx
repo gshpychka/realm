@@ -46,7 +46,7 @@ export const submitLabel = (
   pending: boolean,
   copied: boolean,
 ): string => {
-  if (connection === "connecting") return "Checking runner…";
+  if (connection === "connecting") return "Connecting…";
   if (pending) return "Starting…";
   if (connection === "published") return copied ? "Copied ✓" : "Copy command";
   return "Start benchmark";
@@ -182,8 +182,7 @@ export function SetupForm({
   return (
     <>
       <p className="dialog-intro">
-        Choose a model and a sampling depth. Every completed run is saved alongside earlier
-        observations.
+        Choose a model and a sampling depth. Every completed run is saved alongside earlier runs.
       </p>
       <form
         onSubmit={(event) => {
@@ -193,7 +192,7 @@ export function SetupForm({
         {/* Locks every setting while a run is starting; display: contents keeps the layout. */}
         <fieldset className="setup-fields" disabled={bridge.pending}>
           <label className="field-label" htmlFor="benchmark-model">
-            OpenRouter model <span>provider/model or starter alias</span>
+            Model <span>OpenRouter model ID or starter alias</span>
           </label>
           <input
             id="benchmark-model"
@@ -304,7 +303,7 @@ export function SetupForm({
                     onChange({ reasoning: Schema.is(ReasoningMode)(value) ? value : undefined });
                   }}
                 >
-                  <option value="">Use runner preset</option>
+                  <option value="">Default</option>
                   {ReasoningMode.literals.map((mode) => (
                     <option key={mode} value={mode}>
                       {REASONING_LABELS[mode]}
@@ -314,8 +313,7 @@ export function SetupForm({
               </label>
             </div>
             <p className="helper">
-              Named aliases retain their reasoning settings. A raw model slug uses reasoning off
-              unless you choose a mode.
+              Default keeps an alias’s own reasoning mode and turns reasoning off for a model ID.
             </p>
           </details>
         </fieldset>
@@ -349,7 +347,7 @@ export function SetupForm({
           <p>
             {published
               ? "Run this command locally with your OpenRouter key. Charges depend on generated tokens."
-              : "Your key stays on the local server. OpenRouter charges for generated tokens."}
+              : "Your key stays on the dev server. OpenRouter charges for generated tokens."}
           </p>
           <button type="submit" className="button primary" disabled={!canSubmit}>
             {submitLabel(connection.kind, bridge.pending, copyStatus === "copied")}

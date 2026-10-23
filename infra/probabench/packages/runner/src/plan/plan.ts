@@ -43,7 +43,7 @@ export const resolvePlan = (request: {
   if (unknown.length > 0) {
     return Effect.fail(
       new InvalidOptions({
-        message: `Unknown models: ${unknown.join(", ")}. Use --list or a vendor/model slug.`,
+        message: `Unknown models: ${unknown.join(", ")}. Use --list or an OpenRouter model ID (vendor/model).`,
       }),
     );
   }

@@ -11,7 +11,14 @@ import {
   YAxis,
 } from "recharts";
 import { CHART, PlotEmpty } from "../common/chart-frame";
-import { gap, modelName, percent, samplingText, shortId, timestamp } from "../common/format";
+import {
+  calibrationErrorText,
+  modelName,
+  percent,
+  samplingText,
+  shortId,
+  timestamp,
+} from "../common/format";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { buildHistoryChartModel, type HistoryPoint } from "./history-chart-data";
 
@@ -41,8 +48,8 @@ function HistoryTooltip({
             <strong>{modelName(run.model)}</strong>
           </p>
           <div className="tooltip-value">
-            {gap(summary.meanCalibrationError, "No valid replies")}
-            <span>mean calibration gap</span>
+            {calibrationErrorText(summary.meanCalibrationError, "No valid replies")}
+            <span>mean calibration error</span>
           </div>
           <p className="muted">
             {percent(summary.validity)} valid · {summary.coveredPoints}/{summary.totalPoints}{" "}
@@ -84,7 +91,7 @@ function HistoryDot({
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      aria-label={`Inspect ${run.model}, ${timestamp(run.startedAt)}, mean gap ${gap(point.score)}, run ${run.id}`}
+      aria-label={`Inspect ${run.model}, ${timestamp(run.startedAt)}, mean calibration error ${calibrationErrorText(point.calibrationError)}, run ${run.id}`}
       onClick={() => onSelect(run)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -94,7 +101,7 @@ function HistoryDot({
       }}
     >
       <title>
-        {run.model} · {gap(point.score)}
+        {run.model} · {calibrationErrorText(point.calibrationError)}
       </title>
       <circle cx={cx} cy={cy} r={12} fill="transparent" stroke="none" />
       <circle
@@ -111,15 +118,15 @@ function HistoryDot({
 const emptyPlot = (points: readonly HistoryPoint[]) => {
   if (points.length === 0)
     return { title: "No runs shown.", detail: "Show a model or clear the history search." };
-  if (points.every((point) => point.score === null))
+  if (points.every((point) => point.calibrationError === null))
     return {
-      title: "No calibration scores to plot.",
+      title: "No calibration errors to plot.",
       detail: "These runs contain no valid replies. Their outcomes remain in the history list.",
     };
   return null;
 };
 
-/** Per-model timelines preserve null-score gaps and every execution, including timestamp ties. */
+/** Per-model timelines keep a break for each run without valid replies, and every run on a tied timestamp. */
 export function HistoryChart({
   runs,
   styles,
@@ -139,7 +146,7 @@ export function HistoryChart({
     setTooltipEnabled(false);
     onSelect(run);
   };
-  const { points, series, domain, upperScore, tickFormat } = useMemo(
+  const { points, series, domain, yMax, tickFormat } = useMemo(
     () => buildHistoryChartModel(runs, styles),
     [runs, styles],
   );
@@ -147,7 +154,7 @@ export function HistoryChart({
   return (
     <figure
       className="plot"
-      aria-label="Calibration gap over time"
+      aria-label="Calibration error over time"
       aria-describedby={descriptionId}
       onPointerMove={(event) => {
         if (event.pointerType !== "touch") setTooltipEnabled(true);
@@ -174,13 +181,13 @@ export function HistoryChart({
             tickMargin={12}
             label={{
               ...CHART.label,
-              value: "Observation time (UTC)",
+              value: "Run start (UTC)",
               position: "insideBottom",
               offset: -20,
             }}
           />
           <YAxis
-            domain={[0, upperScore]}
+            domain={[0, yMax]}
             tickFormatter={(value: number) => `${Math.round(value * 100)}`}
             width={56}
             axisLine={false}
@@ -189,7 +196,7 @@ export function HistoryChart({
             tickMargin={10}
             label={{
               ...CHART.label,
-              value: "Mean gap (pp)",
+              value: "Calibration error (pp)",
               angle: -90,
               position: "insideLeft",
               offset: -4,
@@ -207,13 +214,16 @@ export function HistoryChart({
             <Line
               key={model}
               data={line}
-              dataKey="score"
+              dataKey="calibrationError"
               name={model}
               stroke={style.color}
               strokeDasharray={style.dash}
               strokeWidth={2}
               dot={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: HistoryPoint }) =>
-                cx === undefined || cy === undefined || !payload || payload.score === null ? (
+                cx === undefined ||
+                cy === undefined ||
+                !payload ||
+                payload.calibrationError === null ? (
                   <g />
                 ) : (
                   <HistoryDot
@@ -236,10 +246,10 @@ export function HistoryChart({
       </ResponsiveContainer>
       {empty ? <PlotEmpty {...empty} /> : null}
       <figcaption id={descriptionId} className="chart-description">
-        Mean absolute calibration gap across recorded targets with valid replies, in percentage
+        Mean absolute calibration error across recorded targets with valid replies, in percentage
         points. Lower is better. Each point is a saved run; select a point to inspect its settings.
         Runs with no valid replies leave gaps and remain available in the history list. Different
-        target grids and sample budgets affect this score.
+        target grids and sample budgets affect this error.
       </figcaption>
     </figure>
   );

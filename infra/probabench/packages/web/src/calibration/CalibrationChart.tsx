@@ -72,8 +72,8 @@ function CalibrationTooltip({
 const emptyPlot = (series: readonly CalibrationSeries[]) => {
   if (series.length === 0)
     return {
-      title: "Select a model to draw its observations.",
-      detail: "The dashed line is the calibration reference.",
+      title: "Select a model to draw its run.",
+      detail: "Choose one from the Models list.",
     };
   if (series.every(({ points }) => points.every((point) => point.observed === null)))
     return {

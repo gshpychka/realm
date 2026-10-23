@@ -1,4 +1,4 @@
-// Resolves the CLI's model tokens (aliases, OpenRouter slugs and "all") into
+// Resolves the CLI's model tokens (aliases, OpenRouter model IDs and "all") into
 // benchmark targets, one per model series.
 import {
   ALL_TARGETS,
@@ -11,6 +11,7 @@ import {
 /** A resolved series; id is the series label persisted as Run.model, never a run identity. */
 export interface BenchTarget {
   readonly id: string;
+  /** OpenRouter model ID, e.g. "anthropic/claude-haiku-4.5". */
   readonly slug: string;
   readonly reasoning: ReasoningMode;
 }
@@ -45,8 +46,8 @@ interface TargetSelection {
 }
 
 /**
- * Resolves tokens from splitModels in request order, deduping aliases and slugs that
- * name the same series. `mode` overrides every target's reasoning.
+ * Resolves tokens from splitModels in request order, deduping aliases and model IDs
+ * that name the same series. `mode` overrides every target's reasoning.
  */
 export const selectTargets = (tokens: readonly string[], mode?: ReasoningMode): TargetSelection => {
   const targets = new Map<string, BenchTarget>();
@@ -64,7 +65,7 @@ export const selectTargets = (tokens: readonly string[], mode?: ReasoningMode): 
 
 export const describeAliases = (): string =>
   [
-    "OpenRouter model aliases (or pass any vendor/model slug):",
+    "OpenRouter model aliases (or pass any OpenRouter model ID):",
     ...MODEL_ALIASES.map((model) => `  ${model.alias} → ${target(model).id}`),
     `  ${ALL_TARGETS} → every alias`,
     `Use --reasoning ${ReasoningMode.literals.join("|")} to override the selected models' reasoning mode.`,

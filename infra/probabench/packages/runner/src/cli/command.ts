@@ -47,7 +47,7 @@ const options = {
     Options.withAlias("m"),
     Options.optional,
     Options.withDescription(
-      `Comma-separated OpenRouter vendor/model slugs or aliases; "${ALL_TARGETS}" selects every alias.`,
+      `Comma-separated OpenRouter model IDs (vendor/model) or aliases; "${ALL_TARGETS}" selects every alias.`,
     ),
   ),
   trials: integerFlag("trials", TrialsPerStep, "a positive integer").pipe(
@@ -75,7 +75,7 @@ const options = {
   reasoning: Options.choice("reasoning", ReasoningMode.literals).pipe(
     Options.optional,
     Options.withDescription(
-      "Override reasoning mode (slugs default to off; aliases retain their named mode).",
+      "Override reasoning mode (model IDs default to off; aliases keep their own).",
     ),
   ),
   out: Options.text("out").pipe(

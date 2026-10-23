@@ -4,16 +4,15 @@ import type { Bridge } from "../bridge/use-bridge";
 import { time } from "../common/format";
 import { FormError } from "./FormError";
 
+const UNSAVED = "An unfinished run is not saved. Earlier runs remain in history.";
+
 const OUTCOME = {
   completed: {
     title: "Run saved to history",
-    detail: "Your new observation is ready. Earlier runs remain in history.",
+    detail: "Earlier runs remain in history.",
   },
-  cancelled: {
-    title: "Run cancelled",
-    detail: "Any model sweeps already saved remain in history.",
-  },
-  failed: { title: "Run stopped", detail: "Any model sweeps already saved remain in history." },
+  cancelled: { title: "Run cancelled", detail: UNSAVED },
+  failed: { title: "Run stopped", detail: UNSAVED },
 } as const satisfies Record<Exclude<Job["status"], "running">, { title: string; detail: string }>;
 
 const describe = (job: Job, cancelling: boolean) => {

@@ -30,7 +30,7 @@ describe("OpenRouter model selection", () => {
     expect(selection.unknown).toEqual([]);
   });
 
-  it("dedupes aliases and slugs resolving to the same experiment", () => {
+  it("dedupes aliases and model IDs resolving to the same series", () => {
     expect(selectTargets(["claude-haiku-4.5", "anthropic/claude-haiku-4.5"]).targets).toHaveLength(
       1,
     );
@@ -57,7 +57,7 @@ describe("OpenRouter model selection", () => {
     });
   });
 
-  it("reports unknown aliases and malformed slugs before execution", () => {
+  it("reports unknown aliases and malformed model IDs before execution", () => {
     const selection = selectTargets([
       "claude-haiku-4.5",
       "typo",

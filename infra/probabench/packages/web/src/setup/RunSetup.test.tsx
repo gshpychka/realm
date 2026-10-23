@@ -110,7 +110,7 @@ describe("benchmark setup workflow", () => {
 
 describe("submitLabel", () => {
   it.each([
-    ["connecting", false, false, "Checking runner…"],
+    ["connecting", false, false, "Connecting…"],
     ["local", true, false, "Starting…"],
     ["local", false, false, "Start benchmark"],
     ["published", false, false, "Copy command"],

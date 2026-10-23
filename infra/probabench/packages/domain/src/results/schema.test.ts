@@ -71,7 +71,7 @@ describe("Run", () => {
 });
 
 describe("Results", () => {
-  it("keeps separate executions of the same model", () => {
+  it("keeps separate runs of the same model", () => {
     const results = Schema.decodeUnknownSync(Results)({
       schemaVersion: 2,
       runs: [run, { ...run, id: "run-2" }],

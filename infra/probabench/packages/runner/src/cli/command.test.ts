@@ -56,7 +56,7 @@ describe("probabench command", () => {
   it.effect("rejects unknown models mixed with valid ones, even with --yes", () =>
     Effect.gen(function* () {
       expect(yield* invalidOptions(["--model", "vendor/model,typo", "--yes"])).toBe(
-        "Unknown models: typo. Use --list or a vendor/model slug.",
+        "Unknown models: typo. Use --list or an OpenRouter model ID (vendor/model).",
       );
     }),
   );
@@ -75,7 +75,7 @@ describe("probabench command", () => {
 
   it.effect("lists aliases without credentials", () => runCommand(["--list"]));
 
-  it.effect("dry-runs any OpenRouter slug without credentials or confirmation", () =>
+  it.effect("dry-runs any OpenRouter model ID without credentials or confirmation", () =>
     runCommand([
       "--model",
       "vendor/future-model:free",

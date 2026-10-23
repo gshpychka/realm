@@ -58,7 +58,7 @@ export function RunSetup({
       <div className="dialog-content">
         <header className="dialog-heading">
           <div>
-            <p className="eyebrow">{job ? "Your observation" : "A new observation"}</p>
+            <p className="eyebrow">{job ? "Your run" : "A new run"}</p>
             <h2 id="setup-title">{heading(job)}</h2>
           </div>
           <button

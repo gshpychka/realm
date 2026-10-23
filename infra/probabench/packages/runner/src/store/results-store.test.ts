@@ -47,7 +47,7 @@ describe("ResultsStore", () => {
       ),
   );
 
-  it.effect("rejects a duplicate execution id and keeps the document", () =>
+  it.effect("rejects a duplicate run id and keeps the document", () =>
     withResultsStore((path) =>
       Effect.gen(function* () {
         const store = yield* ResultsStore;
