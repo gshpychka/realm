@@ -5,7 +5,6 @@ import {
   ErrorBar,
   Line,
   LineChart,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   type TooltipContentProps,
@@ -18,6 +17,11 @@ import type { ModelStyle } from "../common/palette";
 import { buildCalibrationSeries, type CalibrationSeries } from "./calibration-chart-data";
 
 const TICKS = [0, 0.25, 0.5, 0.75, 1];
+/** The y = x line, drawn as data: an empty selection still needs the axes it brings. */
+const REFERENCE = [
+  { x: 0, y: 0 },
+  { x: 1, y: 1 },
+];
 
 function CalibrationTooltip({
   active,
@@ -135,14 +139,16 @@ export function CalibrationChart({
               <CalibrationTooltip active={active} label={label} series={series} />
             )}
           />
-          <ReferenceLine
-            segment={[
-              { x: 0, y: 0 },
-              { x: 1, y: 1 },
-            ]}
+          <Line
+            data={REFERENCE}
+            dataKey="y"
             stroke={CHART.reference}
             strokeWidth={1}
             strokeDasharray="5 6"
+            dot={false}
+            activeDot={false}
+            isAnimationActive={false}
+            type="linear"
           />
           {series.map(({ run, style, points }) => (
             <Line
