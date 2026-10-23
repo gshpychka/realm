@@ -3,12 +3,14 @@
 // are retried with jittered exponential backoff, waiting longer when the provider
 // sends Retry-After. Any other failure, or a spent retry budget, aborts the run.
 import type * as AiError from "@effect/ai/AiError";
-import { MAX_RETRIES } from "@probabench/domain";
 import type * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
+
+/** Retries after a sample's first provider attempt. */
+export const MAX_RETRIES = 5;
 
 /** Why one provider request failed. */
 export type ProviderFailure = AiError.AiError | Cause.TimeoutException;

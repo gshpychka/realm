@@ -1,6 +1,5 @@
 import * as LanguageModel from "@effect/ai/LanguageModel";
 import { describe, expect, it } from "@effect/vitest";
-import { MAX_RETRIES } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -8,6 +7,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/TestClock";
 import type { SamplingOptions } from "../plan/plan";
 import type { ModelSeries } from "../plan/series";
+import { MAX_RETRIES } from "./retry";
 import { sweep } from "./sweep";
 
 const series: ModelSeries = { id: "vendor/model", slug: "vendor/model", reasoning: "off" };

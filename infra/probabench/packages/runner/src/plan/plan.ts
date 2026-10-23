@@ -54,11 +54,10 @@ export const resolvePlan = (request: {
 };
 
 export const describePlan = ({ series, options }: BenchPlan): string => {
-  const { samples, attempts } = planBudget(options, series.length);
+  const { samples } = planBudget(options, series.length);
   return [
     `Models (${series.length}):`,
     ...series.map((entry) => `  ${entry.slug} · reasoning ${entry.reasoning}`),
     `Projected samples: ${samples}`,
-    `Provider attempts with retries: up to ${attempts}`,
   ].join("\n");
 };

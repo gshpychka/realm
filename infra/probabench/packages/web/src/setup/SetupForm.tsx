@@ -158,7 +158,7 @@ export function SetupForm({
   const budget =
     Schema.is(TrialsPerStep)(trialsPerStep) && Schema.is(StepPercent)(stepPercent)
       ? planBudget({ trialsPerStep, stepPercent })
-      : { points: 0, samples: 0, attempts: 0 };
+      : { points: 0, samples: 0 };
   // A copied command only has to be one the form can express; a browser run also has a budget.
   const checked = Schema.validateEither(published ? BenchRequest : BridgeRequest)(request);
   const validationError = Either.isLeft(checked) ? firstIssue(checked.left) : null;
@@ -324,8 +324,6 @@ export function SetupForm({
           <span className="budget-times">=</span>
           <p>
             {count(budget.points)} targets × {count(trialsPerStep)} samples
-            <br />
-            <span>Up to {count(budget.attempts)} attempts with retries.</span>
           </p>
         </div>
         <FormError message={validationError} />

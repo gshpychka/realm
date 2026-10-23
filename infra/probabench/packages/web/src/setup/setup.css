@@ -299,14 +299,6 @@ body:has(.run-dialog[open]) {
   font-size: 12px;
   line-height: 1.9;
 }
-.budget > p > span {
-  color: var(--muted);
-  font-size: 12px;
-
-  @media (max-width: 650px) {
-    font-size: 11px;
-  }
-}
 .environment-note {
   display: flex;
   gap: 10px;

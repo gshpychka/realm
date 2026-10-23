@@ -12,12 +12,8 @@ describe("probabilityGrid", () => {
 });
 
 describe("planBudget", () => {
-  it("counts both grid endpoints and every retry", () => {
-    expect(planBudget({ trialsPerStep: 10, stepPercent: 30 })).toEqual({
-      points: 5,
-      samples: 50,
-      attempts: 300,
-    });
+  it("counts both grid endpoints", () => {
+    expect(planBudget({ trialsPerStep: 10, stepPercent: 30 })).toEqual({ points: 5, samples: 50 });
     expect(planBudget({ trialsPerStep: 5, stepPercent: 50 }, 3).samples).toBe(45);
   });
 });

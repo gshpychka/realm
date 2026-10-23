@@ -1,13 +1,12 @@
 import * as AiError from "@effect/ai/AiError";
 import { describe, expect, it } from "@effect/vitest";
-import { MAX_RETRIES } from "@probabench/domain";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as TestClock from "effect/TestClock";
-import { type ProviderFailure, retryAfterMillis, withProviderRetry } from "./retry";
+import { MAX_RETRIES, type ProviderFailure, retryAfterMillis, withProviderRetry } from "./retry";
 
 const origin = { module: "OpenRouterClient", method: "createChatCompletion" };
 const request = {

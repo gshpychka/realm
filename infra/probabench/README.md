@@ -42,8 +42,8 @@ probabench --model openai/gpt-5-mini --reasoning low --trials 20 --yes
 probabench --help   # every option and its default
 ```
 
-It prints the plan, with its sample count and worst-case provider attempts, and
-asks before running unless `--yes` is given; without a terminal it refuses.
+It prints the plan with its sample count and asks before running unless `--yes`
+is given; without a terminal it refuses.
 `--dry-run` stops after the plan. The aliases are in
 `packages/domain/src/plan/models.ts`; `--reasoning` overrides an alias's mode,
 and a model ID defaults to off.

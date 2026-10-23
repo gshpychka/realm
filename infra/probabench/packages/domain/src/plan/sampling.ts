@@ -21,18 +21,10 @@ export const probabilityGrid = (stepPercent: number): ReadonlyArray<Probability>
     (percent) => Probability.make(percent / 100),
   );
 
-/**
- * Retries after a sample's first provider attempt. The runner's retry schedule and
- * every budget display read it.
- */
-export const MAX_RETRIES = 5;
-
 interface PlanBudget {
   /** Target probabilities per model. */
   readonly points: number;
   readonly samples: number;
-  /** Provider requests if every sample used all its retries. */
-  readonly attempts: number;
 }
 
 /** What a plan costs for `models` model series. Expects an already validated plan. */
@@ -41,8 +33,7 @@ export const planBudget = (
   models = 1,
 ): PlanBudget => {
   const points = probabilityGrid(plan.stepPercent).length;
-  const samples = models * points * plan.trialsPerStep;
-  return { points, samples, attempts: samples * (MAX_RETRIES + 1) };
+  return { points, samples: models * points * plan.trialsPerStep };
 };
 
 export const SAMPLING_PRESETS = [
