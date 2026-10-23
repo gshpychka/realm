@@ -1,10 +1,9 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import { describe, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import type { BenchPlan } from "../plan/plan";
 import type { ModelSeries } from "../plan/series";
-import { chatEndpoint } from "../sampling/testing";
+import { chatEndpoint, withApiKey } from "../sampling/testing";
 import { readResults, withHistoryFile } from "../store/testing";
 import { executePlan } from "./execute";
 
@@ -21,11 +20,6 @@ const planFor = (out: string, first: string, ...rest: string[]): BenchPlan => ({
   out,
 });
 
-const withKey = (key?: string) =>
-  Effect.withConfigProvider(
-    ConfigProvider.fromMap(new Map(key === undefined ? [] : [["OPENROUTER_API_KEY", key]])),
-  );
-
 describe("executePlan", () => {
   it.effect("appends a run per series through the real adapter, keeping earlier runs", () =>
     withHistoryFile((path) => {
@@ -37,7 +31,7 @@ describe("executePlan", () => {
         expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a", "vendor/b", "vendor/a"]);
         expect(new Set(runs.map((run) => run.id)).size).toBe(3);
         expect(endpoint.requests).toHaveLength(6);
-      }).pipe(Effect.provide(endpoint.layer), withKey("sk-test"));
+      }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
     }),
   );
 
@@ -49,7 +43,7 @@ describe("executePlan", () => {
         expect(error._tag).toBe("HttpResponseError");
         const { runs } = yield* readResults(path);
         expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a"]);
-      }).pipe(Effect.provide(endpoint.layer), withKey("sk-test"));
+      }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
     }),
   );
 
@@ -61,7 +55,7 @@ describe("executePlan", () => {
         expect(error._tag).toBe("MissingApiKey");
         expect(error.message).toContain("secrets/infra/probabench.env");
         expect(endpoint.requests).toHaveLength(0);
-      }).pipe(Effect.provide(endpoint.layer), withKey());
+      }).pipe(Effect.provide(endpoint.layer), withApiKey());
     }),
   );
 
@@ -74,7 +68,7 @@ describe("executePlan", () => {
         const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a")));
         expect(error._tag).toBe("ParseError");
         expect(endpoint.requests).toHaveLength(0);
-      }).pipe(Effect.provide(endpoint.layer), withKey("sk-test"));
+      }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
     }),
   );
 });

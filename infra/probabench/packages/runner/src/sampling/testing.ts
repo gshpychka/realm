@@ -2,6 +2,7 @@
 // from application code.
 import * as HttpClient from "@effect/platform/HttpClient";
 import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -59,3 +60,9 @@ export const chatEndpoint = ({
   );
   return { requests, layer };
 };
+
+/** Runs with OPENROUTER_API_KEY set to `key`, or unset whatever the real environment holds. */
+export const withApiKey = (key?: string) =>
+  Effect.withConfigProvider(
+    ConfigProvider.fromMap(new Map(key === undefined ? [] : [["OPENROUTER_API_KEY", key]])),
+  );

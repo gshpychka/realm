@@ -1,11 +1,10 @@
 import * as LanguageModel from "@effect/ai/LanguageModel";
 import { describe, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { ModelSeries } from "../plan/series";
 import { openrouterClientLayer, openrouterModelLayer } from "./openrouter";
-import { chatEndpoint } from "./testing";
+import { chatEndpoint, withApiKey } from "./testing";
 
 /** Request fields that would override the model's native sampling. */
 const SAMPLING_OVERRIDES = ["temperature", "top_p", "top_k", "reasoning_effort"] as const;
@@ -48,9 +47,7 @@ describe("openrouterModelLayer", () => {
             Layer.provide(endpoint.layer),
           ),
         ),
-        Effect.withConfigProvider(
-          ConfigProvider.fromMap(new Map([["OPENROUTER_API_KEY", "sk-test"]])),
-        ),
+        withApiKey("sk-test"),
       );
     });
   }

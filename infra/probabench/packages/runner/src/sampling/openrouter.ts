@@ -6,7 +6,6 @@ import * as OpenRouterLanguageModel from "@effect/ai-openrouter/OpenRouterLangua
 import type * as HttpClient from "@effect/platform/HttpClient";
 import * as Config from "effect/Config";
 import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { ModelSeries } from "../plan/series";
 
@@ -46,12 +45,9 @@ export const openrouterClientLayer: Layer.Layer<
   OpenRouterClient.OpenRouterClient,
   MissingApiKey,
   HttpClient.HttpClient
-> = Layer.unwrapEffect(
-  Config.redacted(Config.nonEmptyString("OPENROUTER_API_KEY")).pipe(
-    Effect.mapError(() => new MissingApiKey()),
-    Effect.map((apiKey) => OpenRouterClient.layer({ apiKey })),
-  ),
-);
+> = OpenRouterClient.layerConfig({
+  apiKey: Config.redacted(Config.nonEmptyString("OPENROUTER_API_KEY")),
+}).pipe(Layer.mapError(() => new MissingApiKey()));
 
 export const openrouterModelLayer = (
   series: ModelSeries,

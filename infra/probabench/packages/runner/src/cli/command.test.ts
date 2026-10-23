@@ -3,18 +3,18 @@ import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as NodeContext from "@effect/platform-node/NodeContext";
 import { describe, expect, it } from "@effect/vitest";
 import { benchArgs } from "@probabench/domain";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { MISSING_MODEL_MESSAGE } from "../plan/plan";
+import { withApiKey } from "../sampling/testing";
 import { cli, HISTORY_PATH, NON_TTY_MESSAGE } from "./command";
 
 // Vitest's stdin is not a TTY, so these cover the non-interactive path.
 const runCommand = (args: readonly string[]) =>
   cli(["node", "probabench", ...args]).pipe(
     Effect.provide(Layer.merge(NodeContext.layer, FetchHttpClient.layer)),
-    Effect.withConfigProvider(ConfigProvider.fromMap(new Map())),
+    withApiKey(),
   );
 
 /** The message of the InvalidOptions a command fails with. */
