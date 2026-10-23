@@ -109,6 +109,12 @@ test("native committed events and atomic snapshots agree through tools and dupli
     });
     expect(JSON.stringify(rendered.entries)).toContain("The work is complete.");
     expect(JSON.stringify(rendered.entries)).toContain("Retained tool output");
+    const tools = rendered.entries.flatMap((entry) => (entry.kind === "assistant" ? entry.tools : []));
+    expect(tools.find((tool) => tool.name === "echo")).toMatchObject({
+      state: "ok",
+      args: { value: "Retained tool output" },
+    });
+    expect(tools.every((tool) => tool.streaming === undefined)).toBe(true);
     const calls = faux.state.callCount;
     await bridge.call({ type: "prompt", id: "input-1", message: "Build the change" });
     await conversation.waitForIdle(context);
@@ -381,7 +387,13 @@ test("native overflow snapshots rebase later tool output updates", async () => {
   const conversation = await harness.root(context, { agent: {} });
   await conversation.commit(async (tx) => {
     (await tx.doc(LiveDoc, conversation.id)).tools = [
-      { callId: "call", name: "echo", status: "running", output: "old" },
+      {
+        callId: "call",
+        name: "echo",
+        status: "running",
+        output: "old",
+        details: { fullOutputPath: "/tmp/output" },
+      },
     ];
   }, context);
   let release!: () => void, acquired!: () => void;
@@ -413,6 +425,9 @@ test("native overflow snapshots rebase later tool output updates", async () => {
   release();
   const bridge = await opening;
   try {
+    expect((await bridge.snapshot()).pendingTools).toEqual([
+      { callId: "call", name: "echo", output: "old", details: { fullOutputPath: "/tmp/output" } },
+    ]);
     const until = async (done: () => boolean) => {
       const deadline = Date.now() + 1000;
       while (!done()) {
