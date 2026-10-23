@@ -81,6 +81,37 @@ test("typing a filter and Enter together picks from the new matches", async () =
   }
 });
 
+for (const [name, query, keys, expected] of [
+  ["new filter", "match", ["ARROW_DOWN", "RETURN"], "second"],
+  ["repeated arrows", "", ["ARROW_UP", "ARROW_UP", "RETURN"], "first"],
+  ["empty filter recovery", "z", ["ARROW_DOWN", "BACKSPACE", "ARROW_DOWN", "RETURN"], "second"],
+] as const) {
+  test(`picker selection follows ${name} before the next render`, async () => {
+    let picked = "";
+    const app = await draw(
+      <Picker
+        spec={{
+          title: "models",
+          items,
+          onPick: (value) => {
+            picked = value;
+          },
+        }}
+        onClose={() => {}}
+      />,
+    );
+    try {
+      await act(async () => {
+        await app.mockInput.typeText(query);
+        for (const key of keys) app.mockInput.pressKey(key);
+      });
+      expect(picked).toBe(expected);
+    } finally {
+      app.close();
+    }
+  });
+}
+
 test("an empty picker can recover from arrow navigation without losing its selection", async () => {
   let picked = "";
   const app = await draw(

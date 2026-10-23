@@ -65,6 +65,11 @@ export function Picker({
           spec.items.findIndex((item) => item.current),
         ),
   );
+  const selection = useRef(selected);
+  const select = (index: number) => {
+    selection.current = index;
+    setSelected(index);
+  };
   const shown = useMemo(() => matchingItems(spec.items, query), [spec.items, query]);
   const index = Math.max(0, Math.min(selected, shown.length - 1));
   const height = Math.max(1, Math.min(ROWS, rows));
@@ -74,6 +79,15 @@ export function Picker({
     onClose();
     spec.onPick(item.value);
   };
+  // Consecutive input events can arrive before React draws their new state.
+  const current = () => {
+    const matches = matchingItems(spec.items, input.current?.value ?? query);
+    return { matches, index: Math.max(0, Math.min(selection.current, matches.length - 1)) };
+  };
+  const move = (distance: number) => {
+    const { matches, index } = current();
+    select(Math.max(0, Math.min(matches.length - 1, index + distance)));
+  };
 
   useKeyboard((key) => {
     if (key.name === "escape" || (key.ctrl && key.name === "c")) {
@@ -82,15 +96,13 @@ export function Picker({
       spec.onCancel?.();
     } else if (key.name === "up") {
       key.preventDefault();
-      setSelected(Math.max(0, index - 1));
+      move(-1);
     } else if (key.name === "down") {
       key.preventDefault();
-      setSelected(Math.max(0, Math.min(shown.length - 1, index + 1)));
+      move(1);
     } else if (key.name === "pageup" || key.name === "pagedown") {
       key.preventDefault();
-      setSelected(
-        Math.max(0, Math.min(shown.length - 1, index + (key.name === "pageup" ? -height : height))),
-      );
+      move(key.name === "pageup" ? -height : height);
     }
   });
 
@@ -108,7 +120,7 @@ export function Picker({
         const direction = event.scroll?.direction;
         if (direction !== "up" && direction !== "down") return;
         event.stopPropagation();
-        setSelected(Math.max(0, Math.min(shown.length - 1, index + (direction === "up" ? -1 : 1))));
+        move(direction === "up" ? -1 : 1);
       }}
     >
       <text fg={theme.user} truncate wrapMode="none">
@@ -124,13 +136,11 @@ export function Picker({
           placeholder="type to narrow"
           onInput={(value: string) => {
             setQuery(value);
-            setSelected(0);
+            select(0);
           }}
           onSubmit={() => {
-            // The input can receive Enter before React has drawn the latest filter.
-            const value = input.current?.value ?? query;
-            const matches = value === query ? shown : matchingItems(spec.items, value);
-            const item = matches[value === query ? index : 0];
+            const { matches, index } = current();
+            const item = matches[index];
             if (item) pick(item);
           }}
         />
