@@ -1,31 +1,9 @@
 // The persisted results contract.
 import * as Schema from "effect/Schema";
+import { ReasoningMode } from "../plan/models";
+import { Probability, probabilityGrid, StepPercent, TrialsPerStep } from "../plan/sampling";
 
 export const SCHEMA_VERSION = 2;
-
-/** A target probability as a fraction in [0, 1]. */
-export const Probability = Schema.Number.pipe(Schema.between(0, 1), Schema.brand("Probability"));
-export type Probability = typeof Probability.Type;
-
-/** Reasoning a run requests from OpenRouter; "off" disables it. */
-export const ReasoningMode = Schema.Literal("off", "low", "medium", "high", "xhigh");
-export type ReasoningMode = typeof ReasoningMode.Type;
-export type ReasoningEffort = Exclude<ReasoningMode, "off">;
-
-/** Samples drawn at each target probability. */
-export const TrialsPerStep = Schema.Int.pipe(Schema.positive());
-
-/** Distance between neighbouring target probabilities, in whole percent. */
-export const StepPercent = Schema.Int.pipe(Schema.between(1, 100));
-
-/**
- * Target probabilities {0, step, 2·step, …, 100}% as fractions. Both endpoints are
- * always included, even when the step does not divide 100.
- */
-export const probabilityGrid = (stepPercent: number): ReadonlyArray<Probability> =>
-  [...Array.from({ length: Math.ceil(100 / stepPercent) }, (_, i) => i * stepPercent), 100].map(
-    (percent) => Probability.make(percent / 100),
-  );
 
 /** One trial's outcome: a bit, or the raw text of an unparseable reply. */
 export const Outcome = Schema.Union(

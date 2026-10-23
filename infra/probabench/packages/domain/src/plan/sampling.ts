@@ -1,19 +1,31 @@
-// Run-plan vocabulary shared by the CLI, the dev bridge and the setup form.
-import { probabilityGrid, type ReasoningMode } from "../results/schema";
+// The sampling plan: the probability grid a run sweeps, its sizes, the presets and
+// what a plan costs.
+import * as Schema from "effect/Schema";
+
+/** A target probability as a fraction in [0, 1]. */
+export const Probability = Schema.Number.pipe(Schema.between(0, 1), Schema.brand("Probability"));
+export type Probability = typeof Probability.Type;
+
+/** Samples drawn at each target probability. */
+export const TrialsPerStep = Schema.Int.pipe(Schema.positive());
+
+/** Distance between neighbouring target probabilities, in whole percent. */
+export const StepPercent = Schema.Int.pipe(Schema.between(1, 100));
+
+/**
+ * Target probabilities {0, step, 2·step, …, 100}% as fractions. Both endpoints are
+ * always included, even when the step does not divide 100.
+ */
+export const probabilityGrid = (stepPercent: number): ReadonlyArray<Probability> =>
+  [...Array.from({ length: Math.ceil(100 / stepPercent) }, (_, i) => i * stepPercent), 100].map(
+    (percent) => Probability.make(percent / 100),
+  );
 
 /**
  * Retries after a sample's first provider attempt. The runner's retry schedule and
  * every budget display read it.
  */
 export const MAX_RETRIES = 5;
-
-export const REASONING_LABELS: Readonly<Record<ReasoningMode, string>> = {
-  off: "Off",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-};
 
 export interface PlanBudget {
   /** Target probabilities per model. */

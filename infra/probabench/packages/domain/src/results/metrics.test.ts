@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
+import { Probability } from "../plan/sampling";
 import { measurePoint, summarizeRun } from "./metrics";
-import { type Outcome, Probability } from "./schema";
+import type { Outcome } from "./schema";
 import { makeRun } from "./testing";
 
 const invalid = { invalidText: "x" } as const;

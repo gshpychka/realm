@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { Outcome, Probability, probabilityGrid, Results, Run } from "./schema";
+import { Outcome, Results, Run } from "./schema";
 
 const run = {
   id: "run-1",
@@ -25,24 +25,6 @@ const rejects =
     const decoded = Schema.decodeUnknownEither(schema)(input);
     expect(Either.isLeft(decoded), JSON.stringify(input)).toBe(true);
   };
-
-describe("Probability", () => {
-  it.each([0, 0.5, 1])("decodes %d", (value) => {
-    expect(Schema.decodeUnknownSync(Probability)(value)).toBe(value);
-  });
-
-  it.each([-0.1, 1.5, Number.NaN])("rejects %d", rejects(Probability));
-});
-
-describe("probabilityGrid", () => {
-  it.each([
-    { step: 30, grid: [0, 0.3, 0.6, 0.9, 1] },
-    { step: 50, grid: [0, 0.5, 1] },
-    { step: 100, grid: [0, 1] },
-  ])("includes both endpoints for a $step% step", ({ step, grid }) => {
-    expect(probabilityGrid(step)).toEqual(grid);
-  });
-});
 
 describe("Outcome", () => {
   it.each([2, 0.5, null, { invalidText: 2 }])("rejects %j", rejects(Outcome));

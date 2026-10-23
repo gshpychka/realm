@@ -1,6 +1,20 @@
-// Model tokens the CLI resolves and the dev bridge and setup form accept. The
-// alias table lives here rather than in the runner so all three agree on it.
-import type { ReasoningEffort } from "../results/schema";
+// The models a run can target and the reasoning it requests: tokens the CLI
+// resolves and the dev bridge and setup form accept. The alias table lives here
+// rather than in the runner so all three agree on it.
+import * as Schema from "effect/Schema";
+
+/** Reasoning a run requests from OpenRouter; "off" disables it. */
+export const ReasoningMode = Schema.Literal("off", "low", "medium", "high", "xhigh");
+export type ReasoningMode = typeof ReasoningMode.Type;
+export type ReasoningEffort = Exclude<ReasoningMode, "off">;
+
+export const REASONING_LABELS: Readonly<Record<ReasoningMode, string>> = {
+  off: "Off",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+};
 
 export interface ModelAlias {
   readonly alias: string;
