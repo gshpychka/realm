@@ -48,7 +48,8 @@ summary,
 [tabindex] {
   -webkit-tap-highlight-color: transparent;
 }
-button {
+button,
+summary {
   cursor: pointer;
 }
 button:disabled {
@@ -439,7 +440,7 @@ button.connection {
   gap: 12px;
   min-width: 0;
 }
-.view-actions [role="status"] {
+.view-status {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
@@ -453,7 +454,7 @@ button.connection {
   color: var(--paper);
   box-shadow: 0 4px 12px #0002;
 }
-.view-actions [role="status"]:empty {
+.view-status:empty {
   display: none;
 }
 .view-actions .text-button {
@@ -550,11 +551,11 @@ button.connection {
   white-space: nowrap;
   background: transparent;
 }
-.interval-toggle.selected {
+.interval-toggle[aria-pressed="true"] {
   color: #d5c4a1;
   background: #32302f;
 }
-.interval-toggle.selected > span {
+.interval-toggle[aria-pressed="true"] > span {
   color: var(--accent);
 }
 .interval-toggle > span {
@@ -645,7 +646,7 @@ button.connection {
   padding-top: 10px;
   margin-top: 10px;
 }
-.tooltip-series > p:first-child {
+.tooltip-model {
   display: flex;
   gap: 7px;
   align-items: flex-start;
@@ -699,9 +700,6 @@ button.connection {
   border-bottom: 1px solid var(--line);
   padding: 17px 0;
 }
-.model-item:not(.active) .model-toggle {
-  opacity: 0.55;
-}
 .model-toggle {
   display: flex;
   align-items: flex-start;
@@ -715,7 +713,10 @@ button.connection {
   color: var(--paper);
   text-align: left;
 }
-.model-toggle > span:last-child {
+.model-toggle[aria-pressed="false"] {
+  opacity: 0.55;
+}
+.model-label {
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -727,7 +728,7 @@ button.connection {
   overflow-wrap: anywhere;
   font-weight: 500;
 }
-.model-toggle > span:last-child > span {
+.model-replies {
   color: var(--muted);
   font-size: 12px;
 }
@@ -743,6 +744,9 @@ button.connection {
   line-height: 1;
   flex: 0 0 auto;
   margin-top: 1px;
+}
+.model-toggle[aria-pressed="true"] .model-check {
+  border-color: currentColor;
 }
 .run-select {
   display: block;
@@ -807,7 +811,6 @@ button.connection {
   gap: 10px;
   padding: 18px 20px;
   list-style: none;
-  cursor: pointer;
   font-size: 13px;
 }
 .measurement-run > summary::-webkit-details-marker {
@@ -838,13 +841,16 @@ button.connection {
   font: 11px / 1.6 var(--mono);
   color: var(--muted);
 }
+/* A + that turns into × while its details are open. */
 .expand-sign {
-  margin-left: 16px;
   color: var(--muted);
-  font-size: 17px;
 }
-.measurement-run[open] > summary .expand-sign {
+details[open] > summary .expand-sign {
   transform: rotate(45deg);
+}
+.measurement-run .expand-sign {
+  margin-left: 16px;
+  font-size: 17px;
 }
 .measurement-run[open] > summary {
   border-bottom: 1px solid var(--line);
@@ -1029,7 +1035,7 @@ button.connection {
 .history-row:hover {
   background: #32302f;
 }
-.history-row.selected {
+.history-row[aria-pressed="true"] {
   border-color: #504945;
   background: #32302f;
 }
@@ -1180,10 +1186,9 @@ button.connection {
   font-size: 12px;
   padding: 18px 20px;
   list-style: none;
-  cursor: pointer;
 }
-.inspector-measurements > summary > span {
-  color: var(--muted);
+.inspector-measurements > summary::-webkit-details-marker {
+  display: none;
 }
 .inspector-measurements > .table-scroll {
   padding: 0 8px;
@@ -1307,7 +1312,7 @@ button.connection {
   font: 400 28px / 1.4 var(--serif);
   margin-top: 20px;
 }
-.notebook-loading > span:last-child {
+.loading-detail {
   display: block;
   margin-top: 10px;
   font-size: 13px;
@@ -1513,7 +1518,7 @@ button.connection {
   border: 1px solid #504945;
   border-radius: 5px;
 }
-.preset.selected {
+.preset[aria-pressed="true"] {
   border-color: var(--accent);
   background: #d8a65708;
 }
@@ -1545,10 +1550,12 @@ button.connection {
   border-bottom: 1px solid var(--line);
 }
 .advanced summary {
-  cursor: pointer;
   list-style: none;
   padding: 12px 0 15px;
   font-size: 12px;
+}
+.advanced summary::-webkit-details-marker {
+  display: none;
 }
 .advanced summary::before {
   content: "+";
@@ -1577,12 +1584,12 @@ button.connection {
   border: 1px solid var(--line);
   border-radius: 5px;
 }
-.budget > div > strong {
+.budget-total strong {
   font: 27px / 1.3 var(--mono);
   color: var(--accent);
   letter-spacing: -1px;
 }
-.budget > div > span {
+.budget-total span {
   display: block;
   color: var(--muted);
   font-size: 12px;
@@ -1646,7 +1653,6 @@ button.connection {
   border-top: 1px solid var(--line);
 }
 .terminal-command > summary {
-  cursor: pointer;
   font-size: 12px;
   color: #bdae93;
 }
@@ -1715,7 +1721,6 @@ button.connection {
   border-top: 1px solid var(--line);
 }
 .job-output > summary {
-  cursor: pointer;
   font-size: 13px;
   color: #bdae93;
 }
@@ -1733,10 +1738,6 @@ button.connection {
 .published-command {
   padding: 18px 0 0;
   margin-top: 20px;
-}
-.published-command > p:first-child {
-  font-size: 12px;
-  color: #bdae93;
 }
 .job-progress pre {
   font: 12px / 1.9 var(--mono);
@@ -1988,7 +1989,7 @@ button.connection {
     padding-top: 16px;
     padding-bottom: 16px;
   }
-  .model-toggle > span:last-child {
+  .model-label {
     flex: 1;
   }
   .run-select select,
@@ -2023,7 +2024,7 @@ button.connection {
     align-items: end;
     font-size: 12px;
   }
-  .expand-sign {
+  .measurement-run .expand-sign {
     margin-left: 8px;
     font-size: 15px;
   }
@@ -2197,10 +2198,10 @@ button.connection {
     gap: 13px;
     padding: 17px 14px;
   }
-  .budget > div > strong {
+  .budget-total strong {
     font-size: 23px;
   }
-  .budget > div > span {
+  .budget-total span {
     font-size: 11px;
   }
   .budget > p > span {

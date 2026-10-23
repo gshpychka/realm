@@ -237,7 +237,7 @@ export function SetupForm({
                   key={preset.id}
                   type="button"
                   aria-pressed={selectedPreset === preset.id}
-                  className={`preset ${selectedPreset === preset.id ? "selected" : ""}`}
+                  className="preset"
                   onClick={() =>
                     onChange({
                       trialsPerStep: preset.trialsPerStep,
@@ -320,7 +320,7 @@ export function SetupForm({
           </details>
         </fieldset>
         <div className="budget" aria-live="polite">
-          <div>
+          <div className="budget-total">
             <strong>{count(budget.samples)}</strong>
             <span>planned samples</span>
           </div>

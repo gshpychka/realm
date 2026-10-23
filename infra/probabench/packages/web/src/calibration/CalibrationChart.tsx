@@ -45,7 +45,7 @@ function CalibrationTooltip({
       </p>
       {hits.map(({ run, style, point }) => (
         <div key={run.id} className="tooltip-series">
-          <p>
+          <p className="tooltip-model">
             <span className="color-dot" style={{ background: style.color }} />
             <strong>{modelName(run.model)}</strong>
           </p>

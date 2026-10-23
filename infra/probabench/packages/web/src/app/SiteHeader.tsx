@@ -28,7 +28,7 @@ export function SiteHeader({
       </a>
       <div className="header-actions">
         {running ? (
-          <button type="button" className="connection running" onClick={onOpenSetup}>
+          <button type="button" className="connection" onClick={onOpenSetup}>
             <span className="status-dot pulse" />
             Benchmark running
           </button>

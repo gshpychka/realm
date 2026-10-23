@@ -46,7 +46,7 @@ export function CalibrationPage({
     if (run) update({ comparisons: withComparison(view.comparisons, runs, run) });
   };
   return (
-    <section className="calibration-page">
+    <section>
       <h2 className="sr-only">Calibration</h2>
       <div className="chart-layout">
         <section className="chart-card">
@@ -57,7 +57,7 @@ export function CalibrationPage({
             </div>
             <button
               type="button"
-              className={`interval-toggle ${view.intervals ? "selected" : ""}`}
+              className="interval-toggle"
               aria-pressed={view.intervals}
               onClick={() => update({ intervals: !view.intervals }, "replace")}
             >
@@ -109,22 +109,19 @@ export function CalibrationPage({
               const active = !hidden.has(model);
               const { color } = styleOf(styles, model);
               return (
-                <div className={`model-item ${active ? "active" : ""}`} key={model}>
+                <div className="model-item" key={model}>
                   <button
                     type="button"
                     className="model-toggle"
                     aria-pressed={active}
                     onClick={() => update({ hidden: toggleHidden(view.hidden, model) }, "replace")}
                   >
-                    <span
-                      className="model-check"
-                      style={{ color, borderColor: active ? color : undefined }}
-                    >
+                    <span className="model-check" style={{ color }}>
                       {active ? "✓" : ""}
                     </span>
-                    <span>
+                    <span className="model-label">
                       <strong>{modelName(model)}</strong>
-                      <span>
+                      <span className="model-replies">
                         {count(summary.valid)} / {count(summary.total)} valid replies
                       </span>
                     </span>

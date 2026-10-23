@@ -23,7 +23,7 @@ function NotebookLoading() {
     <div className="notebook-loading" role="status">
       <span className="loading-line" />
       <p>Opening the notebook…</p>
-      <span>Reading the recorded observations.</span>
+      <span className="loading-detail">Reading the recorded observations.</span>
     </div>
   );
 }

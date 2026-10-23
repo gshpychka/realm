@@ -36,7 +36,7 @@ function HistoryTooltip({
       </p>
       {atTime.map(({ run, summary }) => (
         <div key={run.id} className="tooltip-series">
-          <p>
+          <p className="tooltip-model">
             <span className="color-dot" style={{ background: styleOf(styles, run.model).color }} />
             <strong>{modelName(run.model)}</strong>
           </p>
@@ -146,7 +146,7 @@ export function HistoryChart({
   const empty = emptyPlot(points);
   return (
     <figure
-      className="plot history-plot"
+      className="plot"
       aria-label="Calibration gap over time"
       aria-describedby={descriptionId}
       onPointerMove={(event) => {

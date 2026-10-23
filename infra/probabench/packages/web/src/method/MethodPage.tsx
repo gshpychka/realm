@@ -1,6 +1,6 @@
 export function MethodPage() {
   return (
-    <section className="method-page">
+    <section>
       <header className="section-heading">
         <div>
           <p className="eyebrow">Behind the notebook</p>

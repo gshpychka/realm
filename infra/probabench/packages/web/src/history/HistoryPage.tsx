@@ -53,7 +53,7 @@ export function HistoryPage({
   );
   const inspected = inspectedRun(visible, view.runId);
   return (
-    <section className="history-page">
+    <section>
       <h2 className="sr-only">Run history</h2>
       <div className="history-toolbar">
         <label className="search-field">
@@ -107,7 +107,7 @@ export function HistoryPage({
         </ChartBoundary>
       </section>
       {view.runId && !runs.some((run) => run.id === view.runId) ? (
-        <p role="status" className="panel-note linked-run-missing">
+        <p role="status" className="panel-note">
           The linked run is not in this notebook. Showing the latest matching run.
         </p>
       ) : null}
@@ -117,7 +117,10 @@ export function HistoryPage({
             <RunDetail run={inspected} onCompare={() => compare(inspected)} onRerun={onRerun} />
             <details className="inspector-measurements">
               <summary>
-                Inspect measurements <span aria-hidden="true">+</span>
+                Inspect measurements{" "}
+                <span className="expand-sign" aria-hidden="true">
+                  +
+                </span>
               </summary>
               <Measurements run={inspected} />
             </details>
@@ -146,7 +149,7 @@ export function HistoryPage({
                       <li key={run.id}>
                         <button
                           type="button"
-                          className={`history-row ${inspected?.id === run.id ? "selected" : ""}`}
+                          className="history-row"
                           aria-pressed={inspected?.id === run.id}
                           onClick={() => inspect(run)}
                         >
