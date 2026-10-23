@@ -21,6 +21,7 @@ const ContentSHA256Header = "Bay-Content-SHA256"
 // Operations owns isolated workspace transfer and detached commands. Every route remains on Bay's operator socket;
 // none is exposed through the guest gateway.
 type Operations interface {
+	Environment(context.Context, string, identity.Precondition, string) (io.ReadWriteCloser, error)
 	PutBlob(context.Context, string, identity.Precondition, string, io.Reader) (operations.Blob, error)
 	Capture(context.Context, string, identity.Precondition, string, operations.Capture) (operations.Blob, error)
 	ReadCapture(context.Context, string, identity.Precondition, string) (operations.Blob, io.ReadCloser, error)

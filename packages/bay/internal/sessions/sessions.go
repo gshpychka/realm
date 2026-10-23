@@ -85,7 +85,7 @@ type Instances interface {
 	Restore(ctx context.Context, name, snapshot string) error
 	// Exec runs argv in the instance's guest as root; a non-zero exit is an error.
 	Exec(ctx context.Context, name string, argv []string, stdin io.Reader, stdout io.Writer) error
-	// Connect runs the fixed operator helper independently of the terminal program.
+	// Connect runs a cancellable bridge, bound to the instance's session ID.
 	Connect(ctx context.Context, name, sessionID string, argv []string, stdin io.Reader, stdout io.Writer) error
 	// Caller returns the name and session ID of the running instance whose vsock context ID is cid.
 	Caller(ctx context.Context, cid uint32) (name, sessionID string, err error)
@@ -135,6 +135,9 @@ type Service struct {
 	busy map[string]bool
 	// starting holds the sessions with a running slot reserved.
 	starting map[string]int
+	// connections holds the live bridges cancelled before lifecycle changes.
+	connections        map[string]map[*environmentConnection]struct{}
+	bridgeCloseTimeout time.Duration
 }
 
 // New returns a Service over the given store, instances and repos, or an error for a Config that breaks the
@@ -173,14 +176,16 @@ func New(store *records.Store, instances Instances, repos Repos, config Config, 
 		}
 	}
 	return &Service{
-		records:    store,
-		instances:  instances,
-		repos:      repos,
-		config:     config,
-		log:        log,
-		maxHistory: 2 << 30,
-		busy:       map[string]bool{},
-		starting:   map[string]int{},
+		records:            store,
+		instances:          instances,
+		repos:              repos,
+		config:             config,
+		log:                log,
+		maxHistory:         2 << 30,
+		busy:               map[string]bool{},
+		starting:           map[string]int{},
+		connections:        map[string]map[*environmentConnection]struct{}{},
+		bridgeCloseTimeout: 8 * time.Second,
 	}, nil
 }
 
@@ -225,6 +230,9 @@ func (s *Service) Start(ctx context.Context, name string, spec StartSpec) (Sessi
 		if err := checkExpected(rec, []identity.Precondition{spec.Expected}); err != nil {
 			return Session{}, err
 		}
+	}
+	if err := s.disconnectConnections(name); err != nil {
+		return Session{}, err
 	}
 	memory := 0
 	if fresh {
@@ -474,6 +482,9 @@ func (s *Service) Suspend(ctx context.Context, name string, expected ...identity
 	if err := checkExpected(rec, expected); err != nil {
 		return err
 	}
+	if err := s.disconnectConnections(name); err != nil {
+		return err
+	}
 	if err := s.require(ctx, name, InstanceRunning); err != nil {
 		return err
 	}
@@ -500,6 +511,9 @@ func (s *Service) Resume(ctx context.Context, name, snapshot string, discard []s
 		return err
 	}
 	if err := checkExpected(rec, expected); err != nil {
+		return err
+	}
+	if err := s.disconnectConnections(name); err != nil {
 		return err
 	}
 	status, err := s.instances.Status(ctx, name)
@@ -612,6 +626,9 @@ func (s *Service) Snap(ctx context.Context, name, snapshot string, expected ...i
 	if err := checkExpected(rec, expected); err != nil {
 		return "", err
 	}
+	if err := s.disconnectConnections(name); err != nil {
+		return "", err
+	}
 	if err := s.require(ctx, name, InstanceRunning); err != nil {
 		return "", err
 	}
@@ -654,6 +671,9 @@ func (s *Service) End(ctx context.Context, name string, acknowledged []string, e
 		return err
 	}
 	if err := checkExpected(rec, expected); err != nil {
+		return err
+	}
+	if err := s.disconnectConnections(name); err != nil {
 		return err
 	}
 	status, err := s.instances.Status(ctx, name)
@@ -728,6 +748,9 @@ func (s *Service) Remove(ctx context.Context, name string, expected ...identity.
 		return err
 	}
 	if err := checkExpected(rec, expected); err != nil {
+		return err
+	}
+	if err := s.disconnectConnections(name); err != nil {
 		return err
 	}
 	if err := s.instances.Delete(ctx, name); err != nil {
@@ -909,6 +932,31 @@ func (s *Service) claim(name string) (release func(), err error) {
 		delete(s.busy, name)
 		s.mu.Unlock()
 	}, nil
+}
+
+func (s *Service) disconnectConnections(name string) error {
+	s.mu.Lock()
+	connections := make([]*environmentConnection, 0, len(s.connections[name]))
+	for connection := range s.connections[name] {
+		connections = append(connections, connection)
+	}
+	s.mu.Unlock()
+	for _, connection := range connections {
+		connection.Close()
+	}
+	if len(connections) == 0 {
+		return nil
+	}
+	deadline := time.NewTimer(s.bridgeCloseTimeout)
+	defer deadline.Stop()
+	for _, connection := range connections {
+		select {
+		case <-connection.done:
+		case <-deadline.C:
+			return fmt.Errorf("%w: session %s's connections have not acknowledged exit; its instance was left untouched", fault.Conflict, name)
+		}
+	}
+	return nil
 }
 
 // reserve holds a running slot for the session named name until release is called.

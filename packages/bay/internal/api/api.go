@@ -214,6 +214,7 @@ func Handler(svc Service, msgs http.Handler) http.Handler {
 		a, err := svc.Attach(r.Context(), r.PathValue("name"))
 		respond(w, a, err)
 	})
+	mux.HandleFunc("POST /v1/sessions/{name}/environment", environmentHandler(svc))
 	mux.Handle(messagesPrefix+"/", http.StripPrefix(messagesPrefix, msgs))
 	return mux
 }

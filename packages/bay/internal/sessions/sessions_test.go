@@ -279,6 +279,25 @@ func (f *fakeInstances) Exec(_ context.Context, name string, argv []string, stdi
 	return nil
 }
 
+func (f *fakeInstances) Connect(ctx context.Context, name, sessionID string, argv []string, stdin io.Reader, stdout io.Writer) error {
+	if err := f.Exec(ctx, name, argv, nil, io.Discard); err != nil {
+		return err
+	}
+	stopped := make(chan struct{})
+	defer close(stopped)
+	go func() {
+		select {
+		case <-ctx.Done():
+			if r, ok := stdin.(io.Closer); ok {
+				r.Close()
+			}
+		case <-stopped:
+		}
+	}()
+	_, err := io.Copy(stdout, stdin)
+	return err
+}
+
 func (f *fakeInstances) Caller(_ context.Context, cid uint32) (string, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1111,23 +1130,4 @@ func TestAutomaticSnapshotsAvoidNameCollisions(t *testing.T) {
 	if err != nil || second == first {
 		t.Fatalf("second automatic snapshot = %q, %v; first was %q", second, err, first)
 	}
-}
-
-func (f *fakeInstances) Connect(ctx context.Context, name, sessionID string, argv []string, stdin io.Reader, stdout io.Writer) error {
-	if err := f.Exec(ctx, name, argv, nil, io.Discard); err != nil {
-		return err
-	}
-	stopped := make(chan struct{})
-	defer close(stopped)
-	go func() {
-		select {
-		case <-ctx.Done():
-			if r, ok := stdin.(io.Closer); ok {
-				r.Close()
-			}
-		case <-stopped:
-		}
-	}()
-	_, err := io.Copy(stdout, stdin)
-	return err
 }
