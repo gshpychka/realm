@@ -93,7 +93,7 @@ const options = {
   ),
 };
 
-export const benchCommand = Command.make("probabench", options, (flags) =>
+const benchCommand = Command.make("probabench", options, (flags) =>
   Effect.gen(function* () {
     if (flags.list) return yield* Console.log(describeAliases());
     const plan = yield* resolvePlan({
@@ -122,3 +122,6 @@ export const benchCommand = Command.make("probabench", options, (flags) =>
     yield* executePlan(plan);
   }),
 );
+
+/** The CLI over process.argv-style arguments: the runtime, the script, then the flags. */
+export const cli = Command.run(benchCommand, { name: "probabench", version: "0.0.0" });
