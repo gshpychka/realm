@@ -36,6 +36,44 @@ func (d *Driver) EnsureBase(ctx context.Context, machine machines.Definition, me
 	return d.ensureBase(ctx, machine, image, ready)
 }
 
+// PruneBases reclaims revisions not referenced by the catalog or a session record.
+// It runs at server startup, after the declared bases have been prepared.
+func (d *Driver) PruneBases(ctx context.Context, retained map[string]bool) error {
+	instances, err := d.server.GetInstances(api.InstanceTypeVM)
+	if err != nil {
+		return fmt.Errorf("list machine bases: %w", err)
+	}
+	images, obsolete := map[string]bool{}, map[string]bool{}
+	for _, instance := range instances {
+		image := instance.Config[imageKey]
+		if image == "" || instance.Config[machineKey] == "" || instance.Config[sessionKey] != "" {
+			continue
+		}
+		if retained[instance.Name] {
+			images[image] = true
+			continue
+		}
+		if err := d.Delete(ctx, instance.Name); err != nil {
+			return err
+		}
+		obsolete[image] = true
+		slog.Info("obsolete machine base removed", "base", instance.Name)
+	}
+	for image := range obsolete {
+		if images[image] {
+			continue
+		}
+		op, err := d.server.DeleteImage(image)
+		if err != nil {
+			return fmt.Errorf("delete obsolete machine image: %w", err)
+		}
+		if err := wait(ctx, op, "delete obsolete machine image"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (d *Driver) ensureBase(ctx context.Context, machine machines.Definition, image string, ready func(context.Context, guest.Exec) error) error {
 	current, _, err := d.server.GetInstance(machine.Base)
 	if err == nil {

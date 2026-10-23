@@ -13,6 +13,8 @@ import {
 } from "react";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
+import type { Action } from "../keymap.ts";
+import { KeyHint, keyHint, useKeymap } from "../keymap-context.tsx";
 import { counted } from "../plural.ts";
 import { palette, theme } from "../theme.ts";
 import { type Item, type Reply, transcriptOf, type Work } from "../transcript.ts";
@@ -101,7 +103,7 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
               {entry.tokensBefore === undefined
                 ? ""
                 : ` compacted from ${glyphs.tokens} ${entry.tokensBefore.toLocaleString("en")} tokens`}
-              {display.expanded ? "" : " · ctrl+o"}
+              {display.expanded ? null : <KeyHint action="app.tools.expand" />}
             </text>
             {display.expanded ? <Markdown content={entry.text} fg={theme.thinking} /> : null}
           </Marked>
@@ -137,7 +139,7 @@ function Notice({ entry, expanded }: { entry: NoticeEntry; expanded: boolean }) 
               <span fg={theme.dim}> {remedy.does}</span>
             </>
           ) : null}
-          {original && !expanded ? <span fg={theme.dim}> · ctrl+o</span> : null}
+          {original && !expanded ? <span fg={theme.dim}><KeyHint action="app.tools.expand" /></span> : null}
         </text>
         {original && expanded ? (
           <text fg={theme.dim} selectable>
@@ -185,7 +187,7 @@ function Bash({ entry, expanded, escapes }: { entry: BashEntry; expanded: boolea
         <text selectable>
           <span fg={theme.tool}>{entry.command}</span>
           {entry.excluded ? <span fg={theme.dim}> · not in context</span> : null}
-          {entry.running ? <span fg={theme.dim}> · running · {escapes} cancels</span> : null}
+          {entry.running ? <span fg={theme.dim}> · running{escapes ? ` · ${escapes} cancels` : ""}</span> : null}
           {entry.cancelled ? <span fg={theme.dim}> · cancelled</span> : null}
           {failed ? <span fg={theme.error}> · exit {entry.exitCode}</span> : null}
           {entry.truncated ? <span fg={theme.dim}> · output cut</span> : null}
@@ -193,7 +195,7 @@ function Bash({ entry, expanded, escapes }: { entry: BashEntry; expanded: boolea
         {hidden > 0 ? (
           <text fg={theme.dim}>
             … {counted(hidden, "earlier line")}
-            {expanded ? "" : " · ctrl+o"}
+            {expanded ? null : <KeyHint action="app.tools.expand" />}
           </text>
         ) : null}
         {lines.length > 0 ? (
@@ -206,31 +208,45 @@ function Bash({ entry, expanded, escapes }: { entry: BashEntry; expanded: boolea
   );
 }
 
-const KEYS = [
+const EDITOR_KEYS = [
   ["enter", "send"],
   ["shift+enter  ctrl+j", "new line"],
   ["!cmd  !!cmd", "run a command, kept in or out of context"],
-  ["alt+enter", "queue a follow-up while pi works"],
-  ["esc", "interrupt and take back queued messages"],
   ["/  @", "commands, and files to mention"],
-  ["ctrl+o", "open every box of work at full length"],
-  ["ctrl+f", "step through the boxes: ↑↓ enter j k"],
-  ["ctrl+t", "show or hide thinking"],
-  ["ctrl+l  ctrl+p", "pick a model, or take the next one"],
-  ["ctrl+g", "edit in $VISUAL"],
   ["pgup  pgdn", "scroll"],
-  ["ctrl+c twice  ctrl+d", "quit"],
 ] as const;
 
 /** The empty conversation: where to start, and the keys. */
 export function Welcome({ escapes }: { escapes: string }) {
-  const rows = KEYS.map(([keys, does]) =>
-    keys === "esc" && escapes !== "esc" ? [escapes, `leave insert mode, then ${does}`] : [keys, does],
-  );
+  const { width } = useTerminalDimensions();
+  const bindings = useKeymap();
+  const bound = (action: Action) => keyHint(bindings, action) ?? "";
+  const interrupt = bound("app.interrupt");
+  const rows: readonly (readonly [string, string])[] = [
+    ...EDITOR_KEYS,
+    [bound("app.message.followUp"), "queue a follow-up while pi works"],
+    [
+      interrupt ? escapes : "",
+      interrupt === "esc" && escapes !== "esc"
+        ? "leave insert mode, then interrupt"
+        : "interrupt and take back queued messages",
+    ],
+    [bound("app.tools.expand"), "open every box of work at full length"],
+    [bound("app.tools.browse"), "step through boxes: ↑↓ enter j k"],
+    [bound("app.thinking.toggle"), "show or hide thinking"],
+    [bound("app.model.select"), "pick a model"],
+    [bound("app.model.cycleForward"), "take the next model"],
+    [bound("app.editor.external"), "edit in $VISUAL"],
+    [
+      [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
+      "quit",
+    ],
+  ];
   return (
     <box
       flexDirection="column"
       flexGrow={1}
+      flexBasis={0}
       flexShrink={1}
       overflow="hidden"
       paddingLeft={1}
@@ -240,16 +256,24 @@ export function Welcome({ escapes }: { escapes: string }) {
         Ask pi something to get started.
       </text>
       <box flexDirection="column" flexShrink={0} marginTop={1}>
-        {rows.map(([keys, does]) => (
-          <box key={keys} flexDirection="row" flexShrink={0} height={1}>
-            <text fg={theme.tool} width={22} flexShrink={0} truncate wrapMode="none">
-              {keys}
-            </text>
-            <text fg={theme.dim} truncate wrapMode="none">
-              {does}
-            </text>
-          </box>
-        ))}
+        {rows
+          .filter(([keys]) => keys)
+          .map(([keys, does]) => (
+            <box key={keys} flexDirection="row" flexShrink={0} height={1}>
+              <text
+                fg={theme.tool}
+                width={Math.min(22, Math.floor((width - 2) / 2))}
+                flexShrink={0}
+                truncate
+                wrapMode="none"
+              >
+                {keys}
+              </text>
+              <text fg={theme.dim} truncate wrapMode="none">
+                {does}
+              </text>
+            </box>
+          ))}
       </box>
     </box>
   );
