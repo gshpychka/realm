@@ -285,7 +285,7 @@ func TestSendAndReceive(t *testing.T) {
 	}
 
 	conv := result[sessionapi.ReadOutput](t, call(t, bs, sessionapi.Read, sessionapi.ReadInput{Thread: sent.Thread}))
-	if len(conv.Messages) != 1 || conv.Messages[0] != (messages.Message{ID: sent.Message, Thread: sent.Thread, From: "alice", To: "bob", Body: "ready to review?\nthe diff is up", Sent: conv.Messages[0].Sent}) {
+	if len(conv.Messages) != 1 || conv.Messages[0] != (messages.Message{ID: sent.Message, Thread: sent.Thread, From: "alice", To: "bob", Body: "ready to review?\nthe diff is up", Sent: conv.Messages[0].Sent, FromID: alice.ID, ToID: bob.ID, FromGeneration: alice.Generation}) {
 		t.Errorf("bob reads %+v", conv.Messages)
 	}
 	if got := result[sessionapi.InboxOutput](t, call(t, bs, sessionapi.Inbox, nil)); len(got.Threads) != 0 {
