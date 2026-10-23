@@ -1,5 +1,4 @@
-import type { DialogRequest, DialogResponse } from "@pituitary/session";
-import { Dialog } from "./dialog.tsx";
+import { Dialog, type DialogRequest, type DialogResponse } from "./dialog.tsx";
 import { Picker, type PickerSpec } from "./picker.tsx";
 import { type Suggestion, Suggestions } from "./suggestions.tsx";
 

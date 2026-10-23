@@ -29,6 +29,7 @@ let
     services.pituitary = {
       enable = true;
       operator = "alice";
+      model = "anthropic/example-model";
       package = clientPackage;
       credentialProfiles.primary = {
         provider = "anthropic";
@@ -157,6 +158,8 @@ let
     stableCatalogPath =
       cfg.environment.sessionVariables.PITUITARY_CATALOG == "/etc/pituitary/agents.json";
     daemonOperator = cfg.systemd.services.pituitary.serviceConfig.User == "alice";
+    daemonModel =
+      cfg.systemd.services.pituitary.environment.PITUITARY_MODEL == "anthropic/example-model";
     daemonState = cfg.environment.sessionVariables.PITUITARY_STATE_DIR == "/var/lib/pituitary";
     managedClients = cfg.environment.sessionVariables.PITUITARY_AUTO_START == "0";
     preparedMachines =

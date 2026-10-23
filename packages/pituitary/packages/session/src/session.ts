@@ -213,7 +213,7 @@ export function restore(
   const pending = new Set(live?.pendingToolCalls);
   view = { ...view, entries: view.entries.map((entry) => interrupted(entry, pending)) };
   if (live?.state.isStreaming) {
-    view = reduce(view, { type: "agent_start" });
+    view = { ...view, running: true, phase: "streaming" };
     if (live.streamingMessage) {
       const message = live.streamingMessage as Message;
       view = startMessage(view, message);
@@ -221,6 +221,16 @@ export function restore(
     }
   }
   if (live?.state.isCompacting) view = { ...view, phase: "compacting" };
+  if (live?.retry) {
+    const { errorMessage, ...retry } = live.retry;
+    view = {
+      ...view,
+      running: true,
+      phase: "retrying",
+      detail: null,
+      retry: { ...retry, error: errorMessage },
+    };
+  }
   if (live?.queue) view = { ...view, queue: live.queue };
   for (const entry of previous?.entries ?? [])
     if (entry.kind === "notice" && entry.local) view = append(view, (id) => ({ ...entry, id }));
@@ -416,15 +426,19 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
         },
       };
 
-    case "auto_retry_end":
+    case "auto_retry_end": {
       if (event.success)
         return { ...state, phase: state.running ? "streaming" : "idle", detail: null, retry: null };
-      return {
-        ...note(state, "error", event.finalError ?? "retry failed"),
-        phase: "idle",
-        running: false,
-        retry: null,
-      };
+      const last = state.entries.at(-1);
+      const failed =
+        last?.kind === "notice" && last.level === "error" && !last.local
+          ? {
+              ...state,
+              entries: [...state.entries.slice(0, -1), { ...last, text: event.finalError ?? last.text }],
+            }
+          : note(state, "error", event.finalError ?? "retry failed");
+      return { ...failed, phase: "idle", running: false, retry: null };
+    }
 
     case "runtime_error":
       return note(state, "error", `${event.source}: ${event.error}`);
@@ -578,7 +592,7 @@ function settle(entry: AssistantEntry, message: Message): AssistantEntry {
   const blocks = Array.isArray(message.content) ? (message.content as Record<string, unknown>[]) : [];
   if (blocks.length === 0) return message.stopReason ? { ...entry, stopReason: message.stopReason } : entry;
   const joined = (type: string, field: string) =>
-    blocks.flatMap((block) => (block.type === type ? [String(block[field] ?? "")] : [])).join("\n");
+    blocks.flatMap((block) => (block.type === type ? [String(block[field] ?? "")] : [])).join("\n\n");
   const calls = blocks.filter((block) => block.type === "toolCall");
   const tools = calls.map((call) => {
     const id = String(call.id ?? "");

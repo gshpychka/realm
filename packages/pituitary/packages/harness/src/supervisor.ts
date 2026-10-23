@@ -14,8 +14,8 @@ import {
   type ConversationBridge,
   openConversation,
 } from "./conversation-bridge.ts";
-import type { ReviseTaskInput, RunLimits, StartRunInput } from "./model.ts";
-import { Orchestrator } from "./orchestrator.ts";
+import type { ReviseTaskInput, RunDetail, RunLimits, StartRunInput } from "./model.ts";
+import { DomainDoc, Orchestrator } from "./orchestrator.ts";
 import { runtimeSocket } from "./runtime.ts";
 
 export interface SupervisorOptions {
@@ -36,6 +36,7 @@ interface Attachment {
   attemptId: string;
   conversationId: ConversationId;
   control: boolean;
+  archived: boolean;
   bridge: ConversationBridge;
   response: ServerResponse;
   active: Set<Promise<unknown>>;
@@ -55,18 +56,22 @@ export async function startRuntime(options: SupervisorOptions): Promise<RuntimeH
   const root = resolve(options.stateDirectory),
     socket = runtimeSocket(root);
   const attachments = new Map<string, Attachment>(),
-    input = new Set<ConversationId>();
+    input = new Map<ConversationId, Promise<void> | null>();
   const shutdown = new AbortController();
   let preparing = 0,
     draining = 0;
   let closing = false,
     orchestrator: Orchestrator | undefined;
+  let unwatchAuthority = () => {};
+  const routes = new Set<Promise<void>>();
   const server = createServer((request, response) => {
-    void route(request, response).catch((error) => {
+    const operation = route(request, response).catch((error) => {
       if (!response.headersSent)
         reply(response, error instanceof HttpError ? error.status : 400, { error: message(error) });
       else response.destroy();
     });
+    routes.add(operation);
+    void operation.finally(() => routes.delete(operation));
   });
   const detachments = new Set<Promise<void>>();
   const closeAttachment = (id: string): Promise<void> => {
@@ -84,6 +89,7 @@ export async function startRuntime(options: SupervisorOptions): Promise<RuntimeH
         current.response.end();
       }
     })();
+    if (current.control) input.set(current.conversationId, completion);
     detachments.add(completion);
     void completion.finally(() => detachments.delete(completion)).catch(() => {});
     return completion;
@@ -117,11 +123,17 @@ export async function startRuntime(options: SupervisorOptions): Promise<RuntimeH
     request.once("aborted", disconnected);
     response.once("close", disconnected);
     const context = withAbortSignal(AbortSignal.any([abort.signal, shutdown.signal]), BACKGROUND_CONTEXT);
-    const target = await orchestrator.waitConversation(runId, taskId, context);
+    let target = await orchestrator.waitConversation(runId, taskId, context);
+    const previous = control ? input.get(target.conversation.id) : undefined;
+    if (previous) {
+      await previous;
+      target = await orchestrator.conversation(runId, taskId);
+    }
+    context.abortSignal?.throwIfAborted();
     const writes = control && target.canWrite;
     if (writes && input.has(target.conversation.id))
       throw new HttpError(409, "Another frontend holds this conversation's input lease");
-    if (writes) input.add(target.conversation.id);
+    if (writes) input.set(target.conversation.id, null);
     const id = randomUUID(),
       pending: ConversationUpdate[] = [];
     let welcomed = false,
@@ -182,6 +194,7 @@ export async function startRuntime(options: SupervisorOptions): Promise<RuntimeH
         attemptId: target.identity.attemptId,
         conversationId: target.conversation.id,
         control: writes,
+        archived: target.identity.archived,
         bridge,
         response,
         active: new Set(),
@@ -324,13 +337,16 @@ export async function startRuntime(options: SupervisorOptions): Promise<RuntimeH
     closePromise ??= (async () => {
       closing = true;
       shutdown.abort();
+      unwatchAuthority();
+      const stopped = new Promise<void>((done) => server.close(() => done()));
+      await Promise.allSettled([...routes]);
       await Promise.allSettled([...attachments.keys()].map(closeAttachment));
       await Promise.allSettled([...detachments]);
       try {
         await orchestrator?.close();
       } finally {
         server.closeAllConnections();
-        await new Promise<void>((done) => server.close(() => done()));
+        await stopped;
       }
     })();
     return closePromise;
@@ -374,6 +390,31 @@ export async function startRuntime(options: SupervisorOptions): Promise<RuntimeH
         (environment.PITUITARY_RUN_LIMITS ? JSON.parse(environment.PITUITARY_RUN_LIMITS) : undefined),
       environment,
       models: options.models,
+    });
+    unwatchAuthority = orchestrator.harness.subscribeCommits((publication) => {
+      for (const change of publication.changes) {
+        if (change.type !== "document" || change.record.kind !== DomainDoc.definition.kind || !change.value)
+          continue;
+        const detail = change.value.detail as unknown as RunDetail | null;
+        if (!detail) continue;
+        for (const attached of attachments.values()) {
+          if (attached.archived || attached.runId !== detail.run.id) continue;
+          const task = detail.tasks.find((item) => item.id === attached.taskId),
+            attempt = detail.attempts.find((item) => item.id === task?.currentAttemptId);
+          if (
+            detail.run.desired === "running" &&
+            task &&
+            ["queued", "running", "waiting"].includes(task.status) &&
+            attempt?.desired === "running" &&
+            attempt.id === attached.attemptId
+          )
+            continue;
+          attached.response.write(
+            `${JSON.stringify({ type: "closed", reason: "This task changed; reconnect to its current conversation" })}\n`,
+          );
+          void closeAttachment(attached.id);
+        }
+      }
     });
     return { close };
   } catch (error) {

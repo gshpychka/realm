@@ -43,7 +43,7 @@ export function useSession(link: ConversationLink): SessionController {
     let syncing: Promise<void> | null = null;
     let again = false;
     let first = true;
-    let received: { event: SessionEvent; sequence?: number }[] | null = null;
+    let received: { event: SessionEvent; sequence: number }[] | null = null;
     let overflow = false;
     let statsRead = 0;
     let statsTimer: ReturnType<typeof setTimeout> | undefined;
@@ -82,7 +82,7 @@ export function useSession(link: ConversationLink): SessionController {
       syncing = (async () => {
         do {
           again = false;
-          const events: { event: SessionEvent; sequence?: number }[] = [];
+          const events: { event: SessionEvent; sequence: number }[] = [];
           received = events;
           overflow = false;
           try {
@@ -94,9 +94,7 @@ export function useSession(link: ConversationLink): SessionController {
             }
             pacer.flush();
             let next = restore(snapshot.messages, reduced.current, snapshot);
-            for (const item of events)
-              if (item.sequence === undefined || item.sequence > snapshot.sequence)
-                next = reduce(next, item.event);
+            for (const item of events) if (item.sequence > snapshot.sequence) next = reduce(next, item.event);
             reduced.current = next;
             setView(next);
             setState(snapshot.state);

@@ -23,7 +23,9 @@ test("managed runtime state can be isolated without changing Pi state", () => {
 
 test("the client forwards its solo model default to an existing host runtime", () => {
   const environment = { PITUITARY_MODEL: "anthropic/default-model" };
-  expect(parseCommand(["run", "--socket", "/tmp/pituitary-host.sock"], environment)).toMatchObject({
+  expect(
+    parseCommand(["run", "--socket", "/tmp/pituitary-host.sock", "--cwd", "/host/project"], environment),
+  ).toMatchObject({
     model: "anthropic/default-model",
   });
   expect(parseCommand(["run", "--model", "openai/selected-model"], environment)).toMatchObject({
@@ -33,6 +35,26 @@ test("the client forwards its solo model default to an existing host runtime", (
     agent: "builder",
     model: undefined,
   });
+});
+
+test("remote solo runs require an explicit host working directory", () => {
+  expect(() => parseCommand(["run", "--socket", "/tmp/remote.sock"], {})).toThrow("requires --cwd");
+  expect(() => parseCommand(["run"], { PITUITARY_RUNTIME_SOCKET: "/tmp/remote.sock" })).toThrow(
+    "requires --cwd",
+  );
+});
+
+test("operator command identities and empty revision lists are explicit", () => {
+  expect(parseCommand(["retry", "task", "--revision", "1", "--command-id", "retry-once"], {})).toMatchObject({
+    commandId: "retry-once",
+  });
+  expect(
+    parseCommand(["revise", "task", "--revision", "1", "--clear-dependencies", "--clear-acceptance"], {}),
+  ).toMatchObject({ input: { dependsOn: [], acceptance: [] } });
+  expect(() =>
+    parseCommand(["revise", "task", "--revision", "1", "--clear-dependencies", "--depends-on", "other"], {}),
+  ).toThrow("not both");
+  expect(() => parseCommand(["inspect", "task", "--command-id", "id"], {})).toThrow("Unknown option");
 });
 
 test("declared agents select a catalog and accept several pinned repositories", () => {

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -27,6 +28,16 @@ const VERBS = [
   "socket",
 ] as const;
 type Verb = (typeof VERBS)[number];
+const MUTATIONS: readonly Verb[] = [
+  "run",
+  "recover",
+  "stop",
+  "answer",
+  "retry",
+  "revise",
+  "integrate",
+  "apply",
+];
 const HELP = `Usage:
   pituitary [--model PROVIDER/MODEL] [OBJECTIVE]
   pituitary run [--agent ROLE] [--repo OWNER/NAME@REF] [--name NAME] [--cwd DIR] [--detach] [--watch] [OBJECTIVE]
@@ -49,12 +60,14 @@ const HELP = `Usage:
 Untracked files enter the snapshot only when selected explicitly. Apply requires current independent checks.
 Runs keep working when the terminal closes. Stop retains conversations and VM workspaces.
 --watch reloads the frontend while the host harness keeps running.
+Revisions accept --clear-dependencies and --clear-acceptance to replace those lists with empty lists.
+Mutating commands accept --command-id KEY; reuse it after an uncertain result to recover the same command.
 Client commands accept --socket PATH (or PITUITARY_RUNTIME_SOCKET) for an existing runtime, including SSH tunnels.
 All commands accept --state DIR (or PITUITARY_STATE_DIR) for local runtime state.
 Without a command, Pituitary starts a local durable conversation.
 `;
 
-type Common = { state: string; socketPath?: string; help: false };
+type Common = { state: string; socketPath?: string; commandId?: string; help: false };
 export type Command = Common &
   (
     | {
@@ -103,6 +116,7 @@ export function parseCommand(
     workspacePath: string | undefined,
     revision: number | undefined,
     inputArtifactId: string | undefined;
+  let commandId: string | undefined;
   let model: string | undefined;
   let detach = false,
     watch = false,
@@ -131,6 +145,7 @@ export function parseCommand(
     if (seen.has(arg) && !["--repo", "--include-untracked", "--depends-on", "--accept"].includes(arg))
       throw new Error(`Option ${arg} was supplied more than once`);
     seen.add(arg);
+    if (verb === "revise" && ["--clear-dependencies", "--clear-acceptance"].includes(arg)) continue;
     if (arg === "--detach" && verb === "run") {
       detach = true;
       continue;
@@ -145,6 +160,7 @@ export function parseCommand(
     }
     if (
       arg === "--state" ||
+      (arg === "--command-id" && MUTATIONS.includes(verb)) ||
       (arg === "--socket" && !["serve", "agents"].includes(verb)) ||
       (["--cwd", "--name", "--agent", "--model", "--repo", "--workspace", "--include-untracked"].includes(
         arg,
@@ -158,6 +174,7 @@ export function parseCommand(
       const value = remaining.next().value;
       if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
       if (arg === "--state") state = resolve(value);
+      if (arg === "--command-id") commandId = value;
       if (arg === "--socket") socketPath = resolve(value);
       if (arg === "--cwd") cwd = resolve(value);
       if (arg === "--name") name = value;
@@ -181,8 +198,15 @@ export function parseCommand(
     throw new Error(`Unknown option ${arg} for ${verb}`);
   }
   if (help) return { help: true, state };
-  const common: Common = { state, help: false, ...(socketPath ? { socketPath } : {}) };
+  const common: Common = {
+    state,
+    help: false,
+    ...(socketPath ? { socketPath } : {}),
+    ...(commandId ? { commandId } : {}),
+  };
   if (verb === "run") {
+    if (socketPath && !agent && !seen.has("--cwd"))
+      throw new Error("A solo run through --socket requires --cwd with the host's working directory");
     if (repos.length && !agent) throw new Error("--repo requires --agent");
     if (agent && model) throw new Error("Declared agents select their model in Nix");
     model ??= agent ? undefined : environment.PITUITARY_MODEL;
@@ -224,12 +248,17 @@ export function parseCommand(
       throw new Error(`${verb} requires exactly one task ID`);
     if (revision === undefined) throw new Error(`${verb} requires --revision from the current task`);
     if (verb === "revise") {
+      if (
+        (seen.has("--clear-dependencies") && dependsOn.length) ||
+        (seen.has("--clear-acceptance") && acceptance.length)
+      )
+        throw new Error("Choose a replacement list or its clearing flag, not both");
       const objective = words.slice(1).join(" ");
       const input: ReviseTaskInput = {
         ...(objective ? { objective } : {}),
         ...(inputArtifactId ? { inputArtifactId } : {}),
-        ...(seen.has("--depends-on") ? { dependsOn } : {}),
-        ...(seen.has("--accept") ? { acceptance } : {}),
+        ...(seen.has("--depends-on") || seen.has("--clear-dependencies") ? { dependsOn } : {}),
+        ...(seen.has("--accept") || seen.has("--clear-acceptance") ? { acceptance } : {}),
       };
       if (!Object.keys(input).length)
         throw new Error("revise requires an objective or an input/acceptance change");
@@ -269,17 +298,21 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     socketPath: command.socketPath,
     catalogFile: command.verb === "run" ? command.catalogFile : undefined,
   });
+  const commandId = MUTATIONS.includes(command.verb) ? (command.commandId ?? randomUUID()) : undefined;
   try {
     if (command.verb === "run") {
-      const run = await runtime.start({
-        name: command.name,
-        cwd: command.cwd,
-        prompt: command.prompt,
-        agent: command.agent,
-        model: command.model,
-        repos: command.repos,
-        workspace: command.workspace,
-      });
+      const run = await runtime.start(
+        {
+          name: command.name,
+          cwd: command.cwd,
+          prompt: command.prompt,
+          agent: command.agent,
+          model: command.model,
+          repos: command.repos,
+          workspace: command.workspace,
+        },
+        commandId,
+      );
       if (command.detach) process.stdout.write(`${run.name}\n`);
       else
         await attach(run, command.state, undefined, command.watch, command.socketPath, !!command.socketPath);
@@ -294,21 +327,21 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         !!command.socketPath,
       );
     } else if (command.verb === "answer") {
-      const answer = await runtime.answer(command.questionId, command.answer);
+      const answer = await runtime.answer(command.questionId, command.answer, commandId);
       process.stdout.write(`Answered ${answer.id}.\n`);
     } else if (command.verb === "retry") {
-      const task = await runtime.retry(command.taskId, command.revision);
+      const task = await runtime.retry(command.taskId, command.revision, commandId);
       process.stdout.write(
         `Queued task ${task.id} revision ${task.revision}, attempt ${task.currentAttemptId}.\n`,
       );
     } else if (command.verb === "revise") {
-      const task = await runtime.revise(command.taskId, command.revision, command.input);
+      const task = await runtime.revise(command.taskId, command.revision, command.input, commandId);
       process.stdout.write(`Revised task ${task.id} to revision ${task.revision}.\n`);
     } else if (command.verb === "integrate") {
-      const integration = await runtime.integrate(command.taskId, command.revision);
+      const integration = await runtime.integrate(command.taskId, command.revision, commandId);
       process.stdout.write(`Queued integration ${integration.id}.\n`);
     } else if (command.verb === "apply") {
-      const result = await runtime.apply(command.name);
+      const result = await runtime.apply(command.name, commandId);
       process.stdout.write(
         command.json
           ? `${JSON.stringify(result)}\n`
@@ -337,6 +370,8 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
             `${task.id}  ${task.role ?? "solo"}  revision ${task.revision}  ${task.status} / ${attempt?.status ?? "unknown"}\n`,
           );
           if (attempt?.error) process.stdout.write(`  Attention: ${plain(attempt.error)}\n`);
+          if (task.waitFor.length)
+            process.stdout.write(`  Waiting for: ${task.waitFor.map(plain).join(", ")}\n`);
           if (task.report)
             process.stdout.write(
               `  Report (unverified, SHA-256 ${task.report.digest}):\n${plain(task.report.text)
@@ -354,6 +389,12 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
           process.stdout.write(
             `Conflict ${integration.id}: ${integration.conflicts.map(plain).join(", ")}\n`,
           );
+        for (const integration of detail.integrations.filter(
+          (integration) => integration.status === "failed",
+        ))
+          process.stdout.write(
+            `Integration ${integration.id} failed: ${plain(integration.error ?? "No diagnostic was recorded")}\n`,
+          );
         for (const verification of detail.verifications.filter(
           (verification) => verification.status === "failed" || verification.error,
         )) {
@@ -366,12 +407,18 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         process.stdout.write(`History: ${detail.events.length} recorded transitions\n`);
       }
     } else if (command.verb === "recover") {
-      const run = await runtime.recover(command.name);
+      const run = await runtime.recover(command.name, commandId);
       process.stdout.write(`Recovered ${run.name}.\n`);
     } else if (command.verb === "stop") {
-      const run = await runtime.stop(command.name);
+      const run = await runtime.stop(command.name, commandId);
       process.stdout.write(`Stopping ${run.name}. Conversations and workspaces are retained.\n`);
     }
+  } catch (error) {
+    if (commandId)
+      process.stderr.write(
+        `Command ID: ${commandId}. Reuse --command-id ${commandId} when retrying this invocation.\n`,
+      );
+    throw error;
   } finally {
     runtime.close();
   }
