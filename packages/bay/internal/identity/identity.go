@@ -27,6 +27,9 @@ type Precondition struct {
 }
 
 func (p Precondition) Check(s Session) error {
+	if p.Generation != nil && p.ID == "" {
+		return fmt.Errorf("%w: an execution generation requires a session ID", fault.Invalid)
+	}
 	if p.ID != "" && p.ID != s.ID {
 		return fmt.Errorf("%w: session %s has a different ID", fault.Conflict, s.Name)
 	}
