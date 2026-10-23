@@ -11,7 +11,7 @@ describe("planBudget", () => {
     expect(planBudget({ trialsPerStep: 5, stepPercent: 50 }, 3).samples).toBe(45);
   });
 
-  it("prices the presets the README quotes", () => {
+  it("prices each preset per model", () => {
     expect(SAMPLING_PRESETS.map((preset) => planBudget(preset).samples)).toEqual([50, 550, 2100]);
   });
 });

@@ -1,7 +1,5 @@
-// The results history file. It is checked before any paid request and then
-// appended to one completed run at a time. Each write flushes a sibling temporary
-// file and renames it over the document, under a lock file that every writing
-// process honours.
+// The results history file: checked before any paid request, then appended to one
+// completed run at a time under a lock file that every writer honours.
 import { dirname } from "node:path";
 import type { PlatformError } from "@effect/platform/Error";
 import * as FileSystem from "@effect/platform/FileSystem";
@@ -26,7 +24,7 @@ export class ResultsStoreError extends Data.TaggedError("ResultsStoreError")<{
   readonly cause: PlatformError | ParseError | HistoryLocked;
 }> {}
 
-/** How long a writer waits for a busy history file, as the README states. */
+/** How long a writer waits for a busy history file before failing with HistoryLocked. */
 const LOCK_WAIT = Schedule.spaced("25 millis").pipe(Schedule.upTo("5 seconds"));
 
 const emptyResults: Results = { schemaVersion: SCHEMA_VERSION, runs: [] };
@@ -80,7 +78,10 @@ export class ResultsStore extends Effect.Service<ResultsStore>()("ResultsStore",
         );
       });
 
-    /** Flushes a sibling temporary file, then renames it over the document. */
+    /**
+     * Flushes the document to a file in a temporary `.probabench-*` directory beside it,
+     * then renames that file over it, so a reader never sees a partial write.
+     */
     const write = (path: string, results: Results) =>
       Effect.gen(function* () {
         const contents = yield* encode(results);

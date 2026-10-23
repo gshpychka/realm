@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 // The runner's DEFAULT_OUT lives in public/data, which Vite serves at this URL.
 const RESULTS_URL = "/data/results.json";
 
-/** Fetch /data/results.json and Schema-decode it against the shared Results contract. Requires an HttpClient. */
+/** The history, decoded against the Results contract. */
 export const fetchResults = HttpClient.get(RESULTS_URL).pipe(
   Effect.flatMap(HttpClientResponse.filterStatusOk),
   Effect.flatMap(HttpClientResponse.schemaBodyJson(Results)),
