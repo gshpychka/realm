@@ -1,4 +1,4 @@
-import type { BoxRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core";
+import type { KeyEvent, ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { BashEntry, Entry, NoticeEntry } from "@pituitary/rpc";
 import {
@@ -7,6 +7,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -30,20 +31,12 @@ const NOTICE = {
 
 /** Each line of an entry's body starts beyond its mark, including wrapped lines. */
 function Marked({ mark, colour, children }: { mark: string; colour: string; children: ReactNode }) {
-  const [width, setWidth] = useState<number>();
-  // An integer width keeps OpenTUI's markdown measurement and drawing at the same
-  // wrap boundary; an intrinsic flex width can differ by one column after wrapping.
-  const measure = useCallback(function (this: BoxRenderable) {
-    setWidth(Math.max(1, Math.floor(this.width) - 2));
-  }, []);
   return (
-    <box flexDirection="row" flexShrink={0} onSizeChange={measure}>
-      <text fg={colour} width={2} flexShrink={0}>
+    <box flexDirection="column" flexShrink={0} paddingLeft={2}>
+      <text position="absolute" left={0} top={0} fg={colour} width={2}>
         {mark}
       </text>
-      <box flexDirection="column" width={width} flexGrow={width === undefined ? 1 : 0} flexShrink={0}>
-        {children}
-      </box>
+      {children}
     </box>
   );
 }
@@ -139,7 +132,11 @@ function Notice({ entry, expanded }: { entry: NoticeEntry; expanded: boolean }) 
               <span fg={theme.dim}> {remedy.does}</span>
             </>
           ) : null}
-          {original && !expanded ? <span fg={theme.dim}><KeyHint action="app.tools.expand" /></span> : null}
+          {original && !expanded ? (
+            <span fg={theme.dim}>
+              <KeyHint action="app.tools.expand" />
+            </span>
+          ) : null}
         </text>
         {original && expanded ? (
           <text fg={theme.dim} selectable>
@@ -187,7 +184,9 @@ function Bash({ entry, expanded, escapes }: { entry: BashEntry; expanded: boolea
         <text selectable>
           <span fg={theme.tool}>{entry.command}</span>
           {entry.excluded ? <span fg={theme.dim}> · not in context</span> : null}
-          {entry.running ? <span fg={theme.dim}> · running{escapes ? ` · ${escapes} cancels` : ""}</span> : null}
+          {entry.running ? (
+            <span fg={theme.dim}> · running{escapes ? ` · ${escapes} cancels` : ""}</span>
+          ) : null}
           {entry.cancelled ? <span fg={theme.dim}> · cancelled</span> : null}
           {failed ? <span fg={theme.error}> · exit {entry.exitCode}</span> : null}
           {entry.truncated ? <span fg={theme.dim}> · output cut</span> : null}
@@ -294,6 +293,43 @@ export interface ConversationProps {
 }
 
 const SCROLLBAR = { trackOptions: { foregroundColor: palette.rule, backgroundColor: theme.bg } };
+
+/** Prepending history adds rows above the viewport; a page back should reveal one page, not a whole batch. */
+function useHistoryAnchor(
+  ref: RefObject<ScrollBoxRenderable | null>,
+  earlier: number,
+  window: number,
+  active: boolean,
+) {
+  const previous = useRef({ earlier, window });
+  const pending = useRef<{ height: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const box = ref.current;
+    if (box && window > previous.current.window && earlier < previous.current.earlier) {
+      pending.current = { height: box.scrollHeight, top: box.scrollTop };
+    }
+    previous.current = { earlier, window };
+  }, [ref, earlier, window]);
+  useLayoutEffect(() => {
+    if (!active) return;
+    const box = ref.current;
+    if (!box) return;
+    const resized = () => {
+      const anchor = pending.current;
+      if (!anchor) return;
+      pending.current = null;
+      // The content's own resize handler has updated the scrollbar before this event.
+      box.scrollTo(anchor.top + box.scrollHeight - anchor.height - Math.max(1, Math.floor(box.height / 2)));
+    };
+    box.content.on("resize", resized);
+    return () => {
+      box.content.off("resize", resized);
+    };
+  }, [ref, active]);
+  // A prepend can fold into an existing collapsed work box without changing height.
+  // Its anchor belongs only to this frame, never a later unrelated resize.
+  return () => { pending.current = null; };
+}
 
 /** Rows an open box shows before it scrolls: a third of the terminal, and never too few to read. */
 const boxRows = (height: number) => Math.max(6, Math.floor(height / 3));
@@ -422,6 +458,7 @@ export function Conversation({
 }: ConversationProps) {
   const { height } = useTerminalDimensions();
   const earlier = Math.max(0, entries.length - window);
+  const clearHistoryAnchor = useHistoryAnchor(ref, earlier, window, entries.length > 0);
   const items = useMemo(() => transcriptOf(entries.slice(earlier), running), [entries, earlier, running]);
   const boxes = items.filter((item): item is Work => item.kind === "work");
   const whole = display.expanded;
@@ -434,6 +471,7 @@ export function Conversation({
     <scrollbox
       ref={ref}
       flexGrow={1}
+      flexBasis={0}
       flexShrink={1}
       stickyScroll
       stickyStart="bottom"
@@ -442,6 +480,7 @@ export function Conversation({
       paddingLeft={1}
       paddingRight={1}
       verticalScrollbarOptions={SCROLLBAR}
+      renderAfter={clearHistoryAnchor}
     >
       {earlier > 0 ? (
         <text fg={theme.dim} flexShrink={0}>
