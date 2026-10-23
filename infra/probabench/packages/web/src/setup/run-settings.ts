@@ -8,12 +8,6 @@ import { BenchRequest, benchArgs } from "../bridge/protocol";
 /** A request handed to the setup form; a new key makes the form take it again. */
 export type BenchmarkDraft = BenchRequest & { readonly key: string };
 
-export const PRESET_DESCRIPTIONS: Readonly<Record<SamplingPreset["id"], string>> = {
-  quick: "Find the shape",
-  standard: "A closer look",
-  thorough: "More evidence",
-};
-
 /** Gentler than the CLI default of 10; saved runs do not record concurrency, so reruns use it too. */
 const BROWSER_CONCURRENCY = 5;
 

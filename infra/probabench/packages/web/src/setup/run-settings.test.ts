@@ -21,7 +21,7 @@ describe("benchmarkCommand", () => {
 
 describe("presetFor", () => {
   it("names the preset a request's sampling matches", () => {
-    expect(presetFor(DEFAULT_REQUEST)?.id).toBe("standard");
+    expect(presetFor(DEFAULT_REQUEST)?.label).toBe("Standard");
     expect(presetFor({ trialsPerStep: 17, stepPercent: 30 })).toBeUndefined();
   });
 });

@@ -16,7 +16,7 @@ import type { Bridge, Connection } from "../bridge/use-bridge";
 import { type CopyStatus, useClipboard } from "../common/clipboard";
 import { count } from "../common/format";
 import { FormError } from "./FormError";
-import { benchmarkCommand, DEFAULT_REQUEST, PRESET_DESCRIPTIONS, presetFor } from "./run-settings";
+import { benchmarkCommand, DEFAULT_REQUEST, presetFor } from "./run-settings";
 
 /** What the form edits. Number fields can hold 0 or NaN while the user types. */
 export interface Settings {
@@ -162,7 +162,7 @@ export function SetupForm({
   // A copied command only has to be one the form can express; a browser run also has a budget.
   const checked = Schema.validateEither(published ? BenchRequest : BridgeRequest)(request);
   const validationError = Either.isLeft(checked) ? firstIssue(checked.left) : null;
-  const selectedPreset = presetFor(request)?.id;
+  const selectedPreset = presetFor(request);
   const canSubmit =
     !bridge.pending && !validationError && (published || local?.configured === true);
 
@@ -232,9 +232,9 @@ export function SetupForm({
             <div className="preset-grid">
               {SAMPLING_PRESETS.map((preset) => (
                 <button
-                  key={preset.id}
+                  key={preset.label}
                   type="button"
-                  aria-pressed={selectedPreset === preset.id}
+                  aria-pressed={selectedPreset === preset}
                   className="preset"
                   onClick={() =>
                     onChange({
@@ -245,7 +245,7 @@ export function SetupForm({
                   }
                 >
                   <strong>{preset.label}</strong>
-                  <span>{PRESET_DESCRIPTIONS[preset.id]}</span>
+                  <span>{preset.description}</span>
                   <small>{count(planBudget(preset).samples)} samples</small>
                 </button>
               ))}

@@ -46,8 +46,8 @@ export const planBudget = (
 };
 
 export const SAMPLING_PRESETS = [
-  { id: "quick", label: "Quick", trialsPerStep: 10, stepPercent: 25 },
-  { id: "standard", label: "Standard", trialsPerStep: 50, stepPercent: 10 },
-  { id: "thorough", label: "Thorough", trialsPerStep: 100, stepPercent: 5 },
+  { label: "Quick", description: "Find the shape", trialsPerStep: 10, stepPercent: 25 },
+  { label: "Standard", description: "A closer look", trialsPerStep: 50, stepPercent: 10 },
+  { label: "Thorough", description: "More evidence", trialsPerStep: 100, stepPercent: 5 },
 ] as const;
 export type SamplingPreset = (typeof SAMPLING_PRESETS)[number];
