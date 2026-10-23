@@ -91,6 +91,9 @@ func run(args []string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := validateServeConfig(config); err != nil {
+		return fmt.Errorf("config %s: %w", *configPath, err)
+	}
 	return serve(config, log)
 }
 
@@ -113,16 +116,26 @@ func loadConfig(file string) (Config, error) {
 	}
 	for _, field := range []struct{ name, value string }{
 		{"incusSocket", config.IncusSocket}, {"project", config.Project}, {"base", config.Base},
-		{"records", config.Records}, {"mirrors", config.Mirrors}, {"gatewaySocket", config.GatewaySocket},
 	} {
 		if field.value == "" {
 			return Config{}, fmt.Errorf("config %s: %s is required", file, field.name)
 		}
 	}
-	if config.MaxRunning < 1 || config.MirrorRefresh.Duration < 0 {
-		return Config{}, fmt.Errorf("config %s: maxRunning must be positive and mirrorRefresh must not be negative", file)
-	}
 	return config, nil
+}
+
+func validateServeConfig(config Config) error {
+	for _, field := range []struct{ name, value string }{
+		{"records", config.Records}, {"mirrors", config.Mirrors}, {"gatewaySocket", config.GatewaySocket},
+	} {
+		if field.value == "" {
+			return fmt.Errorf("%s is required", field.name)
+		}
+	}
+	if config.MaxRunning < 1 || config.MirrorRefresh.Duration < 0 {
+		return errors.New("maxRunning must be positive and mirrorRefresh must not be negative")
+	}
+	return nil
 }
 
 func serve(config Config, log *slog.Logger) error {

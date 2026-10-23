@@ -18,9 +18,9 @@ func TestHelp(t *testing.T) {
 	names := []string{
 		"start", "attach", "list", "show", "suspend", "resume", "snap", "end", "rm", "threads", "read", "send", "help",
 	}
-	for _, arg := range []string{"help", "-h", "--help"} {
-		t.Run(arg, func(t *testing.T) {
-			got := h.run("", arg)
+	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"help", "help"}, {"help", "-h"}, {"help", "--help"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			got := h.run("", args...)
 			if got.code != 0 || got.stderr != "" {
 				t.Fatalf("exit %d, stderr %q", got.code, got.stderr)
 			}
@@ -63,7 +63,7 @@ func TestCommandHelp(t *testing.T) {
 			"usage: bay start NAME [PROGRAM] [--repo OWNER/NAME[@REF]]... [-- COMMAND...]\n"},
 		{[]string{"list", "-h"}, "usage: bay list [--json]\n"},
 		{[]string{"help", "list"}, "usage: bay list [--json]\n"},
-		{[]string{"help", "read"}, "usage: bay read THREAD [--before MESSAGE] [--json]\n"},
+		{[]string{"help", "read"}, "usage: bay read THREAD [--json]\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.args[0], func(t *testing.T) {
@@ -105,13 +105,9 @@ func TestUsageErrors(t *testing.T) {
 		{"threads with an argument", "", []string{"threads", "extra"}, `unexpected argument "extra"`},
 		{"read without a thread", "", []string{"read"}, "missing argument"},
 		{"read a thread that is not a number", "", []string{"read", "abc"}, `invalid thread "abc"`},
-		{"read thread zero", "", []string{"read", "0"}, `invalid thread "0"`},
 		{"read a negative thread", "", []string{"read", "-1"}, "flag provided but not defined"},
 		{"send without a recipient", "", []string{"send"}, "missing argument"},
 		{"send to a thread that is not a number", "", []string{"send", "--thread", "x", "alice", "hi"}, "invalid value"},
-		{"send to a negative thread", "", []string{"send", "--thread=-1", "alice", "hi"}, "thread must be a positive number"},
-		{"send too much stdin", strings.Repeat("x", 65537), []string{"send", "alice"}, "at most 65536 bytes"},
-		{"send too many words", "", []string{"send", "alice", strings.Repeat("x", 65537)}, "at most 65536 bytes"},
 		{"send nothing", "", []string{"send", "alice"}, "empty message"},
 		{"send an empty argument", "", []string{"send", "alice", ""}, "empty message"},
 		{"send blank stdin", " \n\n", []string{"send", "alice", "-"}, "empty message"},

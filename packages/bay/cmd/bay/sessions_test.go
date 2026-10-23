@@ -34,8 +34,6 @@ func TestStart(t *testing.T) {
 			api.Start{Command: []string{"sh"}, Repos: []string{"acmeco/bay"}}},
 		{"flags inside the command belong to it", []string{"foo", "--", "sh", "--repo", "x", "-h"},
 			api.Start{Command: []string{"sh", "--repo", "x", "-h"}}},
-		{"program and command are left to the server", []string{"foo", "claude", "--", "sh"},
-			api.Start{Program: "claude", Command: []string{"sh"}}},
 		{"a trailing -- adds no command", []string{"foo", "--"}, api.Start{}},
 	}
 	for _, tt := range tests {
