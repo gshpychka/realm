@@ -2,14 +2,11 @@ import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as HttpClient from "@effect/platform/HttpClient";
 import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
 import { Rx } from "@effect-rx/rx-react";
-import { Results } from "@probabench/domain";
+import { RESULTS_FILE, Results } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 
-// The runner's DEFAULT_OUT is data/results.json, which vite.config.ts serves at this URL.
-const RESULTS_URL = "/results.json";
-
 /** The history, decoded against the Results contract. */
-export const fetchResults = HttpClient.get(RESULTS_URL).pipe(
+export const fetchResults = HttpClient.get(`/${RESULTS_FILE}`).pipe(
   Effect.flatMap(HttpClientResponse.filterStatusOk),
   Effect.flatMap(HttpClientResponse.schemaBodyJson(Results)),
   Effect.scoped,

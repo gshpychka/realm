@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import * as Command from "@effect/cli/Command";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as NodeContext from "@effect/platform-node/NodeContext";
@@ -9,7 +10,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { MISSING_MODEL_MESSAGE } from "../plan/plan";
 import { ResultsStore } from "../store/results-store";
-import { benchCommand, NON_TTY_MESSAGE } from "./command";
+import { benchCommand, DEFAULT_OUT, NON_TTY_MESSAGE } from "./command";
 
 // Vitest's stdin is not a TTY, so these cover the non-interactive path.
 const runCommand = (args: readonly string[]) =>
@@ -73,6 +74,10 @@ describe("probabench command", () => {
       expect(yield* invalidOptions(["--model", "vendor/model"])).toBe(NON_TTY_MESSAGE);
     }),
   );
+
+  it("defaults --out to the workspace's tracked history", () => {
+    expect(existsSync(DEFAULT_OUT)).toBe(true);
+  });
 
   it.effect("lists aliases without credentials", () => runCommand(["--list"]));
 

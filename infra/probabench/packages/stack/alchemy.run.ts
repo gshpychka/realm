@@ -40,8 +40,10 @@ export default Alchemy.Stack(
       assets: {
         fileOptions: [
           {
-            // These filenames are stable across benchmark runs. Alchemy's
-            // default for non-HTML files is a year-long immutable browser cache.
+            // The history keeps its name across benchmark runs. Alchemy's default
+            // for non-HTML files is a year-long immutable browser cache. The name is
+            // @probabench/domain's RESULTS_FILE, which this Effect 4 stack cannot
+            // import from the Effect 3 domain.
             files: "results.json",
             cacheControl: "public,max-age=0,must-revalidate",
           },

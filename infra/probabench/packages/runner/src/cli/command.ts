@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Prompt from "@effect/cli/Prompt";
-import { ReasoningMode, StepPercent, TrialsPerStep } from "@probabench/domain";
+import { RESULTS_FILE, ReasoningMode, StepPercent, TrialsPerStep } from "@probabench/domain";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -15,10 +15,13 @@ import { executePlan } from "./execute";
 import { promptRunSetup } from "./setup";
 
 /**
- * The workspace's history, data/results.json, which the web app serves at /results.json.
- * Resolved from this file rather than the working directory.
+ * The workspace's history file, which the web app serves at its site root. Resolved
+ * from this file rather than the working directory; command.test.ts checks that it
+ * exists.
  */
-const DEFAULT_OUT = fileURLToPath(new URL("../../../../data/results.json", import.meta.url));
+export const DEFAULT_OUT = fileURLToPath(
+  new URL(`../../../../data/${RESULTS_FILE}`, import.meta.url),
+);
 
 const DEFAULTS: SamplingOptions = {
   trialsPerStep: 100,
@@ -82,7 +85,7 @@ const options = {
       Schema.NonEmptyString.annotations({ message: () => "--out must be a file path." }),
     ),
     Options.withDefault(DEFAULT_OUT),
-    Options.withDescription("History file (default: the workspace's data/results.json)."),
+    Options.withDescription(`History file (default: the workspace's data/${RESULTS_FILE}).`),
   ),
   yes: Options.boolean("yes").pipe(
     Options.withAlias("y"),

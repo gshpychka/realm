@@ -87,3 +87,9 @@ export const Results = Schema.Struct({ runs: Schema.Array(Run) }).pipe(
   ),
 );
 export type Results = typeof Results.Type;
+
+/**
+ * The history's file name. The runner writes it to the workspace's data/ folder,
+ * which the web app serves as its site root.
+ */
+export const RESULTS_FILE = "results.json";
