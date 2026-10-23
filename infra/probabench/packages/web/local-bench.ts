@@ -140,7 +140,7 @@ export function createBenchController(options: ControllerOptions) {
       };
       const processHandle = launch(
         [
-          "packages/runner/src/index.ts",
+          "packages/runner/src/main.ts",
           "--model",
           settings.model,
           "--trials",
