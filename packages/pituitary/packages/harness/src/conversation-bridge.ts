@@ -148,6 +148,14 @@ export async function openConversation(options: OpenConversationOptions): Promis
       state: { ...state(snapshot, metadata?.name ?? ""), messageCount: messages.length },
       messages,
       streamingMessage: identity.archived ? undefined : partial,
+      retry:
+        !identity.archived && snapshot.generation?.retry
+          ? {
+              attempt: snapshot.generation.attempt,
+              at: snapshot.generation.retry.at,
+              errorMessage: snapshot.generation.retry.error,
+            }
+          : undefined,
       pendingToolCalls: identity.archived
         ? []
         : snapshot.tools.filter((tool) => tool.status !== "done").map((tool) => tool.callId),
@@ -157,6 +165,8 @@ export async function openConversation(options: OpenConversationOptions): Promis
   const translate = async (event: AgentEvent) => {
     switch (event.type) {
       case "snapshot":
+        toolOutput.clear();
+        for (const tool of event.tools) toolOutput.set(tool.callId, tool.output ?? "");
         onRecord({ type: "snapshot", snapshot: { ...(await projected(event)), sequence: ++sequence } });
         return;
       case "run_start":
@@ -356,22 +366,48 @@ export async function openConversation(options: OpenConversationOptions): Promis
       stream = next;
       toolOutput.clear();
       for (const tool of next.snapshot.tools) toolOutput.set(tool.callId, tool.output ?? "");
-      const snapshot = await projected(next.snapshot);
-      if (closed) throw new Error("Conversation attachment closed");
-      next.start(async (events) => {
-        for (const event of events) {
-          if (ticket !== generation || closed) return;
-          await translate(event);
-        }
-      });
-      return snapshot;
+      try {
+        const snapshot = await projected(next.snapshot);
+        if (closed) throw new Error("Conversation attachment closed");
+        if (identity.archived) await next.stop();
+        else
+          next.start(async (events) => {
+            for (const event of events) {
+              if (ticket !== generation || closed) return;
+              await translate(event);
+            }
+          });
+        return snapshot;
+      } catch (error) {
+        await next.stop();
+        throw error;
+      }
     })().finally(() => {
       refreshing = undefined;
     });
     return refreshing;
   }
-  let initial: SessionSnapshot | undefined = await refresh();
+  const unwatchName = harness.subscribeCommits((publication) => {
+    if (
+      !identity.archived &&
+      publication.changes.some(
+        (change) =>
+          change.type === "document" &&
+          change.record.kind === Presentation.definition.kind &&
+          change.conversationId === conversation.id,
+      )
+    )
+      queueMicrotask(() => {
+        if (!closed) publish({ type: "session_info_changed" });
+      });
+  });
+  let initial: SessionSnapshot | undefined = await refresh().catch((error) => {
+    unwatchName();
+    throw error;
+  });
+  const archived = identity.archived ? initial : undefined;
   const snapshot = async () => {
+    if (archived) return archived;
     if (initial) {
       const value = initial;
       initial = undefined;
@@ -381,6 +417,7 @@ export async function openConversation(options: OpenConversationOptions): Promis
   };
   // Metadata reads never replace the active stream: only get_snapshot advances the UI's cursor.
   const read = async () => {
+    if (archived) return archived;
     const observed = await watchEvents(harness, conversation.id, context);
     try {
       return await projected(observed.snapshot);
@@ -485,7 +522,6 @@ export async function openConversation(options: OpenConversationOptions): Promis
       await conversation.commit(async (tx) => {
         (await tx.doc(Presentation, conversation.id)).name = command.name;
       }, context);
-      publish({ type: "session_info_changed" });
       return;
     }
     if (command.type === "set_thinking_level")
@@ -547,6 +583,7 @@ export async function openConversation(options: OpenConversationOptions): Promis
       if (closed) return;
       closed = true;
       generation++;
+      unwatchName();
       await stream?.stop();
     },
   };

@@ -3,8 +3,6 @@ export { encodeJsonLine, JsonLineDecoder } from "./jsonl.ts";
 export { EventPacer, type EventPacerOptions, MESSAGE_FLUSH_MS, TOOL_FLUSH_MS } from "./pacer.ts";
 export {
   type CommandResult,
-  type DialogRequest,
-  type DialogResponse,
   plain,
   type SessionCommand,
   type SessionEvent,
