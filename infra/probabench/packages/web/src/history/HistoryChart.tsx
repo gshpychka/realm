@@ -147,10 +147,8 @@ export function HistoryChart({
         {empty ? <PlotEmpty {...empty} /> : null}
       </div>
       <figcaption id={descriptionId} className="chart-description">
-        Mean absolute calibration error across recorded targets with valid replies, in percentage
-        points. Lower is better. Each point is a saved run. Runs with no valid replies leave gaps
-        and remain available in the history list. Different target grids and sample budgets affect
-        this error.
+        Mean calibration error per saved run, in percentage points; lower is better. Runs with no
+        valid replies leave gaps.
       </figcaption>
     </figure>
   );

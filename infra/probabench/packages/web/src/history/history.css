@@ -269,12 +269,6 @@
   font: 11px / 1.8 var(--mono);
   color: var(--text-3);
 }
-.detail-note {
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--muted);
-  margin-top: 19px;
-}
 .inspector-measurements {
   margin-top: 12px;
 

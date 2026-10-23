@@ -56,10 +56,6 @@ export function RunDetail({ run, onCompare }: { run: Run; onCompare: () => void 
       <button type="button" className="button secondary full-width" onClick={onCompare}>
         View on calibration chart <span aria-hidden="true">↗</span>
       </button>
-      <p className="detail-note">
-        Mean calibration error averages the absolute difference between target and observed
-        frequency across targets with valid replies. Compare like-for-like grids and budgets.
-      </p>
     </section>
   );
 }

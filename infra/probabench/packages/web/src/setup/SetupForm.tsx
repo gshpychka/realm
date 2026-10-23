@@ -128,7 +128,6 @@ export function SetupForm({
                 <option key={slug} value={slug} />
               ))}
           </datalist>
-          <p className="helper">Use any OpenRouter model ID.</p>
           <fieldset className="preset-fieldset">
             <legend className="field-label">Sample budget</legend>
             <div className="preset-grid">
