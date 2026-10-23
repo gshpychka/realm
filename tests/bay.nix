@@ -79,7 +79,6 @@ inputs.nixpkgs.lib.nixos.runTest {
           subprocess.run(["systemctl", "restart", "bay-server.service"], check=True)
         '';
 
-
         services.bay = {
           enable = true;
           operator = "alice";
@@ -198,6 +197,7 @@ inputs.nixpkgs.lib.nixos.runTest {
     ''
       import json
       import hashlib
+      import re
       import shlex
       import time
       from datetime import timedelta
@@ -300,7 +300,9 @@ inputs.nixpkgs.lib.nixos.runTest {
           assert json.loads(operation(session, "POST", "/captures/result", {"path": "transfer-result", "maxBytes": 1024})) == capture
           assert capture["sha256"] == hashlib.sha256(b"original").hexdigest()
           guest_fails("one", "runuser -u dev -- sh -c " + shlex.quote("printf corrupt > " + shlex.quote(blob["path"])))
-          guest_fails("one", f"runuser -u dev -- cat /var/lib/bay/operator/{session['id']}/{session['generation']}/jobs/materialize/state.json")
+          receipt = f"/var/lib/bay/operator/{session['id']}/{session['generation']}/jobs/materialize/state.json"
+          guest("one", f"${pkgs.coreutils}/bin/cat {receipt} 2>&1")
+          assert "Permission denied" in guest_fails("one", f"runuser -u dev -- ${pkgs.coreutils}/bin/cat {receipt} 2>&1")
           expired = dict(session, generation=session["generation"] + 1)
           command = ["curl", "-sS", "--unix-socket", "/run/bay/bay.sock", "-o", "/dev/null", "-w", "%{http_code}",
                      "-H", f"Bay-Session-ID: {expired['id']}", "-H", f"Bay-Session-Generation: {expired['generation']}",
@@ -314,7 +316,7 @@ inputs.nixpkgs.lib.nixos.runTest {
           detached_result = job_result(session, "detached")
           assert detached_result["status"] == "succeeded", detached_result
           detached_pid = int(detached_result["stdout"].strip())
-          guest("one", f"bash -c '! pgrep -s {detached_pid} >/dev/null'")
+          guest("one", f"bash -c '${pkgs.procps}/bin/pgrep -s {detached_pid} >/dev/null; test $? = 1'")
 
       with subtest("declared machines keep immutable bases and pinned sessions across catalog changes"):
           bay("start pinned counter")
@@ -369,7 +371,7 @@ inputs.nixpkgs.lib.nixos.runTest {
           guest("one", "tmux split-window -d -t main")
           assert guest("one", "bay-session program").strip() == "running"
           pane = guest("one", "tmux display-message -p -t main.1 '#{pane_pid}'").strip()
-          retry(lambda _: "dev" in guest("one", f"ps -o user= --ppid {pane}").split(), timeout=timedelta(seconds=10))
+          retry(lambda _: "dev" in guest("one", f"${pkgs.procps}/bin/ps -o user= --ppid {pane}").split(), timeout=timedelta(seconds=10))
 
       with subtest("a second session starts, and the cap refuses a third"):
           bay("start two counter")
@@ -501,7 +503,7 @@ inputs.nixpkgs.lib.nixos.runTest {
           assert counting("one")
           assert history("one") == [*after_end, "hangup", "start resume"]
           # a program that exits on its own leaves its pane behind, and resuming starts it again
-          guest("one", "pkill -HUP -f 'counter resume'")
+          guest("one", "${pkgs.procps}/bin/pkill -HUP -f 'counter resume'")
           retry(lambda _: guest("one", "bay-session program").strip() == "stopped", timeout=timedelta(seconds=30))
           bay("resume one")
           retry(lambda _: history("one")[-1] == "start resume", timeout=timedelta(seconds=60))
@@ -513,6 +515,7 @@ inputs.nixpkgs.lib.nixos.runTest {
           bay_fails("show two")
           host.fail("incus info --project bay two")
           host.fail("test -e /var/lib/bay/sessions/two")
-          host.fail("zfs list -H -o name | grep -E '/(bay_)?two(\\.block)?$'")
+          volumes = host.succeed("zfs list -H -o name").splitlines()
+          assert not any(re.search(r"/(bay_)?two(\.block)?$", volume) for volume in volumes), volumes
     '';
 }
