@@ -13,7 +13,7 @@ import {
   type BridgeStatus,
   firstIssue,
 } from "../src/bridge/protocol";
-import { createBenchController, RequestError } from "./controller";
+import { type BenchController, createBenchController, RequestError } from "./controller";
 
 /**
  * The CLI entry the infra shell's probabench runs, spawned directly so a cancel's SIGTERM
@@ -66,19 +66,36 @@ function send(response: ServerResponse, code: number, body: BridgeStatus | Bridg
   response.end(JSON.stringify(body));
 }
 
+/**
+ * Vite restarts its server, and re-evaluates this file, whenever vite.config.ts or anything
+ * it imports changes: dev-bridge/, src/bridge/protocol.ts and all of @probabench/domain.
+ * One controller per Vite process keeps a running benchmark across those restarts (edits
+ * to controller.ts apply from the next process); the process exiting stops it.
+ */
+const CONTROLLER = Symbol.for("probabench.dev-bridge");
+const processScope = globalThis as { [CONTROLLER]?: BenchController };
+
+function processController(): BenchController {
+  const existing = processScope[CONTROLLER];
+  if (existing) return existing;
+  const controller = createBenchController({
+    // `bun run dev` and `dev:alchemy` start Vite under sops exec-env with
+    // secrets/infra/probabench.env.
+    configured: Boolean(process.env.OPENROUTER_API_KEY),
+    launch: (args) => spawn("bun", [RUNNER_ENTRY, ...args], { stdio: ["ignore", "pipe", "pipe"] }),
+  });
+  process.once("exit", () => controller.cancel());
+  processScope[CONTROLLER] = controller;
+  return controller;
+}
+
 export function devBridgePlugin(): Plugin {
   const routes: readonly string[] = Object.values(BRIDGE_ROUTES);
   return {
     name: "probabench-dev-bridge",
     apply: "serve",
     configureServer(server) {
-      const controller = createBenchController({
-        // `bun run dev` and `dev:alchemy` start Vite under sops exec-env with
-        // secrets/infra/probabench.env.
-        configured: Boolean(process.env.OPENROUTER_API_KEY),
-        launch: (args) =>
-          spawn("bun", [RUNNER_ENTRY, ...args], { stdio: ["ignore", "pipe", "pipe"] }),
-      });
+      const controller = processController();
       server.middlewares.use((request, response, next) => {
         const path = request.url?.split("?")[0];
         if (path === undefined || !routes.includes(path)) return next();
@@ -108,8 +125,6 @@ export function devBridgePlugin(): Plugin {
           }
         })();
       });
-      // A restart or exit closes the server; cancel the active run so no runner outlives it.
-      server.httpServer?.once("close", () => controller.cancel());
     },
   };
 }

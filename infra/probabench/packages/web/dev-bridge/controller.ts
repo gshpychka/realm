@@ -113,3 +113,4 @@ export function createBenchController({
     },
   };
 }
+export type BenchController = ReturnType<typeof createBenchController>;

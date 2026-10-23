@@ -23,6 +23,8 @@ through `sops exec-env`. Its dev bridge lets the page start a benchmark: it
 accepts same-origin requests only, runs one benchmark at a time by spawning the
 CLI, and limits a browser run to one model, 10,000 samples per target
 probability, 100,000 samples in total and 50 concurrent requests (5 by default).
+Edits to the domain package or the bridge restart Vite; a running benchmark
+survives the restart.
 `bun run dev:alchemy` runs the same Vite server under Alchemy's dev runtime,
 with local state; it needs Docker for Alchemy's AWS emulator.
 `bun run build && bun run --cwd packages/web preview` serves the production
