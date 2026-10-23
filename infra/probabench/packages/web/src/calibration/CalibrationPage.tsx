@@ -28,6 +28,8 @@ export function CalibrationPage({
     () => selections.filter(({ model }) => !hidden.has(model)).map(({ compared }) => compared),
     [selections, hidden],
   );
+  // A link can hide a model this notebook lacks, which must not count as hiding one.
+  const anyHidden = selections.some(({ model }) => hidden.has(model));
   const compare = (id: string) => {
     const run = runs.find((item) => item.id === id);
     if (run) update({ comparisons: withComparison(view.comparisons, runs, run) });
@@ -60,13 +62,10 @@ export function CalibrationPage({
               type="button"
               className="text-button tiny"
               onClick={() =>
-                update(
-                  { hidden: hidden.size > 0 ? [] : selections.map(({ model }) => model) },
-                  "replace",
-                )
+                update({ hidden: anyHidden ? [] : selections.map(({ model }) => model) }, "replace")
               }
             >
-              {hidden.size > 0 ? "Show all" : "Hide all"}
+              {anyHidden ? "Show all" : "Hide all"}
             </button>
           </div>
           <fieldset className="model-fieldset">

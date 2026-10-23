@@ -41,6 +41,8 @@ export function HistoryPage({
     });
     document.getElementById(PANEL_ID)?.focus();
   };
+  // A link can hide a model this notebook lacks, which filters nothing.
+  const filtered = view.hidden.some((model) => styles.has(model));
   const visible = useMemo(() => visibleHistory(runs, view.hidden), [runs, view.hidden]);
   const inspected = inspectedRun(visible, view.runId);
   return (
@@ -50,7 +52,7 @@ export function HistoryPage({
         <span className="mono muted">
           {count(visible.length)} / {count(runs.length)} runs
         </span>
-        {view.hidden.length > 0 ? (
+        {filtered ? (
           <button
             type="button"
             className="text-button"
