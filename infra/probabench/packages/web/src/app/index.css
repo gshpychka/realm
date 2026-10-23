@@ -1583,6 +1583,9 @@ button.connection {
   color: var(--muted);
   margin-top: 8px;
 }
+.setup-fields {
+  display: contents;
+}
 .preset-fieldset {
   border: 0;
   padding: 0;

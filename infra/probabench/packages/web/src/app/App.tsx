@@ -103,11 +103,12 @@ export function App() {
         </button>
       </footer>
       <RunSetup
+        key={draft?.key ?? "new"}
         open={setupOpen}
         onClose={() => setSetupOpen(false)}
         bridge={bridge}
         modelSuggestions={runs.map((run) => run.modelSlug)}
-        {...(draft ? { draft } : {})}
+        draft={draft}
         onViewResults={() => {
           setSetupOpen(false);
           update({ tab: "history", runId: null, query: "", hidden: [] });

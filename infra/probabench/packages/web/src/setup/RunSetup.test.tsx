@@ -4,6 +4,7 @@ import type { Job } from "../bridge/protocol";
 import type { Bridge, Connection } from "../bridge/use-bridge";
 import { RunSetup } from "./RunSetup";
 import type { BenchmarkDraft } from "./run-settings";
+import { submitLabel } from "./SetupForm";
 
 const bridge = (connection: Connection): Bridge => ({
   connection,
@@ -23,7 +24,7 @@ const render = (connection: Bridge, draft?: BenchmarkDraft) =>
       onViewResults={() => {}}
       bridge={connection}
       modelSuggestions={[]}
-      {...(draft ? { draft } : {})}
+      draft={draft}
     />,
   );
 const job = (status: Job["status"]): Job => ({
@@ -43,12 +44,12 @@ describe("benchmark setup workflow", () => {
     expect(html).not.toContain('id="benchmark-trials"');
     expect(html).not.toContain('id="benchmark-step"');
     expect(html).toContain('maxLength="200"');
-    expect(html).toContain('<details class="advanced">');
+    expect(html).toContain("Advanced settings");
   });
 
   it("offers a usable primary command action on the published site", () => {
     const html = render(published);
-    expect(html).toContain('type="submit" class="button primary">Copy command');
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*>Copy command/);
     expect(html).toContain('aria-label="Benchmark terminal command"');
     expect(html).not.toContain("Start benchmark");
     expect(html).not.toContain("Connect your OpenRouter key");
@@ -58,7 +59,7 @@ describe("benchmark setup workflow", () => {
     const html = render(local(null, false));
     expect(html).toContain("Connect your OpenRouter key");
     expect(html).toContain("secrets/infra/probabench.env");
-    expect(html).toContain('type="submit" class="button primary" disabled="">Start benchmark');
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""[^>]*>Start benchmark/);
   });
 
   it("puts an active job ahead of setup, with meaningful progress and optional raw output", () => {
@@ -66,13 +67,13 @@ describe("benchmark setup workflow", () => {
     expect(html).toContain("2 of 11 probability targets sampled.");
     expect(html).toContain("Keep running in background");
     expect(html).toContain("Cancel run");
-    expect(html).toContain('<details class="job-output">');
+    expect(html).toContain("Runner output");
     expect(html).not.toContain('id="benchmark-model"');
   });
 
   it("leads completed runs with View results rather than another setup form", () => {
     const html = render(local(job("completed")));
-    expect(html).toContain('class="button primary">View results');
+    expect(html).toMatch(/<button[^>]*class="button primary"[^>]*>View results/);
     expect(html).toContain("Set up another");
     expect(html).not.toContain('id="benchmark-model"');
   });
@@ -92,5 +93,29 @@ describe("benchmark setup workflow", () => {
     expect(html).toContain('value="30"');
     expect(html).toContain("Start benchmark");
     expect(html).not.toContain("View results");
+  });
+
+  it("keeps a running job ahead of a rerun draft", () => {
+    const html = render(local(job("running")), {
+      key: "rerun-two",
+      model: "vendor/model",
+      trialsPerStep: 10,
+      stepPercent: 25,
+      concurrency: 5,
+    });
+    expect(html).toContain("Cancel run");
+    expect(html).not.toContain('id="benchmark-model"');
+  });
+});
+
+describe("submitLabel", () => {
+  it.each([
+    ["connecting", false, false, "Checking runner…"],
+    ["local", true, false, "Starting…"],
+    ["local", false, false, "Start benchmark"],
+    ["published", false, false, "Copy command"],
+    ["published", false, true, "Copied ✓"],
+  ] as const)("labels %s (pending %s, copied %s) as %s", (connection, pending, copied, label) => {
+    expect(submitLabel(connection, pending, copied)).toBe(label);
   });
 });
