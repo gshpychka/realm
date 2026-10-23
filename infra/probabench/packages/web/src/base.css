@@ -345,7 +345,9 @@ details[open] > summary .expand-sign {
   *,
   *::before,
   *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: it must also beat inline styles, such as Recharts' tooltip transition. */
     animation: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: as above. */
     transition: none !important;
   }
 }

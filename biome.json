@@ -10,6 +10,7 @@
       "modules/**/*.js",
       "infra/**/*.ts",
       "infra/**/*.tsx",
+      "infra/**/*.css",
       "!**/node_modules"
     ]
   },
@@ -20,7 +21,10 @@
   },
   "linter": {
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "style": {
+        "noDescendingSpecificity": "off"
+      }
     }
   }
 }
