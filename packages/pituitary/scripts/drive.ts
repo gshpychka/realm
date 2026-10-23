@@ -5,20 +5,22 @@
  * tui-test sessions live only as long as the process that opened them, which is what
  * this process is for. `scripts/tui.ts` is the client and starts it on demand.
  */
-import { existsSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { createServer, type Socket } from "node:net";
 import { join } from "node:path";
 import type { TuiTest } from "@microsoft/tui-test";
 import { boot, COLS, type Harness, launch, REPO, ROWS } from "../e2e/helpers/harness.ts";
+import {
+  type Command,
+  driverSocket,
+  environment,
+  HELP,
+  prepareDriverSocket,
+  validateCommand,
+} from "./tui-command.ts";
 
 /** One driver per name, so several operators can each hold a session; `TUI_SESSION` picks it. */
-export const SOCKET = join(REPO, "artifacts", `drive-${process.env.TUI_SESSION ?? "default"}.sock`);
-
-export interface Command {
-  op: string;
-  args: string[];
-  options: Record<string, string>;
-}
+const SOCKET = driverSocket();
 
 /** Raw bytes a terminal sends for each named key. */
 const KEYS = new Map(
@@ -26,6 +28,7 @@ const KEYS = new Map(
     esc: "\x1b",
     enter: "\r",
     tab: "\t",
+    space: " ",
     "shift+tab": "\x1b[Z",
     backspace: "\x7f",
     delete: "\x1b[3~",
@@ -48,6 +51,7 @@ const KEYS = new Map(
 export function keyBytes(name: string): string {
   const known = KEYS.get(name);
   if (known) return known;
+  if ([...name].length === 1) return name;
   const ctrl = /^ctrl\+([a-z\]\\[^_])$/.exec(name);
   if (ctrl?.[1]) return String.fromCharCode(ctrl[1].toUpperCase().charCodeAt(0) & 0x1f);
   const alt = /^alt\+(.)$/.exec(name);
@@ -133,6 +137,7 @@ const OPS = new Map<string, Op>([
     "start",
     async (_args, options) => {
       await session?.close();
+      session = null;
       session = await open(options);
       return live().text();
     },
@@ -142,18 +147,26 @@ const OPS = new Map<string, Op>([
   [
     "key",
     acting(async (args) => {
-      for (const name of args) await live().write(keyBytes(name));
+      for (const bytes of args.map(keyBytes)) await live().write(bytes);
     }),
   ],
   ["write", acting((args) => live().write(args.join(" ")))],
   [
     "wait",
     async (args, options) => {
-      await live().waitText(args.join(" "), { timeout: Number(options.timeout ?? 10_000) });
-      return live().text();
+      const terminal = live(),
+        text = args.join(" ");
+      const deadline = Date.now() + Number(options.timeout ?? 10_000);
+      for (;;) {
+        const screen = await terminal.text();
+        if (screen.includes(text)) return screen;
+        if (Date.now() >= deadline) throw new Error(`timed out waiting for ${JSON.stringify(text)}`);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
     },
   ],
   ["screen", (_args, options) => (options.style === undefined ? live().text() : styled(live()))],
+  ["help", async () => HELP],
   [
     "capture",
     async (args) => {
@@ -176,21 +189,11 @@ const OPS = new Map<string, Op>([
   ],
 ]);
 
-function run({ op, args, options }: Command): Promise<string> {
+function run(value: unknown): Promise<string> {
+  const { op, args, options } = validateCommand(value);
   const known = OPS.get(op);
   if (!known) throw new Error(`unknown command "${op}"`);
   return known(args, options);
-}
-
-/** `KEY=value` pairs separated by `;`, for the UI process. */
-function environment(pairs: string): Record<string, string> {
-  return Object.fromEntries(
-    pairs
-      .split(";")
-      .flatMap((pair) =>
-        pair ? [[pair.slice(0, pair.indexOf("=")), pair.slice(pair.indexOf("=") + 1)]] : [],
-      ),
-  );
 }
 
 /** The session `start` asks for: an entry point under the harness, or the UI against an agent. */
@@ -198,14 +201,20 @@ function open(options: Record<string, string>): Promise<Harness> {
   const size = { cols: Number(options.cols ?? COLS), rows: Number(options.rows ?? ROWS) };
   if (options.entry) {
     const settle = options.settle !== "false";
-    return boot({ entry: join(REPO, options.entry), ready: options.ready ?? "", settle, ...size });
+    return boot({
+      entry: join(REPO, options.entry),
+      ready: options.ready ?? "",
+      settle,
+      env: options.env ? environment(options.env) : undefined,
+      ...size,
+    });
   }
   return launch({
     ...size,
-    pi: options.pi?.split(/\s+/).filter(Boolean),
     scenario: options.scenario,
     delayMs: options.delay ? Number(options.delay) : undefined,
     env: options.env ? environment(options.env) : undefined,
+    pi: options.pi?.split(/\s+/).filter(Boolean),
   });
 }
 
@@ -215,12 +224,19 @@ async function settle(): Promise<string> {
   return live().text();
 }
 
+// Mutations stay ordered; waits observe without blocking the actions that satisfy them.
+let pending: Promise<unknown> = Promise.resolve();
 function serve(socket: Socket): void {
+  // Closing a CLI while an operation is pending does not close the live UI.
+  socket.on("error", () => {});
   let buffer = "";
+  let handled = false;
   socket.on("data", (chunk) => {
+    if (handled) return;
     buffer += chunk.toString();
     const end = buffer.indexOf("\n");
     if (end === -1) return;
+    handled = true;
     let command: Command;
     try {
       command = JSON.parse(buffer.slice(0, end)) as Command;
@@ -229,7 +245,9 @@ function serve(socket: Socket): void {
       socket.end(`${JSON.stringify({ ok: false, output: "not a command" })}\n`);
       return;
     }
-    run(command)
+    const result = pending.then(() => run(command));
+    if (command?.op !== "wait") pending = result.catch(() => {});
+    result
       .then((output) => socket.end(`${JSON.stringify({ ok: true, output })}\n`))
       .catch((error: unknown) =>
         socket.end(
@@ -240,7 +258,7 @@ function serve(socket: Socket): void {
 }
 
 if (process.argv[1] === import.meta.filename) {
-  if (existsSync(SOCKET)) rmSync(SOCKET);
+  prepareDriverSocket();
   createServer(serve).listen(SOCKET);
   const quit = async () => {
     await session?.close();

@@ -35,7 +35,7 @@ gate() {
 gate install bun install --frozen-lockfile
 gate typecheck tsc -p .
 gate lint biome check .
-gate unit bun test packages/
+gate unit bun test packages/ scripts/
 gate e2e node --test --test-reporter=spec "e2e/**/*.test.ts"
 # Timings, one file at a time so no other test competes for the machine.
 gate perf node --test --test-concurrency=1 --test-reporter=spec "e2e/**/*.perf.ts"
