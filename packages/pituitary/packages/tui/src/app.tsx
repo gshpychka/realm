@@ -403,7 +403,7 @@ export function App({
   const draftKey = (key: KeyEvent, action: Action | null, text: string, standing: Offer | null): boolean => {
     if (completions.key(key, action === "app.interrupt", runChosen)) return true;
     // Escape leaves insert mode first, where the draft has a use for it.
-    if (action === "app.interrupt" && editor.current?.wantsEscape()) return false;
+    if (action === "app.interrupt" && key.name === "escape" && editor.current?.wantsEscape()) return false;
     return (
       (action !== null && actions[action](key, text, standing)) ||
       pageKey(key) ||

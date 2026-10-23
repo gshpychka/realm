@@ -99,14 +99,6 @@ func (c *connection) run(ctx context.Context, r request) {
 		c.send(response{ID: r.ID, Error: &failure{"spawn_error", err.Error()}})
 		return
 	}
-	if c.credential != nil {
-		if err := spool.Chown(int(c.credential.Uid), int(c.credential.Gid)); err != nil {
-			spool.Close()
-			os.Remove(spool.Name())
-			c.send(response{ID: r.ID, Error: &failure{"spawn_error", err.Error()}})
-			return
-		}
-	}
 	capture := &output{connection: c, id: r.ID, file: spool, cancel: command.Cancel}
 	command.Stdout = &stream{capture, "stdout"}
 	command.Stderr = &stream{capture, "stderr"}
@@ -121,10 +113,13 @@ func (c *connection) run(ctx context.Context, r request) {
 	if err := capture.file.Sync(); capture.err == nil && err != nil {
 		capture.err = err
 	}
+	spill := r.Spill != nil && (capture.bytes > r.Spill.AfterBytes || capture.lines() > r.Spill.AfterLines)
+	if spill && c.credential != nil && capture.err == nil {
+		capture.err = capture.file.Chown(int(c.credential.Uid), int(c.credential.Gid))
+	}
 	if err := capture.file.Close(); capture.err == nil && err != nil {
 		capture.err = err
 	}
-	spill := r.Spill != nil && (capture.bytes > r.Spill.AfterBytes || capture.lines() > r.Spill.AfterLines)
 	capture.mu.Unlock()
 	if !spill {
 		os.Remove(spool.Name())
