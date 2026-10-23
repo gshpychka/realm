@@ -107,6 +107,6 @@ Run these commands from Realm's root:
 - `nix fmt` formats Realm, including Bay's Go and shell sources. `nix flake check` runs the repository's shared formatting and lint checks.
 - `nix build .#checks.x86_64-linux.bay-vm` runs the [platform test](../../tests/bay.nix): a host VM running real session VMs, which needs KVM with nested virtualisation.
 
-[default.nix](default.nix) packages the Go module; its source includes only `go.mod`, `go.sum`, `cmd` and `internal`. [image.nix](image.nix) evaluates [guest.nix](guest.nix) separately from the host modules and uses the host's Bay package for `flare`.
+[default.nix](default.nix) packages the Go module and includes `bay-session.sh` for the guest helper tests. [image.nix](image.nix) evaluates [guest.nix](guest.nix) separately from the host modules and uses the host's Bay package for `flare`.
 
 The source was migrated from [`gshpychka/bay` at `2c0ae33`](https://github.com/gshpychka/bay/commit/2c0ae338b3324e081331b42cdfb9345f05f2d02b). The standalone repository is retired; development and issues belong in Realm.
