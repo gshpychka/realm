@@ -1,8 +1,13 @@
 import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
 import { useMemo, useRef } from "react";
-import { type NotebookView, PANEL_ID, toggleHidden, type UpdateView } from "../app/notebook-view";
 import { count, date, modelName, percent, samplingText, time } from "../common/format";
 import { Measurements } from "../common/Measurements";
+import {
+  type NotebookView,
+  PANEL_ID,
+  toggleHidden,
+  type UpdateView,
+} from "../common/notebook-view";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { inspectedRun, runsByDay, visibleHistory, withComparison } from "../common/run-history";
 import { HistoryChart } from "./HistoryChart";

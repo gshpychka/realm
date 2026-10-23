@@ -4,15 +4,15 @@ import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
 import { useBridge } from "../bridge/use-bridge";
 import { CalibrationPage } from "../calibration/CalibrationPage";
+import { PANEL_ID, useNotebookView } from "../common/notebook-view";
 import { modelStyles } from "../common/palette";
-import { resultsRx } from "../common/results";
 import { HistoryPage } from "../history/HistoryPage";
 import { MethodPage } from "../method/MethodPage";
 import { RunSetup } from "../setup/RunSetup";
 import { EmptyNotebook } from "./EmptyNotebook";
 import { Masthead } from "./Masthead";
 import { NotebookTabs } from "./NotebookTabs";
-import { PANEL_ID, useNotebookView } from "./notebook-view";
+import { resultsRx } from "./results";
 import { SiteHeader } from "./SiteHeader";
 import "./app.css";
 

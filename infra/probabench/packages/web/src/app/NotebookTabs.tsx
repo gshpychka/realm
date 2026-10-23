@@ -1,5 +1,5 @@
 import { count } from "../common/format";
-import { type NotebookView, TABS, type Tab, type UpdateView } from "./notebook-view";
+import { type NotebookView, TABS, type Tab, type UpdateView } from "../common/notebook-view";
 
 const TAB_LABELS = {
   calibration: "Calibration",
