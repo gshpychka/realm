@@ -100,7 +100,7 @@ describe("sweep", () => {
       const fiber = yield* Effect.fork(Effect.flip(sweep(series, twoSamples)));
       yield* TestClock.adjust("15 minutes");
       const error = yield* Fiber.join(fiber);
-      expect(error.cause._tag).toBe("TimeoutException");
+      expect(error._tag).toBe("TimeoutException");
       expect(attempts).toBe(MAX_RETRIES + 1);
     }).pipe(Effect.provide(stalled));
   });

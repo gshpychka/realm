@@ -51,7 +51,7 @@ describe("ResultsStore", () => {
         const store = yield* ResultsStore;
         const run = makeRun();
         yield* store.append(path, run);
-        expect((yield* Effect.flip(store.append(path, run)))._tag).toBe("ResultsStoreError");
+        expect((yield* Effect.flip(store.append(path, run)))._tag).toBe("ParseError");
         expect((yield* store.load(path)).runs).toEqual([run]);
       }),
     ),
@@ -63,7 +63,7 @@ describe("ResultsStore", () => {
         const fs = yield* FileSystem.FileSystem;
         const store = yield* ResultsStore;
         yield* fs.writeFileString(path, "{broken");
-        expect((yield* Effect.flip(store.append(path, makeRun())))._tag).toBe("ResultsStoreError");
+        expect((yield* Effect.flip(store.append(path, makeRun())))._tag).toBe("ParseError");
         expect(yield* fs.readFileString(path)).toBe("{broken");
       }),
     ),
@@ -76,7 +76,7 @@ describe("ResultsStore", () => {
         const store = yield* ResultsStore;
         const contents = JSON.stringify({ runs: [{ ...makeRun(), note: "hand-added" }] });
         yield* fs.writeFileString(path, contents);
-        expect((yield* Effect.flip(store.prepare(path)))._tag).toBe("ResultsStoreError");
+        expect((yield* Effect.flip(store.prepare(path)))._tag).toBe("ParseError");
         expect(yield* fs.readFileString(path)).toBe(contents);
       }),
     ),
@@ -105,7 +105,7 @@ describe("ResultsStore", () => {
             ),
           ),
         );
-        expect(failure._tag).toBe("ResultsStoreError");
+        expect(failure._tag).toBe("SystemError");
         expect((yield* store.load(path)).runs).toEqual([original]);
         expect(yield* fs.readDirectory(dirname(path))).toEqual(["results.json"]);
       }),
@@ -131,7 +131,7 @@ describe("ResultsStore", () => {
         const store = yield* ResultsStore;
         yield* fs.writeFileString(path, "a file, not a directory");
         const error = yield* Effect.flip(store.prepare(`${path}/results.json`));
-        expect(error._tag).toBe("ResultsStoreError");
+        expect(error._tag).toBe("SystemError");
       }),
     ),
   );

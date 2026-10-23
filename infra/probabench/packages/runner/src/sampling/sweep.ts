@@ -13,16 +13,10 @@ import {
 } from "@probabench/domain";
 import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import type { SamplingOptions } from "../plan/plan";
 import type { ModelSeries } from "../plan/series";
 import { type ProviderFailure, withProviderRetry } from "./retry";
-
-/** A sample whose request failed for good. An unparseable reply is an Outcome, not an error. */
-export class LlmError extends Data.TaggedError("LlmError")<{
-  readonly cause: ProviderFailure;
-}> {}
 
 /** Bounds each provider attempt, response decoding included, so a stalled request cannot hang a run. */
 const ATTEMPT_TIMEOUT = "2 minutes";
@@ -46,21 +40,22 @@ const parseOutcome = (reply: string): Outcome => {
 /**
  * One bit requested at probability x. Never sets temperature, top_p or top_k: the
  * model's native sampling is what is measured. The provided LanguageModel fixes the
- * series' slug and reasoning.
+ * series' slug and reasoning. An unparseable reply is an Outcome, not an error.
  */
-const sampleBit = (x: Probability): Effect.Effect<Outcome, LlmError, LanguageModel.LanguageModel> =>
+const sampleBit = (
+  x: Probability,
+): Effect.Effect<Outcome, ProviderFailure, LanguageModel.LanguageModel> =>
   LanguageModel.generateText({ prompt: prompt(x) }).pipe(
     Effect.timeout(ATTEMPT_TIMEOUT),
     withProviderRetry,
     Effect.map((response) => parseOutcome(response.text)),
-    Effect.mapError((cause) => new LlmError({ cause })),
   );
 
 /** Samples the series' whole grid into a Run, printing a progress line per finished point. */
 export const sweep = (
   series: ModelSeries,
   options: SamplingOptions,
-): Effect.Effect<Run, LlmError, LanguageModel.LanguageModel> =>
+): Effect.Effect<Run, ProviderFailure, LanguageModel.LanguageModel> =>
   Effect.gen(function* () {
     const startedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
     const grid = probabilityGrid(options.stepPercent);

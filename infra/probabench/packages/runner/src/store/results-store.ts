@@ -6,15 +6,9 @@ import { dirname } from "node:path";
 import type { PlatformError } from "@effect/platform/Error";
 import * as FileSystem from "@effect/platform/FileSystem";
 import { Results, type Run } from "@probabench/domain";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import type { ParseError } from "effect/ParseResult";
 import * as Schema from "effect/Schema";
-
-/** A read, write or decode failure against the results file. */
-export class ResultsStoreError extends Data.TaggedError("ResultsStoreError")<{
-  readonly cause: PlatformError | ParseError;
-}> {}
 
 const emptyResults: Results = { runs: [] };
 /** Results as pretty-printed JSON: the history file's format. */
@@ -23,7 +17,6 @@ const ResultsFile = Schema.parseJson(Results, { space: 2 });
 // would be dropped from the only copy of the history.
 const decode = Schema.decode(ResultsFile, { onExcessProperty: "error" });
 const encode = Schema.encode(ResultsFile);
-const toStoreError = (cause: PlatformError | ParseError) => new ResultsStoreError({ cause });
 
 export class ResultsStore extends Effect.Service<ResultsStore>()("ResultsStore", {
   effect: Effect.gen(function* () {
@@ -58,20 +51,19 @@ export class ResultsStore extends Effect.Service<ResultsStore>()("ResultsStore",
         yield* fs.rename(temporary, path);
       }).pipe(Effect.scoped);
 
-    const load = (path: string): Effect.Effect<Results, ResultsStoreError> =>
-      read(path).pipe(Effect.mapError(toStoreError));
+    const load = (path: string): Effect.Effect<Results, PlatformError | ParseError> => read(path);
 
     /** Fails before any paid request on corrupt history or an unusable directory. */
-    const prepare = (path: string): Effect.Effect<void, ResultsStoreError> =>
+    const prepare = (path: string): Effect.Effect<void, PlatformError | ParseError> =>
       fs
         .makeDirectory(dirname(path), { recursive: true })
-        .pipe(Effect.andThen(read(path)), Effect.asVoid, Effect.mapError(toStoreError));
+        .pipe(Effect.andThen(read(path)), Effect.asVoid);
 
     /** Adds `run` after every earlier run, including the same model's. */
-    const append = (path: string, run: Run): Effect.Effect<void, ResultsStoreError> =>
+    const append = (path: string, run: Run): Effect.Effect<void, PlatformError | ParseError> =>
       Effect.flatMap(read(path), (results) =>
         write(path, { ...results, runs: [...results.runs, run] }),
-      ).pipe(Effect.mapError(toStoreError));
+      );
 
     return { load, prepare, append };
   }),

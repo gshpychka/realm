@@ -43,7 +43,7 @@ describe("executePlan", () => {
       const endpoint = chatEndpoint({ unauthorized: ["vendor/b"] });
       return Effect.gen(function* () {
         const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a", "vendor/b")));
-        expect(error._tag).toBe("LlmError");
+        expect(error._tag).toBe("HttpResponseError");
         const { runs } = yield* Effect.flatMap(ResultsStore, (store) => store.load(path));
         expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a"]);
       }).pipe(Effect.provide(endpoint.layer), withKey("sk-test"));
@@ -69,7 +69,7 @@ describe("executePlan", () => {
         const fs = yield* FileSystem.FileSystem;
         yield* fs.writeFileString(path, "not json");
         const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a")));
-        expect(error._tag).toBe("ResultsStoreError");
+        expect(error._tag).toBe("ParseError");
         expect(endpoint.requests).toHaveLength(0);
       }).pipe(Effect.provide(endpoint.layer), withKey("sk-test"));
     }),
