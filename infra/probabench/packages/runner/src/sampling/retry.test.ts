@@ -17,53 +17,52 @@ const request = {
   headers: {},
 };
 
-const responseError = (status: number, headers: Record<string, string> = {}) =>
-  new AiError.HttpResponseError({
-    ...origin,
-    reason: "StatusCode",
-    request,
-    response: { status, headers },
-  });
+const responseError = (
+  status: number,
+  headers: Record<string, string> = {},
+  reason: AiError.HttpResponseError["reason"] = "StatusCode",
+) => new AiError.HttpResponseError({ ...origin, reason, request, response: { status, headers } });
 
 const requestError = (reason: AiError.HttpRequestError["reason"]) =>
   new AiError.HttpRequestError({ ...origin, reason, request });
 
+const aborts = 1;
+const retries = MAX_RETRIES + 1;
+
 describe("withProviderRetry", () => {
-  const aborts = 1;
-  const retries = MAX_RETRIES + 1;
-  for (const [name, failure, attempts] of [
-    ["400", responseError(400), aborts],
-    ["401", responseError(401), aborts],
-    ["403", responseError(403), aborts],
-    ["404", responseError(404), aborts],
-    ["408", responseError(408), retries],
-    ["429", responseError(429), retries],
-    ["500", responseError(500), retries],
-    ["503", responseError(503), retries],
-    ["529", responseError(529), retries],
-    ["a transport failure", requestError("Transport"), retries],
-    ["a timeout", new Cause.TimeoutException(), retries],
-    ["an invalid URL", requestError("InvalidUrl"), aborts],
-    ["a request encoding failure", requestError("Encode"), aborts],
-    ["malformed output", new AiError.MalformedOutput(origin), aborts],
-  ] as const) {
-    it.effect(`makes ${attempts} attempt(s) on ${name}`, () =>
-      Effect.gen(function* () {
-        let made = 0;
-        const fiber = yield* Effect.fork(
-          withProviderRetry(
-            Effect.failSync((): ProviderFailure => {
-              made++;
-              return failure;
-            }),
-          ),
-        );
-        yield* TestClock.adjust("10 minutes");
-        expect(Exit.isFailure(yield* Fiber.await(fiber))).toBe(true);
-        expect(made).toBe(attempts);
-      }),
-    );
-  }
+  it.effect.each([
+    [aborts, "400", responseError(400)],
+    [aborts, "401", responseError(401)],
+    [aborts, "403", responseError(403)],
+    [aborts, "404", responseError(404)],
+    [retries, "408", responseError(408)],
+    [retries, "429", responseError(429)],
+    [retries, "500", responseError(500)],
+    [retries, "503", responseError(503)],
+    [retries, "529", responseError(529)],
+    [retries, "a 429 with an undecodable body", responseError(429, {}, "Decode")],
+    [aborts, "a 200 with an undecodable body", responseError(200, {}, "Decode")],
+    [retries, "a transport failure", requestError("Transport")],
+    [retries, "a timeout", new Cause.TimeoutException()],
+    [aborts, "an invalid URL", requestError("InvalidUrl")],
+    [aborts, "a request encoding failure", requestError("Encode")],
+    [aborts, "malformed output", new AiError.MalformedOutput(origin)],
+  ] as const)("makes %i attempt(s) on %s", ([attempts, , failure]) =>
+    Effect.gen(function* () {
+      let made = 0;
+      const fiber = yield* Effect.fork(
+        withProviderRetry(
+          Effect.failSync((): ProviderFailure => {
+            made++;
+            return failure;
+          }),
+        ),
+      );
+      yield* TestClock.adjust("10 minutes");
+      expect(Exit.isFailure(yield* Fiber.await(fiber))).toBe(true);
+      expect(made).toBe(attempts);
+    }),
+  );
 
   it.effect("waits for Retry-After before retrying a rate-limited request", () =>
     Effect.gen(function* () {
@@ -84,16 +83,14 @@ describe("withProviderRetry", () => {
 });
 
 describe("retryAfterMillis", () => {
-  it("reads seconds and HTTP dates under any header case, ignores invalid values and caps long waits", () => {
+  it.each([
+    ["2", 2000],
+    ["Thu, 01 Jan 2026 00:00:30 GMT", 30_000],
+    ["3600", 60_000],
+    ["bad", 0],
+    ["", 0],
+  ] as const)("reads Retry-After %j as %i ms", (value, expected) => {
     const now = Date.parse("2026-01-01T00:00:00.000Z");
-    for (const [value, expected] of [
-      ["2", 2000],
-      ["Thu, 01 Jan 2026 00:00:30 GMT", 30_000],
-      ["3600", 60_000],
-      ["bad", 0],
-      ["", 0],
-    ] as const) {
-      expect(retryAfterMillis(responseError(429, { "Retry-After": value }), now)).toBe(expected);
-    }
+    expect(retryAfterMillis(responseError(429, { "retry-after": value }), now)).toBe(expected);
   });
 });

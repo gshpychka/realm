@@ -16,6 +16,12 @@ export const MAX_RETRIES = 5;
 export type ProviderFailure = AiError.AiError | Cause.TimeoutException;
 
 /**
+ * The first backoff, doubling with each retry: about 30 s across all of them, so a
+ * burst of 429s without Retry-After can outlast a short rate-limit window.
+ */
+const FIRST_BACKOFF = "1 second";
+
+/**
  * The longest Retry-After honoured per retry. A provider asking for an hour would
  * otherwise stall a paid run for hours without output.
  */
@@ -28,8 +34,10 @@ const isTransient = (failure: ProviderFailure): boolean => {
     case "HttpRequestError":
       return failure.reason === "Transport";
     case "HttpResponseError": {
+      // By status alone: a 429 or 500 whose body is not OpenRouter's JSON error arrives
+      // with reason "Decode".
       const { status } = failure.response;
-      return failure.reason === "StatusCode" && (status === 408 || status === 429 || status >= 500);
+      return status === 408 || status === 429 || status >= 500;
     }
     default:
       return false;
@@ -42,9 +50,8 @@ const isTransient = (failure: ProviderFailure): boolean => {
  */
 export const retryAfterMillis = (failure: ProviderFailure, now: number): number => {
   if (failure._tag !== "HttpResponseError") return 0;
-  const header = Object.entries(failure.response.headers)
-    .find(([name]) => name.toLowerCase() === "retry-after")?.[1]
-    ?.trim();
+  // @effect/platform lowercases header names.
+  const header = failure.response.headers["retry-after"]?.trim();
   if (header === undefined || header === "") return 0;
   const milliseconds = /^\d+(?:\.\d+)?$/.test(header)
     ? Number(header) * 1000
@@ -57,7 +64,7 @@ export const retryAfterMillis = (failure: ProviderFailure, now: number): number 
 // The intersected schedule outputs [[failure, backoff], recurrences]; identity()
 // passes the failure through so its Retry-After can stretch the backoff.
 const retrySchedule = Schedule.identity<ProviderFailure>().pipe(
-  Schedule.intersect(Schedule.exponential("200 millis", 2).pipe(Schedule.jittered)),
+  Schedule.intersect(Schedule.exponential(FIRST_BACKOFF, 2).pipe(Schedule.jittered)),
   Schedule.intersect(Schedule.recurs(MAX_RETRIES)),
   Schedule.modifyDelayEffect(([[failure]], delay) =>
     Clock.currentTimeMillis.pipe(
