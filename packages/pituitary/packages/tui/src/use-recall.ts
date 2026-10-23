@@ -1,5 +1,5 @@
 import type { KeyEvent } from "@opentui/core";
-import type { Entry } from "@pituitary/rpc";
+import type { Entry } from "@pituitary/session";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import type { EditorHandle } from "./components/editor.tsx";
 import { fresh, newer, older, prompts, type Recall } from "./history.ts";
@@ -72,7 +72,6 @@ function historyOf(entries: readonly Entry[]): string[] {
   return prompts(
     entries.flatMap((entry) => {
       if (entry.kind === "user") return [entry.text];
-      if (entry.kind === "bash") return [`${entry.excluded ? "!!" : "!"}${entry.command}`];
       return [];
     }),
   );

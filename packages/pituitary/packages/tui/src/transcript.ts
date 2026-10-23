@@ -1,4 +1,4 @@
-import type { AssistantEntry, Entry, ToolView } from "@pituitary/rpc";
+import type { AssistantEntry, Entry, ToolView } from "@pituitary/session";
 import { counted } from "./plural.ts";
 
 /** One thing the model did on its way to a reply, in the order it did it. */

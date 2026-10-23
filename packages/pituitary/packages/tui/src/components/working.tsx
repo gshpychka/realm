@@ -1,5 +1,5 @@
 import { useTerminalDimensions } from "@opentui/react";
-import type { SessionView } from "@pituitary/rpc";
+import type { SessionView } from "@pituitary/session";
 import { type ReactNode, useEffect, useState } from "react";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
@@ -59,7 +59,7 @@ export function Working({ view, hint, closed, escapes }: WorkingProps) {
       <Busy
         text={
           hint ??
-          `${glyphs.retrying} retrying ${view.retry.attempt}/${view.retry.maxAttempts} in ${wait}s${escapes ? ` · ${escapes} cancels` : ""} · ${explain(view.retry.error).text}`
+          `${glyphs.retrying} retrying ${view.retry.attempt}${view.retry.maxAttempts ? `/${view.retry.maxAttempts}` : ""} in ${wait}s${escapes ? ` · ${escapes} cancels` : ""} · ${explain(view.retry.error).text}`
         }
         tone={hint ? theme.dim : theme.error}
         tick={tick}

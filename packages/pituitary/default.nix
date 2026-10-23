@@ -6,6 +6,7 @@
   stdenv,
   neovim-unwrapped,
   gh,
+  git,
 }:
 let
   # Bun runs the workspace from source. Keep tests, development tools, and the
@@ -56,7 +57,7 @@ let
     '';
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-ZCA3v7UGtkIfOU198GjqMHreb7/Bze92BfjwiWPMsGU=";
+    outputHash = "sha256-lKpHIIaBxmlu7lfz3/utEFrUjh+YbL8MxE/C8woPw5c=";
   };
 in
 stdenvNoCC.mkDerivation {
@@ -72,16 +73,16 @@ stdenvNoCC.mkDerivation {
     cp -R . $out/share/pituitary
     chmod -R u+w $out/share/pituitary
     cp -R ${dependencies}/. $out/share/pituitary/
-    # Use the operator's pi, settings, extensions, and sessions.
     makeWrapper ${bun}/bin/bun $out/bin/pituitary \
-      --add-flags $out/share/pituitary/packages/tui/src/main.tsx \
+      --add-flags $out/share/pituitary/packages/harness/src/main.ts \
       --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ stdenv.cc.cc.lib ]} \
       --set-default PITUITARY_NVIM ${neovim-unwrapped}/bin/nvim \
+      --set-default PITUITARY_GIT ${git}/bin/git \
       --set-default PITUITARY_GH ${gh}/bin/gh
     runHook postInstall
   '';
   meta = {
-    description = "OpenTUI frontend for the pi coding agent";
+    description = "Durable agent workspace with declarative Bay execution environments";
     mainProgram = "pituitary";
   };
 }

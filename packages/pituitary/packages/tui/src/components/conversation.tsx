@@ -1,6 +1,6 @@
 import type { KeyEvent, ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import type { BashEntry, Entry, NoticeEntry } from "@pituitary/rpc";
+import type { Entry, NoticeEntry } from "@pituitary/session";
 import {
   memo,
   type ReactNode,
@@ -16,7 +16,6 @@ import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
 import type { Action } from "../keymap.ts";
 import { KeyHint, keyHint, useKeymap } from "../keymap-context.tsx";
-import { counted } from "../plural.ts";
 import { palette, theme } from "../theme.ts";
 import { type Item, type Reply, transcriptOf, type Work } from "../transcript.ts";
 import { turnLine } from "../working.ts";
@@ -42,8 +41,6 @@ function Marked({ mark, colour, children }: { mark: string; colour: string; chil
 }
 
 /** Lines of a command shown collapsed, its latest ones, and expanded, before the rest is cut. */
-const BASH_LINES = 5;
-const BASH_EXPANDED = 400;
 
 export interface Display {
   /** Tool output, summaries, and long commands shown whole, as ctrl+o asks. */
@@ -76,8 +73,6 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
           </text>
         </box>
       );
-    case "bash":
-      return <Bash entry={entry} expanded={display.expanded} escapes={display.escapes} />;
     case "custom":
       return (
         <box flexDirection="column" flexShrink={0} marginTop={1}>
@@ -119,19 +114,12 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
  */
 function Notice({ entry, expanded }: { entry: NoticeEntry; expanded: boolean }) {
   const { mark, colour } = NOTICE[entry.level];
-  const { text, remedy, original } = entry.level === "info" ? { text: entry.text } : explain(entry.text);
+  const { text, original } = entry.level === "info" ? { text: entry.text } : explain(entry.text);
   return (
     <box flexDirection="column" flexShrink={0} marginTop={1}>
       <Marked mark={mark} colour={colour}>
         <text fg={colour}>
           {text}
-          {remedy ? (
-            <>
-              <span fg={theme.dim}> · </span>
-              <span fg={theme.tool}>{remedy.command}</span>
-              <span fg={theme.dim}> {remedy.does}</span>
-            </>
-          ) : null}
           {original && !expanded ? (
             <span fg={theme.dim}>
               <KeyHint action="app.tools.expand" />
@@ -172,57 +160,30 @@ const ReplyView = memo(
     before.reply.note === after.reply.note,
 );
 
-function Bash({ entry, expanded, escapes }: { entry: BashEntry; expanded: boolean; escapes: string }) {
-  const all = entry.output.replace(/\n+$/, "").split("\n");
-  const kept = all.length === 1 && all[0] === "" ? [] : all;
-  const lines = kept.slice(-(expanded ? BASH_EXPANDED : BASH_LINES));
-  const hidden = kept.length - lines.length;
-  const failed = entry.exitCode !== null && entry.exitCode !== 0;
-  return (
-    <box flexDirection="column" flexShrink={0} marginTop={1}>
-      <Marked mark="$" colour={theme.tool}>
-        <text selectable>
-          <span fg={theme.tool}>{entry.command}</span>
-          {entry.excluded ? <span fg={theme.dim}> · not in context</span> : null}
-          {entry.running ? (
-            <span fg={theme.dim}> · running{escapes ? ` · ${escapes} cancels` : ""}</span>
-          ) : null}
-          {entry.cancelled ? <span fg={theme.dim}> · cancelled</span> : null}
-          {failed ? <span fg={theme.error}> · exit {entry.exitCode}</span> : null}
-          {entry.truncated ? <span fg={theme.dim}> · output cut</span> : null}
-        </text>
-        {hidden > 0 ? (
-          <text fg={theme.dim}>
-            … {counted(hidden, "earlier line")}
-            {expanded ? null : <KeyHint action="app.tools.expand" />}
-          </text>
-        ) : null}
-        {lines.length > 0 ? (
-          <text fg={theme.dim} selectable>
-            {lines.join("\n")}
-          </text>
-        ) : null}
-      </Marked>
-    </box>
-  );
-}
-
-const EDITOR_KEYS = [
-  ["enter", "send"],
-  ["shift+enter  ctrl+j", "new line"],
-  ["!cmd  !!cmd", "run a command, kept in or out of context"],
-  ["/  @", "commands, and files to mention"],
-  ["pgup  pgdn", "scroll"],
-] as const;
+const editorKeys = (local: boolean) =>
+  [
+    ["enter", "send"],
+    ["shift+enter  ctrl+j", "new line"],
+    [local ? "/  @" : "/", local ? "commands, and files to mention" : "commands"],
+    ["pgup  pgdn", "scroll"],
+  ] as const;
 
 /** The empty conversation: where to start, and the keys. */
-export function Welcome({ escapes }: { escapes: string }) {
+export function Welcome({
+  escapes,
+  local = true,
+  modelSelectable = local,
+}: {
+  escapes: string;
+  local?: boolean;
+  modelSelectable?: boolean;
+}) {
   const { width } = useTerminalDimensions();
   const bindings = useKeymap();
   const bound = (action: Action) => keyHint(bindings, action) ?? "";
   const interrupt = bound("app.interrupt");
   const rows: readonly (readonly [string, string])[] = [
-    ...EDITOR_KEYS,
+    ...editorKeys(local),
     [bound("app.message.followUp"), "queue a follow-up while pi works"],
     [
       interrupt ? escapes : "",
@@ -233,8 +194,8 @@ export function Welcome({ escapes }: { escapes: string }) {
     [bound("app.tools.expand"), "open every box of work at full length"],
     [bound("app.tools.browse"), "step through boxes: ↑↓ enter j k"],
     [bound("app.thinking.toggle"), "show or hide thinking"],
-    [bound("app.model.select"), "pick a model"],
-    [bound("app.model.cycleForward"), "take the next model"],
+    [modelSelectable ? bound("app.model.select") : "", "pick a model"],
+    [modelSelectable ? bound("app.model.cycleForward") : "", "take the next model"],
     [bound("app.editor.external"), "edit in $VISUAL"],
     [
       [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
@@ -252,7 +213,7 @@ export function Welcome({ escapes }: { escapes: string }) {
       paddingRight={1}
     >
       <text fg={theme.dim} flexShrink={0}>
-        Ask pi something to get started.
+        {local ? "Ask pi something to get started." : "Ask this agent something to get started."}
       </text>
       <box flexDirection="column" flexShrink={0} marginTop={1}>
         {rows
@@ -282,6 +243,9 @@ export interface ConversationProps {
   entries: Entry[];
   /** A run is in progress. */
   running: boolean;
+  /** Local sessions can complete paths and choose models from the operator's configuration. */
+  local?: boolean;
+  modelSelectable?: boolean;
   display: Display;
   /** How many of the latest entries are drawn; the earlier ones wait for the operator to scroll back. */
   window: number;
@@ -447,6 +411,8 @@ function useWalk({ browsing, boxes, scroll, isOpen, toggle, onLeave }: Walking) 
 export function Conversation({
   entries,
   running,
+  local,
+  modelSelectable,
   display,
   window,
   browsing,
@@ -462,7 +428,8 @@ export function Conversation({
   const { isOpen, toggle } = useOpenBoxes(whole);
   const { selected, resized } = useWalk({ browsing, boxes, scroll: ref, isOpen, toggle, onLeave });
 
-  if (entries.length === 0) return <Welcome escapes={display.escapes} />;
+  if (entries.length === 0)
+    return <Welcome escapes={display.escapes} local={local} modelSelectable={modelSelectable} />;
   const rows = boxRows(height);
   return (
     <scrollbox

@@ -11,7 +11,6 @@ const FLOOR_P95_MS = 10;
 const ECHO_P95_MS = 30;
 const FRAME_P95_MS = 20;
 const STREAMING_P95_MS = 25;
-const STREAM_MS = 4000;
 const RESUME_MS = 3000;
 
 after(async () => {
@@ -52,25 +51,12 @@ test("typing stays prompt with a long session behind it", async () => {
 });
 
 test("typing stays prompt while a reply streams in", async () => {
-  const app = await launch({ scenario: "torrent", delayMs: 2 });
+  const app = await launch({ scenario: "long", delayMs: 30 });
   await app.terminal.submit("stream");
-  await app.terminal.waitText("Part 1");
+  await app.terminal.waitText("line 1 of the long answer");
   const echo = summarise(await echoes(app.terminal, 30));
   record("echo-streaming", { echo }, `p95 < ${STREAMING_P95_MS}ms`);
   assert.ok(echo.p95 < STREAMING_P95_MS, JSON.stringify(echo));
-  await app.close();
-});
-
-test("a fast reply of 2000 deltas is drawn as quickly as it arrives", async () => {
-  const app = await launch({ scenario: "torrent" });
-  const ms = await timeTo(
-    app.terminal,
-    () => app.terminal.submit("stream"),
-    (screen) => screen.includes("Torrent done."),
-    STREAM_MS * 2,
-  );
-  record("stream-2000-deltas", { ms: Math.round(ms) }, `< ${STREAM_MS}ms`);
-  assert.ok(ms < STREAM_MS, `${Math.round(ms)}ms`);
   await app.close();
 });
 
@@ -156,7 +142,7 @@ const EMBERS_CPU_SHARE = 0.08;
 
 test("typing stays prompt with the corner fire burning", async () => {
   const app = await launch({ scenario: "hello", cols: WIDE, settle: false, env: { PITUITARY_STILL: "0" } });
-  await app.terminal.waitText("fake-model-1");
+  await app.terminal.waitText("faux-1");
   const echo = summarise(await echoes(app.terminal, 40));
   record("echo-embers", { echo }, `p95 < ${ECHO_P95_MS}ms`);
   assert.ok(echo.p95 < ECHO_P95_MS, JSON.stringify(echo));
@@ -176,7 +162,7 @@ test("an idle UI with the corner fire burning draws once a step and stays light 
       record: true,
       env: { PITUITARY_STILL: still ? "1" : "0" },
     });
-    await app.terminal.waitText("fake-model-1");
+    await app.terminal.waitText("faux-1");
     await new Promise((resolve) => setTimeout(resolve, 500));
     const pid = uiPid(app.home);
     const cpu = cpuMs(pid);

@@ -1,111 +1,15 @@
 /** An error as the operator reads it: one line on what went wrong, and what deals with it. */
 export interface Explanation {
   text: string;
-  remedy?: Remedy;
   /** The words the error arrived in, present when `text` rewords them. */
   original?: string;
-}
-
-/** A command that deals with an error, and what running it does. */
-export interface Remedy {
-  command: string;
-  does: string;
 }
 
 /** Characters of an error's line kept before it is cut at a word. */
 const KEPT = 160;
 
-/** What a token endpoint answers when the stored login is no longer good. */
-const REFUSED = /invalid_grant|expired|revoked|status=40[01]\b/i;
-
-/** What a request that never reached its server fails with. */
-const UNREACHABLE =
-  /fetch failed|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|socket hang up|timed? ?out/i;
-
-/** Why an MCP server did not connect, from the transport's words; the first match names it. */
-const MCP_CAUSES: readonly [RegExp, string][] = [
-  [/ECONNREFUSED|connection refused/i, "connection refused"],
-  [/ENOTFOUND|EAI_AGAIN|getaddrinfo/i, "host not found"],
-  [/spawn \S+ ENOENT|command not found/i, "its command was not found"],
-  [/ETIMEDOUT|timed? ?out/i, "timed out"],
-  [/Connection closed/i, "the server closed the connection"],
-];
-
-/** An MCP connect failure that a login fixes. */
-const MCP_SIGNED_OUT = /OAuth authentication required|\b401\b|unauthori[sz]ed|invalid_token|auth.?required/i;
-
-const login = (provider: string): Remedy => ({ command: `/login ${provider}`, does: "signs in again" });
-
-interface Known {
-  /** The shape of the words, whose groups the reading takes. */
-  words: RegExp;
-  read(groups: string[], text: string): Omit<Explanation, "original">;
-}
-
-/** Errors whose source and shape are known, checked in order before any other reading. */
-const KNOWN: readonly Known[] = [
-  {
-    // pi-ai's `resolveStoredOAuth`, wrapping whatever the provider's token endpoint said.
-    words: /^OAuth refresh failed for ([^\s:]+)/,
-    read: ([provider = ""], text) => {
-      if (REFUSED.test(text)) return { text: `the ${provider} login has expired`, remedy: login(provider) };
-      if (UNREACHABLE.test(text)) return { text: `could not reach ${provider} to renew the login` };
-      return { text: `could not renew the ${provider} login`, remedy: login(provider) };
-    },
-  },
-  {
-    // pi's agent session, when a provider's stored login yields no credentials.
-    words: /^Authentication failed for "([^"]+)"/,
-    read: ([provider = ""]) => ({
-      text: `the ${provider} login did not work: it may have expired, or the network is down`,
-      remedy: login(provider),
-    }),
-  },
-  {
-    // pi's auth guidance, which names the provider or "the selected model".
-    words: /^No API key found for (.+?)\.?$/m,
-    read: ([what = ""]) => ({
-      text: `no login or API key for ${what}`,
-      remedy: { command: what === "the selected model" ? "/login" : `/login ${what}`, does: "signs in" },
-    }),
-  },
-  {
-    // A provider SDK's `401 {body}`, which names no provider.
-    words: /^401\b:?\s*([\s\S]*)$/,
-    read: ([rest = ""]) => ({
-      text: `the provider refused the credentials: ${condense(rest)}`,
-      remedy: { command: "/login", does: "signs in again" },
-    }),
-  },
-  {
-    // pi-mcp-adapter's notice when a server fails to connect at startup or on `/mcp reconnect`.
-    words: /^MCP: Failed to (?:re)?connect to (\S+): ([\s\S]*)$/,
-    read: ([server = "", reason = ""]) => {
-      if (MCP_SIGNED_OUT.test(reason)) {
-        return {
-          text: `MCP server ${server} needs a login`,
-          remedy: { command: `/mcp-auth ${server}`, does: "signs in" },
-        };
-      }
-      const cause = MCP_CAUSES.find(([words]) => words.test(reason))?.[1] ?? condense(transportless(reason));
-      return {
-        text: `MCP server ${server} did not connect: ${cause}`,
-        remedy: { command: `/mcp reconnect ${server}`, does: "tries again" },
-      };
-    },
-  },
-];
-
-/**
- * What an error from pi, a provider, or an extension says, in one line the operator can act
- * on. Errors of a known source are reworded with a remedy; any other keeps its first line,
- * free of stack traces, response bodies, and diagnostics.
- */
+/** Condense native runtime, provider and tool errors while retaining the original for inspection. */
 export function explain(text: string): Explanation {
-  for (const known of KNOWN) {
-    const match = known.words.exec(text);
-    if (match) return { ...known.read(match.slice(1), text), original: text };
-  }
   const brief = condense(text);
   return brief === text.trim() ? { text: brief } : { text: brief, original: text };
 }
@@ -122,13 +26,6 @@ function condense(text: string): string {
     .map((each) => each.trim())
     .find(Boolean);
   return clip(line ?? text.trim(), KEPT);
-}
-
-/** An MCP transport's reason without the wrappers the SDK and pi-mcp-adapter add around it. */
-function transportless(reason: string): string {
-  return (reason.split(" — ")[0] ?? reason)
-    .replace(/^(?:Streamable HTTP error|SSE error|MCP error -?\d+):\s*/, "")
-    .replace(/^Error POSTing to endpoint(?: \(HTTP \d+\))?:\s*/, "");
 }
 
 /** An HTML page in an error, as its title. */

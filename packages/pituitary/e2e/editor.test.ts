@@ -90,29 +90,6 @@ test("any other key between the two ups keeps the draft and takes the question b
   await app.close();
 });
 
-test("a ! command streams its output and stays out of the prompt path", async () => {
-  const app = await launch({ scenario: "shell" });
-  await app.terminal.type("!ls -la");
-  await app.terminal.waitText("$ !ls -la");
-  await app.terminal.submit();
-  await app.terminal.waitText("ran: ls -la");
-  const screen = await app.capture("bash");
-  assert.doesNotMatch(screen, /You said/, `the command went to the model:\n${screen}`);
-  await app.close();
-});
-
-test("escape cancels a running command", async () => {
-  const app = await launch({ scenario: "shell", delayMs: 60 });
-  await app.terminal.submit("!count");
-  await app.terminal.waitText("tick 2");
-  await normalMode(app.terminal);
-  await app.terminal.keyboard.press("Escape");
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  const screen = await app.capture("bash-cancelled");
-  assert.doesNotMatch(screen, /tick 40/, `command ran to the end:\n${screen}`);
-  await app.close();
-});
-
 test("alt+enter queues a follow-up while the agent runs", async () => {
   const app = await launch({ scenario: "long", delayMs: 40 });
   await app.terminal.submit("write a lot");
@@ -224,5 +201,17 @@ test("ctrl+g edits the draft in the external editor", async () => {
   await app.terminal.type("a draft");
   await app.terminal.write(CTRL_G);
   await app.terminal.waitText("» a edited");
+  await app.close();
+});
+
+test("a failing external editor explains the failure and preserves the draft", async () => {
+  const app = await launch({ scenario: "hello", env: { PITUITARY_EDITOR: "false" } });
+  await app.terminal.type("keep this draft");
+  await app.terminal.write(CTRL_G);
+  await app.terminal.waitText("external editor failed; your draft is unchanged");
+  const screen = await app.capture("editor-external-failed");
+  assert.match(screen, /» keep this draft/, screen);
+  await app.terminal.type(" safely");
+  await app.terminal.waitText("» keep this draft safely");
   await app.close();
 });

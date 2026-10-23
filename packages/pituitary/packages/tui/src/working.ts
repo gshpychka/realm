@@ -1,4 +1,4 @@
-import { type Activity, activityOf, elapsed, type SessionView, type TurnEntry } from "@pituitary/rpc";
+import { type Activity, activityOf, elapsed, type SessionView, type TurnEntry } from "@pituitary/session";
 import { glyphs } from "./glyphs.ts";
 import { counted } from "./plural.ts";
 

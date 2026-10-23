@@ -65,7 +65,7 @@ test("the corner fire lights the text beside it, warming its red, and leaves the
 
 test("the light on the text beside a burning fire rises and falls with its heat", async () => {
   const app = await launch({ scenario: "hello", cols: COLS, settle: false, env: { PITUITARY_STILL: "0" } });
-  await app.terminal.waitText("fake-model-1");
+  await app.terminal.waitText("faux-1");
   const seen = new Set<string>();
   for (let sample = 0; sample < 8; sample++) {
     await new Promise((resolve) => setTimeout(resolve, 250));

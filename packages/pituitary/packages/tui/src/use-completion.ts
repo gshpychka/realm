@@ -65,18 +65,18 @@ function pathsFor(
 export function useCompletion(
   editor: RefObject<EditorHandle | null>,
   commands: readonly Command[],
-  cwd: string,
+  cwd: string | null,
 ) {
   const [draft, setDraft] = useState({ text: "", cursor: 0 });
   const [chosen, setChosen] = useState(0);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const [files, setFiles] = useState<{ cwd: string; paths: string[] }>({ cwd, paths: [] });
+  const [files, setFiles] = useState<{ cwd: string | null; paths: string[] }>({ cwd, paths: [] });
   const mentioning = mentionAt(draft.text, draft.cursor) !== null;
 
   // Scanning a large tree must not stop input or streaming. Refresh on each new mention,
   // so a file the agent just created is available without restarting the UI.
   useEffect(() => {
-    if (!mentioning) return;
+    if (!mentioning || cwd === null) return;
     let active = true;
     void listFiles(cwd).then((paths) => {
       if (active) setFiles({ cwd, paths });
@@ -90,7 +90,7 @@ export function useCompletion(
     if (dismissed === draft.text) return null;
     return (
       commandsFor(draft.text, commands, editor) ??
-      pathsFor(draft, files.cwd === cwd ? files.paths : [], editor)
+      (cwd === null ? null : pathsFor(draft, files.cwd === cwd ? files.paths : [], editor))
     );
   }, [draft, commands, dismissed, cwd, editor, files]);
   const index = completion ? Math.min(chosen, completion.items.length - 1) : 0;

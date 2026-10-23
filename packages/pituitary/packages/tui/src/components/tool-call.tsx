@@ -1,4 +1,4 @@
-import type { ToolView } from "@pituitary/rpc";
+import type { ToolView } from "@pituitary/session";
 import { memo } from "react";
 import { type Answer, type Details, detailsOf, fullOutputOf, type Task } from "../details.ts";
 import { glyphs } from "../glyphs.ts";
