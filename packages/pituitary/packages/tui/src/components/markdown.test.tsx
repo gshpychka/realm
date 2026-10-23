@@ -14,6 +14,8 @@ const CONTENT = [
   "- second item",
   "",
   "> quoted words",
+  ">",
+  "> another paragraph",
   "",
   "```ts",
   "export const limit = 168;",
@@ -40,6 +42,7 @@ test("settled markdown draws its structured text before asynchronous highlightin
       "- first item",
       "- second item",
       "quoted words",
+      "another paragraph",
       "export const limit = 168;",
       "Name",
       "Value",
@@ -47,6 +50,7 @@ test("settled markdown draws its structured text before asynchronous highlightin
       expect(first).toContain(text);
     }
     expect(first).not.toMatch(/##|\*\*|```|> quoted/);
+    expect(first).not.toContain("quoted wordsanother paragraph");
   } finally {
     root.unmount();
     app.renderer.destroy();

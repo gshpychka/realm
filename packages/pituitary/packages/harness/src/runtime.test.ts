@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { createServer } from "node:http";
 import { basename, dirname, join } from "node:path";
 import { createModels, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
@@ -37,6 +37,21 @@ async function until(predicate: () => Promise<boolean>): Promise<void> {
     await new Promise((done) => setTimeout(done, 20));
   }
 }
+
+test("managed clients never bootstrap a detached runtime", async () => {
+  const root = mkdtempSync("/tmp/pituitary-managed-client-"),
+    previous = process.env.PITUITARY_AUTO_START;
+  process.env.PITUITARY_AUTO_START = "0";
+  try {
+    const runtime = new Runtime({ stateDirectory: root });
+    await expect(runtime.list()).rejects.toMatchObject({ code: "ENOENT" });
+    expect(existsSync(join(root, "runtime.log"))).toBe(false);
+  } finally {
+    if (previous === undefined) delete process.env.PITUITARY_AUTO_START;
+    else process.env.PITUITARY_AUTO_START = previous;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("frontend detach and host restart retain the same native conversation without another worker", async () => {
   const f = await fixture();

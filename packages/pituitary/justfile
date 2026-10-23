@@ -28,7 +28,7 @@ module:
 
 # Reducer, framing, pacing, and transport, against the scripted agent.
 unit:
-    bun test packages/
+    bun test packages/ scripts/
 
 # The UI in a headless PTY, driven through tui-test.
 e2e:

@@ -51,3 +51,41 @@ func TestEnvironmentRequiresExactExecutionAndLifecycleClosesEveryConnection(t *t
 		}
 	}
 }
+
+func TestRejectedLifecycleRequestsPreserveEnvironment(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := machineService(t, 16)
+	session := mustStart(t, svc, "one", StartSpec{Program: "agent"})
+	for _, name := range []string{"first", "second"} {
+		if _, err := svc.Snap(ctx, "one", name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expected := identity.Precondition{ID: session.ID, Generation: &session.Generation}
+	connection, err := svc.Environment(ctx, "one", expected, session.Machine.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	for name, operation := range map[string]func() error{
+		"start running":                          func() error { _, err := svc.Start(ctx, "one", StartSpec{}); return err },
+		"start existing with program":            func() error { _, err := svc.Start(ctx, "one", StartSpec{Program: "agent"}); return err },
+		"resume running":                         func() error { return svc.Resume(ctx, "one", "", nil) },
+		"resume missing snapshot":                func() error { return svc.Resume(ctx, "one", "missing", nil) },
+		"resume without discard acknowledgement": func() error { return svc.Resume(ctx, "one", "first", nil) },
+		"snapshot invalid name":                  func() error { _, err := svc.Snap(ctx, "one", "bad/name"); return err },
+		"snapshot duplicate":                     func() error { _, err := svc.Snap(ctx, "one", "first"); return err },
+		"end without snapshot acknowledgement":   func() error { return svc.End(ctx, "one", nil) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := operation(); err == nil {
+				t.Fatal("invalid lifecycle request succeeded")
+			}
+			select {
+			case <-connection.(*environmentConnection).done:
+				t.Fatal("rejected lifecycle request disconnected the environment")
+			default:
+			}
+		})
+	}
+}
