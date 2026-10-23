@@ -153,7 +153,7 @@ export function SetupForm({
             </div>
             <button
               type="button"
-              className="text-button setup-custom"
+              className="text-button tiny setup-custom"
               aria-expanded={custom}
               aria-controls="custom-sampling"
               onClick={() => onChange({ custom: !custom })}

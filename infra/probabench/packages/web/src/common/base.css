@@ -247,15 +247,15 @@ var {
   font-size: 13px;
   text-align: left;
 }
-.text-button:hover {
-  color: var(--accent);
-}
 .text-button.tiny {
   font-size: 12px;
-  color: var(--muted);
 }
 .text-button.danger {
   color: var(--danger);
+}
+/* Danger keeps its red. */
+.text-button:not(.danger):hover:not(:disabled) {
+  color: var(--accent);
 }
 .icon-button {
   border: 1px solid var(--border);
