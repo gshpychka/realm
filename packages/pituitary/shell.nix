@@ -12,6 +12,7 @@ pkgs.mkShell {
     jetbrains-mono
     jq
     git
+    ripgrep
     util-linux
     tmux
     gh
