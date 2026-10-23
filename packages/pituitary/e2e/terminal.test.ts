@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
-import { type LaunchOptions, launch, settled } from "./helpers/harness.ts";
+import { boot, drag, type LaunchOptions, launch, settled } from "./helpers/harness.ts";
 
 after(async () => {
   await closeAll();
@@ -68,6 +70,50 @@ const TERMINALS: { name: string; options: LaunchOptions }[] = [
 ];
 
 for (const { name, options } of TERMINALS) {
+  test(`${name} forwards the login clipboard protocol`, async (t) => {
+    const scratch = mkdtempSync("/tmp/pituitary-clipboard-");
+    t.after(() => rmSync(scratch, { recursive: true, force: true }));
+    const raw = join(scratch, "terminal.raw");
+    const app = await boot({
+      ...options,
+      entry: join(import.meta.dirname, "fixtures/clipboard.ts"),
+      ready: "clipboard ready",
+      record: raw,
+    });
+    try {
+      await app.terminal.write("\x18");
+      await app.terminal.waitText("copied");
+      await app.terminal.waitIdle();
+      const encoded = Buffer.from("https://example.test/sign-in").toString("base64");
+      assert.ok(
+        readFileSync(raw, "latin1").includes(`\x1b]52;c;${encoded}`),
+        "login clipboard write never reached the outer terminal",
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  test(`${name} forwards selected text to the outer clipboard`, async () => {
+    const app = await launch({ ...options, record: true });
+    try {
+      const text = "https://example.test/sign-in";
+      await app.terminal.type(text);
+      await app.terminal.waitText(`» ${text}`);
+      const row = (await app.terminal.text()).split("\n").findIndex((line) => line.startsWith(" » "));
+      await drag(app.terminal, row, 3, 3 + text.length);
+      await app.terminal.waitText("copied");
+      await app.terminal.waitIdle();
+      const encoded = Buffer.from(text).toString("base64");
+      assert.ok(
+        app.raw().includes(`\x1b]52;c;${encoded}`),
+        "clipboard write never reached the outer terminal",
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
   test(`${name} receives complete synchronized redraws while a reply streams`, async () => {
     const app = await launch({ ...options, scenario: "long", delayMs: 30, record: true });
     try {
