@@ -1,6 +1,7 @@
 import type { BoxRenderable } from "@opentui/core";
 import { type ReactNode, useState } from "react";
 import { glyphs } from "../glyphs.ts";
+import { ellipsize } from "../text-width.ts";
 import { theme } from "../theme.ts";
 
 /** What the rules around the draft signal. */
@@ -48,23 +49,12 @@ export function draftMark(command: boolean, steering: boolean): Mark {
   return { label: "\u00bb", tone: theme.user };
 }
 
-/** `text` cut to at most `columns` cells, its last kept cell an ellipsis when cut. */
-function fit(text: string, columns: number): string {
-  if (Bun.stringWidth(text) <= columns) return text;
-  let out = "";
-  for (const char of text) {
-    if (Bun.stringWidth(`${out}${char}…`) > columns) break;
-    out += char;
-  }
-  return columns > 0 ? `${out}…` : "";
-}
-
 /** The draft between two full-width rules, its mark at the left. */
 export function EditorFrame({ signal, rows, note, confirm, mark, children }: EditorFrameProps) {
   const [width, setWidth] = useState(0);
   const confirming = Boolean(confirm);
   // OpenTUI leaves out a title that does not fit between two rule cells at each end.
-  const title = fit((confirming ? confirm : note) ?? "", width - 6);
+  const title = ellipsize((confirming ? confirm : note) ?? "", width - 6);
   return (
     <box
       flexDirection="row"
