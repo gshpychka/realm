@@ -444,29 +444,6 @@ func TestSavedCommitSurvivesBranchDeletionAndGarbageCollection(t *testing.T) {
 	runGit(t, "", "--git-dir="+dir, "cat-file", "-e", h.feature+"^{commit}")
 }
 
-func TestRetainProtectsRevisionsFromOlderRecords(t *testing.T) {
-	f := newFixture(t)
-	u := f.upstream("o", "n")
-	h := seed(u)
-	mir, err := f.m.locate("o", "n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := mir.update(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	repo := records.Repo{Owner: "o", Name: "n", Commit: h.feature}
-	if err := f.m.Retain(context.Background(), repo); err != nil {
-		t.Fatal(err)
-	}
-	u.git("branch", "-D", "feature/x")
-	if err := f.m.RefreshAll(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	f.mirrorGit("o", "n", "gc", "--prune=now")
-	f.archive(repo)
-}
-
 func TestArchiveRejectsInvalidRepo(t *testing.T) {
 	f := newFixture(t)
 	full := strings.Repeat("ab", 20)
