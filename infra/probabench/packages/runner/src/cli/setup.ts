@@ -7,16 +7,17 @@ import {
   REASONING_LABELS,
   ReasoningMode,
   SAMPLING_PRESETS,
+  seriesLabel,
 } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 import type { SamplingOptions } from "../plan/plan";
-import { ALL_ALIASES, modelLabel, selectTargets, splitModels } from "../plan/targets";
+import { ALL_ALIASES, selectTargets, splitModels } from "../plan/targets";
 
 type Sizing = Pick<SamplingOptions, "trialsPerStep" | "stepPercent">;
 
 const modelChoices: ReadonlyArray<Prompt.Prompt.SelectChoice<readonly string[] | "custom">> = [
   ...MODEL_ALIASES.map((model) => ({
-    title: `${model.alias} · ${modelLabel(model.slug, model.reasoning ?? "off")}`,
+    title: `${model.alias} · ${seriesLabel(model.slug, model.reasoning ?? "off")}`,
     value: [model.alias],
   })),
   { title: "Enter another OpenRouter model", value: "custom" },

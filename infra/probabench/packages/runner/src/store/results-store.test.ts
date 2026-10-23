@@ -36,9 +36,9 @@ describe("ResultsStore", () => {
           const store = yield* ResultsStore;
           const fs = yield* FileSystem.FileSystem;
           const runs = [
-            makeRun({ model: "haiku" }),
-            makeRun({ model: "sonnet" }),
-            makeRun({ model: "haiku" }),
+            makeRun({ modelSlug: "vendor/haiku" }),
+            makeRun({ modelSlug: "vendor/sonnet" }),
+            makeRun({ modelSlug: "vendor/haiku" }),
           ];
           yield* Effect.forEach(runs, (run) => store.append(path, run), { discard: true });
           expect((yield* store.load(path)).runs).toEqual(runs);

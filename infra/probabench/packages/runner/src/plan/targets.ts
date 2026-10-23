@@ -1,6 +1,12 @@
 // Resolves the CLI's model tokens (aliases, OpenRouter model IDs and "all") into
 // benchmark targets, one per model series.
-import { MODEL_ALIASES, type Model, ReasoningMode, resolveModel } from "@probabench/domain";
+import {
+  MODEL_ALIASES,
+  type Model,
+  ReasoningMode,
+  resolveModel,
+  seriesLabel,
+} from "@probabench/domain";
 
 /** CLI token expanding to every alias; a browser run takes exactly one model. */
 export const ALL_ALIASES = "all";
@@ -13,12 +19,9 @@ export interface BenchTarget {
   readonly reasoning: ReasoningMode;
 }
 
-export const modelLabel = (slug: string, reasoning: ReasoningMode): string =>
-  reasoning === "off" ? slug : `${slug} [reasoning=${reasoning}]`;
-
 const target = (model: Model, mode?: ReasoningMode): BenchTarget => {
   const reasoning = mode ?? model.reasoning ?? "off";
-  return { id: modelLabel(model.slug, reasoning), slug: model.slug, reasoning };
+  return { id: seriesLabel(model.slug, reasoning), slug: model.slug, reasoning };
 };
 
 const modelsFor = (token: string): readonly Model[] => {

@@ -33,15 +33,22 @@ const IsoTimestamp = Schema.String.pipe(
   ),
 );
 
+/**
+ * The series a run belongs to: its OpenRouter model ID, plus ` [reasoning=<mode>]`
+ * unless reasoning is off.
+ */
+export const seriesLabel = (modelSlug: string, reasoning: ReasoningMode): string =>
+  reasoning === "off" ? modelSlug : `${modelSlug} [reasoning=${reasoning}]`;
+
 /** One immutable run: a model series sampled over its full probability grid. */
 export const Run = Schema.Struct({
   /** Unique in the history; a series keeps every earlier run. */
   id: Schema.NonEmptyTrimmedString,
   /**
-   * Series key that groups runs: modelSlug, plus ` [reasoning=<mode>]` unless reasoning
-   * is off. Written by the runner's modelLabel; display-only, never sent to the API.
+   * Series key, always seriesLabel(modelSlug, reasoning): every view groups, colours
+   * and hides runs by it. Never sent to the API.
    */
-  model: Schema.NonEmptyTrimmedString,
+  model: Schema.String,
   /** OpenRouter model ID sent to the API. */
   modelSlug: ModelSlug,
   /** Reasoning mode used for every sample. */
@@ -51,6 +58,9 @@ export const Run = Schema.Struct({
   startedAt: IsoTimestamp,
   points: Schema.Array(Point),
 }).pipe(
+  Schema.filter((run) => run.model === seriesLabel(run.modelSlug, run.reasoning), {
+    message: () => "model must be seriesLabel(modelSlug, reasoning)",
+  }),
   Schema.filter((run) => run.points.every((point) => point.outcomes.length === run.trialsPerStep), {
     message: () => "Every point must contain trialsPerStep outcomes",
   }),

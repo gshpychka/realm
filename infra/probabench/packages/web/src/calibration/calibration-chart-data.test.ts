@@ -4,7 +4,7 @@ import { modelStyles } from "../common/palette";
 import { buildCalibrationSeries } from "./calibration-chart-data";
 
 const haiku = makeRun({
-  model: "claude-haiku-4.5",
+  modelSlug: "vendor/haiku",
   stepPercent: 50,
   points: [
     { x: 0, outcomes: [0, 0] },
@@ -13,7 +13,7 @@ const haiku = makeRun({
   ],
 });
 const sonnet = makeRun({
-  model: "claude-sonnet-4.5-high",
+  modelSlug: "vendor/sonnet",
   points: [
     { x: 0, outcomes: [1, 0] },
     { x: 1, outcomes: [1, 1] },

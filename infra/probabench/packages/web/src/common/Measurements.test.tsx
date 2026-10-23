@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Measurements } from "./Measurements";
 
 const run = makeRun({
-  model: "model.<script>",
   points: [
     { x: 0, outcomes: [1, { invalidText: "nope" }] },
     { x: 1, outcomes: [{ invalidText: "x" }, { invalidText: "y" }] },
@@ -20,7 +19,5 @@ describe("Measurements", () => {
     expect(html).toContain('scope="row"');
     expect(html).toContain("Ones / valid");
     expect(html).toContain("No valid replies");
-    expect(html).toContain("model.&lt;script&gt;");
-    expect(html).not.toContain("<script>");
   });
 });

@@ -9,16 +9,19 @@ import {
   withComparison,
 } from "./run-history";
 
-const old = makeRun({ id: "old", model: "model.a" });
-const latest = makeRun({ id: "new", model: "model.a", startedAt: "2026-10-22T00:00:00.000Z" });
-const other = makeRun({ id: "other", model: "__proto__" });
+const old = makeRun({ id: "old", modelSlug: "vendor/model-a" });
+const latest = makeRun({
+  id: "new",
+  modelSlug: "vendor/model-a",
+  startedAt: "2026-10-22T00:00:00.000Z",
+});
+const other = makeRun({ id: "other", modelSlug: "vendor/model-b" });
 const ids = (runs: readonly { readonly id: string }[]) => runs.map((run) => run.id);
 
 describe("visibleHistory", () => {
   it("filters the archive consistently by model, metadata and visibility", () => {
     const noted = makeRun({
       id: "new",
-      model: "model.a",
       modelSlug: "vendor/specific-model",
       reasoning: "low",
       startedAt: latest.startedAt,

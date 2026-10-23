@@ -44,14 +44,20 @@ describe("toggleHidden", () => {
 });
 
 describe("pinnedView", () => {
-  const old = makeRun({ id: "old", model: "a" });
-  const latest = makeRun({ id: "new", model: "a", startedAt: "2026-10-22T00:00:00.000Z" });
-  const other = makeRun({ id: "other", model: "b" });
+  const old = makeRun({ id: "old", modelSlug: "vendor/a" });
+  const latest = makeRun({
+    id: "new",
+    modelSlug: "vendor/a",
+    startedAt: "2026-10-22T00:00:00.000Z",
+  });
+  const other = makeRun({ id: "other", modelSlug: "vendor/b" });
   const runs = [old, other, latest];
   const view = readNotebookView("");
 
   it("names each model's shown run on the calibration tab, hidden models included", () => {
-    expect(pinnedView(runs, { ...view, hidden: ["b"] })).toEqual({ comparisons: ["new", "other"] });
+    expect(pinnedView(runs, { ...view, hidden: [other.model] })).toEqual({
+      comparisons: ["new", "other"],
+    });
     expect(pinnedView(runs, { ...view, comparisons: ["old"] })).toEqual({
       comparisons: ["old", "other"],
     });
@@ -61,7 +67,9 @@ describe("pinnedView", () => {
     const history: NotebookView = { ...view, tab: "history" };
     expect(pinnedView(runs, history)).toEqual({ runId: "new" });
     expect(pinnedView(runs, { ...history, runId: "old" })).toEqual({ runId: "old" });
-    expect(pinnedView(runs, { ...history, hidden: ["a", "b"] })).toEqual({ runId: null });
+    expect(pinnedView(runs, { ...history, hidden: [old.model, other.model] })).toEqual({
+      runId: null,
+    });
   });
 
   it("leaves the method tab as it is", () => {

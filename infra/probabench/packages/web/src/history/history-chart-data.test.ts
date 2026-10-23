@@ -20,15 +20,15 @@ const allInvalid: Points = [
   { x: 1, outcomes: [invalid, invalid] },
 ];
 
-const run = (id: string, model: string, startedAt: string, points = calibrated) =>
-  makeRun({ id, model, startedAt, points });
-const styles = modelStyles([{ model: "model-a" }, { model: "model-b" }]);
+const run = (id: string, modelSlug: string, startedAt: string, points = calibrated) =>
+  makeRun({ id, modelSlug, startedAt, points });
+const styles = modelStyles([{ model: "vendor/model-a" }, { model: "vendor/model-b" }]);
 
 describe("history chart measurements", () => {
   it("keeps every run when timestamps tie, including equal errors, in append order", () => {
     const at = "2026-10-22T15:00:00.000Z";
-    const original = run("z-old", "model-a", at);
-    const newer = run("a-new", "model-a", at);
+    const original = run("z-old", "vendor/model-a", at);
+    const newer = run("a-new", "vendor/model-a", at);
     const model = buildHistoryChartModel([original, newer], styles);
     expect(model.points.map((point) => point.run.id)).toEqual(["z-old", "a-new"]);
     expect(model.series[0]?.points).toHaveLength(2);
@@ -36,20 +36,20 @@ describe("history chart measurements", () => {
   });
 
   it("does not invent gaps for another model's intervening run but preserves all-invalid gaps", () => {
-    const first = run("first", "model-a", "2026-10-22T15:00:00.000Z");
-    const other = run("other", "model-b", "2026-10-22T15:01:00.000Z");
-    const failed = run("invalid", "model-a", "2026-10-22T15:02:00.000Z", allInvalid);
-    const last = run("last", "model-a", "2026-10-22T15:03:00.000Z", halfOff);
+    const first = run("first", "vendor/model-a", "2026-10-22T15:00:00.000Z");
+    const other = run("other", "vendor/model-b", "2026-10-22T15:01:00.000Z");
+    const failed = run("invalid", "vendor/model-a", "2026-10-22T15:02:00.000Z", allInvalid);
+    const last = run("last", "vendor/model-a", "2026-10-22T15:03:00.000Z", halfOff);
     const model = buildHistoryChartModel([last, first, other, failed], styles);
-    const a = model.series.find((item) => item.model === "model-a");
+    const a = model.series.find((item) => item.model === "vendor/model-a");
     expect(a?.points.map((point) => point.run.id)).toEqual(["first", "invalid", "last"]);
     expect(a?.points.map((point) => point.calibrationError)).toEqual([0, null, 0.5]);
-    expect(a?.style).toEqual(styles.get("model-a"));
+    expect(a?.style).toEqual(styles.get("vendor/model-a"));
     expect(a?.points[1]?.summary).toMatchObject({ validity: 0, coveredPoints: 0 });
   });
 
   it("pads a single run on both sides while keeping zero a valid error", () => {
-    const item = run("only", "model-a", "2026-10-22T15:00:00.000Z");
+    const item = run("only", "vendor/model-a", "2026-10-22T15:00:00.000Z");
     const model = buildHistoryChartModel([item], styles);
     expect(model.domain[0]).toBeLessThan(Date.parse(item.startedAt));
     expect(model.domain[1]).toBeGreaterThan(Date.parse(item.startedAt));
@@ -60,7 +60,7 @@ describe("history chart measurements", () => {
   it("keeps empty and all-invalid histories distinct without manufacturing an error", () => {
     expect(buildHistoryChartModel([], styles).points).toEqual([]);
     const model = buildHistoryChartModel(
-      [run("invalid", "model-a", "2026-10-22T15:00:00.000Z", allInvalid)],
+      [run("invalid", "vendor/model-a", "2026-10-22T15:00:00.000Z", allInvalid)],
       styles,
     );
     expect(model.points[0]?.calibrationError).toBeNull();
@@ -74,7 +74,10 @@ describe("history chart measurements", () => {
     ["2027-12-01T00:00:00.000Z", "Oct 22, 26"],
   ])("labels ticks for a history ending %s as %s", (end, label) => {
     const model = buildHistoryChartModel(
-      [run("first", "model-a", "2026-10-22T15:00:00.000Z"), run("last", "model-a", end)],
+      [
+        run("first", "vendor/model-a", "2026-10-22T15:00:00.000Z"),
+        run("last", "vendor/model-a", end),
+      ],
       styles,
     );
     expect(model.tickFormat.format(Date.parse("2026-10-22T15:00:00.000Z"))).toBe(label);

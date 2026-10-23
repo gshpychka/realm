@@ -5,6 +5,7 @@ import {
   ReasoningMode,
   SAMPLING_PRESETS,
   StepPercent,
+  seriesLabel,
   TrialsPerStep,
 } from "@probabench/domain";
 import * as Either from "effect/Either";
@@ -212,9 +213,7 @@ export function SetupForm({
               <option
                 key={alias.alias}
                 value={alias.alias}
-                label={
-                  alias.reasoning ? `${alias.slug} · ${alias.reasoning} reasoning` : alias.slug
-                }
+                label={seriesLabel(alias.slug, alias.reasoning ?? "off")}
               />
             ))}
             {[...new Set(modelSuggestions)]

@@ -38,6 +38,7 @@ describe("Run", () => {
   it.each([
     { id: "  " },
     { model: "  " },
+    { model: "other" },
     { modelSlug: " vendor/model" },
     { modelSlug: "not-a-slug" },
     { reasoning: undefined },

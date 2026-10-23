@@ -28,7 +28,7 @@ describe("presetFor", () => {
 
 describe("rerunRequest", () => {
   it("repeats a saved run's model, sampling and reasoning", () => {
-    const run = makeRun({ model: "vendor/model [reasoning=low]", reasoning: "low" });
+    const run = makeRun({ reasoning: "low" });
     expect(rerunRequest(run)).toEqual({
       model: run.modelSlug,
       trialsPerStep: run.trialsPerStep,
