@@ -107,7 +107,7 @@ const benchCommand = Command.make("probabench", options, (flags) =>
     yield* Console.log(describePlan(plan));
     if (flags.dryRun) return;
     if (!flags.yes) {
-      // The prompt reads its answer from stdin, which the dev server's runner lacks.
+      // The prompt needs a terminal on stdin; the dev bridge spawns the CLI with stdin ignored.
       if (process.stdin.isTTY !== true) {
         return yield* new InvalidOptions({
           message:

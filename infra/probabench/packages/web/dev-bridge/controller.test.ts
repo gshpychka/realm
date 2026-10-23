@@ -49,7 +49,7 @@ describe("createBenchController", () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
-  it("passes the request as runner flags plus --yes, leaving --out at the runner's default", () => {
+  it("passes the request as runner flags plus --yes", () => {
     const { launch, controller } = withFake();
     controller.start({ ...request, reasoning: "low" });
     expect(launch).toHaveBeenCalledWith([...benchArgs({ ...request, reasoning: "low" }), "--yes"]);

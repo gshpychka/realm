@@ -1,7 +1,7 @@
 // Retry policy for one provider request. Timeouts, transport failures, request
 // timeouts (408), rate limits (429) and server errors (5xx) are transient: they
 // are retried with jittered exponential backoff, waiting longer when the provider
-// sends Retry-After. Any other failure, or a spent retry budget, aborts the run.
+// sends Retry-After. Any other failure, or a spent retry budget, aborts the benchmark.
 import type * as AiError from "@effect/ai/AiError";
 import type * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";

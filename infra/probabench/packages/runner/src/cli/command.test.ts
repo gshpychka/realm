@@ -74,7 +74,7 @@ describe("probabench command", () => {
 
   it.effect("lists aliases without credentials", () => runCommand(["--list"]));
 
-  it.effect("parses the flags the dev bridge and setup form build, without credentials", () =>
+  it.effect("parses the flags the dev bridge builds, without credentials", () =>
     runCommand([
       ...benchArgs({
         model: "vendor/future-model:free",
