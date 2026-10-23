@@ -179,9 +179,13 @@ function PlainEditor({
   );
 
   useImperativeHandle(ref, () => plainHandle(area, set));
+  const seeded = useRef<number | null>(null);
 
   useEffect(() => {
-    if (seed) set(seed.text);
+    if (seed && seeded.current !== seed.seq) {
+      seeded.current = seed.seq;
+      set(seed.text);
+    }
   }, [seed, set]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: carries the draft over once, when this editor takes over
