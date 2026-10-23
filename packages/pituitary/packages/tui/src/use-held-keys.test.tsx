@@ -28,6 +28,9 @@ test("keys held behind an app action reach the input that now owns focus", async
           key.preventDefault();
           await new Promise((resolve) => setTimeout(resolve, 30));
           flushSync(() => setPopup(true));
+          const last = parseKeypress("y");
+          if (!last) throw new Error("test key did not parse");
+          app.renderer.keyInput.emit("keypress", new KeyEvent(last));
         }
       },
       !popup,
@@ -51,14 +54,15 @@ test("keys held behind an app action reach the input that now owns focus", async
     if (!control || !letter) throw new Error("test keys did not parse");
     app.renderer.keyInput.emit("keypress", new KeyEvent(control));
     app.renderer.keyInput.emit("keypress", new KeyEvent(letter));
+    app.renderer.keyInput.emit("keypress", new KeyEvent({ ...letter, name: "z", sequence: "z" }));
     busy = false;
     settled();
     const deadline = Date.now() + 1000;
-    while (!input && Date.now() < deadline) {
+    while (input !== "xzy" && Date.now() < deadline) {
       await app.renderOnce();
       await new Promise((resolve) => setTimeout(resolve, 1));
     }
-    expect(input).toBe("x");
+    expect(input).toBe("xzy");
   } finally {
     flushSync(() => root.unmount());
     app.renderer.destroy();
@@ -118,6 +122,49 @@ test("an Enter held for the draft cannot answer a newly opened operator dialog",
     expect(answer).toBeUndefined();
     app.renderer.keyInput.emit("keypress", new KeyEvent(enter));
     expect(answer).toEqual({ type: "extension_ui_response", id: "question", value: "Trigger" });
+  } finally {
+    flushSync(() => root.unmount());
+    app.renderer.destroy();
+  }
+});
+
+test("work submitted outside the global key handler holds the very next key", async () => {
+  const editor = createRef<EditorHandle>();
+  editor.current = { busy: () => false } as EditorHandle;
+  let finish!: () => void;
+  const work = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let hold!: (work: Promise<void>) => void;
+  let input = "";
+  function Probe() {
+    hold = useHeldKeys(editor, () => {}, true);
+    return (
+      <input
+        focused
+        onInput={(text: string) => {
+          input = text;
+        }}
+      />
+    );
+  }
+  const app = await createTestRenderer({ width: 20, height: 4 });
+  const root = createRoot(app.renderer);
+  try {
+    flushSync(() => root.render(<Probe />));
+    await app.renderOnce();
+    hold(work);
+    const key = parseKeypress("x");
+    if (!key) throw new Error("test key did not parse");
+    app.renderer.keyInput.emit("keypress", new KeyEvent(key));
+    expect(input).toBe("");
+    finish();
+    const deadline = Date.now() + 1000;
+    while (!input && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      await app.renderOnce();
+    }
+    expect(input).toBe("x");
   } finally {
     flushSync(() => root.unmount());
     app.renderer.destroy();
