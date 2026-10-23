@@ -30,9 +30,15 @@ function synchronized(raw: string): number {
 }
 
 // Model Ghostty directly and as tmux's outer terminal, using a PTY rather than a GUI emulator.
+const ghostty = {
+  TERM: "xterm-ghostty",
+  TERMINFO_DIRS: [process.env.PITUITARY_GHOSTTY_TERMINFO, process.env.TERMINFO_DIRS ?? ""]
+    .filter((path) => path !== undefined)
+    .join(":"),
+};
 const TERMINALS: { name: string; options: LaunchOptions }[] = [
-  { name: "ghostty", options: { env: { TERM: "xterm-ghostty" } } },
-  { name: "tmux-ghostty", options: { tmux: true, env: { TERM: "xterm-ghostty" } } },
+  { name: "ghostty", options: { env: ghostty } },
+  { name: "tmux-ghostty", options: { tmux: true, env: ghostty } },
 ];
 
 for (const { name, options } of TERMINALS) {

@@ -94,7 +94,7 @@ export function parseCommand(argv: readonly string[]): Command {
       continue;
     }
     const value = equals >= 0 ? arg.slice(equals + 1) : rest[++index];
-    if (value === undefined || (value.startsWith("--") && OPTIONS[op]?.includes(value.slice(2)))) {
+    if (value === undefined || (equals < 0 && value.startsWith("-"))) {
       throw new Error(`--${name} needs a value`);
     }
     command.options[name] = value;
@@ -126,14 +126,15 @@ export function validateCommand(value: unknown): Command {
     throw new Error(`${op} needs an argument`);
   if (op === "resize") {
     if (args.length !== 2) throw new Error("resize needs columns and rows");
-    for (const size of args) positiveInteger(size, "terminal size");
+    for (const size of args) terminalSize(size, "terminal size");
   }
   if (op === "capture" && (args.length > 1 || (args[0] !== undefined && !/^[\w-]+$/.test(args[0])))) {
     throw new Error("capture name must contain only letters, numbers, underscores, or hyphens");
   }
-  for (const name of ["cols", "rows", "timeout"]) {
-    if (options[name] !== undefined) positiveInteger(options[name], `--${name}`);
+  for (const name of ["cols", "rows"]) {
+    if (options[name] !== undefined) terminalSize(options[name], `--${name}`);
   }
+  if (options.timeout !== undefined) positiveInteger(options.timeout, "--timeout");
   if (
     options.delay !== undefined &&
     (!/^\d+$/.test(options.delay) || !Number.isSafeInteger(Number(options.delay)))
@@ -150,6 +151,11 @@ function positiveInteger(value: string, name: string): void {
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) {
     throw new Error(`${name} must be a positive integer`);
   }
+}
+
+function terminalSize(value: string, name: string): void {
+  positiveInteger(value, name);
+  if (Number(value) > 1000) throw new Error(`${name} must be at most 1000`);
 }
 
 export function environment(pairs: string): Record<string, string> {

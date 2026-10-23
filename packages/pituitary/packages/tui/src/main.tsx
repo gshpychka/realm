@@ -61,7 +61,7 @@ const quit = (code = 0) => {
     mark("agent-closed");
     if (code !== RELOAD_UI)
       process.stdout.write(
-        `Detached from run ${detail.run.name}. To reconnect: ${attachCommand(detail.run.name, process.env.PITUITARY_STATE_DIR, view?.taskId ?? selected)}\n`,
+        `Detached from run ${detail.run.name}. To reconnect: ${attachCommand(detail.run.name, { stateDirectory: process.env.PITUITARY_STATE_DIR, taskId: view?.taskId ?? selected, socketPath: process.env.PITUITARY_RUNTIME_SOCKET })}\n`,
       );
     process.exit(code);
   });

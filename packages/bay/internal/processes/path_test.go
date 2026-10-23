@@ -24,4 +24,9 @@ func TestExecutableUsesTheCommandEnvironmentAndRelativePathEntries(t *testing.T)
 	if _, err := Executable("tool", nil, root); err == nil {
 		t.Fatal("an empty command environment inherited the operator PATH")
 	}
+	t.Chdir(filepath.Dir(root))
+	path, err = Executable("tool", []string{"PATH=command"}, filepath.Base(root))
+	if err != nil || path != filepath.Join(root, "command", "tool") {
+		t.Fatalf("relative working directory produced a relative executable: %s %v", path, err)
+	}
 }

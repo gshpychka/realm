@@ -24,11 +24,11 @@ pkgs.mkShell {
   PITUITARY_SYMBOL_FONT_DIR = "${pkgs.nerd-fonts.symbols-only}/share/fonts/truetype/NerdFonts/Symbols";
   TERMINFO_DIRS = pkgs.lib.concatStringsSep ":" [
     "${pkgs.tmux.terminfo}/share/terminfo"
-    "${
-      (if pkgs.stdenv.hostPlatform.isDarwin then pkgs.ghostty-bin else pkgs.ghostty).terminfo
-    }/share/terminfo"
     ""
   ];
+  PITUITARY_GHOSTTY_TERMINFO = "${
+    (if pkgs.stdenv.hostPlatform.isDarwin then pkgs.ghostty-bin else pkgs.ghostty).terminfo
+  }/share/terminfo";
 
   FONTCONFIG_FILE = pkgs.makeFontsConf {
     fontDirectories = [
