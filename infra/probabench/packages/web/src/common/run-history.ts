@@ -4,19 +4,10 @@ import type { Run } from "@probabench/domain";
 export const newestFirst = (runs: readonly Run[]): Run[] =>
   runs.toReversed().sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 
-/** The search and model filters shared by the history graph, list and inspector. */
-export const visibleHistory = (
-  runs: readonly Run[],
-  query: string,
-  hidden: readonly string[],
-): Run[] => {
-  const term = query.trim().toLowerCase();
+/** The model filter shared by the history graph, list and inspector. */
+export const visibleHistory = (runs: readonly Run[], hidden: readonly string[]): Run[] => {
   const excluded = new Set(hidden);
-  return newestFirst(runs).filter(
-    (run) =>
-      !excluded.has(run.model) &&
-      `${run.model} ${run.modelSlug} ${run.id} ${run.reasoning}`.toLowerCase().includes(term),
-  );
+  return newestFirst(runs).filter((run) => !excluded.has(run.model));
 };
 
 /** The run the history inspector shows: the linked one while visible, else the newest. */

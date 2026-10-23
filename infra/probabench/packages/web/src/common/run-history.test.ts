@@ -19,19 +19,11 @@ const other = makeRun({ id: "other", modelSlug: "vendor/model-b" });
 const ids = (runs: readonly { readonly id: string }[]) => runs.map((run) => run.id);
 
 describe("visibleHistory", () => {
-  it("filters the archive consistently by model, metadata and visibility", () => {
-    const noted = makeRun({
-      id: "new",
-      modelSlug: "vendor/specific-model",
-      reasoning: "low",
-      startedAt: latest.startedAt,
-    });
-    const runs = [old, noted, other];
-    expect(ids(visibleHistory(runs, "  SPECIFIC  ", []))).toEqual(["new"]);
-    expect(ids(visibleHistory(runs, "low", []))).toEqual(["new"]);
-    expect(visibleHistory(runs, "specific", [noted.model])).toEqual([]);
-    expect(visibleHistory(runs, "missing", [])).toEqual([]);
-    expect(ids(visibleHistory(runs, "", [other.model]))).toEqual(["new", "old"]);
+  it("lists the shown models' runs, newest first", () => {
+    const runs = [old, other, latest];
+    expect(ids(visibleHistory(runs, []))).toEqual(["new", "other", "old"]);
+    expect(ids(visibleHistory(runs, [other.model]))).toEqual(["new", "old"]);
+    expect(visibleHistory(runs, [old.model, other.model])).toEqual([]);
   });
 });
 

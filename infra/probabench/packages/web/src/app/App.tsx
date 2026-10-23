@@ -97,7 +97,7 @@ export function App() {
           modelSuggestions={runs.map((run) => run.modelSlug)}
           onViewResults={() => {
             setSetupOpen(false);
-            update({ tab: "history", runId: null, query: "", hidden: [] });
+            update({ tab: "history", runId: null, hidden: [] });
             document.getElementById(PANEL_ID)?.focus();
           }}
         />

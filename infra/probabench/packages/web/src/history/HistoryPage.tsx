@@ -36,31 +36,21 @@ export function HistoryPage({
     });
     document.getElementById(PANEL_ID)?.focus();
   };
-  const clearFilters = () => update({ query: "", hidden: [] }, "replace");
-  const visible = useMemo(
-    () => visibleHistory(runs, view.query, view.hidden),
-    [runs, view.query, view.hidden],
-  );
+  const visible = useMemo(() => visibleHistory(runs, view.hidden), [runs, view.hidden]);
   const inspected = inspectedRun(visible, view.runId);
   return (
     <section>
       <h2 className="sr-only">Run history</h2>
       <div className="history-toolbar">
-        <label className="search-field">
-          <span aria-hidden="true">⌕</span>
-          <input
-            type="search"
-            aria-label="Search run history"
-            placeholder="Find a model or run…"
-            value={view.query}
-            onChange={(event) => update({ query: event.target.value }, "replace")}
-          />
-        </label>
         <span className="mono muted">
           {count(visible.length)} / {count(runs.length)} runs
         </span>
-        {view.query || view.hidden.length > 0 ? (
-          <button type="button" className="text-button" onClick={clearFilters}>
+        {view.hidden.length > 0 ? (
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => update({ hidden: [] }, "replace")}
+          >
             Clear filters
           </button>
         ) : null}
@@ -109,17 +99,9 @@ export function HistoryPage({
             </details>
           </aside>
         ) : null}
-        <div className="card">
-          {visible.length === 0 ? (
-            <div className="search-empty">
-              <h3>No matching runs.</h3>
-              <p>Show more models or clear the search to see their history.</p>
-              <button type="button" className="text-button" onClick={clearFilters}>
-                Clear filters
-              </button>
-            </div>
-          ) : (
-            runsByDay(visible).map(([day, items]) => (
+        {visible.length > 0 ? (
+          <div className="card">
+            {runsByDay(visible).map(([day, items]) => (
               <section key={day} className="timeline-day">
                 <h3>
                   {date(day)}
@@ -159,9 +141,9 @@ export function HistoryPage({
                   })}
                 </ol>
               </section>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -60,7 +60,7 @@ function HistoryTooltip({
 
 const emptyPlot = (points: readonly HistoryPoint[]) => {
   if (points.length === 0)
-    return { title: "No runs shown.", detail: "Show a model or clear the history search." };
+    return { title: "No runs shown.", detail: "Show a model from the legend." };
   if (points.every((point) => point.calibrationError === null))
     return {
       title: "No calibration errors to plot.",

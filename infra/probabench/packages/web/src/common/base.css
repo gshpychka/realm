@@ -130,10 +130,6 @@ summary:focus-visible,
 ::placeholder {
   opacity: 1;
 }
-/* The search field draws its own ⌕. */
-input[type="search"]::-webkit-search-decoration {
-  -webkit-appearance: none;
-}
 ::selection {
   color: var(--bg);
   background: var(--accent);

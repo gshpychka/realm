@@ -14,7 +14,6 @@ export interface NotebookView {
   readonly runId: string | null;
   readonly comparisons: readonly string[];
   readonly hidden: readonly string[];
-  readonly query: string;
   readonly intervals: boolean;
 }
 
@@ -26,7 +25,6 @@ const PARAM = {
   runId: "run",
   comparisons: "compare",
   hidden: "hide",
-  query: "q",
   intervals: "intervals",
 } as const satisfies Record<keyof NotebookView, string>;
 
@@ -40,7 +38,6 @@ export function readNotebookView(search: string): NotebookView {
     runId: params.get(PARAM.runId) || null,
     comparisons: unique(params.getAll(PARAM.comparisons)),
     hidden: unique(params.getAll(PARAM.hidden)),
-    query: params.get(PARAM.query) ?? "",
     intervals: params.get(PARAM.intervals) !== "0",
   };
 }
@@ -52,7 +49,6 @@ export function notebookSearch(view: NotebookView, current = ""): string {
   if (view.runId) params.set(PARAM.runId, view.runId);
   for (const id of unique(view.comparisons)) params.append(PARAM.comparisons, id);
   for (const model of unique(view.hidden)) params.append(PARAM.hidden, model);
-  if (view.query) params.set(PARAM.query, view.query);
   if (!view.intervals) params.set(PARAM.intervals, "0");
   const search = params.toString();
   return search ? `?${search}` : "";
