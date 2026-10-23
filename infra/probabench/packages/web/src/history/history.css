@@ -36,7 +36,7 @@
   text-align: left;
 }
 .history-graph-legend > button[aria-pressed="false"] {
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .history-layout {
