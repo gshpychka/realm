@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "sops exec-env ../../../../secrets/infra/probabench.env 'alchemy dev'",
+    "dev": "alchemy dev",
     "plan": "alchemy plan --stage prod",
     "deploy": "alchemy deploy --stage prod",
     "destroy": "alchemy destroy --stage prod"
