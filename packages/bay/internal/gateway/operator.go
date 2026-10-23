@@ -21,8 +21,8 @@ func (o operatorService) Threads(ctx context.Context) ([]messages.Thread, error)
 	return o.g.store.Threads(ctx, operator)
 }
 
-func (o operatorService) Conversation(ctx context.Context, thread int64) (messages.Conversation, error) {
-	return o.g.store.Conversation(ctx, operator, thread)
+func (o operatorService) Conversation(ctx context.Context, thread, before int64) (messages.Conversation, error) {
+	return o.g.store.Conversation(ctx, operator, thread, before)
 }
 
 func (o operatorService) Send(ctx context.Context, s messages.Send) (messages.Message, error) {

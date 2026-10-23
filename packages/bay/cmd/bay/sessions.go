@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gshpychka/realm/packages/bay/internal/api"
+	"github.com/gshpychka/realm/packages/bay/internal/text"
 )
 
 func (c *cli) start(ctx context.Context, args []string) error {
@@ -38,7 +39,7 @@ func (c *cli) start(ctx context.Context, args []string) error {
 	if len(command) > 0 && command[0] == "" {
 		return usageError("the command is empty")
 	}
-	fmt.Fprintf(c.stderr, "starting %s...\n", name)
+	fmt.Fprintf(c.stderr, "starting %s...\n", text.OneLine(name))
 	s, err := c.client.Start(ctx, name, spec)
 	if err != nil {
 		return err
@@ -244,9 +245,9 @@ func (c *cli) rm(ctx context.Context, args []string) error {
 func program(s api.Session) string {
 	switch {
 	case s.Program != "":
-		return s.Program
+		return text.OneLine(s.Program)
 	case len(s.Command) > 0:
-		return strings.Join(s.Command, " ")
+		return text.OneLine(strings.Join(s.Command, " "))
 	}
 	return "(login shell)"
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/gshpychka/realm/packages/bay/internal/api"
@@ -58,6 +59,15 @@ func TestStartReportsProgressAndState(t *testing.T) {
 	got := h.run("", "start", "foo", "claude")
 	if got.code != 0 || got.stdout != "foo running\n" || got.stderr != "starting foo...\n" {
 		t.Errorf("got exit %d, stdout %q, stderr %q", got.code, got.stdout, got.stderr)
+	}
+}
+
+func TestListKeepsCommandsOnOneRow(t *testing.T) {
+	h := newHarness(t)
+	h.svc.sessions = []api.Session{{Name: "alpha", State: api.Running, Command: []string{"sh", "-c", "printf '\x1b[2J'\n\techo hello"}}}
+	got := h.run("", "list")
+	if got.code != 0 || strings.Contains(got.stdout, "\x1b") || strings.Count(got.stdout, "\n") != 2 {
+		t.Fatalf("unsafe session table: exit %d, %q", got.code, got.stdout)
 	}
 }
 

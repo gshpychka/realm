@@ -49,7 +49,7 @@ func TestOperatorSendsToASession(t *testing.T) {
 	if err != nil || len(threads) != 1 || threads[0].Unread != 1 || threads[0].Messages != 2 {
 		t.Fatalf("Threads = %+v (%v)", threads, err)
 	}
-	c, err := op.Conversation(context.Background(), m.Thread)
+	c, err := op.Conversation(context.Background(), m.Thread, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestOperatorSeesEverySessionThread(t *testing.T) {
 	if err != nil || len(threads) != 2 || threads[0].ID != second.Thread || threads[1].ID != first.Thread {
 		t.Fatalf("Threads = %+v (%v), want both session threads, newest first", threads, err)
 	}
-	c, err := op.Conversation(context.Background(), first.Thread)
+	c, err := op.Conversation(context.Background(), first.Thread, 0)
 	if err != nil || len(c.Messages) != 1 || c.Messages[0].Body != "between us" {
 		t.Errorf("Conversation = %+v (%v)", c, err)
 	}
@@ -80,7 +80,7 @@ func TestOperatorSeesEverySessionThread(t *testing.T) {
 	if box := result[sessionapi.InboxOutput](t, call(t, bs, sessionapi.Inbox, nil)); len(box.Threads) != 1 || box.Threads[0].Unread != 1 {
 		t.Errorf("bob's inbox = %+v, want his message still unread", box.Threads)
 	}
-	if _, err := op.Conversation(context.Background(), 4242); !errors.Is(err, fault.NotFound) {
+	if _, err := op.Conversation(context.Background(), 4242, 0); !errors.Is(err, fault.NotFound) {
 		t.Errorf("Conversation of a missing thread returned %v, want fault.NotFound", err)
 	}
 }
@@ -182,12 +182,19 @@ func TestOperatorServiceOverHTTP(t *testing.T) {
 	if err != nil || len(threads) != 1 || threads[0].Subject != "wire" || threads[0].Unread != 1 || threads[0].Messages != 2 {
 		t.Fatalf("Threads = %+v (%v)", threads, err)
 	}
-	c, err := client.Conversation(ctx, m.Thread)
+	c, err := client.Conversation(ctx, m.Thread, 0)
 	if err != nil || len(c.Messages) != 2 || c.Messages[1].From != "alice" {
 		t.Fatalf("Conversation = %+v (%v)", c, err)
 	}
+	page, err := client.Conversation(ctx, m.Thread, c.Messages[1].ID)
+	if err != nil || len(page.Messages) != 1 || page.Messages[0].ID != m.ID || page.Earlier != 0 {
+		t.Fatalf("earlier page over HTTP = %+v (%v)", page, err)
+	}
+	if _, err := client.Conversation(ctx, m.Thread, -1); !errors.Is(err, fault.Invalid) {
+		t.Fatalf("negative HTTP cursor = %v, want invalid", err)
+	}
 
-	if _, err := client.Conversation(ctx, 999); !errors.Is(err, fault.NotFound) {
+	if _, err := client.Conversation(ctx, 999, 0); !errors.Is(err, fault.NotFound) {
 		t.Errorf("Conversation of a missing thread returned %v, want fault.NotFound", err)
 	}
 	if _, err := client.Send(ctx, messages.Send{To: messages.Operator, Body: "self"}); !errors.Is(err, fault.Invalid) {

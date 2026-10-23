@@ -29,7 +29,21 @@ Realm's [NixOS module](../../modules/system/nixos/bay.nix) sets up the host: Inc
 
 The operator runs `bay` on the host; `bay help` lists the commands. Inside a session, `flare` notifies the operator and sends and reads messages; `flare -h` lists its commands.
 
-Repository mirrors retain session commits as a shared cache. Branch and tag names follow the remote; explicit commit IDs may also select cached history. Sessions receiving the same repository receive its cached history, including retained commits. Removing a remote branch or rewriting history does not purge these local copies.
+```sh
+bay start review claude --repo gshpychka/realm@main
+bay attach review                   # detach with tmux's Ctrl-B, D
+bay suspend review                  # keeps the running program's memory
+bay resume review
+bay snap review before-refactor
+bay end review                      # keeps the record and program history
+bay start review                    # fresh instance from that record
+```
+
+`end` discards the instance's disk, including unpushed commits and uncommitted files. Push work before ending, or suspend to keep it. Repositories restart at the revision recorded when the session was created; Bay retains that revision in its mirror even if its branch is later deleted or force-pushed. Credential delivery is still planned: repository mirrors currently fetch public GitHub repos without host credentials; sign in to programs inside each fresh instance.
+
+`rm` removes the instance, record and saved history. The host's shared repository mirrors and their retained revisions remain as a cache; Bay currently has no automatic cache eviction. Branch and tag names follow the remote; explicit commit IDs may also select cached history. Sessions receiving the same repository receive its cached history, including retained commits. Removing a remote branch or rewriting history does not purge these local copies.
+
+`bay send review 'please review the diff'` starts a message thread; `bay read THREAD` reads it. Inside a session, use `flare send operator 'ready to review'`, `flare inbox`, and `flare read THREAD`. Both send commands accept piped input (up to 64 KiB). Reads return the newest messages within a 256 KiB page; when older messages remain, the output gives a `read THREAD --before MESSAGE` command to fetch the preceding page. Only messages returned on that page are marked read. Agents use the same `before` cursor in the gateway's `read_thread` MCP tool.
 
 ## Development
 

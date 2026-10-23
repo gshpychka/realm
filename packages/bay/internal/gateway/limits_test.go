@@ -20,7 +20,7 @@ func TestMessageBodyLimit(t *testing.T) {
 
 	atLimit := strings.Repeat("x", messages.MaxBody)
 	sent := result[sessionapi.SendOutput](t, call(t, as, sessionapi.Send, sessionapi.SendInput{To: "bob", Body: atLimit}))
-	conv, err := e.store.Conversation(ctx, operator, sent.Thread)
+	conv, err := e.store.Conversation(ctx, operator, sent.Thread, 0)
 	if err != nil || len(conv.Messages) != 1 || conv.Messages[0].Body != atLimit {
 		t.Fatalf("a body of %d bytes was not stored whole: %v", messages.MaxBody, err)
 	}
@@ -79,7 +79,7 @@ func TestAlertsAreLimitedPerSession(t *testing.T) {
 
 	// A message to the operator is delivered, and its alert is dropped since the allowance is spent.
 	sent := result[sessionapi.SendOutput](t, call(t, as, sessionapi.Send, sessionapi.SendInput{To: messages.Operator, Body: "still delivered"}))
-	conv, err := e.store.Conversation(context.Background(), operator, sent.Thread)
+	conv, err := e.store.Conversation(context.Background(), operator, sent.Thread, 0)
 	if err != nil || len(conv.Messages) != 1 {
 		t.Errorf("the message was not stored: %+v (%v)", conv, err)
 	}

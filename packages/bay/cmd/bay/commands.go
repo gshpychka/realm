@@ -81,8 +81,8 @@ var commands = []subcommand{
 	},
 	{
 		name:    "read",
-		args:    "THREAD [--json]",
-		summary: "print a thread's messages",
+		args:    "THREAD [--before MESSAGE] [--json]",
+		summary: "print a thread's latest messages, or the page before MESSAGE",
 		run:     (*cli).read,
 	},
 	{

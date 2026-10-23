@@ -226,7 +226,7 @@ func TestIdentityComesFromThePeerOnly(t *testing.T) {
 	refused(t, call(t, cs, sessionapi.Read, sessionapi.ReadInput{Thread: forBob.Thread}))
 
 	sent := result[sessionapi.SendOutput](t, call(t, cs, sessionapi.Send, sessionapi.SendInput{To: "carol", Body: "from whom?"}))
-	conv, err := e.store.Conversation(context.Background(), operator, sent.Thread)
+	conv, err := e.store.Conversation(context.Background(), operator, sent.Thread, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,6 +245,21 @@ func TestIdentityComesFromThePeerOnly(t *testing.T) {
 	}
 	if box, _ := e.store.Inbox(context.Background(), gateway.Participant{ID: bob.ID, Name: bob.Name}); len(box) != 1 || box[0].Unread != 1 {
 		t.Errorf("bob's inbox = %+v, want carol's message still unread", box)
+	}
+}
+
+func TestReadPagesThroughMCP(t *testing.T) {
+	e := newEnv(t)
+	as, bs := e.connect(aliceCID), e.connect(bobCID)
+	first := result[sessionapi.SendOutput](t, call(t, as, sessionapi.Send, sessionapi.SendInput{To: "bob", Body: "first"}))
+	second := result[sessionapi.SendOutput](t, call(t, as, sessionapi.Send, sessionapi.SendInput{To: "bob", Thread: first.Thread, Body: "second"}))
+	page := result[sessionapi.ReadOutput](t, call(t, bs, sessionapi.Read, sessionapi.ReadInput{Thread: first.Thread, Before: second.Message}))
+	if len(page.Messages) != 1 || page.Messages[0].ID != first.Message || page.Thread.Unread != 1 || page.Earlier != 0 {
+		t.Fatalf("earlier MCP page = %+v", page)
+	}
+	box := result[sessionapi.InboxOutput](t, call(t, bs, sessionapi.Inbox, nil))
+	if len(box.Threads) != 1 || box.Threads[0].Unread != 1 {
+		t.Fatalf("MCP page marked an unreturned message read: %+v", box)
 	}
 }
 
@@ -353,7 +368,7 @@ func TestRepliesNeverReachAnEarlierSessionByName(t *testing.T) {
 		t.Errorf("the new alice's inbox = %+v, want only thread %d", box.Threads, own.Thread)
 	}
 	result[sessionapi.SendOutput](t, call(t, bs, sessionapi.Send, sessionapi.SendInput{To: "carol", Body: "carol, your view?", Thread: first.Thread}))
-	conv, err := e.store.Conversation(ctx, operator, first.Thread)
+	conv, err := e.store.Conversation(ctx, operator, first.Thread, 0)
 	if err != nil || len(conv.Messages) != 2 || !slices.Equal(conv.Thread.Participants, []string{"alice", "bob", "carol"}) {
 		t.Errorf("the old thread = %+v (%v), want the first alice's message and bob's to carol", conv, err)
 	}
@@ -425,7 +440,7 @@ func TestFailedAlertDoesNotFailTheSend(t *testing.T) {
 	e.alerter.fail(errAlertDown)
 	as := e.connect(aliceCID)
 	sent := result[sessionapi.SendOutput](t, call(t, as, sessionapi.Send, sessionapi.SendInput{To: messages.Operator, Body: "still delivered"}))
-	conv, err := e.store.Conversation(context.Background(), operator, sent.Thread)
+	conv, err := e.store.Conversation(context.Background(), operator, sent.Thread, 0)
 	if err != nil || len(conv.Messages) != 1 {
 		t.Fatalf("the message was not stored: %+v (%v)", conv, err)
 	}
