@@ -183,7 +183,7 @@ func (g *Gateway) finish(caller, tool string, err error, attrs ...any) error {
 }
 
 func (g *Gateway) whoami(_ context.Context, caller identity.Session, _ struct{}) (sessionapi.WhoamiOutput, error) {
-	return sessionapi.WhoamiOutput{Name: caller.Name}, g.finish(caller.Name, sessionapi.Whoami, nil)
+	return sessionapi.WhoamiOutput{Name: caller.Name, ID: caller.ID, Generation: caller.Generation}, g.finish(caller.Name, sessionapi.Whoami, nil)
 }
 
 func (g *Gateway) send(ctx context.Context, caller identity.Session, in sessionapi.SendInput) (sessionapi.SendOutput, error) {

@@ -135,7 +135,7 @@ func (s *stub) whoami(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (
 		case <-ctx.Done():
 		}
 	}
-	return nil, sessionapi.WhoamiOutput{Name: "alpha"}, nil
+	return nil, sessionapi.WhoamiOutput{Name: "alpha", ID: "id-alpha", Generation: 1}, nil
 }
 
 func (s *stub) send(_ context.Context, _ *mcp.CallToolRequest, in sessionapi.SendInput) (*mcp.CallToolResult, sessionapi.SendOutput, error) {

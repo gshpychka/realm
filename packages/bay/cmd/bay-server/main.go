@@ -25,6 +25,7 @@ import (
 	"github.com/gshpychka/realm/packages/bay/internal/guest"
 	"github.com/gshpychka/realm/packages/bay/internal/identity"
 	"github.com/gshpychka/realm/packages/bay/internal/incus"
+	"github.com/gshpychka/realm/packages/bay/internal/machines"
 	"github.com/gshpychka/realm/packages/bay/internal/messages"
 	"github.com/gshpychka/realm/packages/bay/internal/records"
 	"github.com/gshpychka/realm/packages/bay/internal/repos"
@@ -34,16 +35,16 @@ import (
 
 // Config is the server's configuration file.
 type Config struct {
-	IncusSocket string `json:"incusSocket"`
-	Project     string `json:"project"`
-	// Base names the warm base instance every session's instance is cloned from.
-	Base          string             `json:"base"`
-	Records       string             `json:"records"`
-	Mirrors       string             `json:"mirrors"`
-	MirrorRefresh duration           `json:"mirrorRefresh"`
-	GatewaySocket string             `json:"gatewaySocket"`
-	MaxRunning    int                `json:"maxRunning"`
-	Programs      map[string]Program `json:"programs"`
+	IncusSocket   string                         `json:"incusSocket"`
+	Project       string                         `json:"project"`
+	Records       string                         `json:"records"`
+	Mirrors       string                         `json:"mirrors"`
+	MirrorRefresh duration                       `json:"mirrorRefresh"`
+	GatewaySocket string                         `json:"gatewaySocket"`
+	MaxRunning    int                            `json:"maxRunning"`
+	MaxMemory     int                            `json:"maxMemory"`
+	Programs      map[string]Program             `json:"programs"`
+	Machines      map[string]machines.Definition `json:"machines"`
 }
 
 // Program is a program definition as configured.
@@ -52,6 +53,7 @@ type Program struct {
 	Resume  []string `json:"resume"`
 	History []string `json:"history"`
 	Monitor bool     `json:"monitor"`
+	Machine string   `json:"machine,omitempty"`
 }
 
 type duration struct{ time.Duration }
@@ -112,15 +114,25 @@ func loadConfig(file string) (Config, error) {
 		return Config{}, fmt.Errorf("config %s: expected one JSON object", file)
 	}
 	for _, field := range []struct{ name, value string }{
-		{"incusSocket", config.IncusSocket}, {"project", config.Project}, {"base", config.Base},
+		{"incusSocket", config.IncusSocket}, {"project", config.Project},
 		{"records", config.Records}, {"mirrors", config.Mirrors}, {"gatewaySocket", config.GatewaySocket},
 	} {
 		if field.value == "" {
 			return Config{}, fmt.Errorf("config %s: %s is required", file, field.name)
 		}
 	}
-	if config.MaxRunning < 1 || config.MirrorRefresh.Duration < 0 {
-		return Config{}, fmt.Errorf("config %s: maxRunning must be positive and mirrorRefresh must not be negative", file)
+	if config.MaxRunning < 1 || config.MaxMemory < 1 || config.MirrorRefresh.Duration < 0 {
+		return Config{}, fmt.Errorf("config %s: maxRunning and maxMemory must be positive and mirrorRefresh must not be negative", file)
+	}
+	if err := machines.ValidateCatalog(config.Machines); err != nil {
+		return Config{}, fmt.Errorf("config %s: %w", file, err)
+	}
+	for name, p := range config.Programs {
+		if p.Machine != "" {
+			if _, ok := config.Machines[p.Machine]; !ok {
+				return Config{}, fmt.Errorf("config %s: program %s uses undeclared machine %s", file, name, p.Machine)
+			}
+		}
 	}
 	return config, nil
 }
@@ -130,7 +142,7 @@ func serve(config Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	driver, err := incus.Connect(config.IncusSocket, config.Project, config.Base)
+	driver, err := incus.Connect(config.IncusSocket, config.Project)
 	if err != nil {
 		return err
 	}
@@ -143,12 +155,14 @@ func serve(config Config, log *slog.Logger) error {
 	}
 	programs := map[string]sessions.Program{}
 	for name, p := range config.Programs {
-		programs[name] = sessions.Program{Command: p.Command, Resume: p.Resume, History: p.History, Monitor: p.Monitor}
+		programs[name] = sessions.Program{Command: p.Command, Resume: p.Resume, History: p.History, Monitor: p.Monitor, Machine: p.Machine}
 	}
 	svc, err := sessions.New(store, driver, mirrors, sessions.Config{
 		Programs:   programs,
 		MaxRunning: config.MaxRunning,
-		Reserved:   append(driver.Reserved(), messages.Operator),
+		MaxMemory:  config.MaxMemory,
+		Reserved:   []string{messages.Operator},
+		Machines:   config.Machines,
 	}, log)
 	if err != nil {
 		return err
@@ -172,7 +186,12 @@ func serve(config Config, log *slog.Logger) error {
 	go refreshMirrors(ctx, mirrors, config.MirrorRefresh.Duration, log)
 
 	servers := []*http.Server{
-		{Handler: api.Handler(operatorAPI{svc}, messagesProxy(config.GatewaySocket))},
+		{
+			Handler: api.Handler(operatorAPI{svc}, messagesProxy(config.GatewaySocket)),
+			// Signal cancellation closes program bridges; detached lifecycle operations
+			// still finish before Shutdown returns, as they did before streaming.
+			BaseContext: func(net.Listener) context.Context { return ctx },
+		},
 		{Handler: identity.Handler(resolver{svc})},
 	}
 	errs := make(chan error, len(servers))
@@ -253,6 +272,7 @@ func base(args []string, log *slog.Logger) error {
 	configPath := flags.String("config", "", "configuration file")
 	metadata := flags.String("metadata", "", "image metadata tarball")
 	disk := flags.String("disk", "", "image disk")
+	machine := flags.String("machine", "", "declared machine to prepare")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -260,14 +280,18 @@ func base(args []string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	driver, err := incus.Connect(config.IncusSocket, config.Project, config.Base)
+	driver, err := incus.Connect(config.IncusSocket, config.Project)
 	if err != nil {
 		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	ready := func(ctx context.Context, exec guest.Exec) error { return guest.New(exec).Ready(ctx) }
-	if err := driver.UpdateBase(ctx, *metadata, *disk, ready); err != nil {
+	definition, ok := config.Machines[*machine]
+	if !ok {
+		return fmt.Errorf("undeclared machine %q", *machine)
+	}
+	if err := driver.EnsureBase(ctx, definition, *metadata, *disk, ready); err != nil {
 		return err
 	}
 	log.Info("warm base ready")

@@ -76,6 +76,34 @@ func TestGetMissing(t *testing.T) {
 	}
 }
 
+func TestExecutionGenerationAdvancesAndSurvivesReopen(t *testing.T) {
+	root := t.TempDir()
+	s, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := testRecord("old", time.Now())
+	initial.Generation = 1
+	if err := s.Create(initial); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.Get("old")
+	if err != nil || before.Generation != 1 {
+		t.Fatalf("initial generation: %+v, %v", before, err)
+	}
+	if _, err := s.AdvanceGeneration("old"); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := s.Get("old")
+	if err != nil || reopened.Generation != 2 || reopened.ID != before.ID {
+		t.Fatalf("durable generation: %+v, %v", reopened, err)
+	}
+}
+
 func TestRejectsPathNames(t *testing.T) {
 	s, _ := Open(t.TempDir())
 	for _, name := range []string{"", ".", "..", "../x", "a/b", ".hidden"} {

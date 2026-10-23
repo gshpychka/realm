@@ -16,6 +16,7 @@ import (
 	"github.com/lxc/incus/v7/shared/api"
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
+	"github.com/gshpychka/realm/packages/bay/internal/machines"
 	"github.com/gshpychka/realm/packages/bay/internal/sessions"
 )
 
@@ -29,26 +30,44 @@ const (
 type Driver struct {
 	server  incus.InstanceServer
 	project string
-	base    string
 }
 
-// Connect returns a driver for the instances in project, cloned from the instance named base.
-func Connect(socket, project, base string) (*Driver, error) {
+// Connect returns a driver for the instances in project.
+func Connect(socket, project string) (*Driver, error) {
 	server, err := incus.ConnectIncusUnix(socket, &incus.ConnectionArgs{UserAgent: "bay"})
 	if err != nil {
 		return nil, fmt.Errorf("connect to incus: %w", err)
 	}
-	return &Driver{server: server.UseProject(project), project: project, base: base}, nil
+	return &Driver{server: server.UseProject(project), project: project}, nil
 }
 
 var _ sessions.Instances = (*Driver)(nil)
 
-func (d *Driver) Create(ctx context.Context, name, sessionID string) error {
+func (d *Driver) Create(ctx context.Context, name, sessionID string, machine *machines.Selection) error {
+	if machine == nil {
+		return fmt.Errorf("%w: a pinned machine is required", fault.Invalid)
+	}
+	if err := machine.Validate(machine.Name); err != nil {
+		return fmt.Errorf("%w: invalid pinned machine: %v", fault.Invalid, err)
+	}
+	inst, _, err := d.server.GetInstance(machine.Base)
+	if err != nil {
+		return fmt.Errorf("pinned machine %s (%s) is unavailable: %w", machine.Name, machine.Revision, err)
+	}
+	if inst.Config[baseReadyKey] != "true" || inst.Config[machineKey] != machine.Revision {
+		return fmt.Errorf("%w: machine %s's pinned revision is not prepared", fault.Conflict, machine.Name)
+	}
+	put, err := d.instanceResources(machine.Resources)
+	if err != nil {
+		return err
+	}
+	put.Config[sessionKey] = sessionID
+	put.Config[machineKey] = machine.Revision
 	op, err := d.server.CreateInstance(api.InstancesPost{
 		Name:        name,
 		Type:        api.InstanceTypeVM,
-		Source:      api.InstanceSource{Type: "copy", Source: d.base, InstanceOnly: true},
-		InstancePut: api.InstancePut{Config: map[string]string{sessionKey: sessionID}},
+		Source:      api.InstanceSource{Type: "copy", Source: machine.Base, InstanceOnly: true},
+		InstancePut: put,
 	})
 	if err != nil {
 		return fmt.Errorf("create instance %s: %w", name, err)

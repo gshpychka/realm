@@ -18,7 +18,21 @@ inputs.nixpkgs.lib.nixos.runTest {
 
   nodes = {
     host =
-      { pkgs, ... }:
+      { config, pkgs, ... }:
+      let
+        counter = {
+          command = [
+            "counter"
+            "fresh"
+          ];
+          resume = [
+            "counter"
+            "resume"
+          ];
+          history = [ ".counter/log" ];
+          monitor = false;
+        };
+      in
       {
         imports = [ ../modules/system/nixos/bay.nix ];
         virtualisation = {
@@ -42,6 +56,29 @@ inputs.nixpkgs.lib.nixos.runTest {
 
         users.users.alice.isNormalUser = true;
         environment.etc."bay-ntfy-token".text = ntfyToken;
+        environment.etc."bay-test-server-config".source = lib.last (
+          lib.splitString " " config.systemd.services.bay-server.serviceConfig.ExecStart
+        );
+        environment.etc."bay-test-reconfigure.py".text = ''
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          override = pathlib.Path("/run/systemd/system/bay-server.service.d/test.conf")
+          if sys.argv[1] == "alternate":
+              with open("/etc/bay-test-server-config") as source:
+                  configuration = json.load(source)
+              configuration["machines"]["default"] = configuration["machines"]["alternate"]
+              pathlib.Path("/run/bay/test-server.json").write_text(json.dumps(configuration))
+              override.parent.mkdir(parents=True, exist_ok=True)
+              override.write_text("[Service]\nExecStart=\nExecStart=${config.services.bay.package}/bin/bay-server -config /run/bay/test-server.json\n")
+          else:
+              override.unlink()
+          subprocess.run(["systemctl", "daemon-reload"], check=True)
+          subprocess.run(["systemctl", "restart", "bay-server.service"], check=True)
+        '';
+
 
         services.bay = {
           enable = true;
@@ -55,17 +92,17 @@ inputs.nixpkgs.lib.nixos.runTest {
             disk = 6;
             maxRunning = 2;
           };
-          programs.counter = {
-            command = [
-              "counter"
-              "fresh"
-            ];
-            resume = [
-              "counter"
-              "resume"
-            ];
-            history = [ ".counter/log" ];
-            monitor = false;
+          programs.counter = counter;
+          machines.alternate = {
+            inherit (config.services.bay.machines.default) metadata disk;
+            resources = {
+              cpus = 2;
+              memory = 1;
+              disk = 6;
+            };
+          };
+          programs.alternate = counter // {
+            machine = "alternate";
           };
           guest.modules = [
             (
@@ -160,6 +197,7 @@ inputs.nixpkgs.lib.nixos.runTest {
     in
     ''
       import json
+      import shlex
       import time
       from datetime import timedelta
 
@@ -216,6 +254,45 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       with subtest("saving history writes nothing when no history path exists"):
           assert guest("one", "bay-session save-history -- .counter/none | wc -c").strip() == "0"
+
+      with subtest("declared machines keep immutable bases and pinned sessions across catalog changes"):
+          bay("start pinned counter")
+          pinned = json.loads(bay("show pinned --json"))
+          assert pinned["machine"] == "default" and pinned["machineRevision"], pinned
+          bay("end pinned --yes")
+          bay("start alternate alternate")
+          alternate = json.loads(bay("show alternate --json"))
+          assert alternate["machine"] == "alternate" and alternate["machineRevision"] != pinned["machineRevision"]
+          assert host.succeed("incus config get --project bay alternate limits.cpu").strip() == "2"
+          bases_before = json.loads(host.succeed("incus list --project bay --format json"))
+          base_names = {item["name"] for item in bases_before if item["name"].startswith("bay-base-")}
+          assert len(base_names) == 2, base_names
+          bay("rm alternate --yes")
+          host.succeed("${pkgs.python3}/bin/python3 /etc/bay-test-reconfigure.py alternate")
+          try:
+              bay("start pinned")
+              resumed = json.loads(bay("show pinned --json"))
+              assert resumed["machineRevision"] == pinned["machineRevision"] and resumed["id"] == pinned["id"]
+              assert host.succeed("incus config get --project bay pinned limits.cpu").strip() == "1"
+              bay("rm pinned --yes")
+              bay("start fresh-machine counter")
+              fresh = json.loads(bay("show fresh-machine --json"))
+              assert fresh["machine"] == "default" and fresh["machineRevision"] == alternate["machineRevision"]
+              assert host.succeed("incus config get --project bay fresh-machine limits.cpu").strip() == "2"
+              stale_end = json.dumps({"id": pinned["id"], "snapshots": []})
+              request = "curl -s -o /dev/null -w %{http_code} --unix-socket /run/bay/bay.sock -H Content-Type:application/json -d " + shlex.quote(stale_end) + " http://bay/v1/sessions/fresh-machine/end"
+              status = host.succeed("su - alice -c " + shlex.quote(request)).strip()
+              assert status == "409", status
+              stale_suspend = json.dumps({"id": pinned["id"]})
+              request = "curl -s -o /dev/null -w %{http_code} --unix-socket /run/bay/bay.sock -H Content-Type:application/json -d " + shlex.quote(stale_suspend) + " http://bay/v1/sessions/fresh-machine/suspend"
+              status = host.succeed("su - alice -c " + shlex.quote(request)).strip()
+              assert status == "409", status
+              assert state("fresh-machine") == "running"
+              bay("rm fresh-machine --yes")
+              bases_after = json.loads(host.succeed("incus list --project bay --format json"))
+              assert base_names <= {item["name"] for item in bases_after}
+          finally:
+              host.succeed("${pkgs.python3}/bin/python3 /etc/bay-test-reconfigure.py restore")
 
       with subtest("attaching needs a terminal and holds a client on the program's tmux"):
           assert "terminal" in bay_fails("attach one < /dev/null")
@@ -274,7 +351,8 @@ inputs.nixpkgs.lib.nixos.runTest {
           mcp = json.loads(guest("one", "cat /etc/bay/mcp.json"))["mcpServers"]["bay"]
           call = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "whoami", "arguments": {}}})
           reply = json.loads(host.succeed(f"echo '{call}' | incus exec --project bay one -- {mcp['command']} {' '.join(mcp['args'])}"))
-          assert reply["result"]["structuredContent"] == {"name": "one"}, reply
+          identity = json.loads(bay("show one --json"))
+          assert reply["result"]["structuredContent"] == {field: identity[field] for field in ["name", "id", "generation"]}, reply
 
       with subtest("a session cannot read a thread it is not part of"):
           private = json.loads(bay("send -json -subject private two secret"))
@@ -308,7 +386,10 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       with subtest("a suspended session resumes where it was"):
           before = live("one")
-          bay("suspend one")
+          session = json.loads(bay("show one --json"))
+          suspend = json.dumps({"id": session["id"]})
+          request = "curl -fsS --unix-socket /run/bay/bay.sock -H Content-Type:application/json -d " + shlex.quote(suspend) + " http://bay/v1/sessions/one/suspend"
+          host.succeed("su - alice -c " + shlex.quote(request))
           assert state("one") == "suspended"
           bay("start three counter")
           assert "of 2 sessions are running" in bay_fails("resume one")

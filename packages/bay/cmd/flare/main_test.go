@@ -40,7 +40,7 @@ operator -> alpha  2026-10-05T12:05:00Z
 		check  func(t *testing.T, s *stub)
 	}{
 		{name: "whoami", args: []string{"whoami"}, stdout: "alpha\n"},
-		{name: "whoami as JSON", args: []string{"-json", "whoami"}, stdout: "{\"name\":\"alpha\"}\n"},
+		{name: "whoami as JSON", args: []string{"-json", "whoami"}, stdout: "{\"name\":\"alpha\",\"id\":\"id-alpha\",\"generation\":1}\n"},
 		{name: "whoami with an argument", args: []string{"whoami", "x"}, code: 2, stderr: "whoami takes no arguments"},
 
 		{

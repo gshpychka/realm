@@ -8,27 +8,95 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"syscall"
 	"time"
+
+	"github.com/gshpychka/realm/packages/bay/internal/machines"
 )
 
 // Record is what a session starts from, and what remains of it once it has ended.
 type Record struct {
 	// ID identifies the session for as long as its record exists.
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Program Program   `json:"program"`
-	Repos   []Repo    `json:"repos,omitempty"`
-	Created time.Time `json:"created"`
+	ID string `json:"id"`
+	// Generation is host-owned execution authority; guest snapshots never rewind it.
+	Generation uint64              `json:"generation"`
+	Name       string              `json:"name"`
+	Program    Program             `json:"program"`
+	Machine    *machines.Selection `json:"machine,omitempty"`
+	Repos      []Repo              `json:"repos,omitempty"`
+	Created    time.Time           `json:"created"`
+}
+
+// AdvanceGeneration durably revokes the previous execution before a fresh launch or restore. The session service
+// holds its lifecycle lock while changing a record, including while this replacement is committed.
+func (s *Store) AdvanceGeneration(name string) (Record, error) {
+	dir, err := s.dir(name)
+	if err != nil {
+		return Record{}, err
+	}
+	r, err := read(dir)
+	if err != nil {
+		return Record{}, err
+	}
+	if r.Generation < 1 {
+		return Record{}, fmt.Errorf("session %s has no execution generation", name)
+	}
+	if r.Generation >= math.MaxInt64 {
+		return Record{}, fmt.Errorf("session %s exhausted its execution generations", name)
+	}
+	r.Generation++
+	if err := replace(dir, r); err != nil {
+		return Record{}, err
+	}
+	return r, nil
+}
+
+func replace(dir string, r Record) error {
+	data, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".record-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err = tmp.Write(data); err == nil {
+		err = tmp.Sync()
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(tmp.Name(), filepath.Join(dir, recordFile)); err != nil {
+		return err
+	}
+	if err := syncDir(dir); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Program is the session's program: a definition by name, or a command launched fresh on every start.
 type Program struct {
 	Definition string   `json:"definition,omitempty"`
 	Command    []string `json:"command,omitempty"`
+	// Runtime is resolved with the pinned machine; store paths must not drift
+	// to commands introduced by a later host configuration.
+	Runtime *ProgramDefinition `json:"runtime,omitempty"`
+}
+
+type ProgramDefinition struct {
+	Command []string `json:"command"`
+	Resume  []string `json:"resume,omitempty"`
+	History []string `json:"history,omitempty"`
+	Monitor bool     `json:"monitor"`
 }
 
 // Repo is a repo the session can access, checked out at Commit.
