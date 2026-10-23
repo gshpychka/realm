@@ -19,12 +19,13 @@ let
     p.tailscale_tailscale
   ]);
   # sops exec-env takes one command string, which a shell re-parses, so each
-  # argument is requoted with printf %q
+  # argument is requoted with bash's ${*@Q}, which, unlike printf %q, expands to
+  # nothing when there are no arguments
   sopsExecEnv =
-    name: package:
+    name: envFile: command:
     pkgs.writeShellScriptBin name ''
-      ${lib.getExe pkgs.sops} exec-env "$REPO_ROOT/secrets/infra/terraform.env" \
-        "${lib.getExe package} $(printf '%q ' "$@")"
+      ${lib.getExe pkgs.sops} exec-env "$REPO_ROOT/secrets/infra/${envFile}" \
+        "${command} ''${*@Q}"
     '';
 in
 pkgs.mkShell {
@@ -33,12 +34,19 @@ pkgs.mkShell {
     pkgs.google-cloud-sdk
     pkgs.awscli2
     pkgs.bun
+    # probabench: the vite, vitest and tsc bins run under #!/usr/bin/env node
+    pkgs.nodejs
     bun2nix.packages.${system}.default
     pkgs.sops
     pkgs.age
     pkgs.terragrunt
-    (sopsExecEnv "tf" terraform)
-    (sopsExecEnv "tg" pkgs.terragrunt)
+    (sopsExecEnv "tf" "terraform.env" (lib.getExe terraform))
+    (sopsExecEnv "tg" "terraform.env" (lib.getExe pkgs.terragrunt))
+    # the ProbaBench CLI with its OpenRouter key; it finds its history file from its
+    # own path, so it runs from any directory
+    (sopsExecEnv "probabench" "probabench.env"
+      "${lib.getExe pkgs.bun} $REPO_ROOT/infra/probabench/packages/runner/src/main.ts"
+    )
   ];
   shellHook = ''
     export REPO_ROOT=$(git rev-parse --show-toplevel)

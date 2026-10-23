@@ -27,7 +27,7 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
 | `modules/home-manager/` | neovim, zsh, tmux, git, coding agents |
 | `overlays/` `packages/` | Package overlays and custom packages |
 | `secrets/` | sops-encrypted secrets |
-| `infra/` | Terraform for GCP, Cloudflare and Tailscale; the link-sanitizer Telegram bot |
+| `infra/` | Terraform for GCP, Cloudflare and Tailscale; Alchemy stacks for Link Sanitizer and ProbaBench |
 | `scripts/` | Runbooks for the travel router, Kodi box and Voice PE; OpenClaw's nixos-control plugin |
 | `tests/` | NixOS VM tests |
 
@@ -56,6 +56,10 @@ The flake exports `homeManagerModules.pituitary` (`programs.pituitary`),
 (`services.bay`). Realm imports these with its regular module trees; enabling a
 service is a host decision in `machines/`. `lib.bayGuestImage` builds a standalone
 Bay guest image. The former standalone Bay and Pituitary repositories are retired.
+
+[ProbaBench](infra/probabench) benchmarks how accurately language models follow
+requested sampling probabilities. Its CLI, results notebook and AWS Alchemy
+deployment live under `infra/probabench`; use `nix develop .#infra` to work on it.
 
 ## Usage
 

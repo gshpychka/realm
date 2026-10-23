@@ -1,0 +1,407 @@
+/* The dialog */
+.run-dialog {
+  /* The UA's dialog:modal max-width, calc(100% - 6px - 2em), keeps it inside narrow screens. */
+  width: 700px;
+  max-height: calc(100svh - 48px);
+  padding: 0;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 40px 100px #0008;
+
+  @media (max-width: 650px) {
+    max-height: calc(100svh - 24px);
+  }
+}
+.run-dialog::backdrop {
+  background: var(--backdrop);
+  backdrop-filter: blur(5px);
+}
+/* A modal <dialog> does not lock page scroll by itself. */
+body:has(.run-dialog[open]) {
+  overflow: hidden;
+}
+.dialog-content {
+  padding: 30px 34px;
+
+  @media (max-width: 650px) {
+    padding: 20px;
+  }
+}
+.dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.dialog-heading h2 {
+  font: 400 var(--title-lg) / 1.2 var(--serif);
+  margin-top: 9px;
+  letter-spacing: -0.7px;
+
+  @media (max-width: 650px) {
+    font-size: var(--title-md);
+  }
+}
+.dialog-close {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+.dialog-close:hover {
+  color: var(--text);
+  background: var(--line);
+}
+.run-dialog input,
+.run-dialog select {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.6;
+
+  @media (max-width: 650px) {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
+.field-label {
+  display: block;
+  font-size: 13px;
+  line-height: 1.7;
+  margin-bottom: 9px;
+
+  @media (max-width: 650px) {
+    font-size: 12px;
+  }
+}
+.field-label > span {
+  float: right;
+  font-size: 12px;
+  color: var(--muted);
+
+  @media (max-width: 650px) {
+    font-size: 11px;
+  }
+}
+.helper {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.form-error {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.8;
+  margin-top: 15px;
+  overflow-wrap: anywhere;
+}
+
+/* SetupForm */
+.dialog-intro {
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--text-3);
+  margin: 17px 0 25px;
+  max-width: 490px;
+
+  @media (max-width: 650px) {
+    font-size: 12px;
+    line-height: 1.7;
+    margin: 12px 0 20px;
+  }
+}
+.setup-fields {
+  display: contents;
+}
+.model-input {
+  font-family: var(--mono);
+}
+/* Chrome draws the datalist marker below centre otherwise. */
+.model-input::-webkit-calendar-picker-indicator {
+  line-height: 1;
+}
+.preset-fieldset {
+  margin: 24px 0 18px;
+
+  @media (max-width: 650px) {
+    margin: 20px 0 4px;
+  }
+}
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+
+  @media (max-width: 650px) {
+    gap: 7px;
+  }
+}
+.preset {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 14px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+
+  @media (max-width: 650px) {
+    padding: 11px 9px;
+  }
+}
+.preset[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+.preset strong {
+  font-size: 13px;
+  font-weight: 500;
+
+  @media (max-width: 650px) {
+    font-size: 12px;
+  }
+}
+.preset > span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 7px;
+
+  @media (max-width: 650px) {
+    display: none;
+  }
+}
+.preset small {
+  font: 12px / 1.8 var(--mono);
+  color: var(--accent);
+  margin-top: 17px;
+
+  @media (max-width: 650px) {
+    font-size: 11px;
+    margin-top: 12px;
+  }
+}
+.setup-custom {
+  color: var(--text-3);
+  margin: 8px 0 16px;
+
+  @media (max-width: 650px) {
+    margin-bottom: 0;
+  }
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+
+  @media (max-width: 650px) {
+    gap: 12px;
+  }
+}
+.form-grid input,
+.form-grid select {
+  margin-top: 8px;
+}
+.advanced {
+  margin: 13px 0 22px;
+  border-bottom: 1px solid var(--line);
+
+  @media (max-width: 650px) {
+    margin: 0 0 16px;
+  }
+}
+.advanced summary {
+  padding: 12px 0 15px;
+  font-size: 12px;
+
+  @media (max-width: 650px) {
+    padding: 10px 0 12px;
+  }
+}
+.advanced summary > span:last-child {
+  float: right;
+  color: var(--muted);
+}
+.advanced .form-grid {
+  margin-bottom: 17px;
+}
+.budget {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 18px 20px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+
+  @media (max-width: 650px) {
+    gap: 13px;
+    padding: 17px 14px;
+  }
+}
+.budget-total strong {
+  font: 27px / 1.3 var(--mono);
+  color: var(--accent);
+  letter-spacing: -1px;
+
+  @media (max-width: 650px) {
+    font-size: 23px;
+  }
+}
+.budget-total span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
+
+  @media (max-width: 650px) {
+    font-size: 11px;
+  }
+}
+.budget-times {
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.budget > p {
+  font-size: 12px;
+  line-height: 1.9;
+}
+.environment-note {
+  display: flex;
+  gap: 10px;
+  border-left: 2px solid var(--border);
+  padding-left: 15px;
+  margin-top: 24px;
+}
+.environment-note > .status-dot {
+  margin-top: 6px;
+}
+.environment-note strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.environment-note p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text-3);
+  margin-top: 7px;
+}
+.setup-submit {
+  display: flex;
+  gap: 25px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 26px;
+
+  @media (max-width: 650px) {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 15px;
+  }
+}
+.setup-submit > p {
+  max-width: 300px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+
+  @media (max-width: 650px) {
+    max-width: none;
+  }
+}
+
+/* JobProgress */
+.job-progress {
+  margin-top: 24px;
+}
+.job-status {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: center;
+}
+.job-status > strong {
+  font: 400 var(--title-md) / 1.25 var(--serif);
+
+  @media (max-width: 650px) {
+    font-size: var(--title-sm);
+  }
+}
+.job-status > p {
+  grid-column: 2;
+  color: var(--text-3);
+  line-height: 1.7;
+  margin-top: 12px;
+}
+.job-status > .muted {
+  grid-column: 2;
+  font: 12px / 1.6 var(--mono);
+  margin-top: 12px;
+}
+/* Firefox tints its bar with accent-color. In Chromium the border reset turns off the
+   native bar, so the -webkit- parts below draw it. */
+.job-progress > progress {
+  display: block;
+  width: 100%;
+  height: 5px;
+  margin-top: 24px;
+  accent-color: var(--accent);
+  border: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.job-progress > progress::-webkit-progress-bar {
+  background: var(--line);
+}
+.job-progress > progress::-webkit-progress-value {
+  background: var(--accent);
+}
+.job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  margin: 30px 0;
+
+  @media (max-width: 650px) {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+.job-output {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.job-output > summary {
+  font-size: 13px;
+  color: var(--text-3);
+}
+/* column-reverse opens the log at its latest line and keeps it there as lines arrive. */
+.job-progress pre {
+  display: flex;
+  flex-direction: column-reverse;
+  font: 12px / 1.9 var(--mono);
+  padding: 15px;
+  margin: 15px 0 0;
+  background: var(--bg);
+  color: var(--text-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  max-height: 190px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

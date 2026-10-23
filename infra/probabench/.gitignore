@@ -1,0 +1,6 @@
+# Alchemy logs, caches and local state
+.alchemy/
+# Vite build output
+packages/web/dist/
+# results-store temp dir: present while a save runs, left behind if its writer is killed
+data/.probabench-*

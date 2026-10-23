@@ -5,7 +5,14 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["modules/**/*.ts", "modules/**/*.js", "infra/**/*.ts", "!**/node_modules"]
+    "includes": [
+      "modules/**/*.ts",
+      "modules/**/*.js",
+      "infra/**/*.ts",
+      "infra/**/*.tsx",
+      "infra/**/*.css",
+      "!**/node_modules"
+    ]
   },
   "formatter": {
     "indentStyle": "space",
@@ -16,5 +23,17 @@
     "rules": {
       "preset": "recommended"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["infra/probabench/**/*.css"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    }
+  ]
 }

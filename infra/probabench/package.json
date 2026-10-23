@@ -1,0 +1,32 @@
+{
+  "name": "probabench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "bun2nix -o bun.nix",
+    "typecheck": "tsc -p packages/domain && tsc -p packages/runner && tsc -p packages/web && tsc -p packages/web/src && tsc -p packages/stack",
+    "test": "vitest run",
+    "check": "bun run typecheck && bun run test && bun run build",
+    "dev": "sops exec-env ../../secrets/infra/probabench.env 'bun run --cwd packages/web dev'",
+    "dev:alchemy": "sops exec-env ../../secrets/infra/probabench.env 'bun run --cwd packages/stack dev'",
+    "build": "bun run --cwd packages/web build",
+    "plan": "bun run --cwd packages/stack plan",
+    "deploy": "bun run --cwd packages/stack deploy",
+    "destroy": "bun run --cwd packages/stack destroy"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.29.0",
+    "@types/node": "^22.10.5",
+    "effect": "3.21.4",
+    "typescript": "^6.0.3",
+    "vitest": "^3.0.5"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "trustedDependencies": [],
+  "patchedDependencies": {
+    "@distilled.cloud/aws@1.0.0-rc.15": "patches/@distilled.cloud%2Faws@1.0.0-rc.15.patch"
+  }
+}

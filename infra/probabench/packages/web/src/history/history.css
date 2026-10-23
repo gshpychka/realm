@@ -1,0 +1,276 @@
+/* The sr-only heading is absolutely positioned, so it takes no row. */
+.history-page {
+  display: grid;
+  gap: 22px;
+}
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.history-toolbar > .mono {
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* The chart card */
+.history-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0 4px;
+}
+.history-graph-legend > button {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 12px;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.history-graph-legend > button[aria-pressed="false"] {
+  opacity: 0.55;
+}
+
+.history-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: 28px;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: minmax(0, 1fr) 310px;
+    gap: 22px;
+  }
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The timeline */
+.timeline-day {
+  padding: 25px 20px 10px;
+}
+.timeline-day:last-child {
+  padding-bottom: 24px;
+}
+.timeline-day > h3 {
+  font: 12px / 1.6 var(--mono);
+  color: var(--text-3);
+  margin-bottom: 14px;
+  display: flex;
+  gap: 8px;
+}
+.timeline-day > h3 > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.timeline-day ol {
+  padding: 0 0 0 9px;
+  list-style: none;
+  border-left: 1px solid var(--border);
+  margin-left: 4px;
+}
+.timeline-day li {
+  margin-bottom: 6px;
+}
+.history-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  gap: 16px;
+  padding: 16px 10px 16px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+
+  @media (max-width: 650px) {
+    gap: 10px;
+    padding: 15px 8px 15px 12px;
+  }
+}
+.history-row:hover {
+  background: var(--raised);
+}
+.history-row[aria-pressed="true"] {
+  border-color: var(--border);
+  background: var(--raised);
+}
+/* Centred on the rail (the ol's 1px border): the row's padding box starts 11px right of
+   the rail's left edge (1px rail + 9px ol padding + 1px row border), so -11 - 6 + 0.5
+   centres the 12px node (8px + 2px border each side). */
+.timeline-node {
+  position: absolute;
+  left: -16.5px;
+  top: 22px;
+  height: 8px;
+  width: 8px;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  box-sizing: content-box;
+}
+.history-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+.history-row-main strong {
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.history-row-main > span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+
+  @media (max-width: 650px) {
+    font-size: 11px;
+  }
+}
+.history-row-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  white-space: nowrap;
+  text-align: right;
+}
+.history-row-metric strong {
+  font: 13px / 1.5 var(--mono);
+
+  @media (max-width: 650px) {
+    font-size: 12px;
+  }
+}
+.history-row-metric > span {
+  color: var(--muted);
+  font: 11px / 1.6 var(--mono);
+}
+.row-arrow {
+  color: var(--muted);
+
+  @media (max-width: 650px) {
+    display: none;
+  }
+}
+/* The inspector (RunDetail and its measurements) sits beside the timeline, and
+   above it, in document order, once the layout stacks. */
+.history-inspector {
+  order: 1;
+  /* HistoryPage scrolls the inspector into view once the layout stacks. */
+  scroll-margin-top: 20px;
+
+  @media (max-width: 900px) {
+    order: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 650px) {
+    display: block;
+  }
+}
+.run-detail {
+  padding: 23px;
+}
+.run-detail h3 {
+  font: 400 var(--title-sm) / 1.25 var(--serif);
+  margin-top: 15px;
+  overflow-wrap: anywhere;
+}
+.model-slug {
+  color: var(--text-3);
+  font: 12px / 1.8 var(--mono);
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}
+.detail-timestamp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+.detail-timestamp time {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text-2);
+}
+.detail-timestamp time > span {
+  display: block;
+  font: 11px / 1.8 var(--mono);
+  color: var(--muted);
+}
+.detail-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 20px 0;
+  border-block: 1px solid var(--line);
+  margin-top: 20px;
+}
+.detail-stats span {
+  font-size: 12px;
+  line-height: 1.6;
+  display: block;
+  color: var(--muted);
+}
+.detail-stats strong {
+  display: block;
+  font: 400 var(--title-sm) / 1.2 var(--serif);
+  color: var(--accent);
+  margin-top: 7px;
+}
+.detail-list {
+  margin: 20px 0 24px;
+}
+.detail-list > div {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 10px 0;
+}
+.detail-list dt {
+  color: var(--muted);
+}
+.detail-list dd {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.detail-list .run-id {
+  font: 11px / 1.8 var(--mono);
+  color: var(--text-3);
+}
+.inspector-measurements {
+  margin-top: 12px;
+
+  @media (max-width: 900px) {
+    margin-top: 0;
+  }
+  @media (max-width: 650px) {
+    margin-top: 12px;
+  }
+}
+.inspector-measurements > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  padding: 18px 20px;
+}

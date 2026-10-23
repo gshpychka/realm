@@ -1,0 +1,10 @@
+{
+  // The browser program. It sits in src/ because editors use the nearest tsconfig.json;
+  // ../tsconfig.json types vite.config.ts and dev-bridge/ for Node.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
+  }
+}

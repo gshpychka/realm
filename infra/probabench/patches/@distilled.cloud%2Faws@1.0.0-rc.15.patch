@@ -1,0 +1,46 @@
+diff --git a/lib/auth.js b/lib/auth.js
+index 15540eb24572d771f2384999cac98d2457170147..c8924a0a110dbee815bf895e22a9e7b9897ebe4a 100644
+--- a/lib/auth.js
++++ b/lib/auth.js
+@@ -10,7 +10,7 @@ import { Auth, } from "./auth.browser.js";
+ import { loginCredentialsSource } from "./credential-providers/from-login-credentials.js";
+ import { AwsCredentialProviderError, ConflictingSSORegion, ConflictingSSOStartUrl, ExpiredSSOToken, fromAwsCredentialIdentity, InvalidSSOProfile, InvalidSSOToken, ProfileNotFound, regionFromEnv, SsoPortalError, SsoRegion, SsoStartUrl, } from "./credentials-service.js";
+ import { parseIni, parseSSOSessionData } from "./util/parse-ini.js";
+-import { getHomeDir, parseKnownFiles } from "./util/shared-config.js";
++import { getConfigFilepath, getHomeDir, parseKnownFiles } from "./util/shared-config.js";
+ export * from "./auth.browser.js";
+ /**
+  * The time window (5 mins) that SDK will treat the SSO token expires in before the defined expiration date in token.
+@@ -52,8 +52,7 @@ export const makeAuthService = () => Effect.gen(function* () {
+                 profile: profileName,
+             });
+         }
+-        const awsDir = path.join(getHomeDir(), ".aws");
+-        const configPath = path.join(awsDir, "config");
++        const configPath = getConfigFilepath();
+         // A profile is an SSO profile in one of two config formats:
+         //   - modern: `sso_session = <name>` referencing an `[sso-session <name>]`
+         //     section that holds `sso_start_url` / `sso_region`.
+diff --git a/src/auth.ts b/src/auth.ts
+index 76c753d112906db4f7a45845c99eb0377a332bac..efa523b5680f989e49e62a811ca46a80a4d658db 100644
+--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -29,7 +29,7 @@ import {
+   type ResolvedCredentials,
+ } from "./credentials-service.ts";
+ import { parseIni, parseSSOSessionData } from "./util/parse-ini.ts";
+-import { getHomeDir, parseKnownFiles } from "./util/shared-config.ts";
++import { getConfigFilepath, getHomeDir, parseKnownFiles } from "./util/shared-config.ts";
+ 
+ export * from "./auth.browser.ts";
+ 
+@@ -117,8 +117,7 @@ export const makeAuthService = () =>
+         });
+       }
+ 
+-      const awsDir = path.join(getHomeDir(), ".aws");
+-      const configPath = path.join(awsDir, "config");
++      const configPath = getConfigFilepath();
+ 
+       // A profile is an SSO profile in one of two config formats:
+       //   - modern: `sso_session = <name>` referencing an `[sso-session <name>]`
