@@ -1,6 +1,6 @@
 { pkgs }:
 pkgs.mkShell {
-  name = "pituitary";
+  name = "realm-agents";
 
   packages = with pkgs; [
     bun
@@ -19,7 +19,7 @@ pkgs.mkShell {
   ];
 
   PITUITARY_NVIM = "${pkgs.neovim-unwrapped}/bin/nvim";
-  PITUITARY_AUTO_START = "1";
+  DURA_AUTO_START = "1";
   PITUITARY_GH = "${pkgs.gh}/bin/gh";
   PITUITARY_FONT_DIR = "${pkgs.jetbrains-mono}/share/fonts/truetype";
   PITUITARY_FALLBACK_FONT_DIR = "${pkgs.dejavu_fonts}/share/fonts/truetype";
@@ -48,16 +48,17 @@ pkgs.mkShell {
     realm_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     pituitary_root="$realm_root/packages/pituitary"
 
-    echo "pituitary dev shell · bun $(bun --version) · node $(node --version)"
+    echo "pituitary + dura dev shell · bun $(bun --version) · node $(node --version)"
     if [ -f "$pituitary_root/packages/tui/src/main.tsx" ]; then
       # Keep development state within the checkout. Entering this shell from an
       # unrelated directory must not create a spurious packages/pituitary tree.
-      export BUN_INSTALL_CACHE_DIR="$pituitary_root/.cache/bun"
-      export npm_config_cache="$pituitary_root/.cache/npm"
-      export PITUITARY_STATE_DIR="$pituitary_root/.pi/runs"
-      export PATH="$pituitary_root/node_modules/.bin:$PATH"
+      export BUN_INSTALL_CACHE_DIR="$realm_root/.cache/bun"
+      export npm_config_cache="$realm_root/.cache/npm"
+      export DURA_STATE_DIR="$realm_root/.cache/dura"
+      export DURA_FRONTEND="$realm_root/node_modules/.bin/pituitary"
+      export PATH="$realm_root/node_modules/.bin:$PATH"
       mkdir -p "$BUN_INSTALL_CACHE_DIR" "$npm_config_cache"
-      echo "cd $pituitary_root && just"
+      echo "bun install at the Realm root; cd $pituitary_root && just"
     else
       echo "Enter the dev shell from a Realm checkout to isolate caches and harness state."
     fi

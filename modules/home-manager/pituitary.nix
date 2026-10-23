@@ -29,7 +29,7 @@ let
     PITUITARY_FOOTER_HEARTH = toString cfg.footer.hearth;
   }
   // lib.optionalAttrs (cfg.model != null) { PITUITARY_MODEL = cfg.model; }
-  // lib.optionalAttrs (cfg.runtimeSocket != null) { PITUITARY_RUNTIME_SOCKET = cfg.runtimeSocket; }
+  // lib.optionalAttrs (cfg.dura.socket != null) { DURA_RUNTIME_SOCKET = cfg.dura.socket; }
   // lib.optionalAttrs (cfg.nvimPackage != null) {
     PITUITARY_NVIM = lib.getExe' cfg.nvimPackage "nvim";
   }
@@ -39,7 +39,7 @@ let
   // lib.optionalAttrs (cfg.editor != null) { PITUITARY_EDITOR = cfg.editor; }
   // lib.optionalAttrs (cfg.logFile != null) { PITUITARY_LOG = cfg.logFile; }
   // lib.optionalAttrs (cfg.profileFile != null) { PITUITARY_PROFILE = cfg.profileFile; }
-  // lib.optionalAttrs (cfg.stateDirectory != null) { PITUITARY_STATE_DIR = cfg.stateDirectory; }
+  // lib.optionalAttrs (cfg.dura.stateDirectory != null) { DURA_STATE_DIR = cfg.dura.stateDirectory; }
   // lib.optionalAttrs (cfg.keybindings != { }) { PITUITARY_KEYBINDINGS = keybindingsFile; }
   // cfg.extraEnvironment;
 
@@ -62,7 +62,7 @@ let
 in
 {
   options.programs.pituitary = {
-    enable = mkEnableOption "Pituitary, a durable agent workspace";
+    enable = mkEnableOption "Pituitary, the terminal frontend for Pi and Dura";
 
     package = mkOption {
       type = types.package;
@@ -71,11 +71,18 @@ in
       description = "The pituitary package the configured wrapper runs.";
     };
 
-    stateDirectory = mkOption {
-      type = types.nullOr (types.strMatching "/.*");
-      default = null;
-      example = "/home/me/.local/state/pituitary";
-      description = "Private durable harness and frontend state; null follows XDG_STATE_HOME or ~/.local/state/pituitary.";
+    dura = {
+      stateDirectory = mkOption {
+        type = types.nullOr (types.strMatching "/.*");
+        default = null;
+        example = "/var/lib/dura";
+        description = "Dura state directory used by explicit --dura attachments. Null uses Dura's host defaults.";
+      };
+      socket = mkOption {
+        type = types.nullOr (types.strMatching "/.*");
+        default = null;
+        description = "Existing Dura runtime socket, including an SSH Unix-socket tunnel.";
+      };
     };
 
     model = mkOption {
@@ -83,12 +90,6 @@ in
       default = null;
       example = "anthropic/your-model";
       description = "Initial provider/model for local conversations. Declared agents use their own model.";
-    };
-
-    runtimeSocket = mkOption {
-      type = types.nullOr (types.strMatching "/.*");
-      default = null;
-      description = "Existing host runtime socket, including an SSH Unix-socket tunnel. Null uses local state discovery.";
     };
 
     nvimPackage = mkOption {
@@ -352,7 +353,7 @@ in
       type = types.attrsOf types.str;
       default = { };
       example = {
-        PITUITARY_CATALOG = "/etc/pituitary/agents.json";
+        PI_AGENT_CMD = "pi";
       };
       description = "Further variables set for Pituitary.";
     };

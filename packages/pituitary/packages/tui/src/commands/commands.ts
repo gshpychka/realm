@@ -2,7 +2,7 @@
 export interface Command {
   name: string;
   description: string;
-  source: "builtin";
+  source: "builtin" | "extension" | "prompt";
   args?: string;
   localOnly?: boolean;
 }
@@ -25,7 +25,24 @@ export const BUILTINS: readonly Command[] = [
   { name: "session", description: "show messages, tokens and cost", source: "builtin" },
   { name: "copy", description: "copy the last reply", source: "builtin" },
   { name: "hotkeys", description: "list the keys", source: "builtin" },
-  { name: "quit", description: "detach from this run", source: "builtin" },
+  { name: "quit", description: "close the frontend", source: "builtin" },
+];
+
+export const PI_COMMANDS: readonly Command[] = [
+  { name: "login", description: "connect a provider or subscription", source: "builtin" },
+  { name: "logout", description: "disconnect a provider", source: "builtin" },
+  { name: "new", description: "start a new Pi session", source: "builtin" },
+  { name: "resume", description: "resume a Pi session", source: "builtin" },
+  { name: "fork", description: "branch from an earlier message", source: "builtin" },
+  { name: "clone", description: "duplicate this Pi session", source: "builtin" },
+  { name: "tree", description: "navigate the session tree", source: "builtin" },
+  { name: "settings", description: "open Pi settings", source: "builtin" },
+  { name: "scoped-models", description: "choose models for cycling", source: "builtin" },
+  { name: "reload", description: "reload Pi resources", source: "builtin" },
+  { name: "trust", description: "manage project trust", source: "builtin" },
+  { name: "export", description: "export the Pi session", source: "builtin" },
+  { name: "import", description: "import a Pi session", source: "builtin" },
+  { name: "share", description: "share the Pi session", source: "builtin" },
 ];
 
 /** The built-in command `text` runs, with what follows its name; `null` when pi should receive it. */

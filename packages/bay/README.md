@@ -9,7 +9,7 @@ session gets its own files and running program.
 [Try a session](#try-a-session) · [Set up a host](#set-up-a-host) ·
 [Keep or discard work](#keep-or-discard-work) · [Pituitary](../pituitary) · [Agents](../../agents)
 
-| Use Bay directly when… | Use [Pituitary agents](../../agents) when… |
+| Use Bay directly when… | Use [Dura agents](../../agents) when… |
 | --- | --- |
 | You want a shell or terminal application in its own VM | You want work delegated across declared roles |
 | The program manages its own conversation and login | Models and credentials should stay on the host |
@@ -185,7 +185,7 @@ the newest messages within a 256 KiB page and give a `read THREAD --before MESSA
 command when earlier messages remain. Only returned messages are marked read. The
 `read_thread` MCP tool uses the same cursor. `flare -h` lists guest commands.
 
-Bay mail is for terminal programs and the operator. Pituitary teams collaborate
+Bay mail is for terminal programs and the operator. Dura teams collaborate
 through their native durable conversations.
 
 ## Declare more environments
@@ -201,7 +201,7 @@ sessions; `sessions.maxMemory` limits their total pinned memory and defaults to
 `maxRunning * memory`. Suspended sessions consume neither allowance. At startup,
 Bay removes old bases and images once no catalog or session record references them.
 
-[Pituitary's module](../../modules/system/nixos/pituitary.nix) generates these
+[Dura’s module](../../modules/system/nixos/dura.nix) generates these
 machine and program declarations from [NixOS agent modules](../../agents).
 Applications can use Bay's [execution and transfer API](docs/environment.md)
 without installing an agent runtime in the guest.

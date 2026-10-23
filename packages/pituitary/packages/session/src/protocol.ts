@@ -9,6 +9,7 @@ export interface SessionState {
   steeringMode: "all" | "one-at-a-time";
   followUpMode: "all" | "one-at-a-time";
   sessionId: string;
+  sessionFile?: string;
   sessionName?: string;
   autoCompactionEnabled: boolean;
   messageCount: number;
@@ -100,9 +101,9 @@ interface CommandResults {
   get_last_assistant_text: { text: string | null };
   set_model: Model<string>;
   cycle_model: { model: Model<string> } | null;
-  cycle_thinking_level: { level: ModelThinkingLevel };
+  cycle_thinking_level: { level: ModelThinkingLevel } | null;
   clear_queue: { steering: string[]; followUp: string[] };
-  compact: { taskId: string };
+  compact: unknown;
 }
 export type CommandResult<T extends SessionCommand["type"]> = T extends keyof CommandResults
   ? CommandResults[T]

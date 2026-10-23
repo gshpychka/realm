@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { actionFor, keymap, loadKeymap, matches } from "./keymap.ts";
+import { actionFor, keymap, loadKeymap, loadPiKeymap, matches } from "./keymap.ts";
 
 describe("matches", () => {
   test("a binding names its modifiers and key", () => {
@@ -35,7 +35,7 @@ describe("matches", () => {
 describe("keymap", () => {
   test("pi's defaults hold where the operator sets nothing", () => {
     expect(actionFor(keymap(), { name: "l", ctrl: true })).toBe("app.model.select");
-    expect(actionFor(keymap(), { name: "n", meta: true })).toBeNull();
+    expect(actionFor(keymap(), { name: "n", meta: true })).toBe("app.session.new");
   });
 
   test("an override binds an action, and replaces what it had", () => {
@@ -58,6 +58,17 @@ describe("keymap", () => {
 });
 
 describe("loadKeymap", () => {
+  test("Pi mode inherits terminal actions and applies frontend overrides last", () => {
+    const directory = mkdtempSync(join(tmpdir(), "pituitary-pi-keymap-"));
+    const base = join(directory, "pi.json"), own = join(directory, "own.json");
+    try {
+      writeFileSync(base, JSON.stringify({ "app.session.new": "alt+j", "app.model.select": "alt+m" }));
+      writeFileSync(own, JSON.stringify({ "app.model.select": "alt+l" }));
+      const map = loadPiKeymap(base, own);
+      expect(map["app.session.new"]).toEqual(["alt+j"]);
+      expect(map["app.model.select"]).toEqual(["alt+l"]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
   test("loads only the declared Pituitary bindings file", () => {
     const directory = mkdtempSync(join(tmpdir(), "pituitary-keymap-")),
       own = join(directory, "keys.json");

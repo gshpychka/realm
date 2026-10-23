@@ -7,15 +7,14 @@ behavior belongs in the product.
 
 ## Architecture
 
-Read `docs/orchestration.md` for the domain and ownership boundaries. One host Pi
-Durable Harness owns conversations, native tasks, documents, submissions, ownership,
-and recovery. Each declared agent uses a Bay NixOS machine as its ExecutionEnv.
-Provider credentials stay on the host. Bay has no agent runtime.
+Pituitary is the frontend for regular Pi and Dura. Plain `pituitary` starts the
+configured Pi executable over RPC, retaining its auth, settings, and extensions.
+`pituitary --dura RUN` uses Dura's pure connection client. Keep their lifecycle and
+configuration separate; share the interface through `ConversationLink`.
 
-`packages/harness` owns domain workflows and the host API. Domain facts live in native
-documents scoped to one run; workflows are native tasks. Use native task identities
-and checkpoints, with explicit receipts for uncertain external effects. Do not add
-another scheduler, transcript journal, inbox ledger, outbox, or recovery framework.
+Read `../dura/docs/orchestration.md` for the durable domain. Dura owns workflows,
+credentials, and authority. Bay owns execution environments. The frontend imports
+only `@realm/dura/client` and `@realm/dura/types`, never server modules.
 
 `packages/session` defines the frontend presentation contract and reducer. Translate
 native snapshots and committed events at the conversation bridge. The terminal is a
@@ -71,8 +70,9 @@ Enter `nix develop ../..#pituitary` from this directory. The dev shell keeps cac
 native host state, and artifacts in the checkout. PTY tests use throwaway homes.
 Provider secrets and operator state must never enter test fixtures or guest images.
 
-Realm exports `packages.<system>.pituitary`, the Home Manager client module, and the
-NixOS host/agent module. New files must be tracked before a Git-backed flake build.
-`bun.lock` and `default.nix` pin production dependencies. `README.md` explains hash
+Realm exports separate Pituitary and Dura packages, the Pituitary Home Manager
+module, and the Dura NixOS host/agent modules. New files must be tracked before a
+Git-backed flake build. The root `bun.lock` and `../agent-workspace.nix` pin
+production dependencies. `README.md` explains hash
 renewal. Map client options in `modules/home-manager/pituitary.nix` and cover them with
 `tests/pituitary-home-manager.nix`. Agent metadata remains outside image derivations.

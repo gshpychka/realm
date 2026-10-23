@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, extend } from "@opentui/react";
-import { type ConversationClient, connectConversation } from "@pituitary/harness/conversation";
-import type { RunDetail } from "@pituitary/harness/runtime";
-import { serveConversationFixture } from "../../harness/src/conversation.fixture.ts";
+import { type ConversationClient, connectConversation } from "@realm/dura/client";
+import type { RunDetail } from "@realm/dura/types";
+import { serveConversationFixture } from "../../../../dura/src/conversation.fixture.ts";
 import { OptInText } from "./components/text.ts";
 import { ManagedWorkspace } from "./managed.tsx";
 import { type ManagedView, RELOAD_UI, readManagedView, writeManagedView } from "./ui-state.ts";

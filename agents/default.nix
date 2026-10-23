@@ -1,4 +1,4 @@
-# A small Bun team. Import this attribute set into services.pituitary.agents.
+# A small Bun team. Import this attribute set into services.dura.agents.
 let
   development =
     { pkgs, ... }:
@@ -15,7 +15,7 @@ in
 {
   coordinator = {
     imports = [ development ];
-    pituitary.agent = {
+    dura.agent = {
       description = "Understand the objective, delegate implementation, and arrange a review.";
       credentials = [ "primary" ];
       tools = reading;
@@ -49,7 +49,7 @@ in
 
   builder = {
     imports = [ development ];
-    pituitary.agent = {
+    dura.agent = {
       description = "Implement a focused change and retain its code for independent checks.";
       credentials = [ "primary" ];
       tools = reading ++ [
@@ -81,7 +81,7 @@ in
 
   reviewer = {
     imports = [ development ];
-    pituitary.agent = {
+    dura.agent = {
       description = "Review the accepted code and explain concrete defects or missing coverage.";
       credentials = [ "primary" ];
       tools = reading;

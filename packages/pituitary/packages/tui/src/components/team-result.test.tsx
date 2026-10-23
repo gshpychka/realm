@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { KeyEvent, parseKeypress } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
-import type { RunDetail } from "@pituitary/harness/runtime";
+import type { RunDetail } from "@realm/dura/types";
 import { TaskResult } from "./team.tsx";
 
 for (const stopped of [false, true])

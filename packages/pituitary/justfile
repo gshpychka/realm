@@ -7,7 +7,7 @@ loop:
     @bash scripts/loop.sh
 
 install:
-    bun install
+    cd ../.. && bun install
 
 typecheck:
     tsc -p .
@@ -53,15 +53,15 @@ screens:
 run scenario="hello" delay="25":
     PITUITARY_FIXTURE_SCENARIO="$1" PITUITARY_FIXTURE_DELAY="$2" bun packages/tui/src/app.fixture.tsx
 
-# The native harness and terminal, using configured provider credentials.
+# The frontend connected to regular Pi, using its configured provider credentials.
 [positional-arguments]
 live *args:
-    bun packages/harness/src/main.ts "$@"
+    bun packages/tui/src/main.tsx "$@"
 
-# Persistent native runs from source: just harness run --name review, just harness attach review.
+# Dura's host and declared team: just dura run --agent coordinator --name review.
 [positional-arguments]
-harness *args:
-    bun packages/harness/src/main.ts "$@"
+dura *args:
+    bun ../dura/src/main.ts "$@"
 
 clean:
     rm -rf artifacts .tmp

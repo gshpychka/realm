@@ -37,7 +37,7 @@ gate() {
 
 : >"$report.rows"
 
-gate install bun install --frozen-lockfile
+gate install bash -c 'cd "$1" && bun install --frozen-lockfile' _ "$realm_root"
 gate typecheck tsc -p .
 gate lint biome check .
 gate unit bun test packages/ scripts/

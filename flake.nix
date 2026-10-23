@@ -113,6 +113,7 @@
         in
         {
           pituitary = pkgs.callPackage ./packages/pituitary { };
+          dura = pkgs.callPackage ./packages/dura { };
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           inherit bay;
@@ -221,10 +222,10 @@
 
       homeManagerModules.pituitary = ./modules/home-manager/pituitary.nix;
       nixosModules.bay = ./modules/system/nixos/bay.nix;
-      nixosModules.pituitary = ./modules/system/nixos/pituitary.nix;
-      nixosModules.pituitaryAgent = ./packages/pituitary/agent-module.nix;
+      nixosModules.dura = ./modules/system/nixos/dura.nix;
+      nixosModules.duraAgent = ./packages/dura/agent-module.nix;
       lib.bayGuestImage = import ./packages/bay/image.nix;
-      lib.pituitaryAgent = import ./packages/pituitary/agent.nix;
+      lib.duraAgent = import ./packages/dura/agent.nix;
 
       # Minimal bootstrap NixOS config for GCE image
       # Full config is deployed separately via nixos-rebuild
@@ -346,8 +347,8 @@
             in
             {
               inherit (projectPackages.x86_64-linux) bay flare;
-              pituitary-agents = import ./tests/pituitary-agents.nix { inherit pkgs; };
-              pituitary-catalog = import ./tests/pituitary-catalog.nix { inherit pkgs; };
+              dura-agents = import ./tests/dura-agents.nix { inherit pkgs; };
+              dura-catalog = import ./tests/dura-catalog.nix { inherit pkgs; };
               bay-vm = import ./tests/bay.nix { inherit inputs pkgs; };
               bay-shellcheck =
                 pkgs.runCommand "check-bay-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; }
@@ -396,6 +397,11 @@
             program = lib.getExe projectPackages.${system}.pituitary;
             inherit (projectPackages.${system}.pituitary) meta;
           };
+          dura = {
+            type = "app";
+            program = lib.getExe projectPackages.${system}.dura;
+            inherit (projectPackages.${system}.dura) meta;
+          };
           update-pi-packages = {
             type = "app";
             program = lib.getExe piPackages.updateScript;
@@ -436,6 +442,7 @@
             in
             {
               pituitary = import ./packages/pituitary/shell.nix { inherit pkgs; };
+              dura = import ./packages/pituitary/shell.nix { inherit pkgs; };
               default = pkgs.mkShell {
                 buildInputs = [
                   pkgs.nixd

@@ -1,6 +1,6 @@
 # Operator execution and transfers
 
-[Bay quickstart](../README.md) · [Design](design.md) · [Pituitary agents](../../../agents)
+[Bay quickstart](../README.md) · [Design](design.md) · [Dura agents](../../../agents)
 
 This API lets a host application use Bay for files, commands, and immutable transfers.
 Bay owns execution; the application owns its tasks and conversations. The guest

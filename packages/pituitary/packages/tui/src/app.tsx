@@ -2,7 +2,7 @@ import type { BoxRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core
 import { usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
 import { type ConversationLink, plain } from "@pituitary/session";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BUILTINS, builtin } from "./commands/commands.ts";
+import { BUILTINS, builtin, type Command, PI_COMMANDS } from "./commands/commands.ts";
 import { runCommand } from "./commands/run-command.ts";
 import { Conversation, type Display } from "./components/conversation.tsx";
 import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
@@ -29,6 +29,8 @@ import { usePullRequest } from "./github/use-pull-request.ts";
 import { type Action, actionFor, type Keymap, loadKeymap } from "./keymap.ts";
 import { KeymapProvider, keyHint } from "./keymap-context.tsx";
 import { modelTitle } from "./model-names.ts";
+import type { PiUiPort } from "./pi.ts";
+import { PiWidgets, usePiUI } from "./pi-ui.tsx";
 import { remains } from "./remains.ts";
 import { theme } from "./theme.ts";
 import { worked } from "./transcript.ts";
@@ -53,6 +55,11 @@ export interface AppProps {
   initialView?: ConversationState;
   onCaptureView?(capture: () => ConversationState): void;
   onReload?(): void;
+  onHandoff?(command: string): void;
+  onNewSession?(): Promise<void>;
+  extensionUI?: PiUiPort;
+  commands?: readonly Command[];
+  initialPrompt?: string;
   onQuit(): void;
   keys?: Keymap;
 }
@@ -116,6 +123,11 @@ export function App({
   initialView,
   onCaptureView,
   onReload,
+  onHandoff,
+  onNewSession,
+  extensionUI,
+  commands: extensionCommands = [],
+  initialPrompt,
   workspace = { cwd: process.cwd(), local: true },
 }: AppProps) {
   const session = useSession(link);
@@ -124,9 +136,11 @@ export function App({
   const { width: screenColumns, height: screenRows } = useTerminalDimensions();
   const keymap = useMemo(() => keys ?? loadKeymap(), [keys]);
   const editor = useRef<EditorHandle | null>(null);
+  const piUI = usePiUI(extensionUI, editor, renderer, session.notify);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const lastInterrupt = useRef(0);
   const started = useRef(false);
+  const prompted = useRef(false);
   const [hint, flash] = useFlash();
   const [expanded, setExpanded] = useState(initialView?.expanded ?? false);
   const [thinking, setThinking] = useState(initialView?.thinking ?? true);
@@ -167,7 +181,7 @@ export function App({
           prefill: plain(revising.objective),
         }
       : null;
-  const dialogs = operatorDialog ? [operatorDialog] : [];
+  const dialogs = operatorDialog ? [operatorDialog, ...piUI.dialogs] : piUI.dialogs;
   const dialog = dialogs[0];
   const choosing = picker !== null || resultTask !== null;
   const taken = Boolean(dialog || choosing);
@@ -186,6 +200,8 @@ export function App({
       ...BUILTINS.filter((command) =>
         readonly ? ARCHIVE_COMMANDS.has(command.name) : command.name !== "model" || canChooseModel,
       ),
+      ...(!readonly && onHandoff ? PI_COMMANDS : []),
+      ...(!readonly ? extensionCommands.filter((command) => !BUILTINS.some((own) => own.name === command.name) && !PI_COMMANDS.some((own) => own.name === command.name)) : []),
       ...(team
         ? TEAM_COMMANDS.filter((command) => onReload || command.name !== "reload-ui").map((command) => ({
             ...command,
@@ -193,7 +209,7 @@ export function App({
           }))
         : []),
     ],
-    [canChooseModel, readonly, team, onReload],
+    [canChooseModel, readonly, team, onReload, onHandoff, extensionCommands],
   );
   const completions = useCompletion(editor, commands, localCwd);
   const workingRows = statusUp(view, closed) ? (closed || !TRAVELS ? 1 : 2) : 0;
@@ -298,6 +314,7 @@ export function App({
   const manage = (operation: Promise<void>) =>
     void operation.catch((error) => session.notify("error", String(error)));
   const answerDialog = (id: string, response: DialogResponse) => {
+    if (piUI.answer(response)) return;
     const { cancelled, value } = response;
     if (operatorQuestion && id === `question:${operatorQuestion.id}`) {
       if (!cancelled && value?.trim() && team) manage(team.answer(operatorQuestion.id, value));
@@ -324,6 +341,7 @@ export function App({
     const bound = (Object.entries(keymap) as [Action, readonly string[]][]).flatMap(([action, bindings]) =>
       bindings.length > 0 &&
       (!action.startsWith("app.team.") || team) &&
+      (!action.startsWith("app.session.") || onHandoff) &&
       (action !== "app.ui.reload" || onReload) &&
       (!readonly ||
         ARCHIVE_ACTIONS.has(action) ||
@@ -342,9 +360,14 @@ export function App({
     return ["keys", ...bound, `${"enter".padEnd(16)} send`, `${"shift+enter".padEnd(16)} new line`].join(
       "\n",
     );
-  }, [keymap, readonly, archived, team, onReload]);
+  }, [keymap, readonly, archived, team, onReload, onHandoff]);
 
   const command = (name: string, args = "") => {
+    if (!readonly && onHandoff && PI_COMMANDS.some((command) => command.name === name)) {
+      if (name === "new" && onNewSession) manage(onNewSession());
+      else onHandoff(`/${name}${args ? ` ${args}` : ""}`);
+      return;
+    }
     if (team && TEAM_COMMANDS.some((command) => command.name === name)) {
       const task = team.detail.tasks.find((task) => task.id === team.taskId);
       if (name === "tasks") showTasks();
@@ -391,6 +414,10 @@ export function App({
   const submit = (text: string, followUp = false) => {
     if (!text.trim()) return;
     const managedCommand = /^\/([a-z-]+)(?:\s|$)/.exec(text.trim())?.[1];
+    if (onHandoff && managedCommand && PI_COMMANDS.some((command) => command.name === managedCommand)) {
+      command(managedCommand, text.trim().slice(managedCommand.length + 1).trim());
+      return;
+    }
     if (team && managedCommand && TEAM_COMMANDS.some((command) => command.name === managedCommand)) {
       command(managedCommand);
       return;
@@ -428,6 +455,13 @@ export function App({
     started.current = true;
     if (!state.model) command("model");
   }, [state, readonly, canChooseModel]);
+  // The first snapshot establishes history before the CLI's task starts streaming.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the initial task is submitted once per mounted session
+  useEffect(() => {
+    if (prompted.current || !state || !initialPrompt) return;
+    prompted.current = true;
+    submit(initialPrompt);
+  }, [state, initialPrompt]);
 
   const restoreQueue = async (taken = session.takeQueue()) => {
     const queued = await taken;
@@ -455,6 +489,9 @@ export function App({
 
   /** What each bound action does. */
   const actions = {
+    "app.session.new": () => { if (!onHandoff) return false; command("new"); return true; },
+    "app.session.resume": () => { if (!onHandoff) return false; command("resume"); return true; },
+    "app.session.fork": () => { if (!onHandoff) return false; command("fork"); return true; },
     "app.team.tasks": () => {
       if (!team) return false;
       showTasks();
@@ -742,6 +779,7 @@ export function App({
               setDraftRows(this.height);
             }}
           >
+            <PiWidgets widgets={piUI.widgets} placement="aboveEditor" />
             {readonly ? (
               <box paddingLeft={1} paddingTop={1} height={2}>
                 <text fg={theme.dim} truncate wrapMode="none">
@@ -782,6 +820,8 @@ export function App({
               setFooterRows(this.height);
             }}
           >
+            <PiWidgets widgets={piUI.widgets} placement="belowEditor" />
+            {piUI.statuses.length ? <text fg={theme.dim} truncate wrapMode="none">{piUI.statuses.join(" · ")}</text> : null}
             <Footer
               state={state}
               stats={stats}

@@ -25,7 +25,7 @@ async function run(name: string, args: string, { link, session, ...context }: Co
       const { models } = await link.call({ type: "get_available_models" });
       if (!models.length)
         throw new Error(
-          "No configured models are available. Configure a provider credential in the runtime and reopen the model picker.",
+          "No configured models are available. In regular Pi, use /login to connect a provider; Dura uses the host's declared provider grants.",
         );
       const choose = async (value: string) => {
         const [provider = "", ...rest] = value.split("/");

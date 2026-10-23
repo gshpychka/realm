@@ -1,88 +1,33 @@
 {
   lib,
-  stdenvNoCC,
+  runCommand,
   bun,
+  nodejs,
   makeWrapper,
   stdenv,
   neovim-unwrapped,
   gh,
   git,
+  callPackage,
 }:
 let
-  # Bun runs the workspace from source. Keep tests, development tools, and the
-  # rest of Realm outside the runtime closure and dependency hash.
-  source = lib.fileset.toSource {
-    root = ./.;
-    fileset = lib.fileset.unions [
-      ./package.json
-      ./bun.lock
-      ./tsconfig.json
-      ./tsconfig.base.json
-      ./patches
-      (lib.fileset.fileFilter (
-        file:
-        !(lib.any (suffix: lib.hasSuffix suffix file.name) [
-          ".test.ts"
-          ".test.tsx"
-          ".fixture.ts"
-          ".fixture.tsx"
-        ])
-      ) ./packages)
-    ];
-  };
-
-  # Include every platform's optional native packages, so one hash serves all systems.
-  dependencies = stdenvNoCC.mkDerivation {
-    pname = "pituitary-dependencies";
-    version = "0.0.0";
-    src = source;
-    nativeBuildInputs = [ bun ];
-    dontConfigure = true;
-    dontFixup = true;
-    buildPhase = ''
-      runHook preBuild
-      export HOME=$TMPDIR
-      bun install --frozen-lockfile --production --ignore-scripts --no-progress --os='*' --cpu='*'
-      runHook postBuild
-    '';
-    installPhase = ''
-      runHook preInstall
-      mkdir -p $out
-      cp -R node_modules $out/
-      for dir in packages/*/node_modules; do
-        mkdir -p $out/$(dirname $dir)
-        cp -R $dir $out/$dir
-      done
-      runHook postInstall
-    '';
-    outputHashMode = "recursive";
-    outputHashAlgo = "sha256";
-    outputHash = "sha256-mwrFfC69y4ac4ex3bs3P5jLXqIdiWUuIIRbgs2yFlDw=";
-  };
+  workspace = callPackage ../agent-workspace.nix { };
 in
-stdenvNoCC.mkDerivation {
-  pname = "pituitary";
-  version = "0.0.0";
-  src = source;
+runCommand "pituitary" {
   nativeBuildInputs = [ makeWrapper ];
-  dontConfigure = true;
-  dontBuild = true;
-  installPhase = ''
-    runHook preInstall
-    mkdir -p $out/share/pituitary $out/bin
-    cp -R . $out/share/pituitary
-    chmod -R u+w $out/share/pituitary
-    cp -R ${dependencies}/. $out/share/pituitary/
-    makeWrapper ${bun}/bin/bun $out/bin/pituitary \
-      --add-flags $out/share/pituitary/packages/harness/src/main.ts \
-      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ stdenv.cc.cc.lib ]} \
-      --set-default PITUITARY_NVIM ${neovim-unwrapped}/bin/nvim \
-      --set-default PITUITARY_GIT ${git}/bin/git \
-      --set-default PITUITARY_GH ${gh}/bin/gh
-    runHook postInstall
-  '';
   meta = {
-    description = "Durable agent workspace with declarative Bay execution environments";
+    description = "The terminal frontend for Pi and Dura";
     mainProgram = "pituitary";
   };
-}
+} ''
+  mkdir -p $out/bin $out/libexec
+  makeWrapper ${nodejs}/bin/node $out/libexec/pi \
+    --add-flags ${workspace}/packages/dura/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js
+  makeWrapper ${bun}/bin/bun $out/bin/pituitary \
+    --add-flags ${workspace}/packages/pituitary/packages/tui/src/main.tsx \
+    --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ stdenv.cc.cc.lib ]} \
+    --suffix PATH : $out/libexec \
+    --set-default PITUITARY_NVIM ${neovim-unwrapped}/bin/nvim \
+    --set-default PITUITARY_GIT ${git}/bin/git \
+    --set-default PITUITARY_GH ${gh}/bin/gh
+''

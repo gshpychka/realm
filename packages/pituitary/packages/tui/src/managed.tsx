@@ -1,5 +1,6 @@
-import type { ConversationClient } from "@pituitary/harness/conversation";
-import type { RunDetail, Runtime } from "@pituitary/harness/runtime";
+import type { ConversationClient } from "@realm/dura/client";
+import type { Runtime } from "@realm/dura/client";
+import type { RunDetail } from "@realm/dura/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { App } from "./app.tsx";
 import type { ConversationState, TeamContext } from "./components/team.tsx";

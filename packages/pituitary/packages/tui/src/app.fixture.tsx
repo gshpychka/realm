@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, extend } from "@opentui/react";
-import { connectConversation } from "@pituitary/harness/conversation";
-import { serveConversationFixture } from "../../harness/src/conversation.fixture.ts";
+import { connectConversation } from "@realm/dura/client";
+import { serveConversationFixture } from "../../../../dura/src/conversation.fixture.ts";
 import { App } from "./app.tsx";
 import { OptInText } from "./components/text.ts";
 import { prewarm } from "./nvim/engine.ts";
