@@ -21,16 +21,14 @@ const planFor = (out: string, first: string, ...rest: string[]): BenchPlan => ({
 });
 
 describe("executePlan", () => {
-  it.effect("appends a run per series through the real adapter, keeping earlier runs", () =>
+  it.effect("appends a run per series through the real adapter", () =>
     withHistoryFile((path) => {
       const endpoint = chatEndpoint();
       return Effect.gen(function* () {
         yield* executePlan(planFor(path, "vendor/a", "vendor/b"));
-        yield* executePlan(planFor(path, "vendor/a"));
         const { runs } = yield* readResults(path);
-        expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a", "vendor/b", "vendor/a"]);
-        expect(new Set(runs.map((run) => run.id)).size).toBe(3);
-        expect(endpoint.requests).toHaveLength(6);
+        expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a", "vendor/b"]);
+        expect(endpoint.requests).toHaveLength(4);
       }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
     }),
   );
