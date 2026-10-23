@@ -90,34 +90,23 @@ export function HistoryChart({
       aria-describedby={descriptionId}
     >
       <ResponsiveContainer height={300}>
-        <LineChart margin={{ top: 22, right: 26, bottom: 30, left: 8 }}>
+        <LineChart margin={CHART.margin}>
           <CartesianGrid {...CHART.grid} />
           <XAxis
+            {...CHART.xAxis}
             dataKey="timestamp"
             type="number"
             scale="time"
             domain={domain}
             tickFormatter={(value: number) => tickFormat.format(value)}
             minTickGap={35}
-            stroke={CHART.axis}
-            tickLine={false}
-            tick={CHART.tick}
-            tickMargin={12}
-            label={{
-              ...CHART.label,
-              value: "Run start (UTC)",
-              position: "insideBottom",
-              offset: -20,
-            }}
+            label={{ ...CHART.xLabel, value: "Run start (UTC)" }}
           />
           <YAxis
+            {...CHART.yAxis}
             domain={[0, yMax]}
             tickFormatter={(value: number) => `${Math.round(value * 100)}`}
             width={56}
-            axisLine={false}
-            tickLine={false}
-            tick={CHART.tick}
-            tickMargin={10}
             label={{
               ...CHART.label,
               value: "Calibration error (pp)",

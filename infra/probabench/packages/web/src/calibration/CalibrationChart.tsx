@@ -103,34 +103,23 @@ export function CalibrationChart({
       aria-describedby={descriptionId}
     >
       <ResponsiveContainer>
-        <LineChart margin={{ top: 24, right: 24, bottom: 30, left: 8 }}>
+        <LineChart margin={CHART.margin}>
           <CartesianGrid {...CHART.grid} />
           <XAxis
+            {...CHART.xAxis}
             dataKey="x"
             type="number"
             domain={[0, 1]}
             ticks={TICKS}
             tickFormatter={(value: number) => percent(value, 0)}
-            stroke={CHART.axis}
-            tickLine={false}
-            tick={CHART.tick}
-            tickMargin={12}
-            label={{
-              ...CHART.label,
-              value: "Target probability",
-              position: "insideBottom",
-              offset: -22,
-            }}
+            label={{ ...CHART.xLabel, value: "Target probability" }}
           />
           <YAxis
+            {...CHART.yAxis}
             domain={[0, 1]}
             ticks={TICKS}
             tickFormatter={(value: number) => percent(value, 0)}
             width={52}
-            axisLine={false}
-            tickLine={false}
-            tick={CHART.tick}
-            tickMargin={10}
           />
           <Tooltip
             // Keep null entries: a target with no valid replies must still open its tooltip.
