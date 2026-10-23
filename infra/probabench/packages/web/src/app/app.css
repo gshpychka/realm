@@ -21,7 +21,6 @@
   transform: none;
 }
 .notebook-panel {
-  min-height: 320px;
   border-radius: var(--radius-sm);
   scroll-margin-top: 24px;
   padding-top: 24px;
@@ -93,10 +92,6 @@
   display: flex;
   align-items: center;
   gap: 26px;
-
-  @media (max-width: 650px) {
-    gap: 0;
-  }
 }
 .header-actions > .button {
   @media (max-width: 650px) {
@@ -245,7 +240,6 @@
   border: 0;
   border-bottom: 2px solid transparent;
   color: var(--muted);
-  font-size: 14px;
 
   @media (max-width: 650px) {
     font-size: 13px;
@@ -296,7 +290,6 @@
 .empty-notebook > p {
   max-width: 460px;
   margin: 20px auto 0;
-  font-size: 14px;
   line-height: 1.9;
   color: var(--text-3);
 
@@ -363,7 +356,6 @@
   }
 }
 .notebook-error > p {
-  font-size: 14px;
   line-height: 1.8;
   color: var(--muted);
   margin: 16px auto 24px;

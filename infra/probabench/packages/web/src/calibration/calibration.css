@@ -81,7 +81,6 @@
 
 /* The models panel */
 .model-panel {
-  min-width: 0;
   padding: 0 0 0 22px;
   border-left: 1px solid var(--line);
 
@@ -102,9 +101,6 @@
   font-weight: 600;
 }
 .model-fieldset {
-  border: 0;
-  padding: 0;
-
   @media (max-width: 900px) {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -115,7 +111,6 @@
   }
 }
 .model-item {
-  min-width: 0;
   border-bottom: 1px solid var(--line);
   padding: 17px 0;
 
@@ -129,7 +124,6 @@
   align-items: flex-start;
   gap: 10px;
   width: 100%;
-  min-width: 0;
   min-height: 44px;
   background: transparent;
   padding: 4px 0;
@@ -168,7 +162,6 @@
 }
 .model-toggle strong {
   font-size: 13px;
-  line-height: 1.5;
   overflow-wrap: anywhere;
   font-weight: 500;
 }
@@ -178,13 +171,10 @@
 }
 .run-select {
   display: block;
-  min-width: 0;
   margin: 9px 0 0 29px;
 }
 .run-select select {
   width: 100%;
-  max-width: 100%;
-  min-width: 0;
   min-height: 40px;
   font: 12px / 1.6 var(--mono);
   padding: 7px 10px;
@@ -249,7 +239,6 @@
 }
 .measurement-empty {
   padding: 24px 0;
-  font-size: 14px;
 }
 .measurement-run {
   border-bottom: 1px solid var(--line);

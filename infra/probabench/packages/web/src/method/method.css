@@ -41,7 +41,6 @@
   display: grid;
   grid-row: span 4;
   grid-template-rows: subgrid;
-  min-width: 0;
   padding: 28px;
 
   @media (max-width: 900px) {

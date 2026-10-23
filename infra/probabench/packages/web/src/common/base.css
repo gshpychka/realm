@@ -84,6 +84,11 @@ figure {
 }
 fieldset {
   min-width: 0;
+  padding: 0;
+  border: 0;
+}
+legend {
+  padding: 0;
 }
 button,
 input,
@@ -129,6 +134,7 @@ summary:focus-visible,
 }
 /* Firefox dims placeholders by default. */
 ::placeholder {
+  color: var(--muted);
   opacity: 1;
 }
 ::selection {
@@ -177,9 +183,8 @@ var {
   color: var(--muted);
   font: 11px / 1.4 var(--mono);
 }
-/* A bordered panel; min-width: 0 lets it shrink with the grid column it sits in. */
+/* A bordered panel. */
 .card {
-  min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--panel);

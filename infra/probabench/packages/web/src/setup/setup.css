@@ -1,18 +1,16 @@
 /* The dialog */
 .run-dialog {
-  width: min(700px, calc(100% - 32px));
+  /* The UA's dialog:modal max-width, calc(100% - 6px - 2em), keeps it inside narrow screens. */
+  width: 700px;
   max-height: calc(100svh - 48px);
   padding: 0;
-  margin: auto;
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: 0 40px 100px #0008;
-  overflow-y: auto;
 
   @media (max-width: 650px) {
-    width: calc(100% - 20px);
     max-height: calc(100svh - 24px);
   }
 }
@@ -55,7 +53,6 @@ body:has(.run-dialog[open]) {
 .run-dialog select {
   display: block;
   width: 100%;
-  min-width: 0;
   padding: 11px 12px;
   background: var(--bg);
   color: var(--text);
@@ -69,14 +66,10 @@ body:has(.run-dialog[open]) {
     min-height: 44px;
   }
 }
-.run-dialog input::placeholder {
-  color: var(--muted);
-}
 .field-label {
   display: block;
   font-size: 13px;
   line-height: 1.7;
-  color: var(--text);
   margin-bottom: 9px;
 
   @media (max-width: 650px) {
@@ -131,16 +124,11 @@ body:has(.run-dialog[open]) {
   line-height: 1;
 }
 .preset-fieldset {
-  border: 0;
-  padding: 0;
   margin: 24px 0 18px;
 
   @media (max-width: 650px) {
     margin: 20px 0 4px;
   }
-}
-.preset-fieldset legend {
-  padding: 0;
 }
 .preset-grid {
   display: grid;
@@ -153,7 +141,6 @@ body:has(.run-dialog[open]) {
 }
 .preset {
   display: flex;
-  min-width: 0;
   flex-direction: column;
   text-align: left;
   padding: 14px;
@@ -252,7 +239,6 @@ body:has(.run-dialog[open]) {
 .advanced summary > span {
   float: right;
   color: var(--muted);
-  font-size: 12px;
 }
 .advanced .form-grid {
   margin-bottom: 17px;
@@ -361,7 +347,6 @@ body:has(.run-dialog[open]) {
 }
 .job-status > p {
   grid-column: 2;
-  font-size: 14px;
   color: var(--text-3);
   line-height: 1.7;
   margin-top: 12px;

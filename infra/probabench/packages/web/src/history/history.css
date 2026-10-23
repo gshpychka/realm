@@ -22,8 +22,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 0;
-  border: 0;
   margin: 18px 0 4px;
 }
 .history-graph-legend > button {
@@ -97,7 +95,6 @@
   align-items: center;
   text-align: left;
   width: 100%;
-  min-width: 0;
   gap: 16px;
   padding: 16px 10px 16px 16px;
   border: 1px solid transparent;
@@ -159,7 +156,6 @@
 }
 .history-row-metric strong {
   font: 13px / 1.5 var(--mono);
-  font-weight: 400;
 
   @media (max-width: 650px) {
     font-size: 12px;
@@ -171,7 +167,6 @@
 }
 .row-arrow {
   color: var(--muted);
-  font-size: 14px;
 
   @media (max-width: 650px) {
     display: none;
@@ -181,13 +176,12 @@
    above it, in document order, once the layout stacks. */
 .history-inspector {
   order: 1;
-  min-width: 0;
   scroll-margin-top: 20px;
 
   @media (max-width: 900px) {
     order: 0;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
     align-items: start;
   }
