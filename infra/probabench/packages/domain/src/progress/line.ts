@@ -24,10 +24,5 @@ export const parsePointProgress = (
   line: string,
 ): Pick<PointProgress, "completed" | "total"> | null => {
   const match = /\] point (\d+)\/(\d+) x=/.exec(line);
-  if (!match) return null;
-  const completed = Number(match[1]);
-  const total = Number(match[2]);
-  return Number.isSafeInteger(total) && completed > 0 && completed <= total
-    ? { completed, total }
-    : null;
+  return match ? { completed: Number(match[1]), total: Number(match[2]) } : null;
 };

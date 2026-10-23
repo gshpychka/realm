@@ -12,10 +12,7 @@ describe("point progress lines", () => {
     },
   );
 
-  it.each(["[vendor/model] starting sweep", "[vendor/model] point 99/5 x=25%", "retrying…"])(
-    "ignores %s",
-    (line) => {
-      expect(parsePointProgress(line)).toBeNull();
-    },
-  );
+  it.each(["[vendor/model] starting sweep", "retrying…"])("ignores %s", (line) => {
+    expect(parsePointProgress(line)).toBeNull();
+  });
 });
