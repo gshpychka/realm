@@ -25,10 +25,11 @@ const keepTail = (log: string): string =>
   log.length > MAX_LOG_CHARS ? log.slice(log.indexOf("\n", log.length - MAX_LOG_CHARS) + 1) : log;
 
 export function createBenchController({
-  apiKey,
+  configured,
   launch,
 }: {
-  readonly apiKey: string;
+  /** Whether the dev server has the OpenRouter key. */
+  readonly configured: boolean;
   /** Starts the runner with these flags; the key reaches it through the environment. */
   readonly launch: (args: readonly string[]) => ChildProcess;
 }) {
@@ -39,13 +40,13 @@ export function createBenchController({
   const update = (change: (current: Job) => Partial<Job>) => {
     if (job) job = { ...job, ...change(job) };
   };
-  const status = (): BridgeStatus => ({ configured: apiKey !== "", job });
+  const status = (): BridgeStatus => ({ configured, job });
 
   return {
     status,
     start(request: BenchRequest): BridgeStatus {
       if (runner) throw new RequestError(409, "A benchmark is already running or stopping.");
-      if (apiKey === "")
+      if (!configured)
         throw new RequestError(
           400,
           "OPENROUTER_API_KEY is not set. Start the page with bun run dev, which decrypts secrets/infra/probabench.env.",
@@ -61,12 +62,11 @@ export function createBenchController({
         progress: null,
       };
 
-      // Whole lines only: escape sequences and the key never span a newline, so stripping
-      // and redaction need no state across chunks. The runner never prints the key;
-      // redaction is defence in depth. @effect/cli renders ANSI regardless of NO_COLOR, so
-      // escapes are stripped here.
+      // Whole lines only: an escape sequence never spans a newline, so stripping needs no
+      // state across chunks. @effect/cli renders ANSI regardless of NO_COLOR, so escapes
+      // are stripped here.
       const appendLine = (raw: string) => {
-        const line = stripVTControlCharacters(raw).replaceAll(apiKey, "[redacted]");
+        const line = stripVTControlCharacters(raw);
         update((current) => ({
           log: keepTail(`${current.log}${line}\n`),
           progress: parsePointProgress(line) ?? current.progress,

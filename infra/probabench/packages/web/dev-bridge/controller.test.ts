@@ -12,7 +12,6 @@ const request = {
   stepPercent: 25,
   concurrency: 5,
 };
-const KEY = "test-secret";
 
 /** A runner process driven by the test: write to its streams, then end it with exit(). */
 const fakeChild = ({ started = true } = {}) =>
@@ -36,15 +35,15 @@ const exit = async (child: FakeChild, code: number | null) => {
   child.emit("close", code);
 };
 
-const withFake = (apiKey = KEY) => {
+const withFake = (configured = true) => {
   const child = fakeChild();
   const launch = vi.fn((_args: readonly string[]) => child as unknown as ChildProcess);
-  return { child, launch, controller: createBenchController({ apiKey, launch }) };
+  return { child, launch, controller: createBenchController({ configured, launch }) };
 };
 
 describe("createBenchController", () => {
   it("does not launch before a key is configured", () => {
-    const { launch, controller } = withFake("");
+    const { launch, controller } = withFake(false);
     expect(controller.status().configured).toBe(false);
     expect(() => controller.start(request)).toThrow("OPENROUTER_API_KEY");
     expect(launch).not.toHaveBeenCalled();
@@ -56,17 +55,17 @@ describe("createBenchController", () => {
     expect(launch).toHaveBeenCalledWith([...benchArgs({ ...request, reasoning: "low" }), "--yes"]);
   });
 
-  it("publishes whole lines without escapes and with the key redacted", async () => {
+  it("publishes whole lines without escapes", async () => {
     const { child, controller } = withFake();
     controller.start(request);
-    await write(child, "progress test-se");
+    await write(child, "progress sam");
     expect(controller.status().job?.log).toBe("");
-    await write(child, "cret\x1b[31m\x1b[0m done\nnext");
-    expect(controller.status().job?.log).toBe("progress [redacted] done\n");
+    await write(child, "pled\x1b[31m\x1b[0m done\nnext");
+    expect(controller.status().job?.log).toBe("progress sampled done\n");
     await exit(child, 0);
     expect(controller.status().job).toMatchObject({
       status: "completed",
-      log: "progress [redacted] done\nnext\n",
+      log: "progress sampled done\nnext\n",
     });
   });
 
@@ -119,7 +118,7 @@ describe("createBenchController", () => {
   it("explains a runner that never started", async () => {
     const child = fakeChild({ started: false });
     const controller = createBenchController({
-      apiKey: KEY,
+      configured: true,
       launch: () => child as unknown as ChildProcess,
     });
     controller.start(request);
@@ -134,7 +133,7 @@ describe("createBenchController", () => {
   it("stops a real process on cancel and accepts the next run", async () => {
     const spawned: ChildProcess[] = [];
     const controller = createBenchController({
-      apiKey: KEY,
+      configured: true,
       launch: () => {
         const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
           stdio: ["ignore", "pipe", "pipe"],
