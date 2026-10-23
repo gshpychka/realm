@@ -47,7 +47,7 @@ export interface ConnectConversationOptions {
 
 /** A disposable view of a host-owned conversation. Closing it never stops the run. */
 export class ConversationClient implements ConversationLink {
-  private readonly events = new Set<(event: SessionEvent, sequence?: number) => void>();
+  private readonly events = new Set<(event: SessionEvent, sequence: number) => void>();
   private readonly closes = new Set<(reason: string) => void>();
   private readonly buffered: Array<{ event: SessionEvent; sequence: number }> = [];
   private readonly requests = new Set<ClientRequest>();
@@ -59,17 +59,19 @@ export class ConversationClient implements ConversationLink {
   private offered: readonly string[] = [];
   private stream?: ClientRequest;
   private readonly ready: Promise<void>;
+  private rejectReady: (error: Error) => void = () => {};
+  private attachmentTimer?: ReturnType<typeof setTimeout>;
 
   constructor(private readonly options: ConnectConversationOptions) {
     this.ready = new Promise((resolve, reject) => {
+      this.rejectReady = reject;
       const decoder = new JsonLineDecoder();
       let bytes = 0;
-      const timer = setTimeout(() => fail("Conversation attachment timed out"), options.timeout ?? 15000);
-      const fail = (reason: string) => {
-        clearTimeout(timer);
-        reject(new Error(reason));
-        this.fail(reason);
-      };
+      this.attachmentTimer = setTimeout(
+        () => this.fail("Conversation attachment timed out"),
+        options.timeout ?? 15000,
+      );
+      const fail = (reason: string) => this.fail(reason);
       const stream = request(
         {
           socketPath: options.socketPath,
@@ -88,7 +90,7 @@ export class ConversationClient implements ConversationLink {
               try {
                 reason = JSON.parse(body).error ?? body;
               } catch {}
-              fail(reason || `Attachment refused (${response.statusCode})`);
+              fail(scrub(String(reason || `Attachment refused (${response.statusCode})`)));
             });
             return;
           }
@@ -116,7 +118,7 @@ export class ConversationClient implements ConversationLink {
                   this.input = record.control;
                   this.offered = record.capabilities;
                   this.currentSnapshot = record.snapshot;
-                  clearTimeout(timer);
+                  clearTimeout(this.attachmentTimer);
                   options.signal?.removeEventListener("abort", abort);
                   resolve();
                 } else if (!this.attachment) throw new Error("Conversation welcome is missing");
@@ -144,6 +146,7 @@ export class ConversationClient implements ConversationLink {
       stream.once("error", (error) => fail(`Conversation connection failed: ${error.message}`));
       stream.end();
     });
+    void this.ready.catch(() => {});
   }
   async connected(): Promise<this> {
     await this.ready;
@@ -168,13 +171,16 @@ export class ConversationClient implements ConversationLink {
     } else for (const listener of this.events) listener(event, sequence);
   }
   private fail(reason: string) {
-    if (this.reason) return;
+    if (this.reason !== null) return;
     this.reason = reason;
+    this.input = false;
+    clearTimeout(this.attachmentTimer);
+    this.rejectReady(new Error(reason));
     this.stream?.destroy();
     for (const pending of this.requests) pending.destroy(new Error(reason));
     for (const listener of this.closes) listener(reason);
   }
-  onEvent(listener: (event: SessionEvent, sequence?: number) => void): () => void {
+  onEvent(listener: (event: SessionEvent, sequence: number) => void): () => void {
     this.events.add(listener);
     for (const { event, sequence } of this.buffered.splice(0)) listener(event, sequence);
     return () => {
@@ -183,7 +189,7 @@ export class ConversationClient implements ConversationLink {
   }
   onClose(listener: (reason: string) => void): () => void {
     this.closes.add(listener);
-    if (this.reason) listener(this.reason);
+    if (this.reason !== null) listener(this.reason);
     return () => {
       this.closes.delete(listener);
     };
@@ -198,7 +204,7 @@ export class ConversationClient implements ConversationLink {
   }
   private async send(command: ConversationCommand): Promise<unknown> {
     await this.ready;
-    if (this.reason) throw new Error(this.reason);
+    if (this.reason !== null) throw new Error(this.reason);
     return new Promise((resolve, reject) => {
       const req = request(
         {
