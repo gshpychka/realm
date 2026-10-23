@@ -6,6 +6,7 @@
     bindings = {
       YASNO_POWER = entities.sensor.yasnoPower;
       YASNO_NEXT_POWER = entities.sensor.yasnoNextPower;
+      YASNO_STATUS_TODAY = entities.sensor.yasnoStatusToday;
       BATTERY_CHARGE = entities.sensor.batteryCharge;
       MULTIPLUS_OUTPUT_POWER_L1 = entities.sensor.multiplusOutputPowerL1;
     };

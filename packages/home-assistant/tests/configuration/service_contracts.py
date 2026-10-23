@@ -26,6 +26,7 @@ async def run_script(hass, sequence, variables, responses, fail=None, on_call=No
         ("ai_task", "generate_data"),
         ("assist_satellite", "announce"),
         ("telegram_bot", "send_message"),
+        ("script", "turn_on"),
     ]
 
     async def record(call):
@@ -242,14 +243,14 @@ async def validate_media(hass, config):
 
 
 async def validate_power(hass, config):
-    # Speech can yield while sensors change. Telegram must receive the original
-    # captured message, for both restoration and outage notifications.
+    # Telegram can yield while sensors change. Queued speech must receive the
+    # original captured message, for both restoration and outage notifications.
     count = 0
     for alias in ["Power / City power is off", "Power / City power back on"]:
         actions = next(a for a in config["automation"] if a["alias"] == alias)[
             "actions"
         ]
-        for fail in [None, "assist_satellite.announce", "telegram_bot.send_message"]:
+        for fail in [None, "telegram_bot.send_message", "script.turn_on"]:
             hass.states.async_set("sensor.battery_charge", "40")
             # The published slot must cover now for the schedule to be trusted.
             now = dt_util.now()
@@ -264,7 +265,7 @@ async def validate_power(hass, config):
             hass.states.async_set("sensor.multiplus_output_power_l1", "120")
 
             def changed(name):
-                if name == "assist_satellite.announce":
+                if name == "telegram_bot.send_message":
                     hass.states.async_set("sensor.battery_charge", "5")
                     hass.states.async_set("sensor.yasno_power", "outage")
                     hass.states.async_set("sensor.multiplus_output_power_l1", "900")
@@ -273,11 +274,11 @@ async def validate_power(hass, config):
                 hass, actions, {}, {}, fail, changed
             )
             count += 1
-            assert [name for name, _ in calls] == (
-                ["assist_satellite.announce"]
-                if fail == "assist_satellite.announce"
-                else ["assist_satellite.announce", "telegram_bot.send_message"]
-            )
+            # A Telegram failure must not silence the room.
+            assert [name for name, _ in calls] == [
+                "telegram_bot.send_message",
+                "script.turn_on",
+            ]
             message = calls[0][1]["message"]
             if alias == "Power / City power back on":
                 assert message == "Power is back on. Battery is at 40 percent."
@@ -289,10 +290,12 @@ async def validate_power(hass, config):
             assert hass.states.get("sensor.battery_charge").state == "5"
             assert hass.states.get("sensor.yasno_power").state == "outage"
             assert hass.states.get("sensor.multiplus_output_power_l1").state == "900"
-            assert calls[0][1]["preannounce"] is True
-            if len(calls) == 2:
-                assert calls[1][1] == {"message": message, "disable_notification": True}
-            if fail:
+            assert calls[0][1] == {"message": message, "disable_notification": True}
+            assert calls[1][1] == {
+                "entity_id": ["script.announce_power_change"],
+                "variables": {"message": message},
+            }
+            if fail == "script.turn_on":
                 assert (
                     error == ("HomeAssistantError", "fixture service failure")
                     and result is None

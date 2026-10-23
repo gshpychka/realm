@@ -61,6 +61,9 @@
     kitchenAssistant = "select.home_assistant_voice_09e1bb_assistant";
     roomAssistant = "select.room_assistant_assistant";
   };
+  script = {
+    announcePowerChange = "script.announce_power_change";
+  };
   sensor = {
     balconyH2CCurrentLayer = "sensor.balcony_h2c_current_layer";
     balconyH2CCurrentStage = "sensor.balcony_h2c_current_stage";
@@ -92,6 +95,7 @@
     multiplusVoltageSensorAlarm = "sensor.multiplus_voltage_sensor_alarm";
     yasnoNextPower = "sensor.yasno_next_power";
     yasnoPower = "sensor.yasno_power";
+    yasnoStatusToday = "sensor.yasno_status_today";
   };
   stt = {
     whisperReaper = "stt.whisper_reaper";

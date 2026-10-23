@@ -9,6 +9,10 @@
 {%- set remaining = (as_timestamp(restoration) - as_timestamp(now())) if restoration is not none else none -%}
 {%- set hours = (remaining / 3600) | round(0) | int if remaining is not none else 0 -%}
 {%- set load = states((@@JSON_MULTIPLUS_OUTPUT_POWER_L1@@ | from_json)) -%}
+{#- During emergency shutdowns Yasno publishes no timed slots, so the power
+    sensor is legitimately unknown. Only the exact status names that case;
+    unknown or unavailable statuses keep the generic wording below. -#}
+{%- set emergency = states((@@JSON_YASNO_STATUS_TODAY@@ | from_json)) == 'emergency_shutdowns' -%}
 {#- Sentences stay flush-left and each tag trims its own trailing newline, so
     every sentence renders on one line without indentation or blank lines. -#}
 City power is off.
@@ -25,6 +29,8 @@ No information about how long the outage will last.
 {% endif -%}
 {% elif schedule == 'normal' and covered -%}
 This is not a scheduled outage.
+{% elif emergency -%}
+Yasno reports emergency shutdowns; no timed schedule or restoration estimate is available.
 {% elif schedule in ['outage', 'normal'] -%}
 The outage schedule does not cover the current time, so I cannot confirm whether this outage is scheduled.
 {% else -%}

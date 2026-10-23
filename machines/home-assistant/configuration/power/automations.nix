@@ -9,16 +9,25 @@ let
     state
     announce
     ;
+  # The message is captured once so both channels report the same moment.
+  # Telegram goes first so speech can neither delay nor abort it. A Telegram
+  # error is logged and marked in the trace but still lets the room hear the
+  # change, e.g. when the outage also took the internet down. script.turn_on
+  # returns once the run is queued: speech failures stay in the script's own
+  # trace and a long queue never keeps this automation running.
   notifyPowerChange = message: [
     { variables = { inherit message; }; }
-    (announce templates.message { preannounce = true; })
     {
       action = "telegram_bot.send_message";
+      continue_on_error = true;
       data = {
         disable_notification = true;
         inherit (templates) message;
       };
     }
+    (call "script.turn_on" entities.script.announcePowerChange {
+      variables = { inherit (templates) message; };
+    })
   ];
 in
 {

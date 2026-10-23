@@ -13,6 +13,7 @@
     ./climate/scripts.nix
     ./gpt/scripts.nix
     ./media/scripts.nix
+    ./power/scripts.nix
     ./printer/scripts.nix
     ./helpers.nix
     ./scenes.nix

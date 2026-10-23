@@ -61,6 +61,7 @@ let
               "parallel"
               "sequence"
               "delay"
+              "wait_for_trigger"
               "stop"
               "set_conversation_response"
             ]
