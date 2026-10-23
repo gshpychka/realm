@@ -1,9 +1,13 @@
 // probabench CLI entry: provides the Node platform and runs the bench command.
 import * as Command from "@effect/cli/Command";
+import * as ValidationError from "@effect/cli/ValidationError";
 import * as NodeContext from "@effect/platform-node/NodeContext";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as Cause from "effect/Cause";
+import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { benchCommand } from "./cli/command";
 import { ResultsStore } from "./store/results-store";
@@ -18,6 +22,19 @@ const MainLive = Layer.mergeAll(ResultsStore.Default, NodeHttpClient.layer).pipe
 
 NodeRuntime.runMain(
   Command.run(benchCommand, { name: "probabench", version: "0.0.0" })(process.argv).pipe(
+    // @effect/cli has already printed a ValidationError with its help; every other
+    // failure is expected and printed as its message. Defects keep the full log.
+    Effect.tapError((error) =>
+      ValidationError.isValidationError(error) ? Effect.void : Console.error(error.message),
+    ),
+    Effect.tapDefect(Effect.logError),
     Effect.provide(MainLive),
   ),
+  {
+    disableErrorReporting: true,
+    // An interrupted benchmark (Ctrl-C, or the dev bridge's SIGTERM) exits 130 rather
+    // than runMain's default 0.
+    teardown: (exit, onExit) =>
+      onExit(Exit.isSuccess(exit) ? 0 : Cause.isInterruptedOnly(exit.cause) ? 130 : 1),
+  },
 );

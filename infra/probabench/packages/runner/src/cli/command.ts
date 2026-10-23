@@ -113,7 +113,10 @@ export const benchCommand = Command.make("probabench", options, (flags) =>
       // The prompt reads its answer from stdin, which the dev server's runner lacks.
       if (process.stdin.isTTY !== true)
         return yield* new InvalidOptions({ message: NON_TTY_MESSAGE });
-      const confirmed = yield* Prompt.confirm({ message: "Run this plan?", initial: false });
+      // Ctrl-C at the prompt quits it, which answers no.
+      const confirmed = yield* Prompt.confirm({ message: "Run this plan?", initial: false }).pipe(
+        Effect.catchTag("QuitException", () => Effect.succeed(false)),
+      );
       if (!confirmed) return yield* Console.log("Aborted.");
     }
     yield* executePlan(plan);
