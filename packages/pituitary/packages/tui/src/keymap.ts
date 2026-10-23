@@ -9,6 +9,9 @@ export const ACTIONS = {
   "app.team.attention": ["ctrl+q"],
   "app.team.join": ["alt+i"],
   "app.ui.reload": ["ctrl+r"],
+  "app.session.new": ["alt+n"],
+  "app.session.resume": ["alt+r"],
+  "app.session.fork": ["alt+f"],
   "app.interrupt": ["escape"],
   "app.clear": ["ctrl+c"],
   "app.exit": ["ctrl+d"],
@@ -121,6 +124,14 @@ export function ownKeybindingsFile(): string {
 /** The operator's terminal bindings. */
 export function loadKeymap(own = ownKeybindingsFile()): Keymap {
   return keymap(readBindings(own));
+}
+
+/** Regular Pi's terminal actions, with Pituitary's explicit overrides applied last. */
+export function loadPiKeymap(
+  base = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "keybindings.json"),
+  own = ownKeybindingsFile(),
+): Keymap {
+  return keymap({ ...readBindings(base), ...readBindings(own) });
 }
 
 /** A keybindings file's action map; empty when the file is absent or malformed. */

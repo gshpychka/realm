@@ -1,159 +1,85 @@
 # Pituitary
 
-**One conversation to work in. A declared team when you need one.**
+**Your terminal interface for Pi and Dura.**
 
-Read a project, edit code, run commands, and keep working across terminal disconnects.
-Give a declared team an objective to work in isolated NixOS machines, exchange
-results, and produce code with independent verification.
+A conversation, an editor, a little fire. Work directly with your configured Pi,
+or use the same interface to follow a durable team running in Bay machines.
 
-[Start a conversation](#start-a-conversation) · [Try the UI](#try-it-without-credentials) ·
-[Run a team](#give-a-team-an-objective) · [Declare agents](../../agents) · [Bay](../bay)
+[Start](#start-a-conversation) · [Sign in](#connect-your-provider) · [Teams](#connect-to-dura) ·
+[Make it yours](#make-it-yours) · [Develop](#develop-without-rebuilding-the-system)
 
-![Pituitary rendering a tool call, its output, and a queued steering message](docs/images/conversation.png)
+![Pituitary rendering a tool call and a queued steering message](docs/images/conversation.png)
 
-*Terminal capture from a deterministic test scenario; no provider request.*
-
-## Choose your starting point
-
-| You want to… | Start with | Where code changes |
-| --- | --- | --- |
-| Work interactively in a project | `pituitary` | Directly in your current directory |
-| See the interface without credentials | `just run tool` in the dev shell | No project edits; scripted output |
-| Give a team an objective | `pituitary run --agent coordinator --workspace "$PWD" '…'` | Isolated checkouts; your checkout changes when you apply |
-| Run a terminal program in a VM | [Bay's quickstart](../bay#try-a-session) | The session's own disk |
-
-Local conversations work on Linux and macOS without Bay. Declared teams need a
-configured NixOS host with Bay; their terminal can also connect over SSH.
+*Capture from a deterministic terminal scenario; no provider request.*
 
 ## Start a conversation
 
-From a Realm checkout, with provider credentials available to the host runtime:
+From your project:
 
 ```sh
-nix run .#pituitary
+pituitary
+pituitary 'Explain how this project fits together'
+pituitary --model openai-codex/gpt-6.1-sol
 ```
 
-Choose a model with `/model` or `ctrl+l`, then ask about the project. The agent has
-file reading, editing, writing, search, and shell tools. It works as your user in
-the current directory.
+From a Realm checkout, `nix run .#pituitary` runs the packaged frontend. From another
+project, use `nix run /path/to/realm#pituitary -- 'Your task'`.
 
-For example, if your Anthropic API key lives in a private file, set it **before
-the runtime first starts**:
+Plain Pituitary starts Pi over its RPC interface. Pi owns your settings, providers,
+extensions, prompts, tools, and saved sessions; Pituitary owns the terminal. It
+prefers your configured `pi` on `PATH`, with a pinned Pi included as a fallback.
+`PI_AGENT_CMD` selects an explicit executable. Pi's CLI flags pass through.
+
+Choose a model with `/model` or `ctrl+l`. Send with `enter`, add a newline with
+`shift+enter`, and queue a follow-up with `alt+enter`. `ctrl+d` closes the frontend
+and its Pi process. Pi saves the session; the exit message gives a resume command.
+Use `/new` for a fresh conversation and `/resume` to choose a saved one.
+
+## Connect your provider
+
+Start `pituitary`, type `/login`, and choose your provider. For a ChatGPT subscription,
+choose the OpenAI subscription provider offered by your Pi version and complete
+its browser sign-in. Then use `/model` to choose an available model. `/logout`
+disconnects a provider.
+
+Login and session selection temporarily open Pi's own screens on the current
+session. Close that screen with `ctrl+d` to return to Pituitary. Authentication,
+credential persistence, and token refresh remain upstream Pi responsibilities.
+Provider API keys work through Pi's normal configuration too.
+
+Standard extension dialogs, notifications, status text, widgets, commands, and prompt
+completions appear in Pituitary. Extensions that render custom stock-terminal
+components need Pi's interactive screen; that rendering API is outside Pi RPC.
+
+## Connect to Dura
+
+[Dura](../dura) is the durable harness. [Declare a team](../../agents), then run:
 
 ```sh
-export ANTHROPIC_API_KEY="$(cat /path/to/your/api-key)"
-nix run .#pituitary
+dura run --agent coordinator --name feature --workspace "$PWD" \
+  'Implement the feature, have it reviewed, and return verified code'
 ```
 
-Replace that file path with your own. Other providers use their supported
-credential environment variables. On a managed host, use declared
-[credential profiles](../../agents#connect-the-team-to-a-host) instead.
-
-With Pituitary installed through [Home Manager](#make-it-yours), start a named
-conversation from any project:
+Dura opens Pituitary on that run. Attach explicitly from another terminal:
 
 ```sh
-cd /path/to/project
-pituitary run --name explore 'Explain how this project fits together'
+pituitary --dura feature --state /var/lib/dura
+# Or let the configured Dura command supply its host defaults:
+dura attach feature
 ```
 
-Send with `enter`; use `shift+enter` or `ctrl+j` for a newline. `alt+enter` queues a
-follow-up during a turn. Detach with `ctrl+d`, or press `ctrl+c` twice. Work stays
-in the host runtime:
+The interface adds tasks, questions, results, and independent verification. Use
+`ctrl+k` to browse tasks, `ctrl+q` for attention, and `alt+i` to join a teammate's
+input lease. Closing this attachment leaves Dura's work running.
 
-```sh
-pituitary runs
-pituitary attach explore
-```
+| Mode | Runtime and state | Configuration |
+| --- | --- | --- |
+| `pituitary` | Pi child process and Pi sessions | Pi settings, extensions, `/login` |
+| `pituitary --dura RUN` | Existing Dura host and durable conversations | Declared agents and Dura host settings |
 
-Without an installed command, use `nix run /path/to/realm#pituitary -- …` from your
-project. The path selects Realm's package; the current directory is your workspace.
-An explicit `--model provider/model` selects an available model without the picker.
-
-## Try it without credentials
-
-From the Realm root:
-
-```sh
-nix develop .#pituitary
-cd packages/pituitary
-bun install
-just run tool
-```
-
-This opens the real interface on a native Pi Durable conversation with a scripted
-Faux model. Type a message to see a tool call and its output. The model makes no
-external requests; this scenario prints fixed output without editing project files.
-It is an interface demo, not an agent solving your project.
-
-## Give a team an objective
-
-First [declare a team and enable its host runtime](../../agents). The starter team
-provides `coordinator`, `builder`, `reviewer`, and a verifier environment. These are
-declarations you import, not automatically enabled agents.
-
-On that host, from a Git project with checks matching your team's verification policy:
-
-```sh
-pituitary agents
-pituitary run --agent coordinator --name feature --workspace "$PWD" \
-  'Implement the feature, have it reviewed, and return a verified result'
-```
-
-`--workspace` captures tracked working files, including staged and unstaged edits.
-Add selected untracked paths with `--include-untracked PATH`. Every writer gets an
-isolated checkout; your branch, index, and files stay untouched.
-
-The coordinator delegates work, receives reports, and can ask you questions.
-Pituitary retains code as immutable Git bundles, integrates contributions, and runs
-declared checks against the exact integrated tree in a fresh verifier machine.
-
-```mermaid
-flowchart LR
-  Objective[Your objective] --> Team[Declared agents]
-  Team --> Code[Retained code]
-  Code --> Checks[Fresh verifier]
-  Checks --> Result[Verified result]
-  Result --> Apply[You apply]
-```
-
-Use `ctrl+k` to switch tasks, `alt+left` to return, and `ctrl+q` for questions. Opening
-a teammate observes its conversation; `alt+i` explicitly joins its input lease.
-Each conversation keeps its draft and viewport.
-
-```sh
-pituitary inspect feature
-pituitary attach feature
-pituitary apply feature
-```
-
-`apply` requires current passing verification and a checkout still matching the
-captured input. It applies changes without changing your branch or index. Review,
-commit, and push through your usual Git workflow. Missing verification policy leaves
-code explicitly unverified. A model's claim that tests passed is separate from evidence.
-
-The [agent guide](../../agents#follow-the-work) covers questions, retries, task
-revisions, and the result view.
-
-## Know what runs where
-
-| Piece | Responsibility |
-| --- | --- |
-| Host Pi Durable harness | Models, credentials, conversations, task ownership, and recovery |
-| Bay NixOS machines | Agents' files and commands; fresh verification environments |
-| Terminal frontend | Presentation, drafts, navigation, and operator input |
-
-Closing or reloading the frontend leaves work running. On a managed NixOS host,
-`pituitary.service` owns the runtime; a standalone local launch starts it on demand.
-`pituitary stop RUN` cancels owned work and retains conversations and machine
-workspaces. `pituitary recover RUN` retries parked workflow phases.
-
-Pituitary uses Pi Durable directly. Stock Pi's extensions, configured prompts,
-custom provider definitions, and Claude bridge configuration are not loaded. There
-is no built-in Claude Code login flow; declared roles use host API-key profiles.
-
-The [architecture](docs/orchestration.md) explains authority, recovery, and the code
-and evidence flow. The [CLI entrypoint](packages/harness/src/main.ts) defines commands.
+Both use the same editor, transcript, renderer, and presentation contract. Their
+bootstrap, connection, and process lifetimes stay separate. Dura's
+[architecture](../dura/docs/orchestration.md) explains authority and recovery.
 
 ## Make it yours
 
@@ -163,128 +89,86 @@ Import the [Home Manager module](../../modules/home-manager/pituitary.nix):
 { inputs, ... }:
 {
   imports = [ inputs.realm.homeManagerModules.pituitary ];
-
   programs.pituitary = {
     enable = true;
-    glyphs = "plain"; # or "nerd-font" with a Nerd Font
-    animations = true;
+    glyphs = "plain"; # or "nerd-font"
     footer.palette = "ember";
     keybindings."app.model.select" = "alt+m";
   };
 }
 ```
 
-Realm already imports the module. `programs.pituitary.model` sets a local default
-using an available `provider/model` ID; declared roles keep their own model fixed.
-The module also exposes editor, fire, firelight, logging, state-directory, and
-remote-socket settings. Its wrapper scopes these preferences to Pituitary.
+Realm already imports it. The wrapper scopes editor, fire, colors, keybindings,
+and logging preferences to Pituitary. `model` selects the regular Pi default;
+`dura.stateDirectory` and `dura.socket` configure explicit Dura attachments.
+The [NixOS Dura module](../../modules/system/nixos/dura.nix) declares the harness.
 
-The editor embeds a clean, pinned Neovim, starts in insert mode, and grows with the
-draft. `PITUITARY_NVIM` selects another executable. `PITUITARY_EDITOR`, `$VISUAL`,
-and `$EDITOR` select the external editor used by `ctrl+g`.
-
-<details>
-<summary>Keys, slash commands, and terminal preferences</summary>
+The draft embeds a clean Neovim and starts in insert mode. `ctrl+g` opens your
+external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 
 | Key | Action |
 | --- | --- |
-| enter / shift+enter or ctrl+j | Send / insert a newline |
-| alt+enter | Queue a follow-up during a turn |
-| esc | Leave insert mode; interrupt from normal mode; close a picker |
-| ctrl+l / ctrl+p / shift+tab | Choose model / next model / thinking level |
-| ctrl+o / ctrl+t | Expand work / toggle thinking |
-| ctrl+f | Browse work boxes |
-| ctrl+g | Edit the draft externally |
-| pgup / pgdn | Scroll the conversation |
-| ctrl+c / ctrl+c twice or ctrl+d | Clear draft / detach |
-| ctrl+r | Reload the source frontend |
+| enter / shift+enter | Send / newline |
+| alt+enter | Queue a follow-up |
+| esc | Leave insert mode, then interrupt; close a picker |
+| ctrl+l / ctrl+p / shift+tab | Choose model / cycle model / cycle thinking |
+| ctrl+o / ctrl+t / ctrl+f | Expand work / toggle thinking / browse work |
+| ctrl+g | Edit externally |
+| pgup / pgdn | Scroll |
+| ctrl+c twice / ctrl+d | Close |
 
-`/model`, `/thinking`, `/compact`, `/name`, `/session`, `/copy`, `/hotkeys`, and `/quit`
-provide conversation controls. `/` completes commands. Local conversations also
-complete `@` paths and show the checkout's branch and GitHub pull request. The footer
-shows directory, conversation, model, context, and usage. GitHub CLI supplies local
-pull-request information; `PITUITARY_GH=""` disables that lookup.
-
-`PITUITARY_PLAIN_GLYPHS=1` selects plain symbols. `PITUITARY_STILL=1` holds animation.
-Runtime behavior follows negotiated capabilities. Protocol tests cover Ghostty and
-tmux in Ghostty without requiring an emulator identity at runtime.
-
-</details>
+`/` completes commands. `/hotkeys` shows your bindings. Local conversations complete
+`@` paths and show the branch and GitHub pull request. `PITUITARY_GH=""` disables
+the pull request lookup. `PITUITARY_STILL=1` holds animation; `PITUITARY_PLAIN_GLYPHS=1`
+uses plain symbols. Runtime behavior follows negotiated capabilities. Protocol tests
+cover Ghostty and tmux in Ghostty.
 
 ## Connect from another machine
 
-Keep the harness, credentials, and Bay environments on the host. First ask the host
-for its private socket path:
+Dura's host retains credentials and Bay environments. Ask it for its socket:
 
 ```sh
-ssh host pituitary socket
+ssh host dura socket
+ssh -NT -L "$HOME/.dura-remote.sock:/remote/runtime/socket" host
 ```
 
-On your frontend machine, use that path as `/remote/runtime/socket` below:
+Replace `/remote/runtime/socket` with the first command's output. In another terminal:
 
 ```sh
-ssh -NT -L "$HOME/.pituitary-remote.sock:/remote/runtime/socket" host
+pituitary --dura feature --state /var/lib/dura --socket "$HOME/.dura-remote.sock"
 ```
 
-Leave the tunnel running. In another terminal:
-
-```sh
-pituitary attach feature --socket "$HOME/.pituitary-remote.sock"
-```
-
-`PITUITARY_RUNTIME_SOCKET` or Home Manager's `runtimeSocket` can make it the default.
-New remote solo runs require `--cwd` with a host directory. Start team workspace
-captures on the host: the workspace path belongs to the host, not the frontend.
+The state directory identifies the host state; an explicit socket avoids local
+filesystem discovery. Start workspace captures on the host, where the files live.
 
 ## Develop without rebuilding the system
 
-From the Realm root:
-
 ```sh
 nix develop .#pituitary
-cd packages/pituitary
 bun install
-just live --watch
+cd packages/pituitary
+just live
 ```
 
-Configure provider credentials before starting the source runtime. `--watch`
-restarts only the frontend after a UI source change; `ctrl+r` and `/reload-ui`
-request the same orderly restart. Drafts and viewports survive; host work keeps
-running. Use `just harness attach RUN --watch` for an existing source run.
+`just live` runs the frontend against regular Pi. For durable work, `just dura
+attach RUN --watch` reloads the frontend after source edits while Dura keeps working.
+`ctrl+r` requests the same reload. Drafts and viewports survive it.
 
-| Change | What needs to reload |
-| --- | --- |
-| Terminal UI source | Frontend only; use `--watch` |
-| Host application source | Restart the host runtime; tasks resume from checkpoints |
-| Instructions, models, tools, or checks | Regenerate the catalog; new runs use it |
-| Machine packages or services | Rebuild the affected image |
-
-The dev shell keeps caches and host state inside the checkout. Installed wrapper
-preferences are not implicitly copied into source launches. `PITUITARY_STATE_DIR`
-selects private host state; source runs use their own state directory by default.
+For a provider-free interface demo, run `just run tool`. It uses a native Pi Durable
+conversation and a scripted Faux model, without external requests or project edits.
 
 | Path | Responsibility |
 | --- | --- |
-| [`packages/harness`](packages/harness) | Workflows, domain tools, Bay adapter, artifacts, host API, CLI |
-| [`packages/session`](packages/session) | Presentation events, state reduction, and pacing |
-| [`packages/tui`](packages/tui) | Editor, transcript, team navigation, and renderer |
+| [`packages/tui`](packages/tui) | Interface and isolated Pi/Dura adapters |
+| [`packages/session`](packages/session) | Presentation contract, reducer, pacing |
 | [`packages/ember`](packages/ember) | Fire and light primitives |
-| [`e2e`](e2e) | Provider-free terminal scenarios and performance evidence |
+| [`../dura`](../dura) | Durable workflows, host API, CLI, Bay connector |
+| [`e2e`](e2e) | Terminal scenarios and performance evidence |
 
-<details>
-<summary>Validation and packaging</summary>
+Checks run in batches at major milestones. `just loop` writes its report, logs,
+and screen captures under `artifacts`. Root `bun.lock` pins the workspace; the
+production dependency hash lives in [`../agent-workspace.nix`](../agent-workspace.nix).
+Renew it with a package build after changing dependencies.
 
-Validation is batched at major milestones. `just loop` runs typechecking, formatting,
-unit tests, PTY scenarios, latency budgets, package, and Home Manager gates. It writes
-`artifacts/report.md`, logs, and captured screens; inspect the `.txt` and `.png` files.
-`just tui` drives a native test conversation interactively. Bay's real VM checks live
-in Realm's flake tests. New source files must be tracked for Git-backed flake builds.
-
-`bun.lock` pins dependencies. To renew the production dependency hash after changing
-it, set `outputHash` in `default.nix` to `lib.fakeHash`, build `../..#pituitary`, and
-use the reported hash.
-
-</details>
-
-The former [Pituitary repository](https://github.com/gshpychka/pituitary) is retired.
-Source, packages, modules, and issues belong in Realm.
+The former [Pituitary repository](https://github.com/gshpychka/pituitary) is retired;
+source, packages, modules, and issues belong in Realm.

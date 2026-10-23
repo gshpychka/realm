@@ -8,6 +8,7 @@ import { theme } from "../theme.ts";
 /** A terminal-owned team question or revision, independent of conversation transport. */
 export type DialogRequest = { type: "dialog"; id: string; title: string } & (
   | { method: "select"; options: string[] }
+  | { method: "input"; placeholder?: string }
   | { method: "editor"; prefill?: string }
 );
 export interface DialogResponse {
@@ -86,6 +87,13 @@ function Body({
 }: Omit<DialogProps, "behind" | "rows"> & { ready: boolean; rows: number }) {
   const { id } = dialog;
   switch (dialog.method) {
+    case "input":
+      return (
+        <box flexDirection="column">
+          <input focused={ready} placeholder={dialog.placeholder} onSubmit={(value) => onAnswer({ type: "dialog_response", id, value })} />
+          <Hint text="enter send" />
+        </box>
+      );
     case "select":
       return (
         <box flexDirection="column">

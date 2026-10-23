@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
-import { connectConversation } from "@pituitary/harness/conversation";
-import { serveConversationFixture } from "../../harness/src/conversation.fixture.ts";
+import { connectConversation } from "@realm/dura/client";
+import { serveConversationFixture } from "../../../../dura/src/conversation.fixture.ts";
 import { type SessionController, useSession } from "./use-session.ts";
 
 async function until(done: () => boolean) {

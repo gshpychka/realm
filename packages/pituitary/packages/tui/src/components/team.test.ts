@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { RunDetail } from "@pituitary/harness/runtime";
+import type { RunDetail } from "@realm/dura/types";
 import { readyToApply, taskState } from "./team.tsx";
 
 const task = {

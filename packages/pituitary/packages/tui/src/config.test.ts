@@ -3,7 +3,7 @@ import { attachCommand } from "./config.ts";
 
 test("reconnect commands preserve run identity and custom state with shell quoting", () => {
   expect(attachCommand("builder", { stateDirectory: "/tmp/my 'private' state" })).toContain("--state");
-  expect(attachCommand("builder")).toBe("pituitary attach builder");
+  expect(attachCommand("builder")).toBe("dura attach builder");
 });
 
 test("reconnect commands preserve and quote a tunneled runtime socket", () => {
@@ -13,5 +13,5 @@ test("reconnect commands preserve and quote a tunneled runtime socket", () => {
       taskId: "task",
       socketPath: "/tmp/my tunnel.sock",
     }),
-  ).toBe("pituitary attach 'review run' --state /tmp/state --task task --socket '/tmp/my tunnel.sock'");
+  ).toBe("dura attach 'review run' --state /tmp/state --task task --socket '/tmp/my tunnel.sock'");
 });

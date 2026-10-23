@@ -13,6 +13,7 @@ in
   voice-broker = pkgs.callPackage ./voice-broker { };
   datameter = pkgs.callPackage ./datameter.nix { };
   pituitary = pkgs.callPackage ./pituitary { };
+  dura = pkgs.callPackage ./dura { };
 }
 // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
   inherit bay;

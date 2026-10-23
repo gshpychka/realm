@@ -21,7 +21,7 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
 | Path | Contents |
 | --- | --- |
 | `machines/` | One directory per host |
-| `agents/` | Pituitary roles, NixOS execution environments, and verification |
+| `agents/` | Dura roles, NixOS execution environments, and verification |
 | `modules/common/` | Typed `my.*` globals: domain, user, SSH keys, build servers |
 | `modules/system/` | NixOS and nix-darwin modules |
 | `modules/home-manager/` | neovim, zsh, tmux, git, coding agents |
@@ -35,24 +35,25 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
 
 | Start here | What you get | First step |
 | --- | --- | --- |
-| [Pituitary](packages/pituitary#start-a-conversation) | A durable coding conversation with a terminal interface | `nix run .#pituitary` |
+| [Pituitary](packages/pituitary#start-a-conversation) | The terminal frontend for Pi and Dura | `nix run .#pituitary` |
+| [Dura](packages/dura) | Durable agents, delegation, and independently verified results | `dura run --agent coordinator --workspace "$PWD" '…'` |
 | [Bay](packages/bay#try-a-session) | An isolated NixOS session for a shell, editor, or coding agent | Enable the host, then `bay start scratch` |
-| [Agents](agents) | A team that delegates, retains code, and verifies results | Import the starter team into `services.pituitary.agents` |
+| [Agents](agents) | A team that delegates, retains code, and verifies results | Import the starter team into `services.dura.agents` |
 
-Pituitary owns conversations and orchestration; Bay owns execution environments.
-Use either independently, or combine them with [NixOS agent declarations](agents).
+Pituitary presents conversations. Regular Pi runs interactive sessions; Dura runs
+durable agents over Bay. [NixOS declarations](agents) describe their machines and roles.
 Each folder opens with its own quickstart. Pituitary's guide includes a
-[credential-free terminal demo](packages/pituitary#try-it-without-credentials).
+[credential-free terminal demo](packages/pituitary#develop-without-rebuilding-the-system).
 
 ```sh
 nix run .#pituitary
 nix build .#bay .#flare                    # Linux
-nix develop .#pituitary                   # then: cd packages/pituitary && bun install && just run tool
+nix develop .#pituitary                   # then: bun install && cd packages/pituitary && just run tool
 nix develop .#bay                         # then: cd packages/bay && go test ./...
 ```
 
 The flake exports `homeManagerModules.pituitary` (`programs.pituitary`),
-`nixosModules.pituitary` (`services.pituitary`), and `nixosModules.bay`
+`nixosModules.dura` (`services.dura`), and `nixosModules.bay`
 (`services.bay`). Realm imports these with its regular module trees; enabling a
 service is a host decision in `machines/`. `lib.bayGuestImage` builds a standalone
 Bay guest image. The former standalone Bay and Pituitary repositories are retired.

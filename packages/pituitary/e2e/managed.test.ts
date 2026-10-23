@@ -20,12 +20,11 @@ test("managed UI reload, host restart and archive preserve one native conversati
     XDG_CONFIG_HOME: join(root, "config"),
     PITUITARY_GH: "",
     PITUITARY_STILL: "1",
-    PITUITARY_STATE_DIR: state,
-    PITUITARY_RUN_NAME: "managed",
     PITUITARY_LOG: join(root, "tui.log"),
     PITUITARY_UI_STATE: join(root, "frontend.json"),
+    PITUITARY_FRONTEND_CHILD: "1",
   };
-  const host = spawn("bun", [join(REPO, "packages/harness/src/managed-runtime.fixture.ts"), state, cwd], {
+  const host = spawn("bun", [join(REPO, "../dura/src/managed-runtime.fixture.ts"), state, cwd], {
     env: {
       PATH: process.env.PATH,
       LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH,
@@ -80,10 +79,10 @@ test("managed UI reload, host restart and archive preserve one native conversati
       boot({
         entry: join(REPO, "packages/tui/src/main.tsx"),
         cwd,
+        argv: ["--dura", String(ready.runId), "--state", state],
         ready: text,
         env: {
           ...environment,
-          PITUITARY_RUN_ID: String(ready.runId),
           ...(resume ? { PITUITARY_UI_RESUME: "1" } : {}),
           ...(plain ? { PITUITARY_NVIM: "/nonexistent/nvim" } : {}),
         },

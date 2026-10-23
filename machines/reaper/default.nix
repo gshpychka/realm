@@ -41,6 +41,7 @@
     ./gpu-ai-slice.nix
     ./tty.nix
     ./bay.nix
+    ./dura.nix
     ./twingate.nix
     # ./comfyui.nix
   ];

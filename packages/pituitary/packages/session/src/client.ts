@@ -1,6 +1,6 @@
 import type { CommandResult, SessionCommand, SessionEvent, SessionState, SessionStats } from "./protocol.ts";
 
-/** An attachment to a native conversation. Closing it never stops the conversation. */
+/** A conversation's presentation port. Each backend owns its connection and process lifetime. */
 export interface ConversationLink {
   onEvent(listener: (event: SessionEvent, sequence: number) => void): () => void;
   onClose(listener: (reason: string) => void): () => void;
