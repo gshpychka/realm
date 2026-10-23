@@ -129,6 +129,29 @@ describe("prepareHistory", () => {
     ),
   );
 
+  it.effect("fails on a directory a save cannot write", () =>
+    withHistoryFile((path) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const error = yield* Effect.flip(
+          prepareHistory(path).pipe(
+            withFileSystem(fs, {
+              makeTempFileScoped: () =>
+                Effect.fail(
+                  new PlatformError.SystemError({
+                    module: "FileSystem",
+                    method: "makeTempFile",
+                    reason: "PermissionDenied",
+                  }),
+                ),
+            }),
+          ),
+        );
+        expect(error._tag).toBe("SystemError");
+      }),
+    ),
+  );
+
   it.effect("fails on a history whose directory cannot be created", () =>
     withHistoryFile((path) =>
       Effect.gen(function* () {

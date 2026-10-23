@@ -28,17 +28,18 @@ const read = (fs: FileSystem.FileSystem, path: string) =>
     ),
   );
 
+/** A file in a temporary `.probabench-*` directory beside the history, removed with its scope. */
+const stage = (fs: FileSystem.FileSystem, path: string) =>
+  fs.makeTempFileScoped({ directory: dirname(path), prefix: ".probabench-" });
+
 /**
- * Flushes the document to a file in a temporary `.probabench-*` directory beside it,
- * then renames that file over it, so a reader never sees a partial write.
+ * Flushes the document to a staged file beside it, then renames that file over it,
+ * so a reader never sees a partial write.
  */
 const write = (fs: FileSystem.FileSystem, path: string, results: Results) =>
   Effect.gen(function* () {
     const contents = yield* encode(results);
-    const temporary = yield* fs.makeTempFileScoped({
-      directory: dirname(path),
-      prefix: ".probabench-",
-    });
+    const temporary = yield* stage(fs, path);
     yield* Effect.scoped(
       Effect.flatMap(fs.open(temporary, { flag: "w" }), (file) =>
         file.writeAll(new TextEncoder().encode(contents)).pipe(Effect.andThen(file.sync)),
@@ -47,7 +48,7 @@ const write = (fs: FileSystem.FileSystem, path: string, results: Results) =>
     yield* fs.rename(temporary, path);
   }).pipe(Effect.scoped);
 
-/** Fails before any paid request on corrupt history or an unusable directory. */
+/** Fails before any paid request on corrupt history or a directory a save cannot write. */
 export const prepareHistory = (
   path: string,
 ): Effect.Effect<void, PlatformError | ParseError, FileSystem.FileSystem> =>
@@ -55,6 +56,8 @@ export const prepareHistory = (
     const fs = yield* FileSystem.FileSystem;
     yield* fs.makeDirectory(dirname(path), { recursive: true });
     yield* read(fs, path);
+    // An existing directory may still be read-only: stage a file now, as a save will.
+    yield* Effect.scoped(stage(fs, path));
   });
 
 /** Adds `run` after every earlier run, including the same model's. */
