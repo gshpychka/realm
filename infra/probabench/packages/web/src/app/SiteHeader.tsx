@@ -6,6 +6,14 @@ const CONNECTION_LABEL = {
   local: "Local workspace",
 } as const satisfies Record<Connection["kind"], string>;
 
+/** The label and status-dot modifier of the connection's most pressing state. */
+const connectionStatus = (connection: Connection, running: boolean) => {
+  if (connection.kind !== "local") return { label: CONNECTION_LABEL[connection.kind], dot: "" };
+  if (connection.reconnecting) return { label: "Reconnecting", dot: "" };
+  if (running) return { label: "Benchmark running", dot: "pulse" };
+  return { label: CONNECTION_LABEL.local, dot: connection.status.configured ? "ready" : "" };
+};
+
 export function SiteHeader({
   connection,
   onOpenSetup,
@@ -14,8 +22,8 @@ export function SiteHeader({
   /** Absent on the published site, which cannot run benchmarks. */
   onOpenSetup: (() => void) | undefined;
 }) {
-  const local = connection.kind === "local" ? connection.status : null;
-  const running = local?.job?.status === "running";
+  const running = connection.kind === "local" && connection.status.job?.status === "running";
+  const status = connectionStatus(connection, running);
   return (
     <header className="site-header">
       <a className="brand" href="./" aria-label="ProbaBench home">
@@ -28,17 +36,10 @@ export function SiteHeader({
         proba<span>bench</span>
       </a>
       <div className="header-actions">
-        {running ? (
-          <button type="button" className="connection" onClick={onOpenSetup}>
-            <span className="status-dot pulse" />
-            Benchmark running
-          </button>
-        ) : (
-          <span className="connection">
-            <span className={`status-dot ${local?.configured ? "ready" : ""}`} />
-            {CONNECTION_LABEL[connection.kind]}
-          </span>
-        )}
+        <span className="connection">
+          <span className={`status-dot ${status.dot}`} />
+          {status.label}
+        </span>
         {onOpenSetup ? (
           <button type="button" className="button primary" onClick={onOpenSetup}>
             {running ? "View progress" : "New benchmark"}

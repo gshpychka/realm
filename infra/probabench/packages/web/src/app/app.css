@@ -125,12 +125,6 @@
     display: none;
   }
 }
-button.connection {
-  padding: 8px 0;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-}
 
 /* Masthead */
 .masthead {
