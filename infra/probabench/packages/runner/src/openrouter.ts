@@ -13,8 +13,13 @@ import type * as ConfigError from "effect/ConfigError";
 import type * as Layer from "effect/Layer";
 import type { BenchTarget } from "./registry";
 
-/** Token ceiling for a no-reasoning target: room for a single bit and nothing more. */
-const NO_REASONING_MAX_TOKENS = 8;
+/**
+ * Output ceiling with reasoning off: room for one bit. Not lower, because OpenAI's
+ * Responses API, which serves some OpenRouter routes, rejects a max_tokens below 16
+ * and so would fail every sample. A model that cannot turn reasoning off may still
+ * spend this budget thinking and reply with nothing, which records as invalid.
+ */
+const NO_REASONING_MAX_TOKENS = 16;
 
 // The adapter's generated reasoning type only knows effort and summary. The
 // client sends config as JSON without encoding it, so extending the type here

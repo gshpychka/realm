@@ -28,7 +28,7 @@ const effortTarget: BenchTarget = {
 describe("toOpenRouterConfig", () => {
   it("explicitly disables reasoning on a non-reasoning target", () => {
     const config = toOpenRouterConfig(noReasoning, 4096);
-    expect(config.max_tokens).toBe(8);
+    expect(config.max_tokens).toBe(16);
     expect(config.reasoning).toEqual({ enabled: false });
   });
 
