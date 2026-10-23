@@ -55,3 +55,25 @@ test("a fire keeps moving", async () => {
   await app.close();
   assert.equal(new Set(frames).size, frames.length, "consecutive frames are identical");
 });
+
+test("a live fire resizes without leaving malformed cells behind", async () => {
+  const app = await boot({
+    entry: SHOWCASE,
+    ready: "ember · row2",
+    cols: 70,
+    rows: 24,
+    env: { EMBER_VIEW: "row2" },
+    settle: false,
+  });
+  try {
+    await app.capture("ember-resize-wide");
+    await app.terminal.resize(36, 24);
+    const frames = await app.film("ember-resize-narrow", 3, 120);
+    for (const screen of frames) {
+      assert.match(screen, /[▀▄█]{12,}/);
+      assert.doesNotMatch(screen, /�/);
+    }
+  } finally {
+    await app.close();
+  }
+});

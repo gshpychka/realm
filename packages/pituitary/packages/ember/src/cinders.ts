@@ -53,7 +53,7 @@ export interface Flight {
 /** `cinder` `elapsed` milliseconds after the throw, or null before it leaves and once it is out. */
 export function flight(cinder: Cinder, elapsed: number): Flight | null {
   const age = elapsed - cinder.born;
-  if (age < 0 || age > cinder.life) return null;
+  if (cinder.life <= 0 || age < 0 || age >= cinder.life) return null;
   const left = 1 - age / cinder.life;
   return {
     x: cinder.x + cinder.vx * age,

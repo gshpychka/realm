@@ -50,7 +50,7 @@ const RISE = ["▁", "▂", "▃"] as const;
 /** `coal` `elapsed` milliseconds after it was banked. Its glyph is its height, whatever its heat. */
 export function smoulder(coal: Coal, elapsed: number): Glowing {
   const breath = 0.82 + 0.18 * Math.sin((elapsed / coal.period) * Math.PI * 2 + coal.phase);
-  const gone = Math.min(1, Math.max(0, elapsed / coal.out)) ** 1.6;
+  const gone = coal.out <= 0 ? 1 : Math.min(1, Math.max(0, elapsed / coal.out)) ** 1.6;
   return { char: RISE[coal.height - 1] ?? RISE[0], heat: coal.heat * breath * (1 - gone), gone };
 }
 
