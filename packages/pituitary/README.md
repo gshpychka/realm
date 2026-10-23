@@ -63,10 +63,15 @@ dura run --agent coordinator --name feature --workspace "$PWD" \
 Dura opens Pituitary on that run. Attach explicitly from another terminal:
 
 ```sh
-pituitary --dura feature --state /var/lib/dura
-# Or let the configured Dura command supply its host defaults:
+pituitary --dura feature
+# Or:
 dura attach feature
 ```
+
+State selection uses `--state DIRECTORY` first, then `DURA_STATE_DIR`, then
+`$XDG_STATE_HOME/dura` (or `~/.local/state/dura` when `XDG_STATE_HOME` is unset).
+`--socket PATH` (or `DURA_RUNTIME_SOCKET`) explicitly selects an existing host socket;
+otherwise the client uses the local socket for the selected state directory.
 
 The interface adds tasks, questions, results, and independent verification. Use
 `ctrl+k` to browse tasks, `ctrl+q` for attention, and `alt+i` to join a teammate's
