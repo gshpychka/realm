@@ -10,7 +10,7 @@ import type { ModelSeries } from "../plan/series";
 import { MAX_RETRIES } from "./retry";
 import { sweep } from "./sweep";
 
-const series: ModelSeries = { id: "vendor/model", slug: "vendor/model", reasoning: "off" };
+const series: ModelSeries = { model: "vendor/model", modelSlug: "vendor/model", reasoning: "off" };
 /** One sample at 0% and one at 100%. */
 const twoSamples: SamplingOptions = {
   trialsPerStep: 1,
@@ -56,9 +56,7 @@ describe("sweep", () => {
         maxTokens: 16,
       }).pipe(Effect.provide(model));
       expect(run).toMatchObject({
-        model: series.id,
-        modelSlug: series.slug,
-        reasoning: "off",
+        ...series,
         trialsPerStep: 5,
         stepPercent: 30,
         startedAt: new Date(0).toISOString(),

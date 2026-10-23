@@ -38,7 +38,7 @@ export const executePlan = ({
   Effect.gen(function* () {
     yield* prepareHistory(out);
     for (const entry of series) {
-      yield* Console.log(`[${entry.id}] starting sweep`);
+      yield* Console.log(`[${entry.model}] starting sweep`);
       const run = yield* sweep(entry, options).pipe(
         Effect.provide(openrouterModelLayer(entry, options.maxTokens)),
       );

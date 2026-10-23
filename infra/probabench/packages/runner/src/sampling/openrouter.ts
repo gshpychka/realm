@@ -57,4 +57,7 @@ export const openrouterModelLayer = (
   series: ModelSeries,
   maxTokens: number,
 ): Layer.Layer<LanguageModel.LanguageModel, never, OpenRouterClient.OpenRouterClient> =>
-  OpenRouterLanguageModel.layer({ model: series.slug, config: modelConfig(series, maxTokens) });
+  OpenRouterLanguageModel.layer({
+    model: series.modelSlug,
+    config: modelConfig(series, maxTokens),
+  });

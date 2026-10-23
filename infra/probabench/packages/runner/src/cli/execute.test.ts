@@ -8,7 +8,11 @@ import { chatEndpoint } from "../sampling/testing";
 import { readResults, withHistoryFile } from "../store/testing";
 import { executePlan } from "./execute";
 
-const seriesFor = (slug: string): ModelSeries => ({ id: slug, slug, reasoning: "off" });
+const seriesFor = (slug: string): ModelSeries => ({
+  model: slug,
+  modelSlug: slug,
+  reasoning: "off",
+});
 
 /** One sample at 0% and one at 100% for each slug, appended to `out`. */
 const planFor = (out: string, first: string, ...rest: string[]): BenchPlan => ({

@@ -15,14 +15,14 @@ describe("OpenRouter model selection", () => {
     const selection = selectSeries([ALL_ALIASES]);
     expect(selection.series).toHaveLength(MODEL_ALIASES.length);
     expect(selection.unknown).toEqual([]);
-    expect(selection.series.map((entry) => entry.id)).toContain(
+    expect(selection.series.map((entry) => entry.model)).toContain(
       "anthropic/claude-sonnet-4.5 [reasoning=high]",
     );
   });
 
   it("accepts arbitrary OpenRouter slugs and preserves request order", () => {
     const selection = selectSeries(["custom-vendor/new-model:free", "claude-haiku-4.5"]);
-    expect(selection.series.map((entry) => entry.id)).toEqual([
+    expect(selection.series.map((entry) => entry.model)).toEqual([
       "custom-vendor/new-model:free",
       "anthropic/claude-haiku-4.5",
     ]);
@@ -43,13 +43,13 @@ describe("OpenRouter model selection", () => {
 
   it("can override aliases or slugs with an explicit reasoning mode", () => {
     expect(selectSeries(["claude-sonnet-4.5-high"], "off").series[0]).toEqual({
-      id: "anthropic/claude-sonnet-4.5",
-      slug: "anthropic/claude-sonnet-4.5",
+      model: "anthropic/claude-sonnet-4.5",
+      modelSlug: "anthropic/claude-sonnet-4.5",
       reasoning: "off",
     });
     expect(selectSeries(["custom/model"], "high").series[0]).toEqual({
-      id: "custom/model [reasoning=high]",
-      slug: "custom/model",
+      model: "custom/model [reasoning=high]",
+      modelSlug: "custom/model",
       reasoning: "high",
     });
   });

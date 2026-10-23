@@ -13,20 +13,24 @@ const SAMPLING_OVERRIDES = ["temperature", "top_p", "top_k", "reasoning_effort"]
 describe("openrouterModelLayer", () => {
   const cases: ReadonlyArray<readonly [ModelSeries, Record<string, unknown>]> = [
     [
-      { id: "anthropic/claude-haiku-4.5", slug: "anthropic/claude-haiku-4.5", reasoning: "off" },
+      {
+        model: "anthropic/claude-haiku-4.5",
+        modelSlug: "anthropic/claude-haiku-4.5",
+        reasoning: "off",
+      },
       { max_tokens: 16, reasoning: { enabled: false } },
     ],
     [
       {
-        id: "anthropic/claude-sonnet-4.5 [reasoning=high]",
-        slug: "anthropic/claude-sonnet-4.5",
+        model: "anthropic/claude-sonnet-4.5 [reasoning=high]",
+        modelSlug: "anthropic/claude-sonnet-4.5",
         reasoning: "high",
       },
       { max_tokens: 4096, reasoning: { effort: "high" } },
     ],
   ];
   for (const [series, expected] of cases) {
-    it.effect(`sends ${series.id} with its reasoning, output ceiling and the key`, () => {
+    it.effect(`sends ${series.model} with its reasoning, output ceiling and the key`, () => {
       const endpoint = chatEndpoint();
       return Effect.gen(function* () {
         const response = yield* LanguageModel.generateText({ prompt: "Emit a bit" });
@@ -35,7 +39,7 @@ describe("openrouterModelLayer", () => {
         const [request] = endpoint.requests;
         expect(request?.url).toBe("https://openrouter.ai/api/v1/chat/completions");
         expect(request?.headers.authorization).toBe("Bearer sk-test");
-        expect(request?.body).toMatchObject({ model: series.slug, ...expected });
+        expect(request?.body).toMatchObject({ model: series.modelSlug, ...expected });
         for (const field of SAMPLING_OVERRIDES) expect(request?.body[field]).toBeUndefined();
       }).pipe(
         Effect.provide(

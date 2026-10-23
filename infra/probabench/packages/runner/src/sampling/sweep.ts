@@ -67,7 +67,7 @@ export const sweep = (
         Effect.tap((point) =>
           Console.log(
             formatPointProgress({
-              model: series.id,
+              model: series.model,
               point,
               completed: index + 1,
               total: grid.length,
@@ -78,9 +78,7 @@ export const sweep = (
     );
     return {
       id: randomUUID(),
-      model: series.id,
-      modelSlug: series.slug,
-      reasoning: series.reasoning,
+      ...series,
       trialsPerStep: options.trialsPerStep,
       stepPercent: options.stepPercent,
       startedAt,

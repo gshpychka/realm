@@ -4,6 +4,7 @@ import {
   MODEL_ALIASES,
   type Model,
   ReasoningMode,
+  type Run,
   resolveModel,
   seriesLabel,
 } from "@probabench/domain";
@@ -11,17 +12,12 @@ import {
 /** CLI token expanding to every alias; a browser run takes exactly one model. */
 export const ALL_ALIASES = "all";
 
-/** A resolved series; id is the series label persisted as Run.model, never a run identity. */
-export interface ModelSeries {
-  readonly id: string;
-  /** OpenRouter model ID, e.g. "anthropic/claude-haiku-4.5". */
-  readonly slug: string;
-  readonly reasoning: ReasoningMode;
-}
+/** A model series to benchmark: the fields every Run of it records. */
+export type ModelSeries = Pick<Run, "model" | "modelSlug" | "reasoning">;
 
 const toSeries = (model: Model, mode?: ReasoningMode): ModelSeries => {
   const reasoning = mode ?? model.reasoning ?? "off";
-  return { id: seriesLabel(model.slug, reasoning), slug: model.slug, reasoning };
+  return { model: seriesLabel(model.slug, reasoning), modelSlug: model.slug, reasoning };
 };
 
 const modelsFor = (token: string): readonly Model[] => {
@@ -54,7 +50,7 @@ export const selectSeries = (tokens: readonly string[], mode?: ReasoningMode): S
     if (models.length === 0) unknown.push(token);
     for (const model of models) {
       const resolved = toSeries(model, mode);
-      series.set(resolved.id, resolved);
+      series.set(resolved.model, resolved);
     }
   }
   return { series: [...series.values()], unknown };
@@ -63,7 +59,7 @@ export const selectSeries = (tokens: readonly string[], mode?: ReasoningMode): S
 export const describeAliases = (): string =>
   [
     "OpenRouter model aliases (or pass any OpenRouter model ID):",
-    ...MODEL_ALIASES.map((model) => `  ${model.alias} → ${toSeries(model).id}`),
+    ...MODEL_ALIASES.map((model) => `  ${model.alias} → ${toSeries(model).model}`),
     `  ${ALL_ALIASES} → every alias`,
     `Use --reasoning ${ReasoningMode.literals.join("|")} to override the selected models' reasoning mode.`,
   ].join("\n");

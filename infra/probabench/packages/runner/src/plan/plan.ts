@@ -57,7 +57,7 @@ export const describePlan = ({ series, options }: BenchPlan): string => {
   const { samples } = planBudget(options, series.length);
   return [
     `Models (${series.length}):`,
-    ...series.map((entry) => `  ${entry.slug} · reasoning ${entry.reasoning}`),
+    ...series.map((entry) => `  ${entry.modelSlug} · reasoning ${entry.reasoning}`),
     `Projected samples: ${samples}`,
   ].join("\n");
 };
