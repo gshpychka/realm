@@ -1,4 +1,4 @@
-/** Gruvbox Material accents; COLORS[0] matches index.css --accent. */
+/** Gruvbox Material accents; COLORS[0] matches --accent in base.css. */
 const COLORS = [
   "#d8a657",
   "#7daea3",

@@ -15,6 +15,7 @@ import { Hero } from "./Hero";
 import { NotebookTabs } from "./NotebookTabs";
 import { PANEL_ID, tabId, useNotebookView } from "./notebook-view";
 import { SiteHeader } from "./SiteHeader";
+import "./app.css";
 
 const NO_RUNS: readonly Run[] = [];
 

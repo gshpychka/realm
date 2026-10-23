@@ -8,8 +8,9 @@ import { Measurements } from "../common/Measurements";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { inspectedRun, runsByDay, visibleHistory, withComparison } from "../common/run-history";
 import { RunDetail } from "./RunDetail";
+import "./history.css";
 
-// index.css stacks the inspector above the timeline at this width; keep the two in sync.
+// history.css stacks the inspector above the timeline at this width; keep the two in sync.
 const STACKED_LAYOUT = "(max-width: 900px)";
 
 const HistoryChart = lazy(() =>
@@ -71,7 +72,7 @@ export function HistoryPage({
           </button>
         ) : null}
       </div>
-      <section className="chart-card history-graph-card" aria-label="Benchmark history graph">
+      <section className="card chart-card history-graph-card" aria-label="Benchmark history graph">
         <header className="chart-heading">
           <div>
             <h3>Calibration, over time</h3>
@@ -111,7 +112,7 @@ export function HistoryPage({
         {inspected ? (
           <aside className="history-inspector" ref={inspector}>
             <RunDetail run={inspected} onCompare={() => compare(inspected)} onRerun={onRerun} />
-            <details className="inspector-measurements">
+            <details className="card inspector-measurements">
               <summary>
                 Inspect measurements{" "}
                 <span className="expand-sign" aria-hidden="true">
@@ -122,7 +123,7 @@ export function HistoryPage({
             </details>
           </aside>
         ) : null}
-        <div className="timeline-panel">
+        <div className="card">
           {visible.length === 0 ? (
             <div className="search-empty">
               <h3>No matching runs.</h3>

@@ -15,6 +15,7 @@ import {
 import { Measurements } from "../common/Measurements";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { modelSelections, withComparison } from "../common/run-history";
+import "./calibration.css";
 
 const CalibrationChart = lazy(() =>
   import("./CalibrationChart").then((module) => ({ default: module.CalibrationChart })),
@@ -49,7 +50,7 @@ export function CalibrationPage({
     <section>
       <h2 className="sr-only">Calibration</h2>
       <div className="chart-layout">
-        <section className="chart-card">
+        <section className="card chart-card">
           <header className="chart-heading">
             <div>
               <h3>Target vs. observed</h3>

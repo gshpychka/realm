@@ -4,6 +4,7 @@ import type { Bridge } from "../bridge/use-bridge";
 import { JobProgress } from "./JobProgress";
 import type { BenchmarkDraft } from "./run-settings";
 import { initialSettings, SetupForm } from "./SetupForm";
+import "./setup.css";
 
 const heading = (job: Job | null): string => {
   if (job === null) return "Set up a benchmark.";

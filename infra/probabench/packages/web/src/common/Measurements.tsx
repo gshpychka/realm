@@ -1,5 +1,6 @@
 import { measurePoint, type Run } from "@probabench/domain";
 import { count, percent, timestamp } from "./format";
+import "./Measurements.css";
 
 const HEADINGS = ["Target", "Observed", "95% interval", "Ones / valid", "Invalid"];
 

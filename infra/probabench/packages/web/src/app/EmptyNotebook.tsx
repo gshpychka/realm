@@ -26,7 +26,7 @@ function ReferenceSketch() {
 
 export function EmptyNotebook({ onNew, onMethod }: { onNew: () => void; onMethod: () => void }) {
   return (
-    <section className="empty-notebook" role="status">
+    <section className="card empty-notebook" role="status">
       <div className="empty-sketch">
         <ReferenceSketch />
       </div>

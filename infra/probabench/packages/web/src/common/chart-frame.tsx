@@ -1,8 +1,9 @@
 // What both charts share: their chrome, their empty state, and the boundary that
 // loads them. Only the charts are split from the page, because recharts is heavy.
 import { Component, type ReactNode, Suspense } from "react";
+import "./chart-frame.css";
 
-// SVG presentation attributes accept var(), so index.css :root stays the only palette.
+// SVG presentation attributes accept var(), so base.css stays the only palette.
 export const CHART = {
   grid: { stroke: "var(--line)", strokeDasharray: "2 5", vertical: false },
   axis: "var(--border-strong)",

@@ -16,7 +16,7 @@ export function RunDetail({
   // Null for a run the setup form cannot express, which then offers no rerun.
   const rerun = rerunRequest(run);
   return (
-    <section className="run-detail" aria-label={`Run details for ${run.model}`}>
+    <section className="card run-detail" aria-label={`Run details for ${run.model}`}>
       <p className="eyebrow">Selected observation</p>
       <h3>{modelName(run.model)}</h3>
       <p className="model-slug">{run.modelSlug}</p>

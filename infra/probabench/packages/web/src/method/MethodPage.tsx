@@ -1,3 +1,5 @@
+import "./method.css";
+
 export function MethodPage() {
   return (
     <section>
@@ -14,7 +16,7 @@ export function MethodPage() {
           test.
         </p>
       </header>
-      <div className="method-steps">
+      <div className="card method-steps">
         <article>
           <span className="step-number">01</span>
           <h3>Set a target.</h3>
@@ -33,7 +35,7 @@ export function MethodPage() {
             Draw independent requests at each target. Keep the raw outcomes. Count invalid replies
             separately; they are never quietly treated as zeros.
           </p>
-          <div className="method-equation small-equation">0, 1, 0, …</div>
+          <div className="method-equation mono-equation">0, 1, 0, …</div>
         </article>
         <article>
           <span className="step-number">03</span>
@@ -42,7 +44,7 @@ export function MethodPage() {
             Plot the fraction of valid replies that are ones. A calibrated sampler follows the
             diagonal: a 30% target produces about 30% ones.
           </p>
-          <div className="method-equation compact">observed ≈ target</div>
+          <div className="method-equation small-equation">observed ≈ target</div>
         </article>
       </div>
       <div className="method-notes">
