@@ -1,9 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
-import { type Results, SCHEMA_VERSION } from "@probabench/domain";
 import { makeRun } from "@probabench/domain/testing";
 import { buildChartModel, MODEL_COLORS, modelColors, modelDash, REFERENCE_KEY } from "./chart-data";
 
-const resultsOf = (runs: Results["runs"]): Results => ({ schemaVersion: SCHEMA_VERSION, runs });
 const haiku = makeRun({
   model: "claude-haiku-4.5",
   stepPercent: 50,
@@ -20,7 +18,6 @@ const sonnet = makeRun({
     { x: 1, outcomes: [1, 1] },
   ],
 });
-const fixture = resultsOf([haiku, sonnet]);
 
 describe("model colours", () => {
   const runs = Array.from({ length: MODEL_COLORS.length + 1 }, (_, index) => ({
@@ -46,7 +43,7 @@ describe("model colours", () => {
 });
 
 describe("buildChartModel", () => {
-  const model = buildChartModel(fixture);
+  const model = buildChartModel([haiku, sonnet]);
 
   it("assigns opaque chart keys and stable model labels/colors", () => {
     expect(model.series.map((series) => series.key)).toEqual(["series_0", "series_1"]);
@@ -98,10 +95,9 @@ describe("buildChartModel", () => {
   });
 
   it("avoids model ids colliding with structural keys, object prototypes, and Recharts dotted paths", () => {
-    const results = resultsOf(
+    const shaped = buildChartModel(
       ["x", "reference", "__proto__", "a.b"].map((model) => ({ ...haiku, id: model, model })),
     );
-    const shaped = buildChartModel(results);
     expect(shaped.rows[1]?.x).toBe(0.5);
     expect(shaped.rows[1]?.reference).toBe(0.5);
     expect(shaped.series.map((series) => shaped.rows[1]?.[series.key])).toEqual([1, 1, 1, 1]);
@@ -114,7 +110,7 @@ describe("buildChartModel", () => {
   });
 
   it("keeps a complete diagonal reference for an empty notebook", () => {
-    expect(buildChartModel(resultsOf([])).rows).toEqual([
+    expect(buildChartModel([]).rows).toEqual([
       { x: 0, reference: 0 },
       { x: 1, reference: 1 },
     ]);

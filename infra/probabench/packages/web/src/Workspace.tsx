@@ -1,4 +1,4 @@
-import { type Results, type Run, SCHEMA_VERSION, summarizeRun } from "@probabench/domain";
+import { type Results, type Run, summarizeRun } from "@probabench/domain";
 import { lazy, Suspense, useMemo } from "react";
 import { modelColors } from "./chart-data";
 import { date, modelName, number, time } from "./format";
@@ -39,10 +39,6 @@ export function Workspace({
   const chosen = useMemo(
     () => selectedRuns(groups, selections, hidden),
     [groups, selections, hidden],
-  );
-  const chartResults = useMemo<Results>(
-    () => ({ schemaVersion: SCHEMA_VERSION, runs: chosen }),
-    [chosen],
   );
   const toggle = (model: string) =>
     update(
@@ -121,7 +117,7 @@ export function Workspace({
                 </div>
               }
             >
-              <CalibrationChart results={chartResults} colors={colors} intervals={view.intervals} />
+              <CalibrationChart runs={chosen} colors={colors} intervals={view.intervals} />
             </Suspense>
           </LoadBoundary>
           <div className="chart-caption">

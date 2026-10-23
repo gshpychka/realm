@@ -1,4 +1,4 @@
-import type { Results } from "@probabench/domain";
+import type { Run } from "@probabench/domain";
 import { useMemo } from "react";
 import {
   CartesianGrid,
@@ -60,15 +60,15 @@ function ChartTooltip({ active, label }: TooltipContentProps, model: ChartModel)
 }
 
 export function CalibrationChart({
-  results,
+  runs,
   colors,
   intervals,
 }: {
-  results: Results;
+  runs: ReadonlyArray<Run>;
   colors: ReadonlyMap<string, string>;
   intervals: boolean;
 }) {
-  const model = useMemo(() => buildChartModel(results, colors), [results, colors]);
+  const model = useMemo(() => buildChartModel(runs, colors), [runs, colors]);
   return (
     <figure
       className="plot calibration-plot"
@@ -155,13 +155,13 @@ export function CalibrationChart({
           ))}
         </LineChart>
       </ResponsiveContainer>
-      {results.runs.length === 0 ? (
+      {runs.length === 0 ? (
         <div className="plot-empty">
           <p>Select a model to draw its observations.</p>
           <span>The dashed line is the calibration reference.</span>
         </div>
       ) : null}
-      {results.runs.length > 0 && !model.series.some((series) => series.valid > 0) ? (
+      {runs.length > 0 && !model.series.some((series) => series.valid > 0) ? (
         <div className="plot-empty" role="status">
           <p>No valid samples in the selected runs.</p>
           <span>Invalid replies remain recorded in the measurement tables.</span>

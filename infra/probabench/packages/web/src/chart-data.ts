@@ -1,10 +1,5 @@
 // Pure shaping of measured bit frequencies into chart rows and accessible table data.
-import {
-  measurePoint,
-  type PointMeasurement,
-  type Results,
-  summarizeRun,
-} from "@probabench/domain";
+import { measurePoint, type PointMeasurement, type Run, summarizeRun } from "@probabench/domain";
 
 export const MODEL_COLORS = [
   "#d8a657",
@@ -69,11 +64,11 @@ export interface ChartModel {
 
 /** Opaque series keys prevent model ids such as "x", "reference" or "a.b" colliding with chart paths. */
 export const buildChartModel = (
-  results: Results,
+  runs: ReadonlyArray<Run>,
   colors?: ReadonlyMap<string, string>,
 ): ChartModel => {
-  const palette = colors ?? modelColors(results.runs);
-  const series = results.runs.map((run, index): Series => {
+  const palette = colors ?? modelColors(runs);
+  const series = runs.map((run, index): Series => {
     const { valid, total } = summarizeRun(run);
     return {
       id: run.id,
@@ -85,16 +80,12 @@ export const buildChartModel = (
       total,
     };
   });
-  const pointsByRun = results.runs.map(
+  const pointsByRun = runs.map(
     (run) => new Map(run.points.map((point) => [point.x as number, point])),
   );
   // Endpoints keep the identity reference visible for an empty notebook.
   const xs = [
-    ...new Set([
-      0,
-      1,
-      ...results.runs.flatMap((run) => run.points.map((point) => point.x as number)),
-    ]),
+    ...new Set([0, 1, ...runs.flatMap((run) => run.points.map((point) => point.x as number))]),
   ].sort((a, b) => a - b);
   const meta = new Map<number, ReadonlyMap<string, PointMeasurement>>();
   const rows = xs.map((x): ChartRow => {
