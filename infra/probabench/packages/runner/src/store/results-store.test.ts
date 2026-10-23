@@ -70,6 +70,19 @@ describe("ResultsStore", () => {
     ),
   );
 
+  it.effect("refuses a history with a field the next save would drop", () =>
+    withResultsStore((path) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const store = yield* ResultsStore;
+        const contents = JSON.stringify({ runs: [{ ...makeRun(), note: "hand-added" }] });
+        yield* fs.writeFileString(path, contents);
+        expect((yield* Effect.flip(store.prepare(path)))._tag).toBe("ResultsStoreError");
+        expect(yield* fs.readFileString(path)).toBe(contents);
+      }),
+    ),
+  );
+
   it.effect("keeps the previous document and removes staging files when the rename fails", () =>
     withResultsStore((path) =>
       Effect.gen(function* () {

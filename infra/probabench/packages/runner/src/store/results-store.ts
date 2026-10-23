@@ -30,7 +30,9 @@ const LOCK_WAIT = Schedule.spaced("25 millis").pipe(Schedule.upTo("5 seconds"));
 const emptyResults: Results = { runs: [] };
 /** Results as pretty-printed JSON: the history file's format. */
 const ResultsFile = Schema.parseJson(Results, { space: 2 });
-const decode = Schema.decode(ResultsFile);
+// Strict, because every save rewrites the whole file: a key the schema does not know
+// would be dropped from the only copy of the history.
+const decode = Schema.decode(ResultsFile, { onExcessProperty: "error" });
 const encode = Schema.encode(ResultsFile);
 const toStoreError = (cause: PlatformError | ParseError | HistoryLocked) =>
   new ResultsStoreError({ cause });

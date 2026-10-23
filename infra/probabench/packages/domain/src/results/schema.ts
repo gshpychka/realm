@@ -76,10 +76,7 @@ export const Run = Schema.Struct({
 );
 export type Run = typeof Run.Type;
 
-/**
- * The append-only history document. Models can repeat; run IDs cannot.
- * Decoding ignores unknown keys.
- */
+/** The append-only history document. Models can repeat; run IDs cannot. */
 export const Results = Schema.Struct({ runs: Schema.Array(Run) }).pipe(
   Schema.filter(
     (results) => new Set(results.runs.map((run) => run.id)).size === results.runs.length,
