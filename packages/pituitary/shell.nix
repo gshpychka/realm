@@ -19,6 +19,7 @@ pkgs.mkShell {
   ];
 
   PITUITARY_NVIM = "${pkgs.neovim-unwrapped}/bin/nvim";
+  PITUITARY_AUTO_START = "1";
   PITUITARY_GH = "${pkgs.gh}/bin/gh";
   PITUITARY_FONT_DIR = "${pkgs.jetbrains-mono}/share/fonts/truetype";
   PITUITARY_FALLBACK_FONT_DIR = "${pkgs.dejavu_fonts}/share/fonts/truetype";
