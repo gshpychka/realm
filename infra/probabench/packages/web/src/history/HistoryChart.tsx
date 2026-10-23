@@ -58,10 +58,13 @@ function HistoryTooltip({
   );
 }
 
+/** The plotted y value. Module scope keeps its identity stable for Recharts. */
+const meanError = (point: HistoryPoint) => point.summary.meanCalibrationError;
+
 const emptyPlot = (points: readonly HistoryPoint[]) => {
   if (points.length === 0)
     return { title: "No runs shown.", detail: "Show a model from the legend." };
-  if (points.every((point) => point.calibrationError === null))
+  if (points.every((point) => meanError(point) === null))
     return {
       title: "No calibration errors to plot.",
       detail: "These runs contain no valid replies. Their outcomes remain in the history list.",
@@ -124,7 +127,7 @@ export function HistoryChart({
               <Line
                 key={model}
                 data={line}
-                dataKey="calibrationError"
+                dataKey={meanError}
                 stroke={style.color}
                 strokeDasharray={style.dash}
                 strokeWidth={2}

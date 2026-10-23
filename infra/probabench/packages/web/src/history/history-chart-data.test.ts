@@ -43,7 +43,7 @@ describe("history chart measurements", () => {
     const model = buildHistoryChartModel([last, first, other, failed], styles);
     const a = model.series.find((item) => item.model === "vendor/model-a");
     expect(a?.points.map((point) => point.run.id)).toEqual(["first", "invalid", "last"]);
-    expect(a?.points.map((point) => point.calibrationError)).toEqual([0, null, 0.5]);
+    expect(a?.points.map((point) => point.summary.meanCalibrationError)).toEqual([0, null, 0.5]);
     expect(a?.style).toEqual(styles.get("vendor/model-a"));
     expect(a?.points[1]?.summary).toMatchObject({ validity: 0, coveredPoints: 0 });
   });
@@ -53,7 +53,7 @@ describe("history chart measurements", () => {
     const model = buildHistoryChartModel([item], styles);
     expect(model.domain[0]).toBeLessThan(Date.parse(item.startedAt));
     expect(model.domain[1]).toBeGreaterThan(Date.parse(item.startedAt));
-    expect(model.points[0]?.calibrationError).toBe(0);
+    expect(model.points[0]?.summary.meanCalibrationError).toBe(0);
     expect(model.yMax).toBe(0.05);
   });
 
@@ -63,7 +63,7 @@ describe("history chart measurements", () => {
       [run("invalid", "vendor/model-a", "2026-10-22T15:00:00.000Z", allInvalid)],
       styles,
     );
-    expect(model.points[0]?.calibrationError).toBeNull();
+    expect(model.points[0]?.summary.meanCalibrationError).toBeNull();
     expect(model.points[0]?.summary.validity).toBe(0);
     expect(model.series[0]?.points).toHaveLength(1);
   });

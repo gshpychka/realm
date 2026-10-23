@@ -10,8 +10,6 @@ const YEAR_MS = 365 * DAY_MS;
 
 export interface HistoryPoint {
   readonly timestamp: number;
-  /** The plotted y value: summary.meanCalibrationError. */
-  readonly calibrationError: number | null;
   readonly run: Run;
   readonly summary: RunSummary;
 }
@@ -52,12 +50,7 @@ export const buildHistoryChartModel = (
   const points = runs
     .map((run): HistoryPoint => {
       const summary = summarizeRun(run);
-      return {
-        timestamp: Date.parse(run.startedAt),
-        calibrationError: summary.meanCalibrationError,
-        run,
-        summary,
-      };
+      return { timestamp: Date.parse(run.startedAt), run, summary };
     })
     .sort((a, b) => a.timestamp - b.timestamp);
   const series = new Map<string, HistorySeries>();
@@ -71,7 +64,10 @@ export const buildHistoryChartModel = (
   const minimum = points[0]?.timestamp ?? Date.now();
   const maximum = points.at(-1)?.timestamp ?? minimum;
   const padding = Math.max(MIN_PADDING_MS, (maximum - minimum) * 0.05);
-  const worst = points.reduce((max, point) => Math.max(max, point.calibrationError ?? 0), 0);
+  const worst = points.reduce(
+    (max, point) => Math.max(max, point.summary.meanCalibrationError ?? 0),
+    0,
+  );
   return {
     points,
     series: [...series.values()],
