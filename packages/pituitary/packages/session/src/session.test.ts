@@ -40,6 +40,8 @@ test("a live snapshot restores the partial reply so later deltas continue it", (
   };
   const view = restore(messages, undefined, snapshot);
   expect(view.running).toBe(true);
+  expect(view.turn).toBeNull();
+  expect(reduce(view, { type: "agent_settled" }).entries.some((entry) => entry.kind === "turn")).toBe(false);
   expect(view.entries.at(-1)).toMatchObject({
     kind: "assistant",
     text: "first half",
@@ -169,10 +171,14 @@ describe("reduce", () => {
     const view = run([
       { type: "agent_start" },
       { type: "auto_retry_start", attempt: 3, maxAttempts: 3, delayMs: 0, errorMessage: "529" },
+      ...failedTurn("overloaded"),
       { type: "auto_retry_end", success: false, attempt: 3, finalError: "overloaded" },
     ] as SessionEvent[]);
     expect(view.entries.at(-1)).toMatchObject({ kind: "notice", level: "error", text: "overloaded" });
     expect(view.running).toBe(false);
+    expect(view.entries.filter((entry) => entry.kind === "notice" && entry.level === "error")).toHaveLength(
+      1,
+    );
   });
 
   test("tracks the compaction phase", () => {
@@ -699,4 +705,40 @@ test("native snapshot refresh keeps client notices without duplicating provider 
   ]);
   const twice = restore([stored.assistant({ text: "done" })], next);
   expect(twice.entries.filter((entry) => entry.kind === "notice")).toHaveLength(1);
+});
+
+test("finalized text and thinking blocks keep their streamed paragraph separators", () => {
+  const message = {
+    role: "assistant",
+    content: [
+      { type: "thinking", thinking: "First thought." },
+      { type: "thinking", thinking: "Second thought." },
+      { type: "text", text: "First paragraph." },
+      { type: "text", text: "Second paragraph." },
+    ],
+  };
+  const view = run([
+    { type: "message_start", message },
+    { type: "message_end", message },
+  ]);
+  expect(view.entries[0]).toMatchObject({
+    text: "First paragraph.\n\nSecond paragraph.",
+    thinking: "First thought.\n\nSecond thought.",
+  });
+});
+
+test("a live snapshot preserves the retry countdown without inventing a partial turn summary", () => {
+  const view = restore([], undefined, {
+    sequence: 5,
+    state: fakeSessionState,
+    messages: [],
+    pendingToolCalls: [],
+    retry: { attempt: 2, maxAttempts: 3, at: 5000, errorMessage: "overloaded" },
+  });
+  expect(view).toMatchObject({
+    phase: "retrying",
+    running: true,
+    retry: { attempt: 2, maxAttempts: 3, at: 5000, error: "overloaded" },
+    turn: null,
+  });
 });

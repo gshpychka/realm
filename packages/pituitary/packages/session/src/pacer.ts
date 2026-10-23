@@ -72,9 +72,6 @@ export class EventPacer {
       return;
     }
 
-    // The final result supersedes any sampled output for that call.
-    if (event.type === "tool_execution_end") this.tools.delete(event.toolCallId);
-
     this.flushPending();
     this.apply(event);
     this.onFlush();
