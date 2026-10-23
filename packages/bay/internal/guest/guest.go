@@ -66,6 +66,11 @@ func (g Guest) Stop(ctx context.Context) error {
 	return g.run(ctx, nil, nil, "stop")
 }
 
+// SnapshotReady rejects a stateful snapshot while a detached operator job could be replayed by restoring it.
+func (g Guest) SnapshotReady(ctx context.Context) error {
+	return g.run(ctx, nil, nil, "snapshot-ready")
+}
+
 // SaveHistory writes to w a tar archive of those of the given paths, relative to the program's home, that exist; the
 // stream is empty when none does.
 func (g Guest) SaveHistory(ctx context.Context, paths []string, w io.Writer) error {

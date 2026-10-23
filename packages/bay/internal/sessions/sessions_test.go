@@ -1131,3 +1131,18 @@ func (f *fakeInstances) Connect(ctx context.Context, name, sessionID string, arg
 	_, err := io.Copy(stdout, stdin)
 	return err
 }
+
+func TestSnapshotWaitsForDetachedJobs(t *testing.T) {
+	svc, instances, _ := newService(t, 2)
+	mustStart(t, svc, "one", StartSpec{})
+	instances.failOn = "snapshot-ready"
+	_, err := svc.Snap(context.Background(), "one", "while-busy")
+	wantKind(t, err, fault.Conflict)
+	if instances.snapshotCalls != 0 {
+		t.Fatal("busy detached jobs reached the snapshot operation")
+	}
+	instances.failOn = ""
+	if _, err := svc.Snap(context.Background(), "one", "after-jobs"); err != nil {
+		t.Fatal(err)
+	}
+}
