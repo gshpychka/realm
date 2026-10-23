@@ -22,6 +22,7 @@ import { modelName } from "../model-names.ts";
 import { tilde } from "../place.ts";
 import { type ProviderMark, providerMark } from "../provider.ts";
 import { type Badge, badges, type Tone } from "../status.ts";
+import { ellipsize, headCells, tailCells } from "../text-width.ts";
 import { Link } from "./link.tsx";
 import { MascotSlot } from "./mascot.tsx";
 
@@ -96,46 +97,40 @@ export interface Row {
 }
 
 const cells = (text: string) => Bun.stringWidth(text);
-const span = (segs: readonly Seg[]) => segs.reduce((sum, seg) => sum + cells(seg.text), 0);
+const textOf = (segs: readonly Seg[]) => segs.map((seg) => seg.text).join("");
+const span = (segs: readonly Seg[]) => cells(textOf(segs));
 
-function clip(text: string, chars: number): string {
-  return text.length > chars ? `${text.slice(0, Math.max(0, chars - 1))}…` : text;
+/** A range of the assembled text, retaining the styles of the segments it crosses. */
+function sliceSegments(segs: readonly Seg[], start: number, end: number): Seg[] {
+  let offset = 0;
+  return segs.flatMap((seg) => {
+    const text = seg.text.slice(Math.max(0, start - offset), Math.max(0, end - offset));
+    offset += seg.text.length;
+    return text ? [{ ...seg, text }] : [];
+  });
 }
 
-/** The end of `path` that fits `columns`, where the directory's own name is. */
+/** The end of a path that fits, where the directory's own name is. */
 function tail(path: string, columns: number): string {
   if (cells(path) <= columns) return path;
   if (columns <= 1) return "…";
-  return `…${path.slice(path.length - (columns - 1))}`;
+  return `…${tailCells(path, columns - 1)}`;
 }
 
-/** The first `columns` of `segs`, the last kept cell an ellipsis when any are cut. */
+/** The first columns of the styled text, with an ellipsis when it is cut. */
 function clipEnd(segs: readonly Seg[], columns: number): Seg[] {
-  if (span(segs) <= columns) return [...segs];
-  const kept: Seg[] = [];
-  let room = columns - 1;
-  for (const seg of segs) {
-    if (room <= 0) break;
-    const text = [...seg.text].reduce((out, char) => (cells(out + char) <= room ? out + char : out), "");
-    kept.push({ ...seg, text });
-    room -= cells(text);
-  }
+  if (columns <= 0) return [];
+  const text = textOf(segs);
+  if (cells(text) <= columns) return [...segs];
+  const kept = sliceSegments(segs, 0, headCells(text, columns - 1).length);
   const last = kept.at(-1);
-  return columns > 0 ? [...kept, { text: "…", fg: last?.fg, bg: last?.bg }] : [];
+  return [...kept, { text: "…", fg: last?.fg, bg: last?.bg }];
 }
 
-/** The last `columns` of `segs`. */
+/** The last columns of the assembled styled text. */
 function clipStart(segs: readonly Seg[], columns: number): Seg[] {
-  const kept: Seg[] = [];
-  let room = columns;
-  for (const seg of [...segs].reverse()) {
-    if (room <= 0) break;
-    const chars = [...seg.text];
-    const text = cells(seg.text) <= room ? seg.text : chars.slice(chars.length - room).join("");
-    kept.unshift({ ...seg, text });
-    room -= cells(text);
-  }
-  return kept;
+  const text = textOf(segs);
+  return sliceSegments(segs, text.length - tailCells(text, columns).length, text.length);
 }
 
 function contextTone(percent: number): LimitTone {
@@ -209,7 +204,7 @@ export function footerParts(
     name: state?.sessionName || null,
     badges: badges(statuses, turnStatuses).map((entry) => ({
       ...entry,
-      detail: entry.detail === null ? null : clip(entry.detail, DETAIL_CHARS),
+      detail: entry.detail === null ? null : ellipsize(entry.detail, DETAIL_CHARS),
     })),
     model: state?.model
       ? { mark: providerMark(state.model.provider), name: modelName(state.model.id) }
@@ -401,7 +396,7 @@ function budget(
         ],
     ...onCard.map((group) => group?.map((seg) => ({ ...seg, card: true })) ?? null),
   ];
-  const name = p.model && nameRoom !== 0 ? clip(p.model.name, nameRoom ?? p.model.name.length) : null;
+  const name = p.model && nameRoom !== 0 ? ellipsize(p.model.name, nameRoom ?? cells(p.model.name)) : null;
   const model: Seg[] = p.model
     ? [
         { text: p.model.mark.glyph, fg: c.brandMark ? (p.model.mark.colour ?? c.textRight) : c.textRight },
@@ -434,7 +429,8 @@ function fitPlace(
   if (over <= 0) return whole;
   const columns = cells(p.path) - over;
   if (columns < Math.min(keep, cells(p.path))) return null;
-  return place(p, style, { ...options, path: tail(p.path, columns) });
+  const fitted = place(p, style, { ...options, path: tail(p.path, columns) });
+  return span(fitted) <= room ? fitted : null;
 }
 
 /** Hearth widths from the chosen one down: ¾, ½, then the narrowest. */
@@ -470,10 +466,11 @@ export function footerRows(p: Parts, columns: number, style: FooterStyle, open: 
       { name, pull: true },
       PATH_KEPT,
     );
-    if (left) {
+    const leading = left && [...left, ...(statuses.length > 0 ? [{ text: " " }, ...statuses] : [])];
+    if (leading && span([...leading, ...right]) + widest + 1 <= columns) {
       return [
         {
-          left: [...left, ...(statuses.length > 0 ? [{ text: " " }, ...statuses] : [])],
+          left: leading,
           right,
           hearth: widest,
         },
@@ -548,6 +545,7 @@ export function Footer(props: FooterProps) {
   const [open, setOpen] = useState(false);
   const rows = footerRows(footerParts(props, now), columns, STYLE, open);
   const toggle = (event: MouseEvent) => {
+    if (event.button !== 0) return;
     event.preventDefault();
     setOpen((was) => !was);
   };

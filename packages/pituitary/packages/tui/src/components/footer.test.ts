@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { homedir } from "node:os";
-import { fakeSessionState, type Limits, type SessionStats } from "@pituitary/rpc";
+import { fakeSessionState, type Limits, type RpcSessionState, type SessionStats } from "@pituitary/rpc";
 import { FIREBOX, footerStyle, PALETTE_NAMES } from "../footer-style.ts";
 import { glyphs } from "../glyphs.ts";
 import { gruvbox } from "../theme.ts";
@@ -296,6 +296,25 @@ describe("room", () => {
     expect(text(tight?.left ?? [])).toContain(`${glyphs.branch} footer`);
     expect(text(tight?.left ?? [])).not.toContain("#57");
   });
+
+  test("wide and composed text fits every footer width without broken characters", () => {
+    const patch = {
+      cwd: `/work/${"資料🙂e\u0301".repeat(8)}`,
+      branch: "改善🙂",
+      state: {
+        ...fakeSessionState,
+        model: { ...fakeSessionState.model, id: "資料🙂e\u0301".repeat(8) },
+      } as RpcSessionState,
+    };
+    for (let columns = 1; columns <= WIDE; columns++) {
+      for (const row of rows(patch, columns)) {
+        const value = text(row.left) + text(row.right);
+        expect(Bun.stringWidth(value) + row.hearth).toBeLessThanOrEqual(columns);
+        expect(value.isWellFormed()).toBe(true);
+        expect(value).not.toMatch(/(?:^|…)\p{Mark}/u);
+      }
+    }
+  });
 });
 
 describe("parts", () => {
@@ -320,4 +339,12 @@ describe("parts", () => {
     expect(at(71)).toBe(gruvbox.bright_yellow);
     expect(at(93)).toBe(gruvbox.bright_red);
   });
+});
+
+test("assembled flag footer rows fit without additive width assumptions", () => {
+  const parts = footerParts(props({ state: null, stats: null, cwd: "/🇺🇦a🇺🇦", branch: "🇺🇦" }));
+  for (const palette of PALETTE_NAMES)
+    for (let columns = 1; columns <= 40; columns++)
+      for (const row of footerRows(parts, columns, footerStyle({ PITUITARY_FOOTER_PALETTE: palette }), false))
+        expect(Bun.stringWidth(text(row.left) + text(row.right)) + row.hearth).toBeLessThanOrEqual(columns);
 });
