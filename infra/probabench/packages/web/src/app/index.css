@@ -136,13 +136,11 @@ input[type="search"]::-webkit-search-decoration {
   letter-spacing: 1.25px;
   color: var(--muted);
 }
-.notebook {
-  margin: 0 auto;
-}
-.notebook main {
-  max-width: var(--page-width);
-  padding: 0 var(--page-gutter);
-  margin: 0 auto;
+.site-header,
+.notebook main,
+.site-footer {
+  width: min(100% - 2 * var(--page-gutter), var(--page-width) - 2 * var(--page-gutter));
+  margin-inline: auto;
 }
 .skip-link {
   position: fixed;
@@ -163,9 +161,6 @@ input[type="search"]::-webkit-search-decoration {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  max-width: calc(var(--page-width) - var(--page-gutter) * 2);
-  width: calc(100% - var(--page-gutter) * 2);
-  margin: 0 auto;
   padding: 22px 0;
   border-bottom: 1px solid var(--line);
 }
@@ -176,7 +171,7 @@ input[type="search"]::-webkit-search-decoration {
   font-weight: 650;
   letter-spacing: -1px;
 }
-.brand > span:not(.brand-mark, .brand-edition) {
+.brand > span:not(.brand-mark) {
   color: var(--muted);
   font-weight: 400;
 }
@@ -195,14 +190,6 @@ input[type="search"]::-webkit-search-decoration {
 .brand-mark i:nth-child(2),
 .brand-mark i:nth-child(3) {
   opacity: 0.4;
-}
-.brand-edition {
-  font: 11px / 1.5 var(--mono);
-  letter-spacing: 1.6px;
-  margin-left: 28px;
-  padding-left: 28px;
-  border-left: 1px solid #504945;
-  color: var(--muted);
 }
 .header-actions {
   display: flex;
@@ -311,15 +298,7 @@ button.connection {
   align-items: center;
 }
 .hero-copy > .eyebrow {
-  display: flex;
-  gap: 10px;
-  align-items: center;
   color: #bdae93;
-}
-.hero-copy > .eyebrow > span {
-  height: 1px;
-  width: 18px;
-  background: var(--accent);
 }
 .hero h1 {
   font: 400 clamp(40px, 4.2vw, 60px) / 1.08 var(--serif);
@@ -358,9 +337,6 @@ button.connection {
 .hero-formula var {
   color: var(--accent);
   font-size: 58px;
-}
-.hero-note-text .eyebrow {
-  font-size: 11px;
 }
 .hero-note-text p {
   font-size: 14px;
@@ -487,8 +463,7 @@ button.connection {
   color: var(--muted);
   text-align: right;
 }
-.overview-date time,
-.overview-date > span {
+.overview-date time {
   display: block;
   color: #d5c4a1;
 }
@@ -546,7 +521,6 @@ button.connection {
   display: none;
 }
 .view-actions .text-button {
-  font-size: 13px;
   color: #bdae93;
 }
 .share-view {
@@ -568,11 +542,6 @@ button.connection {
   color: var(--muted);
   padding: 3px 5px;
   border-radius: 3px;
-}
-.notebook-index {
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 1.6px;
 }
 #notebook-content {
   min-height: 320px;
@@ -606,7 +575,6 @@ button.connection {
   align-items: start;
 }
 .chart-card,
-.model-panel,
 .timeline-panel,
 .run-detail,
 .inspector-measurements {
@@ -664,7 +632,6 @@ button.connection {
 .calibration-plot {
   height: 390px;
 }
-.recharts-wrapper:focus,
 .recharts-surface:focus {
   outline-offset: -2px;
 }
@@ -772,11 +739,9 @@ button.connection {
   border-radius: 50%;
 }
 .model-panel {
+  min-width: 0;
   padding: 0 0 0 22px;
-  background: transparent;
-  border: 0;
   border-left: 1px solid var(--line);
-  border-radius: 0;
 }
 .panel-heading {
   display: flex;
@@ -898,12 +863,7 @@ button.connection {
   font: 11px / 1.4 var(--mono);
 }
 .measurement-run {
-  min-width: 0;
-  border: 0;
   border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  background: transparent;
-  margin-bottom: 0;
 }
 .measurement-run > summary {
   display: flex;
@@ -1271,9 +1231,6 @@ button.connection {
   margin-top: 18px;
   border-top: 1px solid var(--line);
 }
-.run-actions .button {
-  flex: 1 1 auto;
-}
 .run-actions .text-button {
   font-size: 12px;
 }
@@ -1312,7 +1269,7 @@ button.connection {
 .empty-notebook {
   margin-top: 32px;
   text-align: center;
-  padding: 40px 24px 0;
+  padding: 40px 24px 42px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #242625;
@@ -1330,7 +1287,7 @@ button.connection {
   letter-spacing: -0.8px;
   margin-top: 15px;
 }
-.empty-notebook > p:not(.eyebrow) {
+.empty-notebook > p {
   max-width: 460px;
   margin: 20px auto 0;
   font-size: 14px;
@@ -1342,22 +1299,7 @@ button.connection {
   justify-content: center;
   align-items: center;
   gap: 30px;
-  margin: 29px 0 42px;
-}
-.empty-footnote {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 26px;
-  font: 11px / 1.8 var(--mono);
-  color: var(--muted);
-  padding: 18px 0;
-  border-top: 1px solid var(--line);
-}
-.empty-footnote span + span::before {
-  content: "·";
-  margin-right: 26px;
-  color: var(--accent);
+  margin-top: 29px;
 }
 .method-steps {
   display: grid;
@@ -1459,7 +1401,7 @@ button.connection {
   font: 400 34px / 1.3 var(--serif);
   margin-top: 12px;
 }
-.notebook-error > p:not(.eyebrow) {
+.notebook-error > p {
   font-size: 14px;
   line-height: 1.8;
   color: var(--muted);
@@ -1468,11 +1410,13 @@ button.connection {
 }
 .chart-loading,
 .chart-failure {
-  padding: 110px 20px;
   min-height: 390px;
   text-align: center;
   color: var(--muted);
   font-size: 14px;
+}
+.chart-loading {
+  padding: 110px 20px;
 }
 .chart-loading .loading-line {
   margin-bottom: 20px;
@@ -1491,9 +1435,7 @@ button.connection {
   margin: 14px auto 20px;
 }
 .site-footer {
-  max-width: calc(var(--page-width) - var(--page-gutter) * 2);
-  width: calc(100% - var(--page-gutter) * 2);
-  margin: 48px auto 0;
+  margin-top: 48px;
   padding: 24px 0 28px;
   border-top: 1px solid var(--line);
   display: flex;
@@ -1597,7 +1539,6 @@ button.connection {
 }
 .run-dialog input[name="model"] {
   font-family: var(--mono);
-  font-size: 13px;
 }
 /* Chrome draws the datalist marker below centre otherwise. */
 .run-dialog input[name="model"]::-webkit-calendar-picker-indicator {
@@ -1743,11 +1684,6 @@ button.connection {
   color: #bdae93;
   margin-top: 7px;
 }
-.environment-note .text-button {
-  font-size: 12px;
-  color: var(--accent);
-  margin-top: 9px;
-}
 .run-action {
   display: flex;
   gap: 25px;
@@ -1866,29 +1802,6 @@ button.connection {
   font-size: 12px;
   color: #bdae93;
 }
-.job-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.job-heading > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  align-items: center;
-  font-size: 12px;
-}
-.job-heading strong {
-  font-weight: 500;
-}
-.job-heading > div > .muted {
-  font: 11px / 1.5 var(--mono);
-}
-.job-heading .text-button {
-  font-size: 12px;
-}
 .job-progress pre {
   font: 12px / 1.9 var(--mono);
   padding: 15px;
@@ -1909,9 +1822,6 @@ button.connection {
 }
 
 @media (max-width: 1100px) {
-  .brand-edition {
-    display: none;
-  }
   .hero {
     gap: 40px;
   }
@@ -1949,14 +1859,6 @@ button.connection {
   }
   .has-results .hero-note {
     display: none;
-  }
-  .notebook main {
-    padding: 0 var(--page-gutter);
-  }
-  .site-header,
-  .site-footer {
-    margin-left: auto;
-    margin-right: auto;
   }
   .hero {
     padding-top: 52px;
@@ -2024,9 +1926,6 @@ button.connection {
   .method-steps article:last-child .method-equation {
     font-size: 22px;
   }
-  .site-footer > span:nth-child(2) {
-    display: none;
-  }
 }
 @media (max-width: 650px) {
   :root {
@@ -2055,11 +1954,7 @@ button.connection {
   .has-results .notebook-overview dd {
     font-size: 18px;
   }
-  .notebook main {
-    padding: 0 var(--page-gutter);
-  }
   .site-header {
-    margin: 0 auto;
     padding: 18px 0;
     gap: 14px;
   }
@@ -2078,7 +1973,6 @@ button.connection {
   .header-actions > .button {
     padding: 10px 12px;
     gap: 12px;
-    min-height: 44px;
     font-size: 12px;
   }
   .hero {
@@ -2122,6 +2016,7 @@ button.connection {
   }
   .notebook-navigation {
     margin-top: 12px;
+    gap: 8px;
   }
   .notebook-navigation [role="tablist"] {
     gap: 17px;
@@ -2131,14 +2026,10 @@ button.connection {
     gap: 6px;
     padding-top: 19px;
   }
-  .notebook-navigation {
-    gap: 8px;
-  }
   .view-actions {
     flex-shrink: 0;
   }
   .view-actions .text-button {
-    min-height: 44px;
     padding: 10px;
   }
   .share-label {
@@ -2154,16 +2045,10 @@ button.connection {
   .tab-count {
     font-size: 11px;
   }
-  .notebook-index {
-    display: none;
-  }
   .section-heading {
     display: block;
     margin-top: 28px;
     margin-bottom: 23px;
-  }
-  .section-heading h2 {
-    font-size: 28px;
   }
   .section-heading > p {
     max-width: none;
@@ -2181,14 +2066,11 @@ button.connection {
     font-size: 15px;
   }
   .chart-heading p {
-    font-size: 12px;
     max-width: 170px;
     line-height: 1.7;
   }
   .interval-toggle {
-    font-size: 12px;
     padding: 8px;
-    min-height: 38px;
   }
   .interval-toggle > span {
     font-size: 13px;
@@ -2201,17 +2083,7 @@ button.connection {
     height: 300px;
   }
   .chart-caption {
-    font-size: 12px;
     gap: 8px;
-  }
-  .chart-caption .mono {
-    font-size: 11px;
-  }
-  .chart-description {
-    font-size: 12px;
-  }
-  .model-panel {
-    padding: 18px 0 0;
   }
   .model-fieldset {
     grid-template-columns: minmax(0, 1fr);
@@ -2220,22 +2092,13 @@ button.connection {
     padding-top: 16px;
     padding-bottom: 16px;
   }
-  .model-toggle strong {
-    font-size: 13px;
-  }
   .model-toggle > span:last-child {
     flex: 1;
-  }
-  .run-select select {
-    font-size: 12px;
   }
   .run-select select,
   .search-field input {
     font-size: 16px;
     min-height: 44px;
-  }
-  .measurements-panel {
-    margin-top: 32px;
   }
   .measurements-panel > header {
     align-items: start;
@@ -2248,7 +2111,6 @@ button.connection {
   .measurements-panel > header .tag {
     margin-top: 4px;
     white-space: nowrap;
-    font-size: 11px;
   }
   .measurement-run > summary {
     flex-wrap: wrap;
@@ -2265,18 +2127,12 @@ button.connection {
     align-items: end;
     font-size: 12px;
   }
-  .measurement-gap small {
-    font-size: 11px;
-  }
   .expand-sign {
     margin-left: 8px;
     font-size: 15px;
   }
   .table-scroll {
     padding: 0 8px;
-  }
-  .measurement-table {
-    font-size: 12px;
   }
   .measurement-foot {
     padding: 14px 18px;
@@ -2298,17 +2154,11 @@ button.connection {
     gap: 10px;
     padding: 15px 8px 15px 12px;
   }
-  .history-row-main strong {
-    font-size: 13px;
-  }
   .history-row-main > span {
     font-size: 11px;
   }
   .history-row-metric strong {
     font-size: 12px;
-  }
-  .history-row-metric > span {
-    font-size: 11px;
   }
   .row-arrow {
     display: none;
@@ -2318,33 +2168,20 @@ button.connection {
   }
   .empty-notebook {
     margin-top: 24px;
-    padding: 30px 20px 0;
+    padding: 30px 20px;
   }
   .empty-sketch {
     width: 110px;
   }
-  .empty-notebook > .eyebrow {
-    font-size: 11px;
-    letter-spacing: 1.3px;
-  }
   .empty-notebook h2 {
     font-size: 34px;
   }
-  .empty-notebook > p:not(.eyebrow) {
+  .empty-notebook > p {
     font-size: 13px;
   }
   .empty-actions {
     flex-direction: column;
     gap: 15px;
-    margin-bottom: 30px;
-  }
-  .empty-footnote {
-    gap: 6px;
-    flex-direction: column;
-    font-size: 11px;
-  }
-  .empty-footnote span + span::before {
-    content: none;
   }
   .method-steps {
     grid-template-columns: minmax(0, 1fr);
@@ -2362,7 +2199,6 @@ button.connection {
   }
   .method-steps p {
     min-height: auto;
-    font-size: 13px;
   }
   .method-equation {
     margin-top: 20px;
@@ -2373,11 +2209,8 @@ button.connection {
     gap: 28px;
     padding-top: 30px;
   }
-  .method-notes h3 {
-    font-size: 23px;
-  }
   .site-footer {
-    margin: 36px auto 0;
+    margin-top: 36px;
     padding: 23px 0;
     align-items: start;
     gap: 18px;
@@ -2401,8 +2234,7 @@ button.connection {
   }
   .run-dialog input,
   .run-dialog select,
-  .run-dialog textarea,
-  .run-dialog input[name="model"] {
+  .run-dialog textarea {
     font-size: 16px;
     min-height: 44px;
   }
@@ -2422,9 +2254,6 @@ button.connection {
   }
   .dialog-heading h2 {
     font-size: 27px;
-  }
-  .dialog-heading .eyebrow {
-    font-size: 11px;
   }
   .dialog-intro {
     font-size: 12px;
@@ -2468,10 +2297,6 @@ button.connection {
   .form-grid {
     gap: 12px;
   }
-  .advanced summary,
-  .advanced summary > span {
-    font-size: 12px;
-  }
   .budget {
     gap: 13px;
     padding: 17px 14px;
@@ -2481,9 +2306,6 @@ button.connection {
   }
   .budget > div > span {
     font-size: 11px;
-  }
-  .budget > p {
-    font-size: 12px;
   }
   .budget > p > span {
     font-size: 11px;
