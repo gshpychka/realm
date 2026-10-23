@@ -165,9 +165,17 @@ async function superviseDura(): Promise<void> {
   const scratch = process.env.PITUITARY_UI_STATE ? undefined : mkdtempSync(join(tmpdir(), "pituitary-ui-"));
   const state = process.env.PITUITARY_UI_STATE ?? join(scratch as string, "view.json");
   let resume = process.env.PITUITARY_UI_RESUME === "1";
+  let child: ReturnType<typeof spawn> | undefined;
+  let stopping = false;
+  const stop = () => {
+    stopping = true;
+    child?.kill("SIGTERM");
+  };
+  process.once("SIGTERM", stop);
+  process.once("SIGHUP", stop);
   try {
     for (;;) {
-      const child = spawn(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url), ...argv], {
+      child = spawn(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url), ...argv], {
         stdio: "inherit",
         env: {
           ...process.env,
@@ -176,19 +184,11 @@ async function superviseDura(): Promise<void> {
           PITUITARY_UI_RESUME: resume ? "1" : "0",
         },
       });
-      const stop = () => {
-        child.kill("SIGTERM");
-      };
-      process.once("SIGTERM", stop);
-      process.once("SIGHUP", stop);
       const code = await new Promise<number>((resolve, reject) => {
-        child.once("error", reject);
-        child.once("exit", (code, signal) => resolve(signal ? 1 : (code ?? 1)));
-      }).finally(() => {
-        process.off("SIGTERM", stop);
-        process.off("SIGHUP", stop);
+        child?.once("error", reject);
+        child?.once("exit", (code, signal) => resolve(signal ? 1 : (code ?? 1)));
       });
-      if (code !== RELOAD_UI) {
+      if (stopping || code !== RELOAD_UI) {
         process.exitCode = code;
         return;
       }
