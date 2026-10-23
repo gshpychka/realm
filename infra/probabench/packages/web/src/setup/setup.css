@@ -59,11 +59,6 @@ body:has(.run-dialog[open]) {
   color: var(--text);
   background: var(--line);
 }
-.run-dialog .text-button {
-  @media (max-width: 650px) {
-    min-height: 40px;
-  }
-}
 .run-dialog input,
 .run-dialog select {
   display: block;
@@ -355,6 +350,8 @@ body:has(.run-dialog[open]) {
   font: 12px / 1.6 var(--mono);
   margin-top: 12px;
 }
+/* Firefox tints its bar with accent-color. In Chromium the border reset turns off the
+   native bar, so the -webkit- parts below draw it. */
 .job-progress > progress {
   display: block;
   width: 100%;

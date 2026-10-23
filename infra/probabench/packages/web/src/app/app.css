@@ -20,6 +20,8 @@
 .skip-link:focus {
   transform: none;
 }
+/* The skip link and moves between views focus this panel: the radius rounds its focus
+   ring, and the scroll margin keeps the ring in view when focusing scrolls here. */
 .notebook-panel {
   border-radius: var(--radius-sm);
   scroll-margin-top: 24px;
@@ -166,6 +168,7 @@
     gap: 12px;
   }
 }
+/* Value before label on screen; the markup keeps dt before dd. */
 .notebook-overview dl > div {
   display: flex;
   flex-direction: row-reverse;

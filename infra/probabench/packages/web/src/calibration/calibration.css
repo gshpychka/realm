@@ -181,10 +181,6 @@
     min-height: 44px;
   }
 }
-.run-select option {
-  background: var(--panel);
-  color: var(--text);
-}
 .panel-note {
   font-size: 12px;
   line-height: 1.8;
@@ -253,10 +249,12 @@
   font-weight: 500;
 
   @media (max-width: 650px) {
+    /* Leaves the mean error and the + room on the first line. */
     max-width: calc(100% - 130px);
     font-size: 12px;
   }
 }
+/* This summary centres its items. */
 .measurement-run > summary .color-dot {
   margin-top: 0;
 }

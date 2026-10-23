@@ -275,6 +275,7 @@ var {
   height: 6px;
   border-radius: 50%;
 }
+/* Level with the first line of the text it leads, in rows that align to the top. */
 .color-dot {
   margin-top: 4px;
 }
