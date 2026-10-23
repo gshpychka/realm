@@ -1,5 +1,6 @@
+import type { InputRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { palette, theme } from "../theme.ts";
 import { Detail, type DetailIcon } from "./detail.tsx";
 
@@ -27,6 +28,20 @@ export interface PickerSpec {
 /** Rows the list shows before it scrolls, room permitting. */
 const ROWS = 10;
 
+function matchingItems(items: readonly PickItem[], query: string) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return items
+    .filter((item) => {
+      const haystack = `${item.label} ${item.detail ?? ""}`.toLowerCase();
+      return words.every((word) => haystack.includes(word));
+    })
+    .sort(
+      (a, b) =>
+        Number(words.every((word) => b.label.toLowerCase().includes(word))) -
+        Number(words.every((word) => a.label.toLowerCase().includes(word))),
+    );
+}
+
 /** A filterable list in the editor's place: type to narrow, arrows to move, enter to pick. */
 export function Picker({
   spec,
@@ -40,6 +55,7 @@ export function Picker({
   compact?: boolean;
 }) {
   const { width } = useTerminalDimensions();
+  const input = useRef<InputRenderable>(null);
   const [query, setQuery] = useState(spec.query ?? "");
   const [selected, setSelected] = useState(() =>
     spec.query
@@ -49,19 +65,7 @@ export function Picker({
           spec.items.findIndex((item) => item.current),
         ),
   );
-  const shown = useMemo(() => {
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return spec.items
-      .filter((item) => {
-        const haystack = `${item.label} ${item.detail ?? ""}`.toLowerCase();
-        return words.every((word) => haystack.includes(word));
-      })
-      .sort(
-        (a, b) =>
-          Number(words.every((word) => b.label.toLowerCase().includes(word))) -
-          Number(words.every((word) => a.label.toLowerCase().includes(word))),
-      );
-  }, [spec.items, query]);
+  const shown = useMemo(() => matchingItems(spec.items, query), [spec.items, query]);
   const index = Math.max(0, Math.min(selected, shown.length - 1));
   const height = Math.max(1, Math.min(ROWS, rows));
   const top = Math.max(0, Math.min(index - Math.floor(height / 2), shown.length - height));
@@ -87,11 +91,6 @@ export function Picker({
       setSelected(
         Math.max(0, Math.min(shown.length - 1, index + (key.name === "pageup" ? -height : height))),
       );
-    } else if (key.name === "return" || key.name === "kpenter") {
-      key.preventDefault();
-      const item = shown[index];
-      if (!item) return;
-      pick(item);
     }
   });
 
@@ -118,6 +117,7 @@ export function Picker({
       <box flexDirection="row">
         <text fg={theme.dim}>filter </text>
         <input
+          ref={input}
           focused
           flexGrow={1}
           value={spec.query ?? ""}
@@ -125,6 +125,13 @@ export function Picker({
           onInput={(value: string) => {
             setQuery(value);
             setSelected(0);
+          }}
+          onSubmit={() => {
+            // The input can receive Enter before React has drawn the latest filter.
+            const value = input.current?.value ?? query;
+            const matches = value === query ? shown : matchingItems(spec.items, value);
+            const item = matches[value === query ? index : 0];
+            if (item) pick(item);
           }}
         />
       </box>

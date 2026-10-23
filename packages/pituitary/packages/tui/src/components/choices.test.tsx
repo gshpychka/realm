@@ -56,6 +56,31 @@ test("a picker starts a narrowed search at its first result", async () => {
   }
 });
 
+test("typing a filter and Enter together picks from the new matches", async () => {
+  let picked = "";
+  const app = await draw(
+    <Picker
+      spec={{
+        title: "models",
+        items,
+        onPick: (value) => {
+          picked = value;
+        },
+      }}
+      onClose={() => {}}
+    />,
+  );
+  try {
+    await act(async () => {
+      await app.mockInput.typeText("match");
+      app.mockInput.pressKey("RETURN");
+    });
+    expect(picked).toBe("first");
+  } finally {
+    app.close();
+  }
+});
+
 test("an empty picker can recover from arrow navigation without losing its selection", async () => {
   let picked = "";
   const app = await draw(
