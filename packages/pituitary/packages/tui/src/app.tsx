@@ -451,7 +451,7 @@ export function App({
       command(own.name, own.args);
       return;
     }
-    if (canChooseModel && !state?.model) {
+    if (canChooseModel && state && !state.model) {
       editor.current?.set(text);
       command("model");
       return;
