@@ -12,11 +12,10 @@ import { sweep } from "./sweep";
 
 const series: ModelSeries = { model: "vendor/model", modelSlug: "vendor/model", reasoning: "off" };
 /** One sample at 0% and one at 100%. */
-const twoSamples: SamplingOptions = {
+const twoSamples: Omit<SamplingOptions, "maxTokens"> = {
   trialsPerStep: 1,
   stepPercent: 100,
   concurrency: 1,
-  maxTokens: 16,
 };
 
 /** A LanguageModel whose every reply is the text `reply` produces. */
@@ -53,7 +52,6 @@ describe("sweep", () => {
         trialsPerStep: 5,
         stepPercent: 30,
         concurrency: 2,
-        maxTokens: 16,
       }).pipe(Effect.provide(model));
       expect(run).toMatchObject({
         ...series,
@@ -70,22 +68,20 @@ describe("sweep", () => {
     });
   });
 
-  for (const [reply, outcome] of [
+  it.effect.each([
     ["1", 1],
     ["0", 0],
     [" 1\n", 1],
     ["banana", { invalidText: "banana" }],
     ["", { invalidText: "" }],
-  ] as const) {
-    it.effect(`records the reply ${JSON.stringify(reply)} as ${JSON.stringify(outcome)}`, () =>
-      Effect.gen(function* () {
-        const run = yield* sweep(series, twoSamples).pipe(
-          Effect.provide(fakeModel(() => Effect.succeed(reply))),
-        );
-        expect(run.points.map((point) => point.outcomes)).toEqual([[outcome], [outcome]]);
-      }),
-    );
-  }
+  ] as const)("records the reply %j as %j", ([reply, outcome]) =>
+    Effect.gen(function* () {
+      const run = yield* sweep(series, twoSamples).pipe(
+        Effect.provide(fakeModel(() => Effect.succeed(reply))),
+      );
+      expect(run.points.map((point) => point.outcomes)).toEqual([[outcome], [outcome]]);
+    }),
+  );
 
   it.effect("fails once every attempt at a stalled sample has timed out", () => {
     let attempts = 0;

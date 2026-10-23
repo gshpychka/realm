@@ -54,7 +54,7 @@ const sampleBit = (
 /** Samples the series' whole grid into a Run, printing a progress line per finished point. */
 export const sweep = (
   series: ModelSeries,
-  options: SamplingOptions,
+  options: Omit<SamplingOptions, "maxTokens">,
 ): Effect.Effect<Run, ProviderFailure, LanguageModel.LanguageModel> =>
   Effect.gen(function* () {
     const startedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
