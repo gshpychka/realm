@@ -18,7 +18,7 @@ const UNSAFE = /[\x00-\x1f\x7f-\x9f]/;
  * through `fd` when it is installed, through git otherwise. Names arrive NUL-separated,
  * so no name can pass itself off as two.
  */
-export async function listFiles(cwd: string): Promise<string[]> {
+export async function listFiles(cwd: string, signal?: AbortSignal): Promise<string[]> {
   const run = async (command: string, args: string[]) => {
     try {
       const { stdout } = await execute(command, args, {
@@ -26,6 +26,7 @@ export async function listFiles(cwd: string): Promise<string[]> {
         encoding: "utf8",
         maxBuffer: 16 * 1024 * 1024,
         timeout: TIMEOUT_MS,
+        signal,
       });
       return stdout;
     } catch {
@@ -47,7 +48,11 @@ export async function listFiles(cwd: string): Promise<string[]> {
     String(LIMIT),
   ]);
   const listed =
-    fd ?? (await run("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])) ?? "";
+    fd ??
+    (signal?.aborted
+      ? ""
+      : await run("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])) ??
+    "";
   return listed
     .split("\0")
     .filter((name) => name && name !== "." && !UNSAFE.test(name))

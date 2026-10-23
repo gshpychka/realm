@@ -15,14 +15,15 @@ function typed(key: KeyEvent): boolean {
  */
 export function useHeldKeys(
   editor: RefObject<EditorHandle | null>,
-  onKey: (key: KeyEvent) => void,
+  onKey: (key: KeyEvent) => void | Promise<void>,
   holding: boolean,
-  /** A newly opened extension dialog or component must not receive keys meant for the draft. */
+  /** A new operator dialog must not receive keys meant for the draft. */
   boundary: object | null = null,
 ): void {
   const held = useRef<{ key: KeyEvent; boundary: object | null }[]>([]);
   const replaying = useRef(false);
   const mounted = useRef(true);
+  const pending = useRef<Promise<void> | null>(null);
   const renderer = useRenderer();
   const [released, release] = useState(0);
   const latest = useRef(onKey);
@@ -40,25 +41,36 @@ export function useHeldKeys(
     };
   }, []);
 
+  const dispatch = (key: KeyEvent) => {
+    const work = latest.current(key);
+    if (work) {
+      pending.current = work;
+      void work.finally(() => {
+        if (pending.current === work) pending.current = null;
+        if (mounted.current) release((count) => count + 1);
+      });
+    }
+  };
+
   useKeyboard((key) => {
     if (replaying.current) {
-      latest.current(key);
+      dispatch(key);
       return;
     }
-    const waiting = held.current.length > 0 || (!typed(key) && editor.current?.busy());
+    const waiting = pending.current || held.current.length > 0 || (!typed(key) && editor.current?.busy());
     if (!waiting || !holding) {
-      onKey(key);
+      dispatch(key);
       return;
     }
     key.preventDefault();
     held.current.push({ key, boundary });
-    if (held.current.length === 1) hold();
+    if (held.current.length === 1 && !pending.current) hold();
   });
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when a held key is released
   useEffect(() => {
     const next = held.current[0];
-    if (!next) return;
+    if (!next || pending.current) return;
     if (editor.current?.busy()) {
       hold();
       return;
@@ -68,7 +80,7 @@ export function useHeldKeys(
       // Holding the key took it; a fresh copy says whether the app takes it now.
       const replay = new KeyEvent(next.key);
       // A shortcut may have opened a picker. Route through the same global handlers
-      // and focused input, while an unrelated extension dialog drops the old input.
+      // and focused input, while a new operator dialog drops the old input.
       replaying.current = true;
       try {
         renderer.keyInput.emit("keypress", replay);
@@ -76,6 +88,6 @@ export function useHeldKeys(
         replaying.current = false;
       }
     }
-    if (held.current.length > 0) release((count) => count + 1);
+    if (held.current.length > 0 && !pending.current) release((count) => count + 1);
   }, [released]);
 }

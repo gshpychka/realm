@@ -12,8 +12,8 @@ describe("development CLI arguments", () => {
 
   test("boolean switches never consume following words", () => {
     expect(() => parseCommand(["screen", "--style", "unexpected"])).toThrow("takes no arguments");
-    expect(parseCommand(["start", "--tmux", "--cols=40"])).toMatchObject({
-      options: { tmux: "", cols: "40" },
+    expect(parseCommand(["start", "--cols=40"])).toMatchObject({
+      options: { cols: "40" },
     });
   });
 
@@ -22,6 +22,8 @@ describe("development CLI arguments", () => {
     expect(() => parseCommand(["screen", "--stlye"])).toThrow("unknown option");
     expect(() => parseCommand(["start", "--cols"])).toThrow("needs a value");
     expect(() => parseCommand(["start", "--scenario", "--cols", "40"])).toThrow("needs a value");
+    expect(() => parseCommand(["start", "--scenario", "--scenaro"])).toThrow("needs a value");
+    expect(parseCommand(["start", "--scenario=--literal"]).options.scenario).toBe("--literal");
     expect(() => parseCommand(["resize", "40"])).toThrow("columns and rows");
     expect(() => parseCommand(["wait"])).toThrow("needs an argument");
   });
@@ -32,7 +34,8 @@ describe("development CLI arguments", () => {
       expect(() => parseCommand(["start", `--cols=${value}`])).toThrow("positive integer");
     }
     expect(parseCommand(["start", "--delay", "0"]).options.delay).toBe("0");
-    expect(() => parseCommand(["start", "--delay", "-1"])).toThrow("nonnegative integer");
+    expect(() => parseCommand(["start", "--delay=-1"])).toThrow("nonnegative integer");
+    expect(() => parseCommand(["resize", "1000000000", "1000000000"])).toThrow("at most 1000");
     expect(() => parseCommand(["start", "--settle", "no"])).toThrow("true or false");
   });
 

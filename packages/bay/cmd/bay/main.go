@@ -67,6 +67,10 @@ func (c *cli) run(args []string) int {
 	switch args[0] {
 	case "help", "-h", "--help":
 		if len(args) == 2 && args[0] == "help" {
+			if slices.Contains([]string{"help", "-h", "--help"}, args[1]) {
+				usage(c.stdout)
+				return 0
+			}
 			return c.run([]string{args[1], "--help"})
 		}
 		if len(args) > 1 {

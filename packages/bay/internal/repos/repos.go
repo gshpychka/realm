@@ -86,25 +86,6 @@ func (m *Mirrors) Remote(r records.Repo) string {
 	return m.remote(r.Owner, r.Name)
 }
 
-// Retain protects an already cached revision from garbage collection. At startup
-// the server uses it for records written before Bay began retaining commit refs.
-// It does no network work; Archive can rebuild a missing mirror when needed.
-func (m *Mirrors) Retain(ctx context.Context, r records.Repo) error {
-	mir, err := m.locate(r.Owner, r.Name)
-	if err != nil {
-		return err
-	}
-	if !fullCommitID.MatchString(r.Commit) {
-		return fmt.Errorf("%w: commit %q", fault.Invalid, r.Commit)
-	}
-	unlock, err := m.lock(ctx, mir)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	return mir.retain(ctx, r.Commit)
-}
-
 // lock holds mir's lock until unlock is called, and fails when ctx ends first.
 func (m *Mirrors) lock(ctx context.Context, mir mirror) (unlock func(), err error) {
 	if err := ctx.Err(); err != nil {
@@ -120,8 +101,9 @@ func (m *Mirrors) lock(ctx context.Context, mir mirror) (unlock func(), err erro
 	}
 }
 
-// Resolve returns the repo at the commit ref names on the remote now, with Branch set when ref names a branch; a ref
-// that names no branch, tag or commit is a fault.Invalid.
+// Resolve fetches the remote's branches and tags, then resolves ref with Branch
+// set for a branch. Commit IDs may also name cached history retained for sessions.
+// A ref that names no branch, tag or cached commit is a fault.Invalid.
 func (m *Mirrors) Resolve(ctx context.Context, ref sessions.RepoRef) (records.Repo, error) {
 	mir, err := m.locate(ref.Owner, ref.Name)
 	if err != nil {
