@@ -67,6 +67,19 @@ func TestLoadConfigRejects(t *testing.T) {
 	}
 }
 
+func TestBaseConfigDoesNotRequireServeOnlyFields(t *testing.T) {
+	config, err := loadConfig(writeConfig(t, `{
+		"incusSocket":"/var/lib/incus/unix.socket", "project":"bay",
+		"machines":{"default":{"base":"bay-base-a","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","resources":{"cpus":1,"memory":8,"disk":50}}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateServeConfig(config); err == nil {
+		t.Fatal("server accepted a base-only configuration")
+	}
+}
+
 // slowServer serves a request that answers "done" once release is closed, and signals started when it arrives.
 func slowServer(t *testing.T, started chan<- struct{}, release <-chan struct{}) (*http.Server, string) {
 	t.Helper()
