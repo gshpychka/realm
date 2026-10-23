@@ -1,4 +1,7 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execute = promisify(execFile);
 
 /** Files a list holds at most, which keeps a huge tree from stalling the editor. */
 const LIMIT = 20_000;
@@ -15,10 +18,22 @@ const UNSAFE = /[\x00-\x1f\x7f-\x9f]/;
  * through `fd` when it is installed, through git otherwise. Names arrive NUL-separated,
  * so no name can pass itself off as two.
  */
-export function listFiles(cwd: string): string[] {
-  const run = (command: string, args: string[]) =>
-    spawnSync(command, args, { cwd, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: TIMEOUT_MS });
-  const fd = run("fd", [
+export async function listFiles(cwd: string, signal?: AbortSignal): Promise<string[]> {
+  const run = async (command: string, args: string[]) => {
+    try {
+      const { stdout } = await execute(command, args, {
+        cwd,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: TIMEOUT_MS,
+        signal,
+      });
+      return stdout;
+    } catch {
+      return null;
+    }
+  };
+  const fd = await run("fd", [
     "--type",
     "f",
     "--type",
@@ -33,12 +48,11 @@ export function listFiles(cwd: string): string[] {
     String(LIMIT),
   ]);
   const listed =
-    fd.status === 0
-      ? fd.stdout
-      : (() => {
-          const git = run("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
-          return git.status === 0 ? git.stdout : "";
-        })();
+    fd ??
+    (signal?.aborted
+      ? ""
+      : await run("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])) ??
+    "";
   return listed
     .split("\0")
     .filter((name) => name && name !== "." && !UNSAFE.test(name))
@@ -93,7 +107,13 @@ export function mentionAt(
   cursor: number,
 ): { query: string; start: number; end: number } | null {
   const before = text.slice(0, cursor);
-  const match = /(^|\s)@([^\s@]*)$/.exec(before);
+  const quoted = /(^|\s)@"([^"\n]*)$/.exec(before);
+  if (quoted) {
+    const query = quoted[2] ?? "";
+    const after = /^[^"\n]*"?/.exec(text.slice(cursor))?.[0] ?? "";
+    return { query, start: cursor - query.length - 2, end: cursor + after.length };
+  }
+  const match = /(^|\s)@([^\s@"]*)$/.exec(before);
   if (!match) return null;
   const start = cursor - (match[2]?.length ?? 0) - 1;
   const after = /^[^\s]*/.exec(text.slice(cursor))?.[0] ?? "";
