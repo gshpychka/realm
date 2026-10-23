@@ -62,7 +62,6 @@ export interface SeriesMeta {
   readonly total: number;
   readonly observed: number | null;
   readonly error: number | null;
-  readonly rmse: number | null;
   readonly interval: readonly [number, number] | null;
 }
 
@@ -131,7 +130,6 @@ export const buildChartModel = (
           total: point.outcomes.length,
           observed,
           error: calibrationError(point.outcomes, x),
-          rmse: point.rmse,
           interval,
         });
       }

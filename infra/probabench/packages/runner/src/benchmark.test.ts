@@ -1,6 +1,6 @@
 import * as LanguageModel from "@effect/ai/LanguageModel";
 import { describe, expect, it } from "@effect/vitest";
-import { Probability, rmse, type Trial } from "@probabench/domain";
+import { Probability, type Trial } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -21,7 +21,7 @@ const fakeSampler = (bit: Trial) =>
   Layer.succeed(BitSampler, BitSampler.make({ sampleBit: () => Effect.succeed(bit) }));
 
 describe("Benchmark.run sweep", () => {
-  it.effect("sweeps the X grid into a Run with metric-derived points", () =>
+  it.effect("sweeps the X grid into a Run with one Point per target", () =>
     Effect.gen(function* () {
       const benchmark = yield* Benchmark;
       const run = yield* benchmark.run({
@@ -31,18 +31,8 @@ describe("Benchmark.run sweep", () => {
         concurrency: 2,
       });
 
-      const expectedX = [0, 0.5, 1].map((fraction) => Probability.make(fraction));
-      const expectedOutcomes: ReadonlyArray<Trial> = [1, 1, 1, 1];
-
-      expect(run.points.length).toBe(expectedX.length);
-      run.points.forEach((point, index) => {
-        expect(point.x).toBe(expectedX[index]);
-        expect(point.outcomes).toEqual(expectedOutcomes);
-        const expectedProbability = expectedX[index];
-        if (expectedProbability === undefined)
-          throw new Error("Unexpected extra probability point");
-        expect(point.rmse).toBe(rmse(expectedOutcomes, expectedProbability));
-      });
+      const outcomes: ReadonlyArray<Trial> = [1, 1, 1, 1];
+      expect(run.points).toEqual([0, 0.5, 1].map((x) => ({ x: Probability.make(x), outcomes })));
 
       expect(run.model).toBe("claude-haiku-4.5");
       expect(run.trialsPerStep).toBe(4);

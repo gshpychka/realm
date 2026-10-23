@@ -2,14 +2,14 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { decodeResults, PersistedResults, Point, Probability, Results, Run, Trial } from "./schema";
+import { decodeResults, PersistedResults, Probability, Results, Run, Trial } from "./schema";
 
 const legacyRun = {
   model: "claude-haiku-4.5",
   trialsPerStep: 2,
   stepPercent: 50,
   startedAt: "2026-06-26T00:00:00.000Z",
-  points: [{ x: 0.5, rmse: 0.5, outcomes: [0, 1] }],
+  points: [{ x: 0.5, outcomes: [0, 1] }],
 } as const;
 const run = { id: "run-1", ...legacyRun } as const;
 
@@ -39,30 +39,6 @@ describe("Trial", () => {
     for (const value of [2, 0.5, null, { invalidText: 2 }]) {
       expect(Either.isLeft(Schema.decodeUnknownEither(Trial)(value))).toBe(true);
     }
-  });
-});
-
-describe("Point", () => {
-  it("accepts measured RMSE and null when all replies are invalid", () => {
-    expect(
-      Schema.decodeUnknownSync(Point)({ x: 0.5, rmse: 0.5, outcomes: [0, 1, { invalidText: "x" }] })
-        .rmse,
-    ).toBe(0.5);
-    expect(
-      Schema.decodeUnknownSync(Point)({ x: 0.5, rmse: null, outcomes: [{ invalidText: "x" }] })
-        .rmse,
-    ).toBeNull();
-  });
-
-  it("rejects impossible, missing, or inconsistent RMSE", () => {
-    for (const value of [Number.NaN, Infinity, -0.1, 1.1, null, 0.2]) {
-      expect(
-        Either.isLeft(Schema.decodeUnknownEither(Point)({ x: 0.5, rmse: value, outcomes: [0, 1] })),
-      ).toBe(true);
-    }
-    expect(
-      Either.isLeft(Schema.decodeUnknownEither(Point)({ x: 0.5, rmse: 0.5, outcomes: [] })),
-    ).toBe(true);
   });
 });
 
@@ -177,10 +153,6 @@ describe("PersistedResults", () => {
       { schemaVersion: 3, runs: [] },
       { schemaVersion: 1, runs: [legacyRun, legacyRun] },
       { schemaVersion: 1, runs: [{ ...legacyRun, trialsPerStep: 3 }] },
-      {
-        schemaVersion: 1,
-        runs: [{ ...legacyRun, points: [{ x: 0.5, rmse: 0.1, outcomes: [0, 1] }] }],
-      },
       { schemaVersion: 2, runs: [run, run] },
       { schemaVersion: 2, runs: [legacyRun] },
     ]) {

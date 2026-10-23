@@ -1,88 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import {
-  brier,
-  calibrationError,
-  counts,
-  observedRate,
-  rateInterval,
-  rmse,
-  samplingRmse,
-  summarizeRun,
-} from "./metrics";
+import { calibrationError, counts, observedRate, rateInterval, summarizeRun } from "./metrics";
 import { Run, type Trial } from "./schema";
-
-describe("rmse", () => {
-  it("is 0 for all-1s at x=1", () => {
-    expect(rmse([1, 1, 1], 1)).toBe(0);
-  });
-
-  it("is 0 for all-0s at x=0", () => {
-    expect(rmse([0, 0], 0)).toBe(0);
-  });
-
-  it("is 0.5 for alternating 0/1 at x=0.5", () => {
-    expect(rmse([0, 1, 0, 1], 0.5)).toBe(0.5);
-  });
-
-  it("ignores invalid trials when averaging", () => {
-    expect(rmse([1, { invalidText: "oops" }, 1], 1)).toBe(0);
-  });
-
-  it("is null when there are no valid bits", () => {
-    expect(rmse([], 0.5)).toBeNull();
-    expect(rmse([{ invalidText: "x" }, { invalidText: "y" }], 0.5)).toBeNull();
-  });
-});
-
-describe("brier", () => {
-  it("equals rmse squared over valid bits", () => {
-    expect(brier([0, 1, 0, 1], 0.5)).toBe(0.25);
-  });
-
-  it("is 0 for a perfectly-matching constant", () => {
-    expect(brier([1, 1], 1)).toBe(0);
-  });
-
-  it("ignores invalid trials when averaging", () => {
-    expect(brier([0, { invalidText: "x" }], 0)).toBe(0);
-  });
-
-  it("is null when there are no valid bits", () => {
-    expect(brier([], 0.5)).toBeNull();
-  });
-});
-
-describe("samplingRmse", () => {
-  it("peaks at 0.5", () => {
-    expect(samplingRmse(0.5)).toBe(0.5);
-  });
-
-  it("is 0 at the endpoints", () => {
-    expect(samplingRmse(0)).toBe(0);
-    expect(samplingRmse(1)).toBe(0);
-  });
-
-  it("matches sqrt(x*(1-x)) for an interior point", () => {
-    expect(samplingRmse(0.1)).toBeCloseTo(Math.sqrt(0.1 * 0.9), 12);
-  });
-
-  it("is not a lower bound on sample RMSE", () => {
-    expect(rmse([0, 0, 0], 0.1)).toBeLessThan(samplingRmse(0.1));
-  });
-});
 
 describe("empirical calibration", () => {
   it("uses only valid bits as the denominator", () => {
     const outcomes = [1, 0, { invalidText: "oops" }] as const;
     expect(observedRate(outcomes)).toBe(0.5);
     expect(calibrationError(outcomes, 0.25)).toBe(0.25);
-  });
-
-  it("distinguishes uncalibrated samples with identical RMSE at x=0.5", () => {
-    expect(rmse([0, 0], 0.5)).toBe(rmse([0, 1], 0.5));
-    expect(calibrationError([0, 0], 0.5)).toBe(0.5);
-    expect(calibrationError([0, 1], 0.5)).toBe(0);
   });
 
   it("returns null when all replies are invalid or missing", () => {
@@ -134,7 +59,7 @@ describe("summarizeRun", () => {
       trialsPerStep: 4,
       stepPercent: 50,
       startedAt: "2026-06-26T00:00:00.000Z",
-      points: points.map((point) => ({ ...point, rmse: rmse(point.outcomes, point.x) })),
+      points,
     });
 
   it("weights covered target points equally and reports missing valid data separately", () => {

@@ -12,7 +12,7 @@ const legacy = Schema.decodeUnknownSync(PersistedResults)({
       trialsPerStep: 2,
       stepPercent: 50,
       startedAt: "2026-06-26T00:00:00.000Z",
-      points: [{ x: 0.5, rmse: 0.5, outcomes: [0, 1] }],
+      points: [{ x: 0.5, outcomes: [0, 1] }],
     },
   ],
 }).runs[0];

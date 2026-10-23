@@ -22,7 +22,7 @@ const cannedRun = (model: string): Run => ({
   trialsPerStep: 2,
   stepPercent: 100,
   startedAt: "2026-06-26T00:00:00.000Z",
-  points: [{ x: Probability.make(0.5), rmse: 0.5, outcomes: [1, 0] }],
+  points: [{ x: Probability.make(0.5), outcomes: [1, 0] }],
 });
 const SWEEP_OPTIONS: SweepOptions = {
   trialsPerStep: 1,

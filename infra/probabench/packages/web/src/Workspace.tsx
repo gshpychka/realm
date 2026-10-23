@@ -236,10 +236,7 @@ export function Workspace({
               </summary>
               <Measurements run={run} />
               <div className="measurement-foot">
-                <span>
-                  {run.trialsPerStep} samples per target · {run.stepPercent}% target step
-                </span>
-                <span>RMSE is per-bit error, separate from calibration.</span>
+                {run.trialsPerStep} samples per target · {run.stepPercent}% target step
               </div>
             </details>
           ))

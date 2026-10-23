@@ -13,8 +13,8 @@ const fixture = Schema.decodeUnknownSync(PersistedResults)({
       stepPercent: 50,
       startedAt: "2026-06-26T00:00:00.000Z",
       points: [
-        { x: 0.5, rmse: 0.5, outcomes: [1, { invalidText: "nope" }] },
-        { x: 1, rmse: null, outcomes: [{ invalidText: "x" }, { invalidText: "y" }] },
+        { x: 0.5, outcomes: [1, { invalidText: "nope" }] },
+        { x: 1, outcomes: [{ invalidText: "x" }, { invalidText: "y" }] },
       ],
     },
   ],

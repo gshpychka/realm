@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Probability, type Run, rmse, type Trial } from "@probabench/domain";
+import { Probability, type Run, type Trial } from "@probabench/domain";
 import { buildHistoryChartModel } from "./history-chart-data";
 
 const run = (
@@ -13,7 +13,7 @@ const run = (
   startedAt,
   trialsPerStep: outcomes.length,
   stepPercent: 50,
-  points: [{ x: Probability.make(0.5), outcomes, rmse: rmse(outcomes, 0.5) }],
+  points: [{ x: Probability.make(0.5), outcomes }],
 });
 const colors = new Map([
   ["model-a", "#d8a657"],

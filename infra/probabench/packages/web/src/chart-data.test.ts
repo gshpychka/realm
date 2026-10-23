@@ -12,9 +12,9 @@ const fixture = Schema.decodeUnknownSync(Results)({
       stepPercent: 50,
       startedAt: "2026-06-26T00:00:00.000Z",
       points: [
-        { x: 0, rmse: 0, outcomes: [0, 0] },
-        { x: 0.5, rmse: 0.5, outcomes: [1, { invalidText: "x" }] },
-        { x: 1, rmse: null, outcomes: [{ invalidText: "nope" }, { invalidText: "x" }] },
+        { x: 0, outcomes: [0, 0] },
+        { x: 0.5, outcomes: [1, { invalidText: "x" }] },
+        { x: 1, outcomes: [{ invalidText: "nope" }, { invalidText: "x" }] },
       ],
     },
     {
@@ -23,8 +23,8 @@ const fixture = Schema.decodeUnknownSync(Results)({
       stepPercent: 50,
       startedAt: "2026-06-26T00:00:00.000Z",
       points: [
-        { x: 0, rmse: Math.sqrt(0.5), outcomes: [1, 0] },
-        { x: 1, rmse: 0, outcomes: [1, 1] },
+        { x: 0, outcomes: [1, 0] },
+        { x: 1, outcomes: [1, 1] },
       ],
     },
   ],
@@ -65,7 +65,7 @@ describe("buildChartModel", () => {
     expect(new Set(model.series.map((series) => series.color)).size).toBe(2);
   });
 
-  it("plots observed rates rather than the stored RMSE on the sorted x grid", () => {
+  it("plots observed rates on the sorted x grid", () => {
     expect(model.rows.map((row) => row.x)).toEqual([0, 0.5, 1]);
     expect(model.rows.map((row) => row[REFERENCE_KEY])).toEqual([0, 0.5, 1]);
     expect(model.rows[0]?.series_1).toBe(0.5);
@@ -83,7 +83,6 @@ describe("buildChartModel", () => {
       total: 2,
       observed: 1,
       error: 0.5,
-      rmse: 0.5,
     });
     expect(model.meta.get(1)?.get("series_0")).toMatchObject({
       ones: 0,
@@ -92,7 +91,6 @@ describe("buildChartModel", () => {
       total: 2,
       observed: null,
       error: null,
-      rmse: null,
       interval: null,
     });
     expect(model.series[0]).toMatchObject({ valid: 3, total: 6 });

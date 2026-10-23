@@ -70,14 +70,6 @@ export function Method() {
             notebook preserves run settings so those differences stay visible.
           </p>
         </article>
-        <article>
-          <h3>RMSE is a separate diagnostic.</h3>
-          <p>
-            Per-bit RMSE is included in the tables. It is not a calibration score: at a 50% target
-            it always equals 0.5 for valid bits. √(x·(1 − x)) is the population RMSE of a calibrated
-            Bernoulli sampler, not a lower bound on measured RMSE.
-          </p>
-        </article>
       </div>
     </section>
   );

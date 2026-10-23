@@ -2,26 +2,6 @@
 // Pure domain: no node/platform/AI/React imports.
 import type { Run, Trial } from "./schema";
 
-/** A trial that carries a sampled bit (0 or 1), excluding invalid replies. */
-const isBit = (trial: Trial): trial is 0 | 1 => typeof trial === "number";
-
-/** The mean squared error of the valid bits against the target probability, or null when none are valid. */
-export const brier = (outcomes: ReadonlyArray<Trial>, x: number): number | null => {
-  const bits = outcomes.filter(isBit);
-  if (bits.length === 0) return null;
-  const sum = bits.reduce<number>((acc, bit) => acc + (bit - x) ** 2, 0);
-  return sum / bits.length;
-};
-
-/** The root-mean-square error of the valid bits against the target probability, or null when none are valid. */
-export const rmse = (outcomes: ReadonlyArray<Trial>, x: number): number | null => {
-  const score = brier(outcomes, x);
-  return score === null ? null : Math.sqrt(score);
-};
-
-/** Population RMSE for Bernoulli(x) samples; not a lower bound on a finite sample's RMSE. */
-export const samplingRmse = (x: number): number => Math.sqrt(x * (1 - x));
-
 /** The fraction of valid replies that are 1, or null when no valid replies were sampled. */
 export const observedRate = (outcomes: ReadonlyArray<Trial>): number | null => {
   const { ones, zeros } = counts(outcomes);

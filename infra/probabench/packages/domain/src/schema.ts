@@ -1,6 +1,5 @@
 // The shared results contract. This package stays independent of platform, AI and UI code.
 import * as Schema from "effect/Schema";
-import { rmse } from "./metrics";
 
 export const SCHEMA_VERSION = 2;
 
@@ -26,22 +25,11 @@ export const Trial = Schema.Union(
 );
 export type Trial = typeof Trial.Type;
 
-/** Samples at one target, with per-bit RMSE (null only when no replies are valid). */
+/** Every sample taken at one target probability. */
 export const Point = Schema.Struct({
   x: Probability,
-  rmse: Schema.NullOr(Schema.Number.pipe(Schema.finite(), Schema.between(0, 1))),
   outcomes: Schema.Array(Trial),
-}).pipe(
-  Schema.filter(
-    (point) => {
-      const expected = rmse(point.outcomes, point.x);
-      return expected === null
-        ? point.rmse === null
-        : point.rmse !== null && Math.abs(point.rmse - expected) < 1e-10;
-    },
-    { message: () => "RMSE must match the valid outcomes (null only when none are valid)" },
-  ),
-);
+});
 export type Point = typeof Point.Type;
 
 const RunFields = {
@@ -83,7 +71,10 @@ export const Run = Schema.Struct({
 );
 export type Run = typeof Run.Type;
 
-/** The current append-only document. Models can repeat; execution IDs cannot. */
+/**
+ * The current append-only document. Models can repeat; execution IDs cannot.
+ * Decoding ignores unknown keys.
+ */
 export const Results = Schema.Struct({
   schemaVersion: Schema.Literal(SCHEMA_VERSION),
   runs: Schema.Array(Run),

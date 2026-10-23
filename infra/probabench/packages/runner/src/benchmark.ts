@@ -1,12 +1,12 @@
 // Benchmark orchestrates a single benchmark-target calibration sweep into a Run:
 // it walks the probability grid, takes trialsPerStep samples at each X via the
-// BitSampler, and folds the outcomes into Points using the pure domain metrics.
+// BitSampler, and collects the outcomes into Points.
 // It stays target-agnostic — the caller layers the target-specific LanguageModel
 // around the returned Effect, the same way BitSampler does.
 
 import { randomUUID } from "node:crypto";
 import type * as LanguageModel from "@effect/ai/LanguageModel";
-import { counts, type Point, Probability, type Run, rmse } from "@probabench/domain";
+import { counts, type Point, Probability, type Run } from "@probabench/domain";
 import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -38,10 +38,9 @@ export const describePointProgress = ({
   totalPoints,
 }: PointProgress): string => {
   const tally = counts(point.outcomes);
-  const rmseText = point.rmse === null ? "n/a (no valid bits)" : point.rmse.toFixed(4);
   return (
     `[${model}] point ${completedPoints}/${totalPoints} x=${Math.round(point.x * 100)}% → ` +
-    `ones=${tally.ones} zeros=${tally.zeros} invalid=${tally.invalid} rmse=${rmseText}`
+    `ones=${tally.ones} zeros=${tally.zeros} invalid=${tally.invalid}`
   );
 };
 
@@ -52,8 +51,8 @@ const probabilityGrid = (stepPercent: number): ReadonlyArray<Probability> => {
 
 /**
  * Sweeps the probability grid for one target: at each X it draws trialsPerStep
- * samples (up to `concurrency` in flight) and builds the Point's RMSE over them,
- * stamping the Run's start time from the Clock.
+ * samples (up to `concurrency` in flight) into a Point, stamping the Run's start
+ * time from the Clock.
  */
 const run = (
   config: BenchmarkConfig,
@@ -69,7 +68,7 @@ const run = (
         () => sampler.sampleBit(x),
         { concurrency: config.concurrency },
       ).pipe(
-        Effect.map((outcomes): Point => ({ x, rmse: rmse(outcomes, x), outcomes })),
+        Effect.map((outcomes): Point => ({ x, outcomes })),
         Effect.tap((point) =>
           Console.log(
             describePointProgress({

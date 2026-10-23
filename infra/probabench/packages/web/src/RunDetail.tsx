@@ -23,13 +23,11 @@ export function Measurements({ run }: { run: Run }) {
         </caption>
         <thead>
           <tr>
-            {["Target", "Observed", "95% interval", "Ones / valid", "Invalid", "RMSE"].map(
-              (heading) => (
-                <th key={heading} scope="col">
-                  {heading}
-                </th>
-              ),
-            )}
+            {["Target", "Observed", "95% interval", "Ones / valid", "Invalid"].map((heading) => (
+              <th key={heading} scope="col">
+                {heading}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -54,7 +52,6 @@ export function Measurements({ run }: { run: Run }) {
                   <td>
                     {number(tally.invalid)} / {number(point.outcomes.length)}
                   </td>
-                  <td>{point.rmse === null ? "—" : point.rmse.toFixed(3)}</td>
                 </tr>
               );
             })}

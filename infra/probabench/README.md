@@ -116,9 +116,6 @@ review before starting; concurrency defaults to five because it is not recorded
 in historical results. **Download JSON** exports that run with its raw outcomes
 as a validated version 2 results document.
 
-The measurement table also retains raw per-bit RMSE. This is a diagnostic, not a
-calibration score: at a 50% target it equals 0.5 for any valid bits.
-
 History is append-only. Each completed sweep has a unique execution ID, model,
 reasoning mode, timestamp, settings and raw outcomes. Rerunning a model keeps
 its earlier sweeps. Version 1 result files upgrade automatically when read and
