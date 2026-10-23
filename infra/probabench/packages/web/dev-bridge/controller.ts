@@ -4,16 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { stripVTControlCharacters } from "node:util";
 import { benchArgs, parsePointProgress } from "@probabench/domain";
-import type { BenchRequest, BridgeStatus, Job } from "../src/bridge/protocol";
-
-export class RequestError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+import type { BenchRequest, BridgeFailure, BridgeStatus, Job } from "../src/bridge/protocol";
 
 /** The page shows this much of the end of the runner's output. */
 const MAX_LOG_CHARS = 64_000;
@@ -42,13 +33,13 @@ export function createBenchController({
 
   return {
     status,
-    start(request: BenchRequest): BridgeStatus {
-      if (runner) throw new RequestError(409, "A benchmark is already running or stopping.");
+    start(request: BenchRequest): BridgeStatus | BridgeFailure {
+      if (runner) return { error: "A benchmark is already running or stopping." };
       if (!configured)
-        throw new RequestError(
-          400,
-          "OPENROUTER_API_KEY is not set. Start the page with bun run dev, which decrypts secrets/infra/probabench.env.",
-        );
+        return {
+          error:
+            "OPENROUTER_API_KEY is not set. Start the page with bun run dev, which decrypts secrets/infra/probabench.env.",
+        };
       const child = launch([...benchArgs(request), "--yes"]);
       runner = child;
       stopping = false;

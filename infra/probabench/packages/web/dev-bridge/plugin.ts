@@ -13,7 +13,7 @@ import {
   type BridgeStatus,
   firstIssue,
 } from "../src/bridge/protocol";
-import { type BenchController, createBenchController, RequestError } from "./controller";
+import { type BenchController, createBenchController } from "./controller";
 
 /**
  * The CLI entry the infra shell's probabench runs, spawned directly so a cancel's SIGTERM
@@ -24,6 +24,16 @@ const RUNNER_ENTRY = fileURLToPath(new URL("../../runner/src/main.ts", import.me
 const MAX_BODY_BYTES = 4_096;
 const ROUTES: readonly string[] = Object.values(BRIDGE_ROUTES);
 const decodeRequest = Schema.decodeEither(Schema.parseJson(BenchRequest));
+
+/** A request this module turns away, answered with its status and message. */
+class RequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 /** Reject remote hosts and cross-site requests, including DNS rebinding to loopback. */
 export function isLocalRequest(request: IncomingMessage): boolean {
@@ -81,7 +91,8 @@ export const bridgeMiddleware =
         if (path === BRIDGE_ROUTES.run && request.method === "POST") {
           const decoded = decodeRequest(await readBody(request));
           if (Either.isLeft(decoded)) throw new RequestError(400, firstIssue(decoded.left));
-          return send(response, 202, controller.start(decoded.right));
+          const result = controller.start(decoded.right);
+          return send(response, "error" in result ? 409 : 202, result);
         }
         if (path === BRIDGE_ROUTES.cancel && request.method === "POST")
           return send(response, 200, controller.cancel());
@@ -101,7 +112,9 @@ export const bridgeMiddleware =
  * Vite restarts its server, and re-evaluates this file, whenever vite.config.ts or anything
  * it imports changes: dev-bridge/, src/bridge/protocol.ts and all of @probabench/domain.
  * One controller per Vite process keeps a running benchmark across those restarts (edits
- * to controller.ts apply from the next process); the process exiting stops it.
+ * to controller.ts apply from the next process); the process exiting stops it. After a
+ * restart that controller comes from an earlier evaluation of these modules, so it hands
+ * back refusals as data: an `instanceof` against a class it exports would be false here.
  */
 const CONTROLLER = Symbol.for("probabench.dev-bridge");
 const processScope = globalThis as { [CONTROLLER]?: BenchController };

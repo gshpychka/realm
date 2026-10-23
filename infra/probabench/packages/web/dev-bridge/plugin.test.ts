@@ -68,7 +68,13 @@ interface Reply {
 
 describe("bridgeMiddleware", () => {
   const idle: BridgeStatus = { configured: true, job: null };
-  const stub: BenchController = { status: () => idle, start: () => idle, cancel: () => idle };
+  /** The stub controller refuses a run of this model, as it does while another runs. */
+  const busyModel = "vendor/busy";
+  const stub: BenchController = {
+    status: () => idle,
+    start: (request) => (request.model === busyModel ? { error: "busy" } : idle),
+    cancel: () => idle,
+  };
   const server = createServer((request, response) =>
     bridgeMiddleware(stub)(request, response, () => response.writeHead(404).end()),
   );
@@ -110,6 +116,12 @@ describe("bridgeMiddleware", () => {
     ["any other path", { path: "/index.html" }, 404],
   ])("answers %s with %i", async (_, call, status) => {
     expect((await send(call)).status).toBe(status);
+  });
+
+  it("answers a run the controller refuses with 409 and its reason", async () => {
+    const response = await send(run(JSON.stringify({ ...valid, model: busyModel })));
+    expect(response.status).toBe(409);
+    expect(JSON.parse(response.body)).toEqual({ error: "busy" });
   });
 
   it("names the first problem in invalid run settings", async () => {

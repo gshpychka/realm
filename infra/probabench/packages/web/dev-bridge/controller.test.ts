@@ -45,7 +45,9 @@ describe("createBenchController", () => {
   it("does not launch before a key is configured", () => {
     const { launch, controller } = withFake({ configured: false });
     expect(controller.status().configured).toBe(false);
-    expect(() => controller.start(request)).toThrow("OPENROUTER_API_KEY");
+    expect(controller.start(request)).toEqual({
+      error: expect.stringContaining("OPENROUTER_API_KEY"),
+    });
     expect(launch).not.toHaveBeenCalled();
   });
 
@@ -91,7 +93,9 @@ describe("createBenchController", () => {
   it("runs one benchmark at a time", () => {
     const { controller } = withFake();
     controller.start(request);
-    expect(() => controller.start(request)).toThrow("already running");
+    expect(controller.start(request)).toEqual({
+      error: expect.stringContaining("already running"),
+    });
   });
 
   it("reports a run its cancel interrupted as cancelled", async () => {
@@ -182,10 +186,12 @@ describe("createBenchController", () => {
       controller.cancel();
       return once(spawned.at(-1) as ChildProcess, "close");
     };
-    const first = controller.start(request).job;
+    controller.start(request);
+    const first = controller.status().job;
     await cancelAndWait();
     expect(controller.status().job).toMatchObject({ id: first?.id, status: "cancelled" });
-    expect(controller.start(request).job?.id).not.toBe(first?.id);
+    controller.start(request);
+    expect(controller.status().job?.id).not.toBe(first?.id);
     await cancelAndWait();
   });
 });
