@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { EventPacer } from "./pacer.ts";
 import type { SessionEvent } from "./protocol.ts";
+import { stored } from "./session.fixture.ts";
+import { emptySession, reduceAll } from "./session.ts";
 
 /** Drives the pacer's timers by hand so the tests observe flushes deterministically. */
 function harness() {
@@ -84,7 +86,7 @@ describe("EventPacer", () => {
     expect(applied.map((event) => event.type)).toEqual(["message_update", "agent_settled"]);
   });
 
-  test("the final tool result supersedes its sampled output", () => {
+  test("a final tool result follows its sampled output", () => {
     const { pacer, applied } = harness();
     pacer.handle(toolUpdate("c1", "partial"));
     pacer.handle({
@@ -94,7 +96,7 @@ describe("EventPacer", () => {
       result: { content: [{ type: "text", text: "final" }] },
       isError: false,
     } as SessionEvent);
-    expect(applied.map((event) => event.type)).toEqual(["tool_execution_end"]);
+    expect(applied.map((event) => event.type)).toEqual(["tool_execution_update", "tool_execution_end"]);
   });
 
   test("a burst beyond the cap flushes without waiting", () => {
@@ -113,4 +115,29 @@ describe("EventPacer", () => {
     fire(33);
     expect(applied).toHaveLength(1);
   });
+});
+
+test("an empty final tool result retains sampled output and details", () => {
+  const { pacer, applied } = harness();
+  pacer.handle({
+    type: "message_start",
+    message: stored.assistant({ toolCall: { id: "c1", name: "bash", args: {} } }),
+  });
+  pacer.handle({
+    type: "tool_execution_update",
+    toolCallId: "c1",
+    toolName: "bash",
+    args: {},
+    partialResult: { content: [{ type: "text", text: "work completed" }], details: { progress: 100 } },
+  });
+  pacer.handle({
+    type: "tool_execution_end",
+    toolCallId: "c1",
+    toolName: "bash",
+    result: { content: [] },
+    isError: false,
+  });
+  const view = reduceAll(emptySession, applied);
+  const tool = view.entries.flatMap((entry) => (entry.kind === "assistant" ? entry.tools : []))[0];
+  expect(tool).toMatchObject({ output: "work completed", details: { progress: 100 }, state: "ok" });
 });

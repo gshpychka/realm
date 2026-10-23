@@ -14,7 +14,11 @@ import { createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durab
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { codingExtension, codingTools } from "./coding.ts";
 import type { ConversationCommand, ConversationRecord } from "./conversation.ts";
-import { type ConversationBridge, openConversation } from "./conversation-bridge.ts";
+import {
+  CONVERSATION_CAPABILITIES,
+  type ConversationBridge,
+  openConversation,
+} from "./conversation-bridge.ts";
 
 /** A real native conversation stream, without a provider, for terminal fixtures. */
 export async function serveConversationFixture(
@@ -172,7 +176,7 @@ export async function serveConversationFixture(
             id: attachmentId,
             identity,
             control,
-            capabilities: [],
+            capabilities: CONVERSATION_CAPABILITIES,
             snapshot: await bridge.snapshot(),
           })}\n`,
         );

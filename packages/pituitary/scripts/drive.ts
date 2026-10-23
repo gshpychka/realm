@@ -154,8 +154,15 @@ const OPS = new Map<string, Op>([
   [
     "wait",
     async (args, options) => {
-      await live().waitText(args.join(" "), { timeout: Number(options.timeout ?? 10_000) });
-      return live().text();
+      const terminal = live(),
+        text = args.join(" ");
+      const deadline = Date.now() + Number(options.timeout ?? 10_000);
+      for (;;) {
+        const screen = await terminal.text();
+        if (screen.includes(text)) return screen;
+        if (Date.now() >= deadline) throw new Error(`timed out waiting for ${JSON.stringify(text)}`);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
     },
   ],
   ["screen", (_args, options) => (options.style === undefined ? live().text() : styled(live()))],
@@ -217,7 +224,7 @@ async function settle(): Promise<string> {
   return live().text();
 }
 
-// UI operations share a renderer and must finish in order, even across CLI processes.
+// Mutations stay ordered; waits observe without blocking the actions that satisfy them.
 let pending: Promise<unknown> = Promise.resolve();
 function serve(socket: Socket): void {
   // Closing a CLI while an operation is pending does not close the live UI.
@@ -239,7 +246,7 @@ function serve(socket: Socket): void {
       return;
     }
     const result = pending.then(() => run(command));
-    pending = result.catch(() => {});
+    if (command?.op !== "wait") pending = result.catch(() => {});
     result
       .then((output) => socket.end(`${JSON.stringify({ ok: true, output })}\n`))
       .catch((error: unknown) =>
