@@ -11,7 +11,14 @@ import {
   YAxis,
 } from "recharts";
 import { CHART, PlotEmpty } from "../common/chart-frame";
-import { modelName, percent, samplingText, shortId, timestamp } from "../common/format";
+import {
+  modelName,
+  NO_VALID_REPLIES,
+  percent,
+  samplingText,
+  shortId,
+  timestamp,
+} from "../common/format";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { buildHistoryChartModel, type HistoryPoint } from "./history-chart-data";
 
@@ -41,7 +48,7 @@ function HistoryTooltip({
             <strong>{modelName(run.model)}</strong>
           </p>
           <div className="tooltip-value">
-            {calibrationErrorText(summary.meanCalibrationError, "No valid replies")}
+            {calibrationErrorText(summary.meanCalibrationError, NO_VALID_REPLIES)}
             <span>mean calibration error</span>
           </div>
           <p className="muted">

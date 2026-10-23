@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { CHART, PlotEmpty } from "../common/chart-frame";
-import { count, modelName, percent } from "../common/format";
+import { count, modelName, observedText, percent } from "../common/format";
 import type { ModelStyle } from "../common/palette";
 import { buildCalibrationSeries, type CalibrationSeries } from "./calibration-chart-data";
 
@@ -50,7 +50,7 @@ function CalibrationTooltip({
             <strong>{modelName(run.model)}</strong>
           </p>
           <div className="tooltip-value">
-            {point.observed === null ? "No valid replies" : percent(point.observed)}
+            {observedText(point.observed)}
             <span>
               Ones: {count(point.ones)} / {count(point.valid)} valid replies
             </span>

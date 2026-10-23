@@ -16,10 +16,14 @@ const TIME = new Intl.DateTimeFormat("en-US", {
 
 export const count = (value: number): string => value.toLocaleString("en-US");
 
-export const percent = (value: number | null, digits = 1): string =>
-  value === null
-    ? "—"
-    : `${(value * 100).toLocaleString("en-US", { maximumFractionDigits: digits })}%`;
+export const percent = (value: number, digits = 1): string =>
+  `${(value * 100).toLocaleString("en-US", { maximumFractionDigits: digits })}%`;
+
+export const NO_VALID_REPLIES = "No valid replies";
+
+/** The observed one-rate at a target, which has none without a valid reply. */
+export const observedText = (observed: number | null): string =>
+  observed === null ? NO_VALID_REPLIES : percent(observed);
 
 export const date = (iso: string): string => DATE.format(new Date(iso));
 

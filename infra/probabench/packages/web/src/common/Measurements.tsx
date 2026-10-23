@@ -1,5 +1,5 @@
 import { measurePoint, type Run } from "@probabench/domain";
-import { count, percent, timestamp } from "./format";
+import { count, observedText, percent, timestamp } from "./format";
 import "./Measurements.css";
 
 const HEADINGS = ["Target", "Observed", "95% interval", "Ones / valid", "Invalid"];
@@ -28,9 +28,7 @@ export function Measurements({ run }: { run: Run }) {
             return (
               <tr key={point.x}>
                 <th scope="row">{percent(point.x, 0)}</th>
-                <td className="table-observed">
-                  {observed === null ? "No valid replies" : percent(observed)}
-                </td>
+                <td className="table-observed">{observedText(observed)}</td>
                 <td>{interval ? `${percent(interval[0], 0)}–${percent(interval[1], 0)}` : "—"}</td>
                 <td>
                   {count(ones)} / {count(valid)}
