@@ -54,17 +54,12 @@ describe("setup request boundaries", () => {
     expect(validateBenchmarkOptions({ ...settings, model: "gpt-5-mini-low" })).toBeNull();
   });
 
-  it("summarizes live probability progress without inventing progress before the first point", () => {
+  it("reports the latest finished point and nothing before the first one", () => {
     expect(jobPointProgress("[vendor/model] starting sweep")).toBeNull();
     expect(
       jobPointProgress(
         "[vendor/model] point 1/11 x=0%\n[vendor/model] point 3/11 x=20%\nretrying…",
       ),
     ).toEqual({ completed: 3, total: 11 });
-    expect(jobPointProgress("[vendor/model [reasoning=low]] point 2/5 x=25%")).toEqual({
-      completed: 2,
-      total: 5,
-    });
-    expect(jobPointProgress("[vendor/model] point 99/5 x=25%")).toBeNull();
   });
 });

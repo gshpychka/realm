@@ -1,4 +1,9 @@
-import { isModelToken, type ReasoningMode, type SamplingPreset } from "@probabench/domain";
+import {
+  isModelToken,
+  parsePointProgress,
+  type ReasoningMode,
+  type SamplingPreset,
+} from "@probabench/domain";
 
 export interface BenchmarkOptions {
   readonly model: string;
@@ -54,24 +59,12 @@ export interface Job {
   readonly error?: string;
 }
 
-/** Read the latest completed probability point from the CLI's human progress output. */
-export const jobPointProgress = (log: string): { completed: number; total: number } | null => {
-  let progress: { completed: number; total: number } | null = null;
-  for (const match of log.matchAll(/\] point (\d+)\/(\d+) x=/g)) {
-    const completed = Number(match[1]);
-    const total = Number(match[2]);
-    if (
-      Number.isSafeInteger(completed) &&
-      Number.isSafeInteger(total) &&
-      total > 0 &&
-      completed > 0 &&
-      completed <= total
-    ) {
-      progress = { completed, total };
-    }
-  }
-  return progress;
-};
+/** The latest finished probability point the runner reported in its log. */
+export const jobPointProgress = (log: string) =>
+  log
+    .split("\n")
+    .map(parsePointProgress)
+    .findLast((progress) => progress !== null) ?? null;
 
 export interface LocalStatus {
   readonly local: true;

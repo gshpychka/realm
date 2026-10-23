@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import type * as LanguageModel from "@effect/ai/LanguageModel";
 import {
-  measurePoint,
+  formatPointProgress,
   type Point,
   probabilityGrid,
   type ReasoningMode,
@@ -28,27 +28,6 @@ export interface BenchmarkConfig {
   readonly stepPercent: number;
   readonly concurrency: number;
 }
-
-export interface PointProgress {
-  readonly model: string;
-  readonly point: Point;
-  readonly completedPoints: number;
-  readonly totalPoints: number;
-}
-
-/** Human-readable progress shared by the CLI and local integrations. */
-export const describePointProgress = ({
-  model,
-  point,
-  completedPoints,
-  totalPoints,
-}: PointProgress): string => {
-  const { ones, zeros, invalid } = measurePoint(point);
-  return (
-    `[${model}] point ${completedPoints}/${totalPoints} x=${Math.round(point.x * 100)}% → ` +
-    `ones=${ones} zeros=${zeros} invalid=${invalid}`
-  );
-};
 
 /**
  * Sweeps the probability grid for one target: at each X it draws trialsPerStep
@@ -72,11 +51,11 @@ const run = (
         Effect.map((outcomes): Point => ({ x, outcomes })),
         Effect.tap((point) =>
           Console.log(
-            describePointProgress({
+            formatPointProgress({
               model: config.model,
               point,
-              completedPoints: index + 1,
-              totalPoints: grid.length,
+              completed: index + 1,
+              total: grid.length,
             }),
           ),
         ),
