@@ -27,7 +27,6 @@
     # carries its PATH entry
     enableZshIntegration = false;
   };
-  # cask CLIs (cursor, dagger, ...) link here
   environment.systemPath = [ "${config.homebrew.prefix}/bin" ];
   homebrew = {
     enable = true;
@@ -53,7 +52,6 @@
       "raycast"
       "ghostty"
       # -- utilities --
-      "mullvad-vpn"
       "transmission"
       "commander-one"
       "forklift"
@@ -100,7 +98,6 @@
         name = "plexamp";
         greedy = true;
       }
-      "jellyfin-media-player"
       "coconutbattery"
       "losslesscut"
       "handbrake-app"
@@ -127,7 +124,6 @@
         name = "zoom";
         greedy = true;
       }
-      "cursor"
     ];
     brews = [
       "dagger"
