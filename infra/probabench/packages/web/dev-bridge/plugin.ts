@@ -2,7 +2,7 @@
 // Vite dev server. The published site contains no runner or API secrets.
 import { spawn } from "node:child_process";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
 import type { Plugin } from "vite";
@@ -20,7 +20,7 @@ import { createBenchController, RequestError } from "./controller";
  * reaches the runner rather than a wrapper. Without --out the runner writes the
  * history file the page reads back, its DEFAULT_OUT.
  */
-const RUNNER_ENTRY = "packages/runner/src/main.ts";
+const RUNNER_ENTRY = fileURLToPath(new URL("../../runner/src/main.ts", import.meta.url));
 const MAX_BODY_BYTES = 4_096;
 const decodeRequest = Schema.decodeEither(Schema.parseJson(BenchRequest));
 
@@ -72,18 +72,12 @@ export function devBridgePlugin(): Plugin {
     name: "probabench-dev-bridge",
     apply: "serve",
     configureServer(server) {
-      // server.config.root is packages/web; the Bun workspace root holds the runner entry.
-      const workspace = resolve(server.config.root, "../..");
       const controller = createBenchController({
         // `bun run dev` and `dev:alchemy` start Vite under sops exec-env with
         // secrets/infra/probabench.env.
         apiKey: process.env.OPENROUTER_API_KEY ?? "",
         launch: (args) =>
-          spawn("bun", [RUNNER_ENTRY, ...args], {
-            cwd: workspace,
-            env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
-            stdio: ["ignore", "pipe", "pipe"],
-          }),
+          spawn("bun", [RUNNER_ENTRY, ...args], { stdio: ["ignore", "pipe", "pipe"] }),
       });
       server.middlewares.use((request, response, next) => {
         const path = request.url?.split("?")[0];

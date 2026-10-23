@@ -63,8 +63,8 @@ export function createBenchController({
 
       // Whole lines only: escape sequences and the key never span a newline, so stripping
       // and redaction need no state across chunks. The runner never prints the key;
-      // redaction is defence in depth. @effect/cli renders its own errors with ANSI even
-      // under NO_COLOR.
+      // redaction is defence in depth. @effect/cli renders ANSI regardless of NO_COLOR, so
+      // escapes are stripped here.
       const appendLine = (raw: string) => {
         const line = stripVTControlCharacters(raw).replaceAll(apiKey, "[redacted]");
         update((current) => ({
