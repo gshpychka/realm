@@ -31,7 +31,7 @@ captured screens. Read those results before running more commands.
 
 A UI change needs visual inspection. E2E captures write text, SVG, and PNG under
 `artifacts/screens`; inspect compact and wide states, attention, results, and reload.
-Assertions alone do not establish layout quality. Scenarios use a real native Harness
+Assertions alone do not establish layout quality. Native harness scenarios use a real Harness
 with the Faux provider, never an external model or a duplicate agent backend.
 
 `just tui start --scenario tool`, `just tui submit "what is here"`, `just tui key esc`,
