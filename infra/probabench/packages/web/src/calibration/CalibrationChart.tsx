@@ -48,20 +48,13 @@ function CalibrationTooltip({
           <p className="tooltip-model">
             <span className="color-dot" style={{ background: style.color }} />
             <strong>{modelName(run.model)}</strong>
+            <span className="tooltip-observed">{observedText(point.observed)}</span>
           </p>
-          <div className="tooltip-value">
-            {observedText(point.observed)}
-            <span>
-              Ones: {count(point.ones)} / {count(point.valid)} valid replies
-            </span>
-          </div>
-          {point.interval ? (
-            <p className="muted">
-              95% interval {percent(point.interval[0])}–{percent(point.interval[1])}
-            </p>
-          ) : null}
           <p className="muted">
-            {count(point.invalid)} of {count(point.total)} replies invalid
+            {point.interval
+              ? `95% interval ${percent(point.interval[0])}–${percent(point.interval[1])} · `
+              : null}
+            {count(point.invalid)} of {count(point.total)} invalid
           </p>
         </div>
       ))}

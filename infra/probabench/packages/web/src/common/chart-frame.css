@@ -77,8 +77,6 @@
   border-radius: var(--radius);
   width: 288px;
   max-width: calc(100vw - 48px);
-  max-height: min(440px, 65svh);
-  overflow: auto;
   box-shadow: 0 12px 36px #0004;
   font-size: 13px;
 }
@@ -103,6 +101,11 @@
 }
 .tooltip-series strong {
   overflow-wrap: anywhere;
+}
+.tooltip-observed {
+  margin-left: auto;
+  font-family: var(--mono);
+  white-space: nowrap;
 }
 .tooltip-series .muted {
   font-size: 12px;
