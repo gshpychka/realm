@@ -20,13 +20,20 @@ test("declared search tools use the environment, respect ignores and treat patte
   writeFileSync(join(cwd, "two.ts"), "limit hit\n");
   writeFileSync(join(cwd, "include:rust"), "glob hit\n");
   writeFileSync(join(cwd, "unrelated.rs"), "glob hit\n");
+  mkdirSync(join(cwd, ".github", "nested"));
+  writeFileSync(join(cwd, ".github", "nested", "inside.ts"), "nested hit\n");
+  const configuration = join(cwd, "rg-config");
+  writeFileSync(configuration, "--follow\n--files-with-matches\n");
   symlinkSync(join(cwd, ".github"), join(cwd, "linked"));
   const faux = fauxProvider();
   const models = createModels();
   models.setProvider(faux.provider);
   const registry = createRegistry();
   registry.install(codingExtension);
-  const environment = new NodeExecutionEnv({ cwd });
+  const environment = new NodeExecutionEnv({
+    cwd,
+    shellEnv: { ...process.env, RIPGREP_CONFIG_PATH: configuration },
+  });
   const context = BACKGROUND_CONTEXT;
   const harness = await Harness.open(
     new MemoryStorage(),
@@ -63,6 +70,7 @@ test("declared search tools use the environment, respect ignores and treat patte
     const find = results.find((message) => message.role === "toolResult" && message.toolName === "find");
     expect(JSON.stringify(find)).toContain("visible.ts");
     expect(JSON.stringify(find)).not.toContain("ignored.ts");
+    expect(JSON.stringify(find)).not.toContain("linked/");
     expect(existsSync(join(cwd, "SENTINEL"))).toBe(false);
     expect(codingTools.map((tool) => tool.name).sort()).toEqual([
       "bash",
@@ -88,6 +96,10 @@ test("declared search tools use the environment, respect ignores and treat patte
     expect(JSON.stringify(hidden)).not.toContain(".git/secret");
     const single = await invoke("grep", { pattern: "limit hit", path: "one.ts" });
     expect(JSON.stringify(single)).toContain("one.ts:1:limit hit");
+    const fileFind = await invoke("find", { pattern: "*.ts", path: ".ignore" });
+    expect(JSON.stringify(fileFind)).toContain("find root must be a directory");
+    const fileGlob = await invoke("grep", { pattern: "limit hit", path: "one.ts", glob: "*.rs" });
+    expect(JSON.stringify(fileGlob)).toContain("file glob requires a directory path");
     const limited = await invoke("grep", { pattern: "limit hit", limit: 1 });
     const limitedText = limited.content.map((block) => (block.type === "text" ? block.text : "")).join("");
     expect(limitedText.trim().split("\n")).toHaveLength(1);
@@ -99,7 +111,9 @@ test("declared search tools use the environment, respect ignores and treat patte
     expect(grepGlob.role === "toolResult" && grepGlob.isError).toBe(true);
     expect(JSON.stringify(grepGlob)).not.toContain("unrelated.rs");
     const linked = await invoke("find", { pattern: "*", path: "linked" });
-    expect(JSON.stringify(linked)).toContain("root cannot be a symbolic link");
+    expect(JSON.stringify(linked)).toContain("find root must be a directory");
+    const explicit = await invoke("find", { pattern: "*.ts", path: "linked/nested" });
+    expect(JSON.stringify(explicit)).toContain("inside.ts");
   } finally {
     await harness.close(context);
     await environment.cleanup(context);

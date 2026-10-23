@@ -7,13 +7,14 @@ import { DEFAULT_RUN_LIMITS, type Run, type Verification } from "./model.ts";
 import { type VerificationCheckpoint, Verifier } from "./verification.ts";
 import { git, Workspaces } from "./workspaces.ts";
 
-async function fixture(checks: VerificationPolicy["checks"]) {
+async function fixture(checks: VerificationPolicy["checks"], encoding?: "utf16le") {
   const root = await mkdtemp("/tmp/pituitary-verification-"),
     cwd = join(root, "source");
   await git(root, ["init", "-q", cwd]);
   await git(cwd, ["config", "user.name", "Test"]);
   await git(cwd, ["config", "user.email", "test@localhost"]);
-  await writeFile(join(cwd, "original.txt"), "original\n");
+  if (encoding) await writeFile(join(cwd, ".gitattributes"), "*.txt working-tree-encoding=UTF-16LE\n");
+  await writeFile(join(cwd, "original.txt"), Buffer.from("original\n", encoding ?? "utf8"));
   await git(cwd, ["add", "."]);
   await git(cwd, ["commit", "-qm", "Original"]);
   const agent: AgentDefinition = {
@@ -101,6 +102,26 @@ test("verification rejects a different artifact or tree before allocating its ma
       ).rejects.toThrow("artifact does not match");
     expect(f.bay.guests.size).toBe(0);
     expect(f.checkpoint()).toEqual({});
+  } finally {
+    await f.close();
+  }
+});
+
+test("verification compares raw retained bytes without applying working-tree encoding twice", async () => {
+  const f = await fixture(
+    {
+      content: { command: ["sh", "-c", 'test "$(wc -c < original.txt)" -eq 18'], timeoutMs: 5000 },
+    },
+    "utf16le",
+  );
+  try {
+    const result = await f.verifier.run(f.run, f.verification, f.artifact, f.journal, () => true);
+    expect(result.checks).toMatchObject([{ name: "content", status: "passed" }]);
+    const guest = f.bay.guests.get(result.verificationExecution.sessionName)!;
+    expect(await readFile(join(guest.work, "workspace/original.txt"))).toEqual(
+      Buffer.from("original\n", "utf16le"),
+    );
+    expect(guest.session.state).toBe("suspended");
   } finally {
     await f.close();
   }

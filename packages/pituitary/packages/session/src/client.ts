@@ -22,5 +22,6 @@ export interface SessionSnapshot {
   streamingMessage?: unknown;
   retry?: { attempt: number; maxAttempts?: number; at: number; errorMessage: string };
   pendingToolCalls: readonly string[];
+  pendingTools?: readonly { callId: string; name: string; output?: string; details?: unknown }[];
   queue?: { steering: readonly string[]; followUp: readonly string[] };
 }
