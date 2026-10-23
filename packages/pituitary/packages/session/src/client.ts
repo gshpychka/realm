@@ -2,7 +2,7 @@ import type { CommandResult, SessionCommand, SessionEvent, SessionState, Session
 
 /** An attachment to a native conversation. Closing it never stops the conversation. */
 export interface ConversationLink {
-  onEvent(listener: (event: SessionEvent, sequence?: number) => void): () => void;
+  onEvent(listener: (event: SessionEvent, sequence: number) => void): () => void;
   onClose(listener: (reason: string) => void): () => void;
   getSnapshot(): Promise<SessionSnapshot>;
   call<C extends SessionCommand>(command: C): Promise<CommandResult<C["type"]>>;
@@ -20,6 +20,7 @@ export interface SessionSnapshot {
   state: SessionState;
   messages: readonly unknown[];
   streamingMessage?: unknown;
+  retry?: { attempt: number; maxAttempts?: number; at: number; errorMessage: string };
   pendingToolCalls: readonly string[];
   queue?: { steering: readonly string[]; followUp: readonly string[] };
 }
