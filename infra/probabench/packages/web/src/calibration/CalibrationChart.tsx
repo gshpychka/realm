@@ -11,14 +11,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { number, percent } from "../common/format";
 import {
   buildChartModel,
   type ChartModel,
   modelDash,
   REFERENCE_COLOR,
   REFERENCE_KEY,
-} from "./chart-data";
-import { number, percent } from "./format";
+} from "./calibration-chart-data";
 
 function ChartTooltip({ active, label }: TooltipContentProps, model: ChartModel) {
   if (!active) return null;

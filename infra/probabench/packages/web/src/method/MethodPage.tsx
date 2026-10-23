@@ -1,4 +1,4 @@
-export function Method() {
+export function MethodPage() {
   return (
     <section className="method-page">
       <header className="section-heading">

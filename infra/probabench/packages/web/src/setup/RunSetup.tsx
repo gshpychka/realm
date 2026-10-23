@@ -16,16 +16,16 @@ import {
   BridgeRequest,
   firstIssue,
   type Job,
-} from "./bridge/protocol";
-import type { Bridge } from "./bridge/use-bridge";
-import { number, time } from "./format";
+} from "../bridge/protocol";
+import type { Bridge } from "../bridge/use-bridge";
+import { number, time } from "../common/format";
 import {
   type BenchmarkDraft,
   benchmarkCommand,
   DEFAULT_REQUEST,
   PRESET_DESCRIPTIONS,
   presetFor,
-} from "./setup/run-settings";
+} from "./run-settings";
 
 function JobProgress({
   job,

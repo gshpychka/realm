@@ -1,9 +1,9 @@
 import { type Run, summarizeRun } from "@probabench/domain";
 import { lazy, Suspense, useMemo, useRef } from "react";
-import { date, modelName, number, percent, time } from "./format";
-import { visibleHistory } from "./history";
-import { LoadBoundary } from "./LoadBoundary";
-import type { NotebookView, useNotebookView } from "./notebook-view";
+import type { NotebookView, useNotebookView } from "../app/notebook-view";
+import { date, modelName, number, percent, time } from "../common/format";
+import { LoadBoundary } from "../common/LoadBoundary";
+import { visibleHistory } from "../common/run-history";
 import { gap, Measurements, RunDetail } from "./RunDetail";
 
 type UpdateView = ReturnType<typeof useNotebookView>[1];
@@ -11,7 +11,7 @@ const HistoryChart = lazy(() =>
   import("./HistoryChart").then((module) => ({ default: module.HistoryChart })),
 );
 
-export function History({
+export function HistoryPage({
   runs,
   colors,
   view,

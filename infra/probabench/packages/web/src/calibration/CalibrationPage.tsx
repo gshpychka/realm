@@ -1,19 +1,21 @@
 import { type Results, type Run, summarizeRun } from "@probabench/domain";
 import { lazy, Suspense, useMemo } from "react";
-import { modelColors } from "./chart-data";
-import { date, modelName, number, time } from "./format";
-import { groupHistory, selectedRuns } from "./history";
-import { LoadBoundary } from "./LoadBoundary";
-import type { NotebookView, useNotebookView } from "./notebook-view";
-import { gap, Measurements } from "./RunDetail";
+import type { NotebookView, useNotebookView } from "../app/notebook-view";
+import { date, modelName, number, time } from "../common/format";
+import { LoadBoundary } from "../common/LoadBoundary";
+import { groupHistory, selectedRuns } from "../common/run-history";
+import { gap, Measurements } from "../history/RunDetail";
+import { modelColors } from "./calibration-chart-data";
 
 type UpdateView = ReturnType<typeof useNotebookView>[1];
 const CalibrationChart = lazy(() =>
-  import("./Chart").then((module) => ({ default: module.CalibrationChart })),
+  import("./CalibrationChart").then((module) => ({ default: module.CalibrationChart })),
 );
-const History = lazy(() => import("./History").then((module) => ({ default: module.History })));
+const History = lazy(() =>
+  import("../history/HistoryPage").then((module) => ({ default: module.HistoryPage })),
+);
 
-export function Workspace({
+export function CalibrationPage({
   results,
   view,
   update,

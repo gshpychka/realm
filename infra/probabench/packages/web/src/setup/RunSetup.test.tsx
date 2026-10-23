@@ -1,9 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Job } from "./bridge/protocol";
-import type { Bridge, Connection } from "./bridge/use-bridge";
+import type { Job } from "../bridge/protocol";
+import type { Bridge, Connection } from "../bridge/use-bridge";
 import { RunSetup } from "./RunSetup";
-import type { BenchmarkDraft } from "./setup/run-settings";
+import type { BenchmarkDraft } from "./run-settings";
 
 const bridge = (connection: Connection): Bridge => ({
   connection,

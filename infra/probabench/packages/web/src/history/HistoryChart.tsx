@@ -10,8 +10,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { modelDash } from "./chart-data";
-import { number, percent } from "./format";
+import { modelDash } from "../calibration/calibration-chart-data";
+import { number, percent } from "../common/format";
 import { buildHistoryChartModel, type HistoryPoint } from "./history-chart-data";
 
 export interface HistoryChartProps {

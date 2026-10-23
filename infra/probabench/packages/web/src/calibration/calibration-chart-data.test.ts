@@ -1,6 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 import { makeRun } from "@probabench/domain/testing";
-import { buildChartModel, MODEL_COLORS, modelColors, modelDash, REFERENCE_KEY } from "./chart-data";
+import {
+  buildChartModel,
+  MODEL_COLORS,
+  modelColors,
+  modelDash,
+  REFERENCE_KEY,
+} from "./calibration-chart-data";
 
 const haiku = makeRun({
   model: "claude-haiku-4.5",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { makeRun } from "@probabench/domain/testing";
-import { modelColors } from "./chart-data";
-import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "./history";
+import { modelColors } from "../calibration/calibration-chart-data";
+import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "./run-history";
 
 const old = makeRun({ id: "old", model: "model.a" });
 const latest = makeRun({ id: "new", model: "model.a", startedAt: "2026-10-22T00:00:00.000Z" });

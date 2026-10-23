@@ -6,8 +6,8 @@ import {
   summarizeRun,
 } from "@probabench/domain";
 import * as Schema from "effect/Schema";
-import { date, modelName, number, percent, time } from "./format";
-import { rerunRequest } from "./setup/run-settings";
+import { date, modelName, number, percent, time } from "../common/format";
+import { rerunRequest } from "../setup/run-settings";
 
 export const gap = (value: number | null): string =>
   value === null ? "—" : `${(value * 100).toFixed(1)} pp`;

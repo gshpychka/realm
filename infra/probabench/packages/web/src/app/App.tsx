@@ -1,19 +1,25 @@
 import { Result, useRxRefresh, useRxValue } from "@effect-rx/rx-react";
 import { type Run, summarizeRun } from "@probabench/domain";
 import { type KeyboardEvent, lazy, Suspense, useEffect, useState } from "react";
-import { type Connection, useBridge } from "./bridge/use-bridge";
-import { date, number, time } from "./format";
-import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "./history";
-import { LoadBoundary } from "./LoadBoundary";
+import { type Connection, useBridge } from "../bridge/use-bridge";
+import { date, number, time } from "../common/format";
+import { LoadBoundary } from "../common/LoadBoundary";
+import { resultsRx } from "../common/results";
+import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "../common/run-history";
+import { type BenchmarkDraft, rerunRequest } from "../setup/run-settings";
 import { useNotebookView } from "./notebook-view";
-import { resultsRx } from "./results";
-import { type BenchmarkDraft, rerunRequest } from "./setup/run-settings";
 
-const Method = lazy(() => import("./Method").then((module) => ({ default: module.Method })));
-const Workspace = lazy(() =>
-  import("./Workspace").then((module) => ({ default: module.Workspace })),
+const Method = lazy(() =>
+  import("../method/MethodPage").then((module) => ({ default: module.MethodPage })),
 );
-const RunSetup = lazy(() => import("./RunSetup").then((module) => ({ default: module.RunSetup })));
+const Workspace = lazy(() =>
+  import("../calibration/CalibrationPage").then((module) => ({
+    default: module.CalibrationPage,
+  })),
+);
+const RunSetup = lazy(() =>
+  import("../setup/RunSetup").then((module) => ({ default: module.RunSetup })),
+);
 const TABS = [
   { id: "calibration", label: "Calibration" },
   { id: "history", label: "Run history" },
