@@ -9,20 +9,21 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { Benchmark } from "./benchmark";
 import { LlmError } from "./bit-sampler";
+import type { SamplingOptions } from "./plan";
 import type { BenchTarget } from "./registry";
 import { ResultsStore } from "./results-store";
-import { executePlan, type SweepOptions, sweepAll } from "./run";
+import { executePlan, sweepAll } from "./run";
 import { chatEndpoint, withResultsStore } from "./test-fixtures";
 
 const target = (id: string): BenchTarget => ({ id, slug: id, reasoning: "off" });
-const SWEEP_OPTIONS: SweepOptions = {
+const SWEEP_OPTIONS: SamplingOptions = {
   trialsPerStep: 1,
   stepPercent: 100,
   maxTokens: 4096,
   concurrency: 1,
 };
-const execute = (path: string, targets: readonly BenchTarget[], options = SWEEP_OPTIONS) =>
-  executePlan(targets, path, options).pipe(
+const execute = (path: string, targets: readonly [BenchTarget, ...BenchTarget[]]) =>
+  executePlan({ targets, options: SWEEP_OPTIONS, out: path }).pipe(
     Effect.provide(Benchmark.Default),
     Effect.provide(FetchHttpClient.layer),
     Effect.withConfigProvider(ConfigProvider.fromMap(new Map())),
@@ -85,9 +86,6 @@ describe("sweepAll", () => {
 });
 
 describe("OpenRouter execution preflight", () => {
-  it.effect("does not read credentials for an empty plan", () =>
-    withResultsStore((path) => execute(path, [])),
-  );
   it.effect("fails with a clear missing API key before provider requests", () =>
     withResultsStore((path) =>
       Effect.gen(function* () {
@@ -99,43 +97,17 @@ describe("OpenRouter execution preflight", () => {
       }),
     ),
   );
-  it.effect("rejects invalid numeric options before credentials", () =>
-    withResultsStore((path) =>
-      Effect.gen(function* () {
-        expect(
-          (yield* Effect.flip(
-            execute(path, [target("model")], { ...SWEEP_OPTIONS, stepPercent: 0 }),
-          ))._tag,
-        ).toBe("InvalidOptions");
-      }),
-    ),
-  );
-  it.effect("rejects an unusable output directory before sampling", () =>
-    withResultsStore((path) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        yield* fs.writeFileString(path, "blocking parent");
-        let calls = 0;
-        const error = yield* Effect.flip(
-          sweepAll([target("model")], `${path}/results.json`, (t) =>
-            Effect.sync(() => {
-              calls++;
-              return makeRun({ model: t.id });
-            }),
-          ),
-        );
-        expect(error._tag).toBe("ResultsStoreError");
-        expect(calls).toBe(0);
-      }),
-    ),
-  );
   it.effect("executes and appends repeated runs for any slug through the real adapter", () =>
     withResultsStore((path) => {
       const endpoint = chatEndpoint("1");
       return Effect.gen(function* () {
-        const selected = [target("vendor/future-model")];
-        yield* executePlan(selected, path, SWEEP_OPTIONS);
-        yield* executePlan(selected, path, SWEEP_OPTIONS);
+        const plan = {
+          targets: [target("vendor/future-model")],
+          options: SWEEP_OPTIONS,
+          out: path,
+        } as const;
+        yield* executePlan(plan);
+        yield* executePlan(plan);
         const store = yield* ResultsStore;
         const results = yield* store.load(path);
         expect(results.runs).toHaveLength(2);

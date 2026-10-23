@@ -1,270 +1,141 @@
+// The probabench command: flags, or guided setup in a terminal, then the plan,
+// its confirmation and its execution.
 import { fileURLToPath } from "node:url";
 import * as Command from "@effect/cli/Command";
-import * as HelpDoc from "@effect/cli/HelpDoc";
-import * as Span from "@effect/cli/HelpDoc/Span";
 import * as Options from "@effect/cli/Options";
 import * as Prompt from "@effect/cli/Prompt";
-import {
-  MODEL_ALIASES,
-  type PlanBudget,
-  planBudget,
-  REASONING_LABELS,
-  ReasoningMode,
-  SAMPLING_PRESETS,
-  type SamplingPreset,
-} from "@probabench/domain";
+import { ALL_TARGETS, ReasoningMode, StepPercent, TrialsPerStep } from "@probabench/domain";
 import * as Console from "effect/Console";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import { InvalidOptions, positiveInteger, probabilityStep } from "./options";
-import { type BenchTarget, describeAliases, modelLabel, selectTargets } from "./registry";
+import * as Schema from "effect/Schema";
+import { describePlan, InvalidOptions, resolvePlan, type SamplingOptions } from "./plan";
+import { describeAliases, splitModels } from "./registry";
 import { executePlan } from "./run";
+import { promptRunSetup } from "./setup";
 
 /**
  * The web app's published history, which Vite serves at /data/results.json. Resolved
  * from this file rather than the working directory.
  */
-export const DEFAULT_OUT = fileURLToPath(
-  new URL("../../web/public/data/results.json", import.meta.url),
-);
-export const NON_TTY_MESSAGE =
-  "Refusing to run without confirmation: stdin is not a TTY. Re-run with --yes to proceed non-interactively.";
-export const MISSING_MODEL_MESSAGE =
-  "Choose a model with --model vendor/model (or a listed alias). Run --list to see aliases, or run bun run bench in an interactive terminal for guided setup.";
+const DEFAULT_OUT = fileURLToPath(new URL("../../web/public/data/results.json", import.meta.url));
 
-export class NonInteractiveError extends Data.TaggedError("NonInteractiveError")<{
-  readonly message: string;
-}> {}
-
-export interface BenchPlan {
-  readonly targets: readonly BenchTarget[];
-  readonly unknown: readonly string[];
-  readonly budget: PlanBudget;
-}
-
-/** Pure resolution shared by guided setup, explicit CLI runs, and local integrations. */
-export const resolvePlan = (
-  modelTokens: readonly string[],
-  trialsPerStep: number,
-  stepPercent: number,
-  reasoning?: ReasoningMode,
-): BenchPlan => {
-  positiveInteger(trialsPerStep, "trials");
-  probabilityStep(stepPercent);
-  const { targets, unknown } = selectTargets(modelTokens, reasoning);
-  const budget = planBudget({ trialsPerStep, stepPercent }, targets.length);
-  if (targets.length > 0) positiveInteger(budget.attempts, "maximum provider attempt count");
-  return { targets, unknown, budget };
+const DEFAULTS: SamplingOptions = {
+  trialsPerStep: 100,
+  stepPercent: 10,
+  concurrency: 10,
+  maxTokens: 4096,
 };
 
-export const describePlan = (plan: BenchPlan): string =>
-  [
-    ...(plan.unknown.length === 0 ? [] : [`Unknown models: ${plan.unknown.join(", ")}`]),
-    `Targets (${plan.targets.length}):`,
-    ...plan.targets.map((target) => `  ${target.id} · reasoning ${target.reasoning}`),
-    `Projected samples: ${plan.budget.samples}`,
-    `Provider attempts with retries: up to ${plan.budget.attempts}`,
-  ].join("\n");
+export const NON_TTY_MESSAGE =
+  "Refusing to run without confirmation: stdin is not a TTY. Re-run with --yes to proceed non-interactively.";
 
-export const confirmationGate = (
-  yes: boolean,
-  isInteractive: boolean,
-): Effect.Effect<"proceed" | "prompt", NonInteractiveError> =>
-  yes
-    ? Effect.succeed("proceed")
-    : isInteractive
-      ? Effect.succeed("prompt")
-      : Effect.fail(new NonInteractiveError({ message: NON_TTY_MESSAGE }));
+const PositiveInt = Schema.Int.pipe(Schema.positive());
 
-export const validatePlan = (plan: BenchPlan): Effect.Effect<void, InvalidOptions> =>
-  plan.unknown.length > 0
-    ? Effect.fail(
-        new InvalidOptions({
-          message: `Unknown models: ${plan.unknown.join(", ")}. Use --list or a vendor/model slug.`,
-        }),
-      )
-    : plan.targets.length === 0
-      ? Effect.fail(new InvalidOptions({ message: MISSING_MODEL_MESSAGE }))
-      : Effect.void;
-
-const splitTokens = (raw: string): readonly string[] =>
-  raw
-    .split(",")
-    .map((token) => token.trim())
-    .filter(Boolean);
-const optionError = (error: unknown) =>
-  HelpDoc.p(Span.text(error instanceof Error ? error.message : String(error)));
-const integerOption = (name: string, defaultValue: number) =>
+/** An integer flag whose out-of-range error names the flag. */
+const integerFlag = (name: string, schema: Schema.Schema<number>, expected: string) =>
   Options.integer(name).pipe(
-    Options.withDefault(defaultValue),
-    Options.mapTryCatch(
-      (value) => (name === "step" ? probabilityStep(value) : positiveInteger(value, name)),
-      optionError,
+    Options.withSchema(
+      schema.annotations({ message: () => `--${name} must be ${expected}.`, override: true }),
     ),
   );
 
-export const TRIAL_PRESETS: ReadonlyArray<Prompt.Prompt.SelectChoice<SamplingPreset | "custom">> = [
-  ...SAMPLING_PRESETS.map((preset) => {
-    const { points, samples } = planBudget(preset);
+const options = {
+  model: Options.text("model").pipe(
+    Options.withAlias("m"),
+    Options.optional,
+    Options.withDescription(
+      `Comma-separated OpenRouter vendor/model slugs or aliases; "${ALL_TARGETS}" selects every alias.`,
+    ),
+  ),
+  trials: integerFlag("trials", TrialsPerStep, "a positive integer").pipe(
+    Options.optional,
+    Options.withDescription(
+      `Samples per probability (default: ${DEFAULTS.trialsPerStep}; guided setup offers presets).`,
+    ),
+  ),
+  step: integerFlag("step", StepPercent, "from 1 to 100").pipe(
+    Options.optional,
+    Options.withDescription(
+      `Probability step from 1 to 100 percent (default: ${DEFAULTS.stepPercent}).`,
+    ),
+  ),
+  maxTokens: integerFlag("max-tokens", PositiveInt, "a positive integer").pipe(
+    Options.withDefault(DEFAULTS.maxTokens),
+    Options.withDescription(
+      `Output ceiling for reasoning models (default: ${DEFAULTS.maxTokens}).`,
+    ),
+  ),
+  concurrency: integerFlag("concurrency", PositiveInt, "a positive integer").pipe(
+    Options.withDefault(DEFAULTS.concurrency),
+    Options.withDescription(`Maximum simultaneous samples (default: ${DEFAULTS.concurrency}).`),
+  ),
+  reasoning: Options.choice("reasoning", ReasoningMode.literals).pipe(
+    Options.optional,
+    Options.withDescription(
+      "Override reasoning mode (slugs default to off; aliases retain their named mode).",
+    ),
+  ),
+  out: Options.text("out").pipe(
+    // An empty path would pass the preflight and fail only when saving a paid run.
+    Options.withSchema(
+      Schema.NonEmptyString.annotations({ message: () => "--out must be a file path." }),
+    ),
+    Options.withDefault(DEFAULT_OUT),
+    Options.withDescription("History file (default: the web app's public/data/results.json)."),
+  ),
+  yes: Options.boolean("yes").pipe(
+    Options.withAlias("y"),
+    Options.withDescription("Skip final confirmation."),
+  ),
+  dryRun: Options.boolean("dry-run").pipe(
+    Options.withDescription("Print and validate the plan without credentials or provider calls."),
+  ),
+  list: Options.boolean("list").pipe(
+    Options.withDescription("List model aliases and exit without credentials."),
+  ),
+};
+
+type Flags = Command.Command.ParseConfig<typeof options>;
+
+/** Explicit flags win; guided setup asks a terminal without --model for the rest. */
+const resolveRequest = (flags: Flags, interactive: boolean) =>
+  Effect.gen(function* () {
+    const models = splitModels(Option.getOrElse(flags.model, () => ""));
+    const guided =
+      models.length === 0 && interactive
+        ? yield* promptRunSetup({
+            size: Option.isNone(flags.trials) && Option.isNone(flags.step),
+            reasoning: Option.isNone(flags.reasoning),
+          })
+        : undefined;
+    const sizing = guided?.sizing ?? DEFAULTS;
     return {
-      title: `${preset.label} — ${preset.trialsPerStep} trials × ${points} points (${preset.stepPercent}% step): ${samples.toLocaleString("en")} samples per model`,
-      value: preset,
+      models: guided?.models ?? models,
+      reasoning: Option.getOrElse(flags.reasoning, () => guided?.reasoning),
+      options: {
+        trialsPerStep: Option.getOrElse(flags.trials, () => sizing.trialsPerStep),
+        stepPercent: Option.getOrElse(flags.step, () => sizing.stepPercent),
+        concurrency: flags.concurrency,
+        maxTokens: flags.maxTokens,
+      },
+      out: flags.out,
     };
-  }),
-  { title: "Custom trial count and probability step", value: "custom" },
-];
-
-/** No network access: choose aliases or enter any OpenRouter vendor/model slug. */
-export const promptRunSetup = Effect.gen(function* () {
-  const selected = yield* Prompt.select({
-    message: "Choose a model",
-    choices: [
-      ...MODEL_ALIASES.map((model) => ({
-        title: `${model.alias} · ${modelLabel(model.slug, model.reasoning ?? "off")}`,
-        value: model.alias,
-      })),
-      { title: "Enter another OpenRouter model", value: "custom" },
-      { title: "Run every alias", value: "all" },
-    ],
   });
-  const models =
-    selected === "custom"
-      ? splitTokens(
-          yield* Prompt.text({
-            message: "OpenRouter vendor/model slug (comma-separated for several)",
-            validate: (raw) => {
-              const selection = selectTargets(splitTokens(raw));
-              return selection.targets.length > 0 && selection.unknown.length === 0
-                ? Effect.succeed(raw)
-                : Effect.fail("Enter a listed alias or an OpenRouter vendor/model slug.");
-            },
-          }),
-        )
-      : [selected];
-  const preset = yield* Prompt.select({ message: "Benchmark size", choices: TRIAL_PRESETS });
-  const { trialsPerStep, stepPercent } =
-    preset === "custom"
-      ? {
-          trialsPerStep: yield* Prompt.integer({
-            message: "Samples at each probability",
-            min: 1,
-            max: Number.MAX_SAFE_INTEGER,
-          }),
-          stepPercent: yield* Prompt.integer({
-            message: "Probability step (percent)",
-            min: 1,
-            max: 100,
-          }),
-        }
-      : preset;
-  const reasoning =
-    selected === "custom"
-      ? yield* Prompt.select({
-          message: "Reasoning mode",
-          choices: ReasoningMode.literals.map((value) => ({
-            title: REASONING_LABELS[value],
-            value,
-          })),
-        })
-      : undefined;
-  return { models, trialsPerStep, stepPercent, reasoning };
-});
 
-const modelOption = Options.text("model").pipe(
-  Options.withAlias("m"),
-  Options.withDefault(""),
-  Options.withDescription(
-    'Comma-separated OpenRouter vendor/model slugs or aliases; "all" selects every alias.',
-  ),
-);
-const reasoningOption = Options.choice("reasoning", ReasoningMode.literals).pipe(
-  Options.optional,
-  Options.withDescription(
-    "Override reasoning mode (slugs default to off; aliases retain their named mode).",
-  ),
-);
-const outOption = Options.text("out").pipe(
-  Options.withDefault(DEFAULT_OUT),
-  Options.withDescription("History file (default: the web app's public/data/results.json)."),
-  Options.mapTryCatch((out) => {
-    if (!out.trim()) throw new InvalidOptions({ message: "out must be a nonempty file path." });
-    return out;
-  }, optionError),
-);
-
-export const benchCommand = Command.make(
-  "probabench",
-  {
-    model: modelOption,
-    trials: Options.integer("trials").pipe(
-      Options.mapTryCatch((value) => positiveInteger(value, "trials"), optionError),
-      Options.optional,
-      Options.withDescription(
-        "Samples per probability (default: 100; guided setup offers presets).",
-      ),
-    ),
-    step: Options.integer("step").pipe(
-      Options.mapTryCatch(probabilityStep, optionError),
-      Options.optional,
-      Options.withDescription("Probability step from 1 to 100 percent (default: 10)."),
-    ),
-    maxTokens: integerOption("max-tokens", 4096).pipe(
-      Options.withDescription("Output ceiling for reasoning models (default: 4096)."),
-    ),
-    concurrency: integerOption("concurrency", 10).pipe(
-      Options.withDescription("Maximum simultaneous samples (default: 10)."),
-    ),
-    reasoning: reasoningOption,
-    out: outOption,
-    yes: Options.boolean("yes").pipe(
-      Options.withAlias("y"),
-      Options.withDescription("Skip final confirmation."),
-    ),
-    dryRun: Options.boolean("dry-run").pipe(
-      Options.withDescription("Print and validate the plan without credentials or provider calls."),
-    ),
-    list: Options.boolean("list").pipe(
-      Options.withDescription("List model aliases and exit without credentials."),
-    ),
-  },
-  (opts) =>
-    Effect.gen(function* () {
-      if (opts.list) {
-        yield* Console.log(describeAliases());
-        return;
-      }
-      const interactive = process.stdin.isTTY === true;
-      const explicitModels = splitTokens(opts.model);
-      if (explicitModels.length === 0 && !interactive) {
-        return yield* Effect.fail(new InvalidOptions({ message: MISSING_MODEL_MESSAGE }));
-      }
-      const guided = explicitModels.length === 0 ? yield* promptRunSetup : undefined;
-      const trialsPerStep = Option.getOrUndefined(opts.trials) ?? guided?.trialsPerStep ?? 100;
-      const stepPercent = Option.getOrUndefined(opts.step) ?? guided?.stepPercent ?? 10;
-      const reasoning = Option.getOrUndefined(opts.reasoning) ?? guided?.reasoning;
-      const plan = yield* Effect.try({
-        try: () =>
-          resolvePlan(guided?.models ?? explicitModels, trialsPerStep, stepPercent, reasoning),
-        catch: (error) =>
-          error instanceof InvalidOptions ? error : new InvalidOptions({ message: String(error) }),
-      });
-      yield* Console.log(describePlan(plan));
-      yield* validatePlan(plan);
-      if (opts.dryRun) return;
-      const gate = yield* confirmationGate(opts.yes, interactive);
-      const confirmed =
-        gate === "proceed" ||
-        (yield* Prompt.confirm({ message: "Run this plan?", initial: false }));
-      if (!confirmed) {
-        yield* Console.log("Aborted.");
-        return;
-      }
-      yield* executePlan(plan.targets, opts.out, {
-        trialsPerStep,
-        stepPercent,
-        maxTokens: opts.maxTokens,
-        concurrency: opts.concurrency,
-      });
-    }),
+export const benchCommand = Command.make("probabench", options, (flags) =>
+  Effect.gen(function* () {
+    if (flags.list) return yield* Console.log(describeAliases());
+    // Prompts read their answers from stdin, which the dev server's runner lacks.
+    const interactive = process.stdin.isTTY === true;
+    const plan = yield* resolvePlan(yield* resolveRequest(flags, interactive));
+    yield* Console.log(describePlan(plan));
+    if (flags.dryRun) return;
+    if (!flags.yes) {
+      if (!interactive) return yield* new InvalidOptions({ message: NON_TTY_MESSAGE });
+      const confirmed = yield* Prompt.confirm({ message: "Run this plan?", initial: false });
+      if (!confirmed) return yield* Console.log("Aborted.");
+    }
+    yield* executePlan(plan);
+  }),
 );

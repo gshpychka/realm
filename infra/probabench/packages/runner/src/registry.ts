@@ -1,3 +1,5 @@
+// Resolves the CLI's model tokens (aliases, OpenRouter slugs and "all") into
+// benchmark targets, one per model series.
 import {
   ALL_TARGETS,
   isModelSlug,
@@ -13,34 +15,44 @@ export interface BenchTarget {
   readonly reasoning: ReasoningMode;
 }
 
+type Model = Omit<ModelAlias, "alias">;
+
 export const modelLabel = (slug: string, reasoning: ReasoningMode): string =>
   reasoning === "off" ? slug : `${slug} [reasoning=${reasoning}]`;
 
-const target = (model: Omit<ModelAlias, "alias">, mode?: ReasoningMode): BenchTarget => {
+const target = (model: Model, mode?: ReasoningMode): BenchTarget => {
   const reasoning = mode ?? model.reasoning ?? "off";
   return { id: modelLabel(model.slug, reasoning), slug: model.slug, reasoning };
 };
+
+const modelsFor = (token: string): readonly Model[] => {
+  if (token === ALL_TARGETS) return MODEL_ALIASES;
+  const alias = MODEL_ALIASES.find((candidate) => candidate.alias === token);
+  if (alias) return [alias];
+  return isModelSlug(token) ? [{ slug: token }] : [];
+};
+
+/** The tokens of a comma-separated model list, trimmed. */
+export const splitModels = (list: string): readonly string[] =>
+  list
+    .split(",")
+    .map((token) => token.trim())
+    .filter(Boolean);
 
 export interface TargetSelection {
   readonly targets: readonly BenchTarget[];
   readonly unknown: readonly string[];
 }
 
-/** Preserve requested order, deduping aliases/slugs that resolve to the same experiment. */
+/**
+ * Resolves tokens from splitModels in request order, deduping aliases and slugs that
+ * name the same series. `mode` overrides every target's reasoning.
+ */
 export const selectTargets = (tokens: readonly string[], mode?: ReasoningMode): TargetSelection => {
   const targets = new Map<string, BenchTarget>();
   const unknown: string[] = [];
-  for (const raw of tokens) {
-    const token = raw.trim();
-    const alias = MODEL_ALIASES.find((candidate) => candidate.alias === token);
-    const models =
-      token === ALL_TARGETS
-        ? MODEL_ALIASES
-        : alias === undefined
-          ? isModelSlug(token)
-            ? [{ slug: token }]
-            : []
-          : [alias];
+  for (const token of tokens) {
+    const models = modelsFor(token);
     if (models.length === 0) unknown.push(token);
     for (const model of models) {
       const resolved = target(model, mode);

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import { ALL_TARGETS, isModelToken, MODEL_ALIASES } from "@probabench/domain";
-import { describeAliases, selectTargets } from "./registry";
+import { describeAliases, selectTargets, splitModels } from "./registry";
 
 describe("OpenRouter model selection", () => {
   it("keeps convenient unique aliases and lists their canonical slugs", () => {
     expect(new Set(MODEL_ALIASES.map((model) => model.alias)).size).toBe(MODEL_ALIASES.length);
     expect(describeAliases()).toContain("claude-haiku-4.5 → anthropic/claude-haiku-4.5");
+  });
+
+  it("splits a comma-separated model list into trimmed tokens", () => {
+    expect(splitModels(" vendor/model , ,all,")).toEqual(["vendor/model", "all"]);
   });
 
   it("expands all aliases with distinct reasoning variants", () => {

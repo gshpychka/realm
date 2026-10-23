@@ -8,17 +8,10 @@ import * as Layer from "effect/Layer";
 import { Benchmark } from "./benchmark";
 import { BitSampler, type LlmError } from "./bit-sampler";
 import { openrouterApiKey, openrouterClientLayer, openrouterModelLayer } from "./openrouter";
-import { InvalidOptions, positiveInteger, validateSamplingOptions } from "./options";
+import { type BenchPlan, InvalidOptions, type SamplingOptions } from "./plan";
 import type { BenchTarget } from "./registry";
 import { ResultsStore, type ResultsStoreError } from "./results-store";
 import { withProviderRetry } from "./retry";
-
-export interface SweepOptions {
-  readonly trialsPerStep: number;
-  readonly stepPercent: number;
-  readonly maxTokens: number;
-  readonly concurrency: number;
-}
 
 export const retryingBitSampler: Layer.Layer<BitSampler> = Layer.effect(
   BitSampler,
@@ -29,9 +22,9 @@ export const retryingBitSampler: Layer.Layer<BitSampler> = Layer.effect(
 
 export const sweepTarget = <RClient>(
   target: BenchTarget,
-  options: SweepOptions,
+  options: SamplingOptions,
   modelLayer: Layer.Layer<LanguageModel.LanguageModel, never, RClient>,
-): Effect.Effect<Run, LlmError | InvalidOptions, Benchmark | RClient> =>
+): Effect.Effect<Run, LlmError, Benchmark | RClient> =>
   Benchmark.pipe(
     Effect.flatMap((benchmark) =>
       benchmark.run({
@@ -64,7 +57,7 @@ export const sweepAll = <R, E>(
 ): Effect.Effect<void, E | ResultsStoreError, R | ResultsStore> =>
   Effect.gen(function* () {
     const store = yield* ResultsStore;
-    if (targets.length > 0) yield* store.prepare(out);
+    yield* store.prepare(out);
     yield* Effect.forEach(
       targets,
       (target) =>
@@ -78,37 +71,15 @@ export const sweepAll = <R, E>(
     );
   });
 
-/** Preflight all selected models, credentials and persistence before starting paid requests. */
+/** Preflight credentials and persistence before starting paid requests. */
 export const executePlan = (
-  targets: readonly BenchTarget[],
-  out: string,
-  options: SweepOptions,
+  plan: BenchPlan,
 ): Effect.Effect<
   void,
   LlmError | InvalidOptions | ResultsStoreError | ConfigError.ConfigError,
   Benchmark | ResultsStore | HttpClient.HttpClient
 > =>
   Effect.gen(function* () {
-    yield* validateSamplingOptions(options);
-    yield* Effect.try({
-      try: () => {
-        positiveInteger(options.maxTokens, "max-tokens");
-        const ids = new Set<string>();
-        for (const target of targets) {
-          if (!target.id.trim() || !target.slug.trim() || ids.has(target.id)) {
-            throw new InvalidOptions({
-              message: "Targets require nonempty unique labels and nonempty model slugs.",
-            });
-          }
-          ids.add(target.id);
-        }
-      },
-      catch: (error) =>
-        error instanceof InvalidOptions
-          ? error
-          : new InvalidOptions({ message: error instanceof Error ? error.message : String(error) }),
-    });
-    if (targets.length === 0) return;
     yield* openrouterApiKey.pipe(
       Effect.mapError(
         () =>
@@ -118,7 +89,7 @@ export const executePlan = (
           }),
       ),
     );
-    yield* sweepAll(targets, out, (target) =>
-      sweepTarget(target, options, openrouterModelLayer(target, options.maxTokens)),
+    yield* sweepAll(plan.targets, plan.out, (target) =>
+      sweepTarget(target, plan.options, openrouterModelLayer(target, plan.options.maxTokens)),
     ).pipe(Effect.provide(openrouterClientLayer));
   });

@@ -44,7 +44,7 @@ describe("Benchmark.run sweep", () => {
   );
 });
 
-describe("Benchmark.run validation and concurrency", () => {
+describe("Benchmark.run grid and concurrency", () => {
   it.effect(
     "includes the 100% endpoint for a non-divisor step and bounds concurrent samples",
     () => {
@@ -86,33 +86,4 @@ describe("Benchmark.run validation and concurrency", () => {
       }).pipe(Effect.provide(Layer.mergeAll(Benchmark.Default, sampler, unusedModel)));
     },
   );
-
-  for (const invalid of [
-    { stepPercent: 0 },
-    { stepPercent: -10 },
-    { stepPercent: 101 },
-    { stepPercent: Number.NaN },
-    { trialsPerStep: 0 },
-    { trialsPerStep: 1.5 },
-    { concurrency: 0 },
-    { concurrency: Infinity },
-  ]) {
-    it.effect(`rejects invalid sampling config ${JSON.stringify(invalid)} before sampling`, () =>
-      Effect.gen(function* () {
-        const benchmark = yield* Benchmark;
-        const error = yield* Effect.flip(
-          benchmark.run({
-            model: "vendor/model",
-            modelSlug: "vendor/model",
-            reasoning: "off",
-            trialsPerStep: 1,
-            stepPercent: 10,
-            concurrency: 1,
-            ...invalid,
-          }),
-        );
-        expect(error._tag).toBe("InvalidOptions");
-      }).pipe(Effect.provide(Layer.mergeAll(Benchmark.Default, fakeSampler(1), unusedModel))),
-    );
-  }
 });

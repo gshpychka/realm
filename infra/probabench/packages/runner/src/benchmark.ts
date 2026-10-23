@@ -17,7 +17,6 @@ import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { BitSampler, type LlmError } from "./bit-sampler";
-import { type InvalidOptions, validateSamplingOptions } from "./options";
 
 /** A single target sweep request: the Run's series id and the grid/concurrency shape. */
 export interface BenchmarkConfig {
@@ -36,9 +35,8 @@ export interface BenchmarkConfig {
  */
 const run = (
   config: BenchmarkConfig,
-): Effect.Effect<Run, LlmError | InvalidOptions, BitSampler | LanguageModel.LanguageModel> =>
+): Effect.Effect<Run, LlmError, BitSampler | LanguageModel.LanguageModel> =>
   Effect.gen(function* () {
-    yield* validateSamplingOptions(config);
     const sampler = yield* BitSampler;
     const startedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
     const grid = probabilityGrid(config.stepPercent);
