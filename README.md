@@ -63,6 +63,9 @@ requested sampling probabilities. Its CLI, results notebook and Cloudflare
 Alchemy deployment live under `infra/probabench`; use `nix develop .#infra` to
 work on it.
 
+Hoard also supports [Hermes Agent](machines/hoard/hermes-agent/README.md), with
+its own service identity, Telegram bot, model login and persistent state.
+
 ## Usage
 
 ```sh

@@ -20,6 +20,7 @@
     maintainerr = 6246;
     tautulli = config.services.tautulli.port;
     openclaw = config.services.openclaw-gateway.port;
+    hermes = config.my.hermes-agent.dashboard.port;
     voice-broker = config.my.voice-broker.port;
     # fixed upstream
     plex = 32400;

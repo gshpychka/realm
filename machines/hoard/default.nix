@@ -40,6 +40,7 @@
     ./home.nix
     ./openclaw.nix
     ./openclaw-queued-media.nix
+    ./hermes-agent.nix
     ./voice-broker.nix
   ];
 

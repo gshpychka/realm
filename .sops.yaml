@@ -80,6 +80,15 @@ creation_rules:
         pgp:
           - *yubikey_alpha
           - *yubikey_nano
+  # Add Hermes' generated public age recipient here after its first start.
+  - path_regex: secrets/hermes/.*
+    key_groups:
+      - age:
+          - *hoard_host
+          - *glib_op
+        pgp:
+          - *yubikey_alpha
+          - *yubikey_nano
   - path_regex: secrets/infra/.*
     key_groups:
       - age:
