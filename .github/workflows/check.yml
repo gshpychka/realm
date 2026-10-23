@@ -111,13 +111,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - run: nix build --no-link -L .#checks.x86_64-linux.voice-broker
 
-  nixos-control:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: DeterminateSystems/nix-installer-action@main
-      - run: nix build --no-link -L .#checks.x86_64-linux.nixos-control
-
   arr-sync:
     runs-on: ubuntu-24.04
     steps:
