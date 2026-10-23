@@ -1,5 +1,5 @@
 import type { Run } from "@probabench/domain";
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import {
   CartesianGrid,
   ErrorBar,
@@ -87,86 +87,99 @@ export function CalibrationChart({
   runs,
   styles,
   intervals,
-  descriptionId,
 }: {
   runs: readonly Run[];
   styles: ReadonlyMap<string, ModelStyle>;
   intervals: boolean;
-  descriptionId: string;
 }) {
+  const descriptionId = useId();
   const series = useMemo(() => buildCalibrationSeries(runs, styles), [runs, styles]);
   const empty = emptyPlot(series);
   return (
     <figure
-      className="plot calibration-plot"
       aria-label="Observed fraction of ones versus target probability"
       aria-describedby={descriptionId}
     >
-      <ResponsiveContainer>
-        <LineChart margin={CHART.margin}>
-          <CartesianGrid {...CHART.grid} />
-          <XAxis
-            {...CHART.xAxis}
-            dataKey="x"
-            type="number"
-            domain={[0, 1]}
-            ticks={TICKS}
-            tickFormatter={(value: number) => percent(value, 0)}
-            label={{ ...CHART.xLabel, value: "Target probability" }}
-          />
-          <YAxis
-            {...CHART.yAxis}
-            domain={[0, 1]}
-            ticks={TICKS}
-            tickFormatter={(value: number) => percent(value, 0)}
-            width={52}
-          />
-          <Tooltip
-            // Keep null entries: a target with no valid replies must still open its tooltip.
-            filterNull={false}
-            cursor={CHART.cursor}
-            content={({ active, label }) => (
-              <CalibrationTooltip active={active} label={label} series={series} />
-            )}
-          />
-          <Line
-            data={REFERENCE}
-            dataKey="y"
-            stroke={CHART.reference}
-            strokeWidth={1}
-            strokeDasharray="5 6"
-            dot={false}
-            activeDot={false}
-            isAnimationActive={false}
-          />
-          {series.map(({ run, style, points }) => (
+      <div className="plot calibration-plot">
+        <ResponsiveContainer>
+          <LineChart margin={CHART.margin}>
+            <CartesianGrid {...CHART.grid} />
+            <XAxis
+              {...CHART.xAxis}
+              dataKey="x"
+              type="number"
+              domain={[0, 1]}
+              ticks={TICKS}
+              tickFormatter={(value: number) => percent(value, 0)}
+              label={{ ...CHART.xLabel, value: "Target probability" }}
+            />
+            <YAxis
+              {...CHART.yAxis}
+              domain={[0, 1]}
+              ticks={TICKS}
+              tickFormatter={(value: number) => percent(value, 0)}
+              width={52}
+            />
+            <Tooltip
+              // Keep null entries: a target with no valid replies must still open its tooltip.
+              filterNull={false}
+              cursor={CHART.cursor}
+              content={({ active, label }) => (
+                <CalibrationTooltip active={active} label={label} series={series} />
+              )}
+            />
             <Line
-              key={run.id}
-              data={points}
-              dataKey="observed"
-              stroke={style.color}
-              strokeDasharray={style.dash}
-              strokeWidth={2.5}
-              dot={{ r: 3, strokeWidth: 2, fill: CHART.surface }}
-              activeDot={{ r: 5, fill: style.color, stroke: CHART.surface, strokeWidth: 3 }}
+              data={REFERENCE}
+              dataKey="y"
+              stroke={CHART.reference}
+              strokeWidth={1}
+              strokeDasharray="5 6"
+              dot={false}
+              activeDot={false}
               isAnimationActive={false}
-            >
-              {intervals ? (
-                <ErrorBar
-                  dataKey="errorBar"
-                  direction="y"
-                  isAnimationActive={false}
-                  stroke={style.color}
-                  strokeOpacity={0.55}
-                  strokeWidth={1.2}
-                  width={3}
-                />
-              ) : null}
-            </Line>
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
-      {empty ? <PlotEmpty {...empty} /> : null}
+            />
+            {series.map(({ run, style, points }) => (
+              <Line
+                key={run.id}
+                data={points}
+                dataKey="observed"
+                stroke={style.color}
+                strokeDasharray={style.dash}
+                strokeWidth={2.5}
+                dot={{ r: 3, strokeWidth: 2, fill: CHART.surface }}
+                activeDot={{ r: 5, fill: style.color, stroke: CHART.surface, strokeWidth: 3 }}
+                isAnimationActive={false}
+              >
+                {intervals ? (
+                  <ErrorBar
+                    dataKey="errorBar"
+                    direction="y"
+                    isAnimationActive={false}
+                    stroke={style.color}
+                    strokeOpacity={0.55}
+                    strokeWidth={1.2}
+                    width={3}
+                  />
+                ) : null}
+              </Line>
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+        {empty ? <PlotEmpty {...empty} /> : null}
+      </div>
+      <div className="chart-caption">
+        <span className="reference-key">
+          <span aria-hidden="true" />
+          Calibrated sampling (y = x)
+        </span>
+        <span className="mono">
+          {series.length} / {styles.size} models
+        </span>
+      </div>
+      <figcaption id={descriptionId} className="chart-description">
+        Points mark measured targets; lines join them. Gaps mark targets with no valid replies.
+        Intervals assume independent valid responses.
+      </figcaption>
     </figure>
   );
 }

@@ -45,6 +45,7 @@
 /* The negative margins bleed into the card padding, offsetting Recharts' chart margin. */
 .plot {
   position: relative;
+  height: 300px;
   margin: 14px -5px 0;
 
   @media (max-width: 650px) {

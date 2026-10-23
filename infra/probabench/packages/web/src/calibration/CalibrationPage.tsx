@@ -1,5 +1,5 @@
 import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
-import { useId, useMemo } from "react";
+import { useMemo } from "react";
 import { count, date, modelName, samplingText, shortId, time, timestamp } from "../common/format";
 import { Measurements } from "../common/Measurements";
 import { type NotebookView, toggleHidden, type UpdateView } from "../common/notebook-view";
@@ -19,7 +19,6 @@ export function CalibrationPage({
   view: NotebookView;
   update: UpdateView;
 }) {
-  const descriptionId = useId();
   const selections = useMemo(
     () => modelSelections(runs, view.comparisons),
     [runs, view.comparisons],
@@ -52,25 +51,7 @@ export function CalibrationPage({
               <span aria-hidden="true">↕</span> 95% intervals
             </button>
           </header>
-          <CalibrationChart
-            runs={chosen}
-            styles={styles}
-            intervals={view.intervals}
-            descriptionId={descriptionId}
-          />
-          <div className="chart-caption">
-            <span className="reference-key">
-              <span aria-hidden="true" />
-              Calibrated sampling (y = x)
-            </span>
-            <span className="mono">
-              {chosen.length} / {selections.length} models
-            </span>
-          </div>
-          <p id={descriptionId} className="chart-description">
-            Points mark measured targets; lines join them. Gaps mark targets with no valid replies.
-            Intervals assume independent valid responses.
-          </p>
+          <CalibrationChart runs={chosen} styles={styles} intervals={view.intervals} />
         </section>
         <aside className="model-panel">
           <div className="panel-heading">

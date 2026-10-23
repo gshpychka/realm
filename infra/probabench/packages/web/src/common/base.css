@@ -78,7 +78,8 @@ p,
 dl,
 dd,
 ol,
-fieldset {
+fieldset,
+figure {
   margin: 0;
 }
 fieldset {

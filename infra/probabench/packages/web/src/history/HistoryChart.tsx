@@ -84,61 +84,59 @@ export function HistoryChart({
   );
   const empty = emptyPlot(points);
   return (
-    <figure
-      className="plot"
-      aria-label="Calibration error over time"
-      aria-describedby={descriptionId}
-    >
-      <ResponsiveContainer height={300}>
-        <LineChart margin={CHART.margin}>
-          <CartesianGrid {...CHART.grid} />
-          <XAxis
-            {...CHART.xAxis}
-            dataKey="timestamp"
-            type="number"
-            scale="time"
-            domain={domain}
-            tickFormatter={(value: number) => tickFormat.format(value)}
-            minTickGap={35}
-            label={{ ...CHART.xLabel, value: "Run start (UTC)" }}
-          />
-          <YAxis
-            {...CHART.yAxis}
-            domain={[0, yMax]}
-            tickFormatter={(value: number) => `${Math.round(value * 100)}`}
-            width={56}
-            label={{
-              ...CHART.label,
-              value: "Calibration error (pp)",
-              angle: -90,
-              position: "insideLeft",
-              offset: -4,
-            }}
-          />
-          <Tooltip
-            // Keep null entries: a run with no valid replies must still open its tooltip.
-            filterNull={false}
-            cursor={CHART.cursor}
-            content={({ active, label }) => (
-              <HistoryTooltip active={active} label={label} points={points} styles={styles} />
-            )}
-          />
-          {series.map(({ model, style, points: line }) => (
-            <Line
-              key={model}
-              data={line}
-              dataKey="calibrationError"
-              stroke={style.color}
-              strokeDasharray={style.dash}
-              strokeWidth={2}
-              dot={{ r: 4, strokeWidth: 2, fill: CHART.surface }}
-              activeDot={false}
-              isAnimationActive={false}
+    <figure aria-label="Calibration error over time" aria-describedby={descriptionId}>
+      <div className="plot">
+        <ResponsiveContainer>
+          <LineChart margin={CHART.margin}>
+            <CartesianGrid {...CHART.grid} />
+            <XAxis
+              {...CHART.xAxis}
+              dataKey="timestamp"
+              type="number"
+              scale="time"
+              domain={domain}
+              tickFormatter={(value: number) => tickFormat.format(value)}
+              minTickGap={35}
+              label={{ ...CHART.xLabel, value: "Run start (UTC)" }}
             />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
-      {empty ? <PlotEmpty {...empty} /> : null}
+            <YAxis
+              {...CHART.yAxis}
+              domain={[0, yMax]}
+              tickFormatter={(value: number) => `${Math.round(value * 100)}`}
+              width={56}
+              label={{
+                ...CHART.label,
+                value: "Calibration error (pp)",
+                angle: -90,
+                position: "insideLeft",
+                offset: -4,
+              }}
+            />
+            <Tooltip
+              // Keep null entries: a run with no valid replies must still open its tooltip.
+              filterNull={false}
+              cursor={CHART.cursor}
+              content={({ active, label }) => (
+                <HistoryTooltip active={active} label={label} points={points} styles={styles} />
+              )}
+            />
+            {series.map(({ model, style, points: line }) => (
+              <Line
+                key={model}
+                data={line}
+                dataKey="calibrationError"
+                stroke={style.color}
+                strokeDasharray={style.dash}
+                strokeWidth={2}
+                dot={{ r: 4, strokeWidth: 2, fill: CHART.surface }}
+                activeDot={false}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+        {empty ? <PlotEmpty {...empty} /> : null}
+      </div>
       <figcaption id={descriptionId} className="chart-description">
         Mean absolute calibration error across recorded targets with valid replies, in percentage
         points. Lower is better. Each point is a saved run. Runs with no valid replies leave gaps
