@@ -56,6 +56,7 @@ let
       wrapProgram $out/bin/pituitary \
         --set-default PITUITARY_CATALOG ${lib.escapeShellArg catalogPath} \
         --set-default PITUITARY_STATE_DIR ${lib.escapeShellArg cfg.stateDirectory} \
+        --set PITUITARY_AUTO_START 0 \
         --set-default PITUITARY_CREDENTIAL_PROFILES ${lib.escapeShellArg credentialProfilesPath} \
         --set-default PITUITARY_RUN_LIMITS ${lib.escapeShellArg (builtins.toJSON cfg.limits)}
     '';
@@ -120,7 +121,7 @@ in
         types.submodule {
           options = {
             provider = mkOption {
-              type = types.strMatching "[^/[:space:]]+";
+              type = types.strMatching "[a-zA-Z0-9_.-]+";
               description = "Pi provider receiving this API key.";
             };
             file = mkOption {
@@ -158,6 +159,12 @@ in
       {
         assertion = config.services.bay.operator == cfg.operator;
         message = "services.pituitary and services.bay must use the same operator.";
+      }
+      {
+        assertion = lib.all (name: builtins.match "[a-zA-Z0-9][a-zA-Z0-9_.-]*" name != null) (
+          builtins.attrNames cfg.credentialProfiles
+        );
+        message = "services.pituitary.credentialProfiles names must start with a letter or digit and contain only letters, digits, dots, underscores, or hyphens.";
       }
       {
         assertion =
@@ -210,6 +217,7 @@ in
     environment.sessionVariables = {
       PITUITARY_CATALOG = catalogPath;
       PITUITARY_STATE_DIR = cfg.stateDirectory;
+      PITUITARY_AUTO_START = "0";
       PITUITARY_CREDENTIAL_PROFILES = credentialProfilesPath;
       PITUITARY_RUN_LIMITS = builtins.toJSON cfg.limits;
     };
@@ -217,7 +225,11 @@ in
     systemd.services.pituitary = {
       description = "Pituitary host runtime";
       wantedBy = [ "multi-user.target" ];
-      after = [ "bay-server.service" ];
+      after = [
+        "bay-server.service"
+        "bay-base.service"
+      ];
+      requires = [ "bay-base.service" ];
       wants = [ "bay-server.service" ];
       restartTriggers = [
         catalogFile

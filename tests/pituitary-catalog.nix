@@ -158,6 +158,10 @@ let
       cfg.environment.sessionVariables.PITUITARY_CATALOG == "/etc/pituitary/agents.json";
     daemonOperator = cfg.systemd.services.pituitary.serviceConfig.User == "alice";
     daemonState = cfg.environment.sessionVariables.PITUITARY_STATE_DIR == "/var/lib/pituitary";
+    managedClients = cfg.environment.sessionVariables.PITUITARY_AUTO_START == "0";
+    preparedMachines =
+      builtins.elem "bay-base.service" cfg.systemd.services.pituitary.after
+      && builtins.elem "bay-base.service" cfg.systemd.services.pituitary.requires;
     credentialReference =
       cfg.systemd.services.pituitary.environment.PITUITARY_CREDENTIAL_PROFILES
       == "/etc/pituitary/credentials.json";

@@ -72,7 +72,7 @@ in
     };
 
     stateDirectory = mkOption {
-      type = types.nullOr types.str;
+      type = types.nullOr (types.strMatching "/.*");
       default = null;
       example = "/home/me/.local/state/pituitary";
       description = "Private durable harness and frontend state; null follows XDG_STATE_HOME or ~/.local/state/pituitary.";

@@ -152,6 +152,7 @@ type VerifyState = { phase: "run"; journal: VerificationCheckpoint };
 type DeliveryInput = {
   runId: string;
   toTaskId: string;
+  toAttemptId: string;
   fromTaskId: string | null;
   body: string;
   replyTo?: string;
@@ -283,14 +284,24 @@ export class Orchestrator {
             task.input.runId,
             (state) => {
               const target = taskScope(state, task.input.toTaskId);
-              return target.attempt.conversationId || target.run.desired === "stopped" || closed(target.task);
+              return (
+                target.attempt.id !== task.input.toAttemptId ||
+                target.attempt.conversationId ||
+                target.run.desired === "stopped" ||
+                closed(target.task)
+              );
             },
             runtime.signal,
             context,
           );
           const target = taskScope(current, task.input.toTaskId);
           if (target.run.id !== task.input.runId) throw new Error("Message crossed run boundary");
-          if (target.attempt.conversationId && target.attempt.desired === "running" && !closed(target.task)) {
+          if (
+            target.attempt.id === task.input.toAttemptId &&
+            target.attempt.conversationId &&
+            target.attempt.desired === "running" &&
+            !closed(target.task)
+          ) {
             const conversation = await runtime.conversation(
               nativeConversation(target.attempt.conversationId),
               context,
@@ -1080,6 +1091,8 @@ export class Orchestrator {
             throw new Error("Inputs changed; revise the task before retrying");
           if (Date.now() >= owned.run.deadline) throw new Error("Run deadline reached; start a new run");
           const stale = this.invalidate(owned.detail, owned.task.id);
+          if (task.dependencies.some((dependency) => stale.has(dependency.taskId)))
+            throw new Error("Revision would invalidate a selected dependency");
           abort = this.revoke(owned.detail, [...stale], "superseded");
           await this.rebuild(tx, state, owned.detail, stale);
           owned.detail.run.desired = "running";
@@ -2089,6 +2102,7 @@ export class Orchestrator {
             if (
               prior?.kind !== this.deliveryJob.definition.name ||
               input.toTaskId !== owned.task.id ||
+              input.toAttemptId !== owned.attempt.id ||
               input.fromTaskId !== target.id
             )
               throw new Error("Reply must name a message from this recipient");
@@ -2116,12 +2130,15 @@ export class Orchestrator {
     replyTo?: string,
     origin?: string,
   ): Promise<string> {
+    const target = owned.detail.tasks.find((task) => task.id === toTaskId);
+    if (!target) throw new Error("Unknown delivery recipient");
     return String(
       await tx.createTask(
         this.deliveryJob,
         {
           runId: owned.run.id,
           toTaskId,
+          toAttemptId: target.currentAttemptId,
           fromTaskId,
           body,
           ...(replyTo ? { replyTo } : {}),
@@ -2318,6 +2335,17 @@ export class Orchestrator {
           current = detail.integrations.find((item) => item.id === id)!;
         replace(detail.integrations, { ...current, status: "failed", error: String(error) });
         if (state.integrationOwner === id) state.integrationOwner = null;
+        if (this.integrationCurrent(detail, current)) {
+          const owned = taskScope(state, current.taskId);
+          if (owned.task.parentTaskId)
+            await this.queueDelivery(
+              tx,
+              owned,
+              owned.task.parentTaskId,
+              null,
+              `Integration ${id} failed for task ${owned.task.id} revision ${owned.task.revision}: ${String(error)}`,
+            );
+        }
         await event(
           tx,
           detail.run,
@@ -2354,6 +2382,14 @@ export class Orchestrator {
           conflicts: [...(merged.conflicts ?? [])],
         });
         replace(detail.tasks, { ...owned.task, status: "conflicted" });
+        if (owned.task.parentTaskId)
+          await this.queueDelivery(
+            tx,
+            owned,
+            owned.task.parentTaskId,
+            owned.task.id,
+            `Integration ${id} conflicted for task ${owned.task.id} revision ${owned.task.revision}. Conflicting paths: ${(merged.conflicts ?? []).join(", ")}. Inspect the task and request a revision.`,
+          );
         await event(
           tx,
           detail.run,
@@ -2587,6 +2623,14 @@ export class Orchestrator {
         if (valid) {
           const owned = taskScope(state, current.taskId);
           replace(detail.tasks, { ...owned.task, status: "submitted" });
+          if (owned.task.parentTaskId)
+            await this.queueDelivery(
+              tx,
+              owned,
+              owned.task.parentTaskId,
+              null,
+              `Independent verification ${id} failed for task ${owned.task.id} revision ${owned.task.revision}, artifact ${current.artifactId}, tree ${current.tree}: ${String(error)}`,
+            );
         }
         this.acceptance(detail);
         await event(
@@ -2805,7 +2849,10 @@ export class Orchestrator {
           desired: "stopped",
           status: attempt.execution ? "stopping" : attempt.status === "queued" ? "stopped" : attempt.status,
         });
-        if (status !== "cancelled" || ["queued", "running", "waiting", "submitting"].includes(task.status))
+        if (
+          status !== "cancelled" ||
+          ["queued", "running", "waiting", "submitting", "verifying"].includes(task.status)
+        )
           replace(detail.tasks, {
             ...task,
             status,

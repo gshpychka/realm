@@ -77,13 +77,11 @@ export function useCompletion(
   // so a file the agent just created is available without restarting the UI.
   useEffect(() => {
     if (!mentioning || cwd === null) return;
-    let active = true;
-    void listFiles(cwd).then((paths) => {
-      if (active) setFiles({ cwd, paths });
+    const scan = new AbortController();
+    void listFiles(cwd, scan.signal).then((paths) => {
+      if (!scan.signal.aborted) setFiles({ cwd, paths });
     });
-    return () => {
-      active = false;
-    };
+    return () => scan.abort();
   }, [cwd, mentioning]);
 
   const completion = useMemo<Completion | null>(() => {

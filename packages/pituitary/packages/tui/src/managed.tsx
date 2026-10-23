@@ -97,7 +97,8 @@ export function ManagedWorkspace({
           await next.close();
           return;
         }
-        if (!back && previous.taskId !== id)
+        if (back) history.current.pop();
+        else if (previous.taskId !== id)
           history.current.push({ taskId: previous.taskId, control: previous.client.controlsInput });
         captureConversation.current = null;
         onClient(next);
@@ -203,7 +204,7 @@ export function ManagedWorkspace({
       if (id !== attached.taskId) void open(id, false, view);
     },
     back: (view) => {
-      const previous = history.current.pop();
+      const previous = history.current.at(-1);
       if (previous) void open(previous.taskId, previous.control, view, true);
       else {
         const parent = latest.current.tasks.find((task) => task.id === attached.taskId)?.parentTaskId;

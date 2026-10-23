@@ -295,7 +295,7 @@ export async function openConversation(options: OpenConversationOptions): Promis
           toolName: event.toolName,
           result:
             message?.role === "toolResult"
-              ? { content: message.content, details: event.entry?.data }
+              ? { content: message.content, details: message.details }
               : (event.result ?? {
                   content: [{ type: "text", text: toolOutput.get(event.toolCallId) ?? "" }],
                 }),
@@ -349,10 +349,15 @@ export async function openConversation(options: OpenConversationOptions): Promis
       await stream?.stop();
       if (closed) throw new Error("Conversation attachment closed");
       const next = await watchEvents(harness, conversation.id, context);
+      if (closed) {
+        await next.stop();
+        throw new Error("Conversation attachment closed");
+      }
       stream = next;
       toolOutput.clear();
       for (const tool of next.snapshot.tools) toolOutput.set(tool.callId, tool.output ?? "");
       const snapshot = await projected(next.snapshot);
+      if (closed) throw new Error("Conversation attachment closed");
       next.start(async (events) => {
         for (const event of events) {
           if (ticket !== generation || closed) return;
@@ -524,7 +529,12 @@ export async function openConversation(options: OpenConversationOptions): Promis
                 available.length
             ];
       if (!next) throw new Error("This model is unavailable; configure its provider credential first.");
-      if (command.type === "cycle_model" && available.length < 2) return null;
+      if (
+        command.type === "cycle_model" &&
+        next.provider === current.model?.provider &&
+        next.id === current.model.modelId
+      )
+        return null;
       await conversation.configure({ model: { provider: next.provider, modelId: next.id } }, context);
       return command.type === "set_model" ? next : { model: next };
     }
