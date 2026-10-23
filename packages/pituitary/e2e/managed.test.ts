@@ -26,7 +26,12 @@ test("managed UI reload, host restart and archive preserve one native conversati
     PITUITARY_UI_STATE: join(root, "frontend.json"),
   };
   const host = spawn("bun", [join(REPO, "packages/harness/src/managed-runtime.fixture.ts"), state, cwd], {
-    env: { ...process.env, ...environment },
+    env: {
+      PATH: process.env.PATH,
+      LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH,
+      TMPDIR: process.env.TMPDIR,
+      ...environment,
+    },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let errors = "",

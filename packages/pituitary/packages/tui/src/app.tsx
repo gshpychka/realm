@@ -126,7 +126,6 @@ export function App({
   const editor = useRef<EditorHandle | null>(null);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const lastInterrupt = useRef(0);
-  const pendingCommand = useRef<Promise<void> | null>(null);
   const started = useRef(false);
   const [hint, flash] = useFlash();
   const [expanded, setExpanded] = useState(initialView?.expanded ?? false);
@@ -381,10 +380,7 @@ export function App({
       quit: onQuit,
       hotkeys,
     });
-    pendingCommand.current = work;
-    void work.finally(() => {
-      if (pendingCommand.current === work) pendingCommand.current = null;
-    });
+    holdCommand(work);
   };
 
   const toBottom = () => {
@@ -650,10 +646,9 @@ export function App({
     // A half-typed command in the draft, such as a count or ctrl+v, takes the next key whatever it is.
     if (editor.current?.pending()) return;
     if (draftKey(key, action, text, standing)) key.preventDefault();
-    return pendingCommand.current ?? undefined;
   };
 
-  useHeldKeys(editor, onKey, !away, dialog ?? null);
+  const holdCommand = useHeldKeys(editor, onKey, !away, dialog ?? null);
 
   usePaste((event) => {
     if (readonly && !operatorDialog) {

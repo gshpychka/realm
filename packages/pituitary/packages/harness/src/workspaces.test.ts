@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,7 +42,7 @@ async function result(
   f: Awaited<ReturnType<typeof fixture>>,
   input: Artifact,
   operation: string,
-  files: Record<string, string>,
+  files: Record<string, string | Buffer>,
 ): Promise<Artifact> {
   const checkout = join(f.root, operation);
   await materialize(f, input, checkout);
@@ -188,3 +188,80 @@ test("snapshot retains symlinks as data and rejects oversized source before disp
     await f.close();
   }
 });
+
+test("selected untracked inputs are literal names, including pathspec magic and a leading BOM", async () => {
+  const f = await fixture();
+  try {
+    for (const name of ["*.txt", ":selected", "\ufeffselected", "private.txt"])
+      await writeFile(join(f.cwd, name), name);
+    f.run.workspace = { includeUntracked: ["*.txt", ":selected", "\ufeffselected"] };
+    const input = await f.workspaces.capture(f.run),
+      checkout = join(f.root, "literal-input");
+    await materialize(f, input, checkout);
+    expect((await git(checkout, ["ls-files", "-z"])).toString().split("\0")).toEqual([
+      "*.txt",
+      ".gitignore",
+      ":selected",
+      "main.txt",
+      "\ufeffselected",
+      "",
+    ]);
+    await expect(readFile(join(checkout, "private.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    await f.close();
+  }
+});
+
+test("capture rejects invalid UTF-8 filenames rather than silently losing them", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(Buffer.concat([Buffer.from(f.cwd + "/invalid-"), Buffer.from([0xff])]), "data");
+    await git(f.cwd, ["add", "."]);
+    await expect(f.workspaces.capture(f.run)).rejects.toThrow("filenames must be valid UTF-8");
+  } finally {
+    await f.close();
+  }
+});
+
+test("an oversized expanded result leaves no objects or references in the retained repository", async () => {
+  const f = await fixture();
+  try {
+    const input = await f.workspaces.capture(f.run),
+      repo = join(
+        f.root,
+        "state/workspaces",
+        createHash("sha256").update(f.run.id).digest("hex"),
+        "repository.git",
+      ),
+      before = await git(repo, ["count-objects", "-v"]),
+      refs = await git(repo, ["show-ref"]);
+    f.run.limits.artifactBytes = 4096;
+    await expect(
+      result(f, input, "compressed-oversize", { "large.txt": "0".repeat(100_000) }),
+    ).rejects.toThrow("Export tree exceeds");
+    expect(await git(repo, ["count-objects", "-v"])).toEqual(before);
+    expect(await git(repo, ["show-ref"])).toEqual(refs);
+  } finally {
+    await f.close();
+  }
+});
+
+test("accepted binary results larger than the ordinary Git output cap can be applied", async () => {
+  const f = await fixture();
+  try {
+    const input = await f.workspaces.capture(f.run),
+      bytes = randomBytes(27 * 1024 * 1024),
+      output = await result(f, input, "large-binary", { "large.bin": bytes }),
+      accepted = (await f.workspaces.integrate(f.run, input, output, "large-integrated"))
+        .artifact as Artifact;
+    f.run.acceptedArtifactId = accepted.id;
+    f.run.integrationArtifactId = accepted.id;
+    expect(await f.workspaces.apply(f.run, input, accepted)).toEqual({
+      artifactId: accepted.id,
+      applied: true,
+    });
+    expect(await readFile(join(f.cwd, "large.bin"))).toEqual(bytes);
+  } finally {
+    await f.close();
+  }
+}, 30_000);
