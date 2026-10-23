@@ -91,6 +91,9 @@ func run(args []string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := validateServeConfig(config); err != nil {
+		return fmt.Errorf("config %s: %w", *configPath, err)
+	}
 	return serve(config, log)
 }
 
@@ -113,16 +116,26 @@ func loadConfig(file string) (Config, error) {
 	}
 	for _, field := range []struct{ name, value string }{
 		{"incusSocket", config.IncusSocket}, {"project", config.Project}, {"base", config.Base},
-		{"records", config.Records}, {"mirrors", config.Mirrors}, {"gatewaySocket", config.GatewaySocket},
 	} {
 		if field.value == "" {
 			return Config{}, fmt.Errorf("config %s: %s is required", file, field.name)
 		}
 	}
-	if config.MaxRunning < 1 || config.MirrorRefresh.Duration < 0 {
-		return Config{}, fmt.Errorf("config %s: maxRunning must be positive and mirrorRefresh must not be negative", file)
-	}
 	return config, nil
+}
+
+func validateServeConfig(config Config) error {
+	for _, field := range []struct{ name, value string }{
+		{"records", config.Records}, {"mirrors", config.Mirrors}, {"gatewaySocket", config.GatewaySocket},
+	} {
+		if field.value == "" {
+			return fmt.Errorf("%s is required", field.name)
+		}
+	}
+	if config.MaxRunning < 1 || config.MirrorRefresh.Duration < 0 {
+		return errors.New("maxRunning must be positive and mirrorRefresh must not be negative")
+	}
+	return nil
 }
 
 func serve(config Config, log *slog.Logger) error {
@@ -136,9 +149,6 @@ func serve(config Config, log *slog.Logger) error {
 	}
 	mirrors, err := repos.New(config.Mirrors, remoteBase)
 	if err != nil {
-		return err
-	}
-	if err := retainRecords(store, mirrors, log); err != nil {
 		return err
 	}
 	programs := map[string]sessions.Program{}
@@ -226,25 +236,6 @@ func refreshMirrors(ctx context.Context, mirrors *repos.Mirrors, every time.Dura
 			cancel()
 		}
 	}
-}
-
-func retainRecords(store *records.Store, mirrors *repos.Mirrors, log *slog.Logger) error {
-	all, err := store.List()
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	for _, record := range all {
-		for _, repo := range record.Repos {
-			if err := mirrors.Retain(ctx, repo); err != nil {
-				// An absent mirror must not stop the server: starting this session
-				// will fetch it again, or explain which revision is unavailable.
-				log.Warn("retain session revision", "session", record.Name, "repo", repo.Owner+"/"+repo.Name, "err", err)
-			}
-		}
-	}
-	return nil
 }
 
 // base makes the warm base the given guest image booted once.
