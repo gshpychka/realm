@@ -37,11 +37,11 @@ describe("visibleHistory", () => {
 describe("modelSelections", () => {
   const runs = [old, other, latest];
 
-  it("groups every run by model, newest first, and selects the latest by default", () => {
+  it("groups every run by model, newest first, and compares the latest by default", () => {
     const selections = modelSelections(runs, []);
     expect(selections.map((selection) => selection.model)).toEqual([old.model, other.model]);
     expect(ids(selections[0]?.runs ?? [])).toEqual(["new", "old"]);
-    expect(selections.map((selection) => selection.selected.id)).toEqual(["new", "other"]);
+    expect(selections.map((selection) => selection.compared.id)).toEqual(["new", "other"]);
   });
 
   it("keeps models in append order when a later model has the newest run", () => {
@@ -51,12 +51,12 @@ describe("modelSelections", () => {
     ]);
   });
 
-  it("selects a compared run, and falls back to the latest when the comparison is missing", () => {
-    expect(modelSelections(runs, ["old"]).map((selection) => selection.selected.id)).toEqual([
+  it("compares the chosen run, and falls back to the latest when the comparison is missing", () => {
+    expect(modelSelections(runs, ["old"]).map((selection) => selection.compared.id)).toEqual([
       "old",
       "other",
     ]);
-    expect(modelSelections(runs, ["missing"]).map((selection) => selection.selected.id)).toEqual([
+    expect(modelSelections(runs, ["missing"]).map((selection) => selection.compared.id)).toEqual([
       "new",
       "other",
     ]);

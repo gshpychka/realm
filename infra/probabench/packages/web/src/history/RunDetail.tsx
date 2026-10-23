@@ -5,7 +5,7 @@ export function RunDetail({ run, onCompare }: { run: Run; onCompare: () => void 
   const summary = summarizeRun(run);
   return (
     <section className="card run-detail" aria-label={`Run details for ${run.model}`}>
-      <p className="eyebrow">Selected run</p>
+      <p className="eyebrow">Inspected run</p>
       <h3>{modelName(run.model)}</h3>
       <p className="model-slug">{run.modelSlug}</p>
       <div className="detail-timestamp">

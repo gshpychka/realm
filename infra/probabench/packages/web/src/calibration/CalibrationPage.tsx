@@ -24,11 +24,11 @@ export function CalibrationPage({
     [runs, view.comparisons],
   );
   const hidden = useMemo(() => new Set(view.hidden), [view.hidden]);
-  const chosen = useMemo(
-    () => selections.filter(({ model }) => !hidden.has(model)).map(({ selected }) => selected),
+  const shown = useMemo(
+    () => selections.filter(({ model }) => !hidden.has(model)).map(({ compared }) => compared),
     [selections, hidden],
   );
-  const select = (id: string) => {
+  const compare = (id: string) => {
     const run = runs.find((item) => item.id === id);
     if (run) update({ comparisons: withComparison(view.comparisons, runs, run) });
   };
@@ -51,7 +51,7 @@ export function CalibrationPage({
               <span aria-hidden="true">↕</span> 95% intervals
             </button>
           </header>
-          <CalibrationChart runs={chosen} styles={styles} intervals={view.intervals} />
+          <CalibrationChart runs={shown} styles={styles} intervals={view.intervals} />
         </section>
         <aside className="model-panel">
           <div className="panel-heading">
@@ -71,8 +71,8 @@ export function CalibrationPage({
           </div>
           <fieldset className="model-fieldset">
             <legend className="sr-only">Models shown in chart</legend>
-            {selections.map(({ model, runs: history, selected }) => {
-              const summary = summarizeRun(selected);
+            {selections.map(({ model, runs: history, compared }) => {
+              const summary = summarizeRun(compared);
               const active = !hidden.has(model);
               const { color } = styleOf(styles, model);
               return (
@@ -95,7 +95,7 @@ export function CalibrationPage({
                   </button>
                   <label className="run-select">
                     <span className="sr-only">Run for {model}</span>
-                    <select value={selected.id} onChange={(event) => select(event.target.value)}>
+                    <select value={compared.id} onChange={(event) => compare(event.target.value)}>
                       {history.map((item, index) => (
                         <option key={item.id} value={item.id}>
                           {index === 0 ? "Latest · " : ""}
@@ -119,13 +119,13 @@ export function CalibrationPage({
             <h3>Measurements</h3>
           </div>
           <span className="tag">
-            {chosen.length} selected {chosen.length === 1 ? "run" : "runs"}
+            {shown.length} selected {shown.length === 1 ? "run" : "runs"}
           </span>
         </header>
-        {chosen.length === 0 ? (
+        {shown.length === 0 ? (
           <p className="muted measurement-empty">Select a model to see its measurements.</p>
         ) : (
-          chosen.map((run) => (
+          shown.map((run) => (
             <details className="measurement-run" key={run.id}>
               <summary>
                 <span

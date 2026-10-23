@@ -20,7 +20,7 @@ export interface ModelSelection {
   /** Newest first. */
   readonly runs: readonly [Run, ...Run[]];
   /** The compared run, else the latest. */
-  readonly selected: Run;
+  readonly compared: Run;
 }
 
 /** Every model in append order, the palette's, with the run the calibration chart compares. */
@@ -34,13 +34,13 @@ export const modelSelections = (
     if (group) group.push(run);
     else groups.set(run.model, [run]);
   }
-  const compared = new Set(comparisons);
+  const comparedIds = new Set(comparisons);
   return [...groups].map(([model, history]) => {
     history.sort(byNewest);
     return {
       model,
       runs: history,
-      selected: history.find((run) => compared.has(run.id)) ?? history[0],
+      compared: history.find((run) => comparedIds.has(run.id)) ?? history[0],
     };
   });
 };
