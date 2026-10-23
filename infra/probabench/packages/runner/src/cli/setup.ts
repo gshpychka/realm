@@ -4,7 +4,6 @@ import * as Prompt from "@effect/cli/Prompt";
 import {
   MODEL_ALIASES,
   planBudget,
-  REASONING_LABELS,
   ReasoningMode,
   SAMPLING_PRESETS,
   seriesLabel,
@@ -56,7 +55,7 @@ const promptCustomSizing = Effect.all({
 
 const promptReasoning = Prompt.select({
   message: "Reasoning mode",
-  choices: ReasoningMode.literals.map((value) => ({ title: REASONING_LABELS[value], value })),
+  choices: ReasoningMode.literals.map((value) => ({ title: value, value })),
 });
 
 /**

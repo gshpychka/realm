@@ -1,7 +1,6 @@
 import {
   MODEL_ALIASES,
   planBudget,
-  REASONING_LABELS,
   ReasoningMode,
   SAMPLING_PRESETS,
   StepPercent,
@@ -305,7 +304,7 @@ export function SetupForm({
                   <option value="">Default</option>
                   {ReasoningMode.literals.map((mode) => (
                     <option key={mode} value={mode}>
-                      {REASONING_LABELS[mode]}
+                      {mode}
                     </option>
                   ))}
                 </select>

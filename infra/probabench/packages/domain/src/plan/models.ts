@@ -7,14 +7,6 @@ import * as Schema from "effect/Schema";
 export const ReasoningMode = Schema.Literal("off", "low", "medium", "high", "xhigh");
 export type ReasoningMode = typeof ReasoningMode.Type;
 
-export const REASONING_LABELS: Readonly<Record<ReasoningMode, string>> = {
-  off: "Off",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-};
-
 export interface Model {
   /** OpenRouter model ID. */
   readonly slug: string;
