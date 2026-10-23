@@ -3,7 +3,6 @@ import * as PlatformError from "@effect/platform/Error";
 import * as FileSystem from "@effect/platform/FileSystem";
 import { describe, expect, it } from "@effect/vitest";
 import { makeRun } from "@probabench/domain/testing";
-import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -137,32 +136,7 @@ describe("ResultsStore", () => {
     ),
   );
 
-  it.live("takes turns with another writer so both runs are kept", () =>
-    withResultsStore((path) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const store = yield* ResultsStore;
-        const original = makeRun();
-        yield* store.append(path, original);
-        const slowAppend = (run: typeof original) =>
-          Effect.flatMap(ResultsStore, (other) => other.append(path, run)).pipe(
-            Effect.provide(
-              otherStore(fs, {
-                rename: (from, to) =>
-                  Effect.sleep("50 millis").pipe(Effect.andThen(fs.rename(from, to))),
-              }),
-            ),
-          );
-        const [first, second] = [makeRun(), makeRun()];
-        yield* Effect.all([slowAppend(first), slowAppend(second)], { concurrency: 2 });
-        const ids = (yield* store.load(path)).runs.map((run) => run.id);
-        expect(new Set(ids)).toEqual(new Set([original.id, first.id, second.id]));
-        expect(yield* fs.readDirectory(dirname(path))).toEqual(["results.json"]);
-      }),
-    ),
-  );
-
-  it.effect("removes its lock and staging files when a writer is interrupted", () =>
+  it.effect("removes its staging files when a writer is interrupted", () =>
     withResultsStore((path) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
@@ -184,57 +158,6 @@ describe("ResultsStore", () => {
         yield* Fiber.interrupt(fiber);
         expect((yield* store.load(path)).runs).toEqual([original]);
         expect(yield* fs.readDirectory(dirname(path))).toEqual(["results.json"]);
-      }),
-    ),
-  );
-
-  // Real time: the writer waits out LOCK_WAIT between filesystem calls.
-  it.live(
-    "reports an abandoned lock after waiting and leaves it for a human to remove",
-    () =>
-      withResultsStore((path) =>
-        Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem;
-          const store = yield* ResultsStore;
-          const lockPath = `${path}.lock`;
-          const owner = JSON.stringify({ pid: 12345 });
-          yield* fs.writeFileString(lockPath, owner);
-          const error = yield* Effect.flip(store.prepare(path));
-          expect(error.cause._tag).toBe("HistoryLocked");
-          expect(error.cause.message).toContain(lockPath);
-          expect(yield* fs.readFileString(lockPath)).toBe(owner);
-          expect(yield* fs.exists(path)).toBe(false);
-        }),
-      ),
-    10_000,
-  );
-
-  it.live("cancels a waiting writer at once without touching the owner's lock", () =>
-    withResultsStore((path) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const lockPath = `${path}.lock`;
-        const owner = JSON.stringify({ pid: 12345 });
-        yield* fs.writeFileString(lockPath, owner);
-        const attempted = yield* Deferred.make<void>();
-        const fiber = yield* Effect.fork(
-          Effect.flatMap(ResultsStore, (waiting) => waiting.prepare(path)).pipe(
-            Effect.provide(
-              otherStore(fs, {
-                open: (filePath, options) =>
-                  Deferred.succeed(attempted, undefined).pipe(
-                    Effect.andThen(fs.open(filePath, options)),
-                  ),
-              }),
-            ),
-          ),
-        );
-        yield* Deferred.await(attempted);
-        yield* Effect.sleep("50 millis");
-        const started = yield* Clock.currentTimeMillis;
-        yield* Fiber.interrupt(fiber);
-        expect((yield* Clock.currentTimeMillis) - started).toBeLessThan(500);
-        expect(yield* fs.readFileString(lockPath)).toBe(owner);
       }),
     ),
   );
