@@ -26,7 +26,7 @@ probability, 100,000 samples in total and 50 concurrent requests (5 by default).
 Edits to the domain package or the bridge restart Vite; a running benchmark
 survives the restart.
 `bun run dev:alchemy` runs the same Vite server under Alchemy's dev runtime,
-with local state; it needs Docker for Alchemy's AWS emulator.
+with local state; it deploys nothing and needs no Cloudflare or AWS login.
 `bun run build && bun run --cwd packages/web preview` serves the production
 build, the notebook as published, without the dev bridge.
 
@@ -77,18 +77,36 @@ publishes everything in `data/`.
 ## Deploy
 
 ```sh
+# once: CLOUDFLARE_ACCOUNT_ID=<account ID> and CLOUDFLARE_API_TOKEN=<API token>
+sops ../../secrets/infra/probabench.env
+
 bun run plan
-bun run deploy   # bun run destroy removes the prod stage, not the bootstrap bucket
+bun run deploy    # publishes https://probabench.<domain>
+bun run destroy   # deletes the Worker, and with its domain the DNS record and certificate
 ```
 
+The token needs Account > Workers Scripts: Edit, plus Zone > Workers Routes:
+Edit and Zone > Zone: Read on the domain's zone; the scripts read it through
+`sops exec-env`. Alchemy keeps the stack's state in S3 through the Alchemy
+profile from [link-sanitizer's one-time steps](../link-sanitizer/README.md#deploy);
+the state bucket is created on first use, so ProbaBench needs only the profile.
+
 `packages/stack/alchemy.run.ts` builds `packages/web` with the working-tree
-history and serves it from a private S3 bucket behind CloudFront, so the hosted
-site changes only on deploy. It uses the Alchemy profile and the account's
-assets bucket from [link-sanitizer's one-time steps](../link-sanitizer/README.md#deploy).
+history and uploads it as an assets-only Cloudflare Worker, so the hosted site
+changes only on deploy. With no Worker code, every request is a static-asset
+request, which the Free plan serves at no charge and outside the Workers request
+quota. `probabench.<domain>` is a Workers custom domain: Cloudflare creates its
+DNS record and certificate. The infra shell exports the domain from
+`modules/common/values.nix` as `DOMAIN_NAME`.
+
+If the S3/CloudFront version of this stack was ever deployed, run
+`bun run destroy` from a revision that still has it before the first deploy:
+Alchemy refuses to plan state whose resource types the stack no longer provides.
+
 `patches/` carries
 [alchemy-run/distilled#650](https://github.com/alchemy-run/distilled/pull/650),
-as link-sanitizer does, so SSO profiles resolve from the infra shell's
-`AWS_CONFIG_FILE`.
+as link-sanitizer does, so the S3 state store resolves SSO profiles from the
+infra shell's `AWS_CONFIG_FILE`.
 
 ## Development
 

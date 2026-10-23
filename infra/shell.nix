@@ -55,6 +55,7 @@ pkgs.mkShell {
     export CLOUDSDK_CORE_PROJECT="${values.gcpProjectId}"
     export TF_VAR_gcp_project_id="${values.gcpProjectId}"
     export TF_VAR_domain_name="${values.domain}"
+    export DOMAIN_NAME="${values.domain}"
     export TF_STATE_BUCKET="${values.gcpTfStateBucket}"
     # Alchemy and AWS profiles live under infra/.home, apart from any others
     # on the machine. The AWS CLI keeps its SSO token cache in ~/.aws/sso/cache,
