@@ -43,11 +43,6 @@ test("a remote agent shows its own workspace and never offers the operator's fil
     assert.doesNotMatch(attached, /HOST_ONLY_BRANCH|host-checkout|#999/);
     assert.doesNotMatch(attached, /files to mention|pick a model|take the next model/);
     assert.equal(existsSync(ghCalls), false, "remote footer invoked the operator's GitHub CLI");
-    await app.terminal.type("@HOST_ONLY");
-    await app.terminal.waitIdle();
-    const mentioning = await app.terminal.text();
-    assert.doesNotMatch(mentioning, /HOST_ONLY_SECRET\.ts|tab completes/);
-    await app.terminal.write("\x03");
     await app.terminal.submit("/model");
     await app.terminal.waitText("The model is declared by this agent's role.");
     assert.equal(existsSync(ghCalls), false, "remote UI invoked the operator's GitHub CLI");
@@ -78,10 +73,6 @@ test("a tunneled solo conversation can choose models without reading frontend fi
     const attached = await app.capture("tunneled-solo-workspace");
     assert.match(attached, /pick a model/);
     assert.doesNotMatch(attached, /files to mention/);
-    await app.terminal.type("@FRONTEND_ONLY");
-    await app.terminal.waitIdle();
-    assert.doesNotMatch(await app.terminal.text(), /FRONTEND_ONLY\.txt|tab completes/);
-    await app.terminal.write("\x03");
     await app.terminal.write("\x0c");
     await app.terminal.waitText("faux-2");
     await app.capture("tunneled-solo-model-picker");

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -39,6 +42,7 @@ func TestOperationsRunBaySession(t *testing.T) {
 		{"launch monitor", func(g Guest) error { return g.Launch(ctx, []string{"agent"}, true) }, []string{"bay-session", "launch", "monitor", "--", "agent"}},
 		{"launch a login shell", func(g Guest) error { return g.Launch(ctx, nil, true) }, []string{"bay-session", "launch", "monitor", "--"}},
 		{"stop", func(g Guest) error { return g.Stop(ctx) }, []string{"bay-session", "stop"}},
+		{"snapshot ready", func(g Guest) error { return g.SnapshotReady(ctx) }, []string{"bay-session", "snapshot-ready"}},
 		{"save history", func(g Guest) error { return g.SaveHistory(ctx, []string{".a", "b/c"}, io.Discard) }, []string{"bay-session", "save-history", "--", ".a", "b/c"}},
 		{"restore history", func(g Guest) error { return g.RestoreHistory(ctx, strings.NewReader("")) }, []string{"bay-session", "restore-history"}},
 		{
@@ -65,6 +69,35 @@ func TestOperationsRunBaySession(t *testing.T) {
 		if len(r.argv) != 1 || !slices.Equal(r.argv[0], tt.want) {
 			t.Errorf("%s ran %q, want %q", tt.name, r.argv, tt.want)
 		}
+	}
+}
+
+func TestSnapshotReadinessRequiresAnIdleJobServiceSet(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip(err)
+	}
+	root := t.TempDir()
+	systemctl := "#!" + bash + "\n[ \"$*\" = \"list-units --plain --no-legend --state=activating,active,deactivating bay-job-*\" ] || exit 99\nprintf '%s' \"$BAY_TEST_JOBS\"\nexit \"$BAY_TEST_STATUS\"\n"
+	if err := os.WriteFile(filepath.Join(root, "systemctl"), []byte(systemctl), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, jobs, status string
+		success            bool
+	}{
+		{"idle", "", "0", true},
+		{"active job", "bay-job-one.service loaded active running detached job", "0", false},
+		{"unavailable service manager", "", "1", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := exec.Command(bash, "-e", "../../bay-session.sh", "snapshot-ready")
+			command.Env = append(os.Environ(), "PATH="+root, "BAY_TEST_JOBS="+test.jobs, "BAY_TEST_STATUS="+test.status)
+			output, err := command.CombinedOutput()
+			if (err == nil) != test.success {
+				t.Fatalf("snapshot readiness: %v %s", err, output)
+			}
+		})
 	}
 }
 
