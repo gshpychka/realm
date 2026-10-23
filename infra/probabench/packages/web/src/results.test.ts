@@ -2,7 +2,6 @@ import * as HttpClient from "@effect/platform/HttpClient";
 import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
 import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { fetchResults } from "./results";
 
@@ -40,23 +39,22 @@ describe("fetchResults", () => {
 
   it.effect("rejects a document that violates the Results schema", () =>
     Effect.gen(function* () {
-      const exit = yield* Effect.exit(fetchResults);
-      expect(Exit.isFailure(exit)).toBe(true);
+      const error = yield* Effect.flip(fetchResults);
+      expect(error._tag).toBe("ParseError");
     }).pipe(Effect.provide(stubClientLayer(JSON.stringify({ schemaVersion: 2 })))),
   );
 
   it.effect("rejects a non-success HTTP status even when the body is valid results JSON", () =>
     Effect.gen(function* () {
-      const result = yield* Effect.either(fetchResults);
-      expect(result._tag).toBe("Left");
-      if (result._tag === "Left") expect(result.left._tag).toBe("ResponseError");
+      const error = yield* Effect.flip(fetchResults);
+      expect(error._tag).toBe("ResponseError");
     }).pipe(Effect.provide(stubClientLayer(emptyResults, 404))),
   );
 
   it.effect("rejects malformed JSON", () =>
     Effect.gen(function* () {
-      const exit = yield* Effect.exit(fetchResults);
-      expect(Exit.isFailure(exit)).toBe(true);
+      const error = yield* Effect.flip(fetchResults);
+      expect(error._tag).toBe("ResponseError");
     }).pipe(Effect.provide(stubClientLayer("<html>Service unavailable</html>"))),
   );
 });
