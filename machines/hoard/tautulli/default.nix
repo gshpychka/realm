@@ -498,6 +498,8 @@ let
   tautulliUnit = config.systemd.services.tautulli.name;
 in
 {
+  system.build.tautulliConfig = scripts;
+
   assertions = [
     {
       # StateDirectory= below owns the permissions of the data directory
