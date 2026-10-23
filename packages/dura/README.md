@@ -59,8 +59,8 @@ services.dura = {
   enable = true;
   operator = "alice";
   authFile = "/home/alice/.pi/agent/auth.json";
-  model = "openai-codex/gpt-6.1-sol";
-  credentialProfiles.primary.provider = "openai-codex";
+  model = "openai/gpt-6.1-sol";
+  credentialProfiles.primary.provider = "openai";
   agents = import ./agents;
 };
 ```

@@ -1,10 +1,12 @@
-# A small Bun team. Import this attribute set into services.dura.agents.
+# A small team for Nix flake projects. Import this attribute set into services.dura.agents.
 let
-  development =
-    { pkgs, ... }:
-    {
-      environment.systemPackages = [ pkgs.bun ];
-    };
+  # Projects bring their own toolchains through their flakes.
+  development = {
+    nix.settings.experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
+  };
   reading = [
     "read"
     "grep"
@@ -64,16 +66,17 @@ in
       instructions = ''
         Work in the assigned workspace. Read the relevant project instructions and
         code, implement the smallest clear solution, and run useful focused checks.
+        Nix sees only files tracked by Git, so git add new files before evaluating.
         Keep the project easy to read. Ask the operator if a necessary decision is missing.
         Submit a concise report with artifact:true to retain your changes. State which
         checks you ran; the host verifier independently decides whether code is accepted.
       '';
       verification = {
         agent = "verifier";
-        checks.unit.command = [
-          "bash"
-          "-c"
-          "bun install --frozen-lockfile && bun test"
+        checks.flake.command = [
+          "nix"
+          "flake"
+          "check"
         ];
       };
     };

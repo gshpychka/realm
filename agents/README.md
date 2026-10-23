@@ -12,8 +12,8 @@ stay on the host.
 
 ## Meet the starter team
 
-[`default.nix`](default.nix) is a complete, importable team for a **Bun project with
-a committed `bun.lock` and tests runnable with `bun test`**:
+[`default.nix`](default.nix) is a complete, importable team for a **Nix flake
+project whose `nix flake check` passes**:
 
 | Declaration | Job | Capabilities |
 | --- | --- | --- |
@@ -34,11 +34,13 @@ flowchart LR
   Accepted --> Apply[You apply]
 ```
 
-All four share a Bun image and warm base while getting separate session instances.
-The builder's verification command installs locked dependencies and runs `bun test`.
+All four share a Nix image and warm base while getting separate session instances.
+Projects bring their toolchains through their flakes. The builder's verification
+command runs `nix flake check`.
 The reviewer critiques code; the verifier produces independent test evidence.
 
-Importing this attribute set does not start agents or enable host services. Reaper imports this team in its [host declaration](../machines/reaper/dura.nix).
+Importing this attribute set does not start agents or enable host services. Reaper imports this team in its [host declaration](../machines/reaper/dura.nix)
+and narrows the builder's checks to Realm's CI evaluation and lint.
 Adapt its packages, instructions, and checks to your project.
 
 ## Connect the team to a host
@@ -57,9 +59,9 @@ In Realm, a module such as `machines/reaper/dura.nix` can contain:
   services.dura = {
     enable = true;
     operator = config.my.user;
-    model = "openai-codex/gpt-6.1-sol";
+    model = "openai/gpt-6.1-sol";
     authFile = "/home/${config.my.user}/.pi/agent/auth.json";
-    credentialProfiles.primary.provider = "openai-codex";
+    credentialProfiles.primary.provider = "openai";
     agents = import ../../agents;
   };
 }
@@ -90,8 +92,8 @@ relative to `machines/reaper/`.
 
 ## Give it a small real task
 
-On the host, enter a Bun Git project with a lockfile and working tests. Name a real,
-bounded issue you can review:
+On the host, enter a Git flake project whose checks pass. Name a real, bounded issue
+you can review:
 
 ```sh
 cd /path/to/project
@@ -187,10 +189,10 @@ those dependencies, inline or in a file read with `builtins.readFile`.
 | `dura.agent.limits` | Delegation depth and child count |
 | `dura.agent.verification` | Verifier environment and named checks required to accept code |
 
-For another project, change the builder's check command and put its dependencies
-in the verifier's environment too. Commands are fixed argument vectors; use an
-explicit shell, as the starter does, when you need `&&`. Dependency installation
-must work in a fresh machine without guest credentials or host `node_modules`.
+For another project, change the builder's check commands. Commands are fixed
+argument vectors; use an explicit shell such as `bash -c` when you need `&&`.
+Checks run in a fresh machine with public internet access and no credentials, so
+every input they fetch must be public.
 
 The host's `services.dura.limits` bounds tasks, concurrent attempts, delegation
 depth, duration, reports, and artifacts. Bay separately limits running sessions and

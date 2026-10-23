@@ -50,7 +50,7 @@ in
         enabledModels = [
           "anthropic/*"
           "claude-bridge/*" # Claude Code through pi-claude-agent-sdk
-          "openai-codex/*" # ChatGPT subscription
+          "openai/*" # ChatGPT subscription
           "ollama/*"
         ];
       };
