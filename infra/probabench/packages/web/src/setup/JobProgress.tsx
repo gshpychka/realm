@@ -43,6 +43,7 @@ export function JobProgress({
   const follow = useRef(true);
   // Only read while the job runs, so a finished job never shows a stale value.
   const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const running = job.status === "running";
   const reconnecting = bridge.connection.kind === "local" && bridge.connection.reconnecting;
   const { title, detail } = describe(job, cancelling);
@@ -51,7 +52,9 @@ export function JobProgress({
   }, [job.log]);
   const cancel = async () => {
     setCancelling(true);
-    if (!(await bridge.cancel())) setCancelling(false);
+    const error = await bridge.cancel();
+    setCancelError(error);
+    setCancelling(error === null);
   };
   return (
     <section className="job-progress" aria-label="Benchmark progress">
@@ -72,7 +75,7 @@ export function JobProgress({
         />
       ) : null}
       <FormError message={job.error} />
-      <FormError message={bridge.error} />
+      <FormError message={cancelError} />
       <div className="job-actions">
         {running ? (
           <>

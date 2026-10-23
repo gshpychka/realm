@@ -7,9 +7,8 @@ import { RunSetup } from "./RunSetup";
 const bridge = (connection: Connection): Bridge => ({
   connection,
   pending: false,
-  error: null,
-  start: () => Promise.resolve(true),
-  cancel: () => Promise.resolve(true),
+  start: () => Promise.resolve(null),
+  cancel: () => Promise.resolve(null),
 });
 const local = (job: Job | null = null, configured = true) =>
   bridge({ kind: "local", status: { configured, job }, reconnecting: false });

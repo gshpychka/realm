@@ -27,15 +27,14 @@ const INITIAL: Connection = import.meta.env.DEV ? { kind: "connecting" } : { kin
 export interface Bridge {
   readonly connection: Connection;
   readonly pending: boolean;
-  readonly error: string | null;
-  readonly start: (request: BenchRequest) => Promise<boolean>;
-  readonly cancel: () => Promise<boolean>;
+  /** Each action resolves to why it failed, or null; the view that asked shows it. */
+  readonly start: (request: BenchRequest) => Promise<string | null>;
+  readonly cancel: () => Promise<string | null>;
 }
 
 export function useBridge(): Bridge {
   const [connection, setConnection] = useState(INITIAL);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -54,16 +53,14 @@ export function useBridge(): Bridge {
     };
   }, []);
 
-  const act = async (action: () => Promise<BridgeStatus>): Promise<boolean> => {
+  const act = async (action: () => Promise<BridgeStatus>): Promise<string | null> => {
     setPending(true);
-    setError(null);
     try {
       const status = await action();
       setConnection((previous) => nextConnection(previous, status));
-      return true;
+      return null;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      return false;
+      return cause instanceof Error ? cause.message : String(cause);
     } finally {
       setPending(false);
     }
@@ -72,7 +69,6 @@ export function useBridge(): Bridge {
   return {
     connection,
     pending,
-    error,
     start: (request) => act(() => startRun(request)),
     cancel: () => act(cancelRun),
   };

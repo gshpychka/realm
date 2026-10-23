@@ -9,7 +9,7 @@ import {
 } from "@probabench/domain";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import type { FormEvent } from "react";
+import { type FormEvent, useState } from "react";
 import { BenchRequest, BROWSER_LIMITS, firstIssue } from "../bridge/protocol";
 import type { Bridge, Connection } from "../bridge/use-bridge";
 import { count } from "../common/format";
@@ -79,6 +79,7 @@ export function SetupForm({
   bridge: Bridge;
   modelSuggestions: readonly string[];
 }) {
+  const [startError, setStartError] = useState<string | null>(null);
   const { model, trialsPerStep, stepPercent, concurrency, reasoning, custom } = settings;
   const request = {
     model: model.trim(),
@@ -100,7 +101,7 @@ export function SetupForm({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (canSubmit) await bridge.start(request);
+    if (canSubmit) setStartError(await bridge.start(request));
   };
 
   return (
@@ -262,7 +263,7 @@ export function SetupForm({
             </div>
           </div>
         ) : null}
-        <FormError message={bridge.error} />
+        <FormError message={startError} />
         <div className="run-action">
           <p>Your key stays on the dev server. OpenRouter charges for generated tokens.</p>
           <button type="submit" className="button primary" disabled={!canSubmit}>
