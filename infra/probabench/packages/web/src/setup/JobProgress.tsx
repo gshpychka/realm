@@ -99,18 +99,20 @@ export function JobProgress({
           </>
         )}
       </div>
-      <details className="job-output" open={job.status === "failed"}>
-        <summary>Runner output</summary>
-        <pre
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll the runner output.
-          tabIndex={0}
-          role="log"
-          aria-live="off"
-          aria-label="Runner output"
-        >
-          {job.log || "Preparing the sampling plan…"}
-        </pre>
-      </details>
+      {job.log === "" ? null : (
+        <details className="job-output" open={job.status === "failed"}>
+          <summary>Runner output</summary>
+          <pre
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll the runner output.
+            tabIndex={0}
+            role="log"
+            aria-live="off"
+            aria-label="Runner output"
+          >
+            {job.log}
+          </pre>
+        </details>
+      )}
     </section>
   );
 }

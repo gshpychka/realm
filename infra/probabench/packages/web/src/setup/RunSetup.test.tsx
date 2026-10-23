@@ -26,7 +26,7 @@ const job = (status: Job["status"]): Job => ({
   id: "job",
   status,
   startedAt: "2026-10-22T10:00:00.000Z",
-  log: "",
+  log: "Projected samples: 550\n",
   progress: { completed: 2, total: 11 },
 });
 
@@ -63,5 +63,11 @@ describe("benchmark setup workflow", () => {
     expect(html).toMatch(/<button[^>]*class="button primary"[^>]*>View results/);
     expect(html).toContain("Set up another");
     expect(html).not.toContain('id="benchmark-model"');
+  });
+
+  it("shows its error, and no output panel, for a run that printed nothing", () => {
+    const html = render(local({ ...job("failed"), log: "", error: "Could not start Bun." }));
+    expect(html).toContain("Could not start Bun.");
+    expect(html).not.toContain("Runner output");
   });
 });
