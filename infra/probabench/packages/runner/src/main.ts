@@ -5,17 +5,14 @@ import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { Benchmark } from "./benchmark";
 import { benchCommand } from "./cli";
 import { ResultsStore } from "./results-store";
 
 /**
- * The platform and service environment at the CLI edge: Node's FileSystem/Path/Terminal
- * (the CLI runtime and ResultsStore), an HTTP client, and Benchmark/ResultsStore.
- * OpenRouter credentials are required only when a nonempty confirmed plan executes;
- * guided setup, listing aliases, and dry runs remain entirely local.
+ * Node's FileSystem, Path and Terminal for the CLI and the store, and an HTTP client
+ * for OpenRouter. Listing aliases, guided setup and dry runs never read the key.
  */
-const MainLive = Layer.mergeAll(Benchmark.Default, ResultsStore.Default, NodeHttpClient.layer).pipe(
+const MainLive = Layer.mergeAll(ResultsStore.Default, NodeHttpClient.layer).pipe(
   Layer.provideMerge(NodeContext.layer),
 );
 

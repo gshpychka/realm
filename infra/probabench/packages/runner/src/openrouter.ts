@@ -1,17 +1,20 @@
-// OpenRouter provider layers, served over its OpenAI Chat-Completions-compatible surface.
-// The shared client layer reads the API key once via Config.redacted (the base URL is
-// built into @effect/ai-openrouter); the per-target layer factory bakes the target's
-// reasoning config onto the model config so BitSampler/Benchmark stay model-agnostic —
-// the caller provides a target-specific layer around each sub-sweep.
-
+// OpenRouter as the sampling LanguageModel: one client built from the API key,
+// and per target a model layer that fixes its slug, reasoning and output ceiling.
 import type * as LanguageModel from "@effect/ai/LanguageModel";
 import * as OpenRouterClient from "@effect/ai-openrouter/OpenRouterClient";
 import * as OpenRouterLanguageModel from "@effect/ai-openrouter/OpenRouterLanguageModel";
 import type * as HttpClient from "@effect/platform/HttpClient";
 import * as Config from "effect/Config";
-import type * as ConfigError from "effect/ConfigError";
-import type * as Layer from "effect/Layer";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import type { BenchTarget } from "./registry";
+
+export class MissingApiKey extends Data.TaggedError("MissingApiKey") {
+  override get message() {
+    return "OPENROUTER_API_KEY is not set. Run the CLI as probabench in the infra dev shell (nix develop .#infra), which loads the key from secrets/infra/probabench.env with sops exec-env.";
+  }
+}
 
 /**
  * Output ceiling with reasoning off: room for one bit. Not lower, because OpenAI's
@@ -32,37 +35,26 @@ type ModelConfig = Omit<OpenRouterLanguageModel.Config.Service, "model" | "reaso
   readonly reasoning: Reasoning;
 };
 
-/** Native sampling defaults, explicit reasoning mode, and a bounded output budget. */
-export const toOpenRouterConfig = ({ reasoning }: BenchTarget, maxTokens: number): ModelConfig =>
+/** The provider's default sampling, an explicit reasoning mode and a bounded output. */
+const modelConfig = ({ reasoning }: BenchTarget, maxTokens: number): ModelConfig =>
   reasoning === "off"
     ? { max_tokens: NO_REASONING_MAX_TOKENS, reasoning: { enabled: false } }
     : { max_tokens: maxTokens, reasoning: { effort: reasoning } };
 
-/** The shared OpenRouter client, built once from `OPENROUTER_API_KEY` (redacted). */
-export const openrouterApiKey = Config.redacted(
-  Config.nonEmptyString("OPENROUTER_API_KEY").pipe(
-    Config.validate({
-      message: "OPENROUTER_API_KEY must not be blank.",
-      validation: (key) => key.trim().length > 0,
-    }),
+/** The client every target's model shares; building it reads the key from the environment. */
+export const openrouterClientLayer: Layer.Layer<
+  OpenRouterClient.OpenRouterClient,
+  MissingApiKey,
+  HttpClient.HttpClient
+> = Layer.unwrapEffect(
+  Config.redacted(Config.nonEmptyString("OPENROUTER_API_KEY")).pipe(
+    Effect.mapError(() => new MissingApiKey()),
+    Effect.map((apiKey) => OpenRouterClient.layer({ apiKey })),
   ),
 );
 
-export const openrouterClientLayer: Layer.Layer<
-  OpenRouterClient.OpenRouterClient,
-  ConfigError.ConfigError,
-  HttpClient.HttpClient
-> = OpenRouterClient.layerConfig({ apiKey: openrouterApiKey });
-
-/**
- * The LanguageModel layer for one target's sub-sweep, with the target's reasoning config
- * baked into the model config. Requires the shared {@link openrouterClientLayer}.
- */
 export const openrouterModelLayer = (
   target: BenchTarget,
   maxTokens: number,
 ): Layer.Layer<LanguageModel.LanguageModel, never, OpenRouterClient.OpenRouterClient> =>
-  OpenRouterLanguageModel.layer({
-    model: target.slug,
-    config: toOpenRouterConfig(target, maxTokens),
-  });
+  OpenRouterLanguageModel.layer({ model: target.slug, config: modelConfig(target, maxTokens) });

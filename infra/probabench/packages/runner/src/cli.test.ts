@@ -6,7 +6,6 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import { Benchmark } from "./benchmark";
 import { benchCommand, NON_TTY_MESSAGE } from "./cli";
 import { MISSING_MODEL_MESSAGE } from "./plan";
 import { ResultsStore } from "./results-store";
@@ -19,7 +18,7 @@ const runCommand = (args: readonly string[]) =>
     ...args,
   ]).pipe(
     Effect.provide(
-      Layer.mergeAll(Benchmark.Default, ResultsStore.Default, FetchHttpClient.layer).pipe(
+      Layer.mergeAll(ResultsStore.Default, FetchHttpClient.layer).pipe(
         Layer.provideMerge(NodeContext.layer),
       ),
     ),

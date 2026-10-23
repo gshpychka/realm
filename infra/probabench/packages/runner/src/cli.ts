@@ -9,9 +9,9 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { executePlan } from "./execute";
 import { describePlan, InvalidOptions, resolvePlan, type SamplingOptions } from "./plan";
 import { describeAliases, splitModels } from "./registry";
-import { executePlan } from "./run";
 import { promptRunSetup } from "./setup";
 
 /**
