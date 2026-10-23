@@ -1,13 +1,13 @@
-/** Gruvbox Material accents; COLORS[0] matches --accent in base.css. */
+/** Series colors from base.css, in assignment order. */
 const COLORS = [
-  "#d8a657",
-  "#7daea3",
-  "#d3869b",
-  "#a9b665",
-  "#ea6962",
-  "#b4a7d6",
-  "#e78a4e",
-  "#89b482",
+  "var(--yellow)",
+  "var(--blue)",
+  "var(--purple)",
+  "var(--green)",
+  "var(--red)",
+  "var(--lavender)",
+  "var(--orange)",
+  "var(--aqua)",
 ] as const;
 /** Once every color is in use, a reused color gets the next dash pattern. */
 const DASHES = ["none", "8 4", "2 4", "8 3 2 3"] as const;
