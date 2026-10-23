@@ -10,26 +10,22 @@ import { chatEndpoint, withApiKey } from "./testing";
 const SAMPLING_OVERRIDES = ["temperature", "top_p", "top_k", "reasoning_effort"] as const;
 
 describe("openrouterModelLayer", () => {
-  const cases: ReadonlyArray<readonly [ModelSeries, Record<string, unknown>]> = [
-    [
-      {
-        model: "anthropic/claude-haiku-4.5",
-        modelSlug: "anthropic/claude-haiku-4.5",
-        reasoning: "off",
-      },
-      { max_tokens: 16, reasoning: { enabled: false } },
-    ],
-    [
-      {
-        model: "anthropic/claude-sonnet-4.5 [reasoning=high]",
-        modelSlug: "anthropic/claude-sonnet-4.5",
+  it.effect.each<{ readonly series: ModelSeries; readonly expected: object }>([
+    {
+      series: { model: "vendor/plain", modelSlug: "vendor/plain", reasoning: "off" },
+      expected: { max_tokens: 16, reasoning: { enabled: false } },
+    },
+    {
+      series: {
+        model: "vendor/thinker [reasoning=high]",
+        modelSlug: "vendor/thinker",
         reasoning: "high",
       },
-      { max_tokens: 4096, reasoning: { effort: "high" } },
-    ],
-  ];
-  for (const [series, expected] of cases) {
-    it.effect(`sends ${series.model} with its reasoning, output ceiling and the key`, () => {
+      expected: { max_tokens: 4096, reasoning: { effort: "high" } },
+    },
+  ])(
+    "sends $series.model with its reasoning, output ceiling and the key",
+    ({ series, expected }) => {
       const endpoint = chatEndpoint();
       return Effect.gen(function* () {
         const response = yield* LanguageModel.generateText({ prompt: "Emit a bit" });
@@ -49,6 +45,6 @@ describe("openrouterModelLayer", () => {
         ),
         withApiKey("sk-test"),
       );
-    });
-  }
+    },
+  );
 });
