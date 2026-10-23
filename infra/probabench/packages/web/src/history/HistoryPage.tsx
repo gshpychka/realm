@@ -79,11 +79,6 @@ export function HistoryPage({
         </fieldset>
         <HistoryChart runs={visible} styles={styles} />
       </section>
-      {view.runId && !runs.some((run) => run.id === view.runId) ? (
-        <p role="status" className="panel-note">
-          The linked run is not in this notebook. Showing the latest matching run.
-        </p>
-      ) : null}
       <div className="history-layout">
         {inspected ? (
           <aside className="history-inspector" ref={inspector}>
