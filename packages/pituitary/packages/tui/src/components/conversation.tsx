@@ -290,6 +290,11 @@ function useHistoryAnchor(
       box.content.off("resize", resized);
     };
   }, [ref, active]);
+  // A prepend can fold into an existing collapsed work box without changing height.
+  // Its anchor belongs only to this frame, never a later unrelated resize.
+  return () => {
+    pending.current = null;
+  };
 }
 
 /** Rows an open box shows before it scrolls: a third of the terminal, and never too few to read. */
@@ -421,7 +426,7 @@ export function Conversation({
 }: ConversationProps) {
   const { height } = useTerminalDimensions();
   const earlier = Math.max(0, entries.length - window);
-  useHistoryAnchor(ref, earlier, window, entries.length > 0);
+  const clearHistoryAnchor = useHistoryAnchor(ref, earlier, window, entries.length > 0);
   const items = useMemo(() => transcriptOf(entries.slice(earlier), running), [entries, earlier, running]);
   const boxes = items.filter((item): item is Work => item.kind === "work");
   const whole = display.expanded;
@@ -444,6 +449,7 @@ export function Conversation({
       paddingLeft={1}
       paddingRight={1}
       verticalScrollbarOptions={SCROLLBAR}
+      renderAfter={clearHistoryAnchor}
     >
       {earlier > 0 ? (
         <text fg={theme.dim} flexShrink={0}>

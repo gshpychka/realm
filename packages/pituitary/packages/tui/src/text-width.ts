@@ -10,28 +10,26 @@ export function wrappedRows(text: string, columns: number): number {
 
 export function headCells(text: string, columns: number): string {
   if (Bun.stringWidth(text) <= columns) return text;
-  let room = Math.max(0, Math.floor(columns));
+  const room = Math.max(0, Math.floor(columns));
   let out = "";
   for (const { segment } of graphemes.segment(text)) {
-    const width = Bun.stringWidth(segment);
-    if (width > room) break;
-    out += segment;
-    room -= width;
+    const candidate = out + segment;
+    if (Bun.stringWidth(candidate) > room) break;
+    out = candidate;
   }
   return out;
 }
 
 export function tailCells(text: string, columns: number): string {
   if (Bun.stringWidth(text) <= columns) return text;
-  let room = Math.max(0, Math.floor(columns));
-  const kept: string[] = [];
+  const room = Math.max(0, Math.floor(columns));
+  let out = "";
   for (const { segment } of [...graphemes.segment(text)].reverse()) {
-    const width = Bun.stringWidth(segment);
-    if (width > room) break;
-    kept.push(segment);
-    room -= width;
+    const candidate = segment + out;
+    if (Bun.stringWidth(candidate) > room) break;
+    out = candidate;
   }
-  return kept.reverse().join("");
+  return out;
 }
 
 /** The beginning of text, with a final ellipsis only when some of it was cut. */

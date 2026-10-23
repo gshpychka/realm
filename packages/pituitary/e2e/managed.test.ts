@@ -86,6 +86,7 @@ test("managed UI reload, host restart and archive preserve one native conversati
     app = await launch();
     assert.match(await app.capture("managed-attached"), /The host kept this reply/);
     await app.terminal.type("Keep my draft across frontend reload");
+    await app.terminal.waitText("Keep my draft across frontend reload");
     await app.terminal.write("\x12");
     await app.terminal.waitExit({ timeout: 10000 });
     await app.close();
@@ -120,7 +121,8 @@ test("managed UI reload, host restart and archive preserve one native conversati
     assert.match(screen, /The host kept this reply/);
     assert.doesNotMatch(screen, /ask pi · !cmd/);
     await app.terminal.write("must not become a prompt\r");
-    assert.doesNotMatch(await app.terminal.text(), /must not become a prompt/);
+    await app.terminal.waitIdle();
+    assert.doesNotMatch(await app.capture("managed-archived-input-rejected"), /must not become a prompt/);
     await app.terminal.write("/");
     await app.terminal.waitText("archived conversation");
     const commands = await app.capture("managed-archived-commands");

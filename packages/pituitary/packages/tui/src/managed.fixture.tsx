@@ -211,6 +211,22 @@ const detail: RunDetail = {
     },
   ],
 };
+if (process.env.PITUITARY_FIXTURE_FAILED_CHECK === "1") {
+  reviewer.status = "submitted";
+  detail.run.acceptedArtifactId = null;
+  const verification = detail.verifications[0];
+  if (!verification) throw new Error("Missing fixture verification");
+  verification.status = "failed";
+  verification.checks = [
+    {
+      name: "types",
+      exitCode: 1,
+      status: "failed",
+      output: "Missing exported member: keyboardShortcut",
+      truncated: true,
+    },
+  ];
+}
 const server = await serveConversationFixture(
   directory,
   tasks.filter((task) => task.id !== "failed-builder"),
@@ -220,10 +236,18 @@ const socketPath = server.socketPath;
 const saved = readManagedView(process.env.PITUITARY_UI_STATE);
 let selected = process.env.PITUITARY_UI_RESUME === "1" ? (saved?.taskId ?? "coordinator") : "coordinator";
 if (!tasks.some((task) => task.id === selected)) selected = "coordinator";
+let coordinatorConnections = 0;
 const runtime = {
   inspect: async () => structuredClone(detail),
-  connect: async (_run: unknown, control: boolean, id?: string) =>
-    connectConversation({ socketPath, runId: "run-team", taskId: id ?? "coordinator", control }),
+  connect: async (_run: unknown, control: boolean, id?: string) => {
+    if (
+      id === "coordinator" &&
+      ++coordinatorConnections === 2 &&
+      process.env.PITUITARY_FIXTURE_FAIL_BACK === "1"
+    )
+      throw new Error("The previous input lease is unavailable");
+    return connectConversation({ socketPath, runId: "run-team", taskId: id ?? "coordinator", control });
+  },
   answer: async (id: string, answer: string) => {
     const question = detail.questions.find((question) => question.id === id);
     if (!question) throw new Error("Unknown fixture question");
