@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
+import { Probability } from "../results/schema";
 import { formatPointProgress, parsePointProgress } from "./progress";
-import { Probability } from "./schema";
 
 describe("point progress lines", () => {
   it.each(["vendor/model", "vendor/model [reasoning=low]"])(

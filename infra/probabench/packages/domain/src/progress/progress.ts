@@ -1,7 +1,7 @@
 // The runner prints one line per finished probability point, and the dev bridge
 // reads progress back from those lines. Change the format and the parser together.
-import { measurePoint } from "./metrics";
-import type { Point } from "./schema";
+import { measurePoint } from "../results/metrics";
+import type { Point } from "../results/schema";
 
 export interface PointProgress {
   /** The series label, Run.model. */

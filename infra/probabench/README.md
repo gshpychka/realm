@@ -75,7 +75,7 @@ Bun loads `.env.local` automatically. You can also export
 | `--dry-run` | off | Validate and print the plan without provider calls |
 
 Model IDs and reasoning support depend on OpenRouter. The small alias list in
-[`models.ts`](packages/domain/src/models.ts) is optional; no code change is
+[`models.ts`](packages/domain/src/plan/models.ts) is optional; no code change is
 needed to use another OpenRouter model. Explicit reasoning overrides the alias
 configuration. Distinct reasoning modes remain distinct chart series.
 

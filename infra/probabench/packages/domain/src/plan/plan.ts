@@ -1,5 +1,5 @@
 // Run-plan vocabulary shared by the CLI, the dev bridge and the setup form.
-import { probabilityGrid, type ReasoningMode } from "./schema";
+import { probabilityGrid, type ReasoningMode } from "../results/schema";
 
 /**
  * Retries after a sample's first provider attempt. The runner's retry schedule and

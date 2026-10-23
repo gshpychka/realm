@@ -1,6 +1,6 @@
 // Model tokens the CLI resolves and the dev bridge and setup form accept. The
 // alias table lives here rather than in the runner so all three agree on it.
-import type { ReasoningEffort } from "./schema";
+import type { ReasoningEffort } from "../results/schema";
 
 export interface ModelAlias {
   readonly alias: string;
