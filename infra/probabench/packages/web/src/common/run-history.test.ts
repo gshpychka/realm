@@ -1,6 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 import { makeRun } from "@probabench/domain/testing";
-import { modelSelections, runsByDay, visibleHistory, withComparison } from "./run-history";
+import {
+  inspectedRun,
+  modelSelections,
+  runsByDay,
+  visibleHistory,
+  withComparison,
+} from "./run-history";
 
 const old = makeRun({
   id: "old",
@@ -60,6 +66,14 @@ describe("modelSelections", () => {
 describe("withComparison", () => {
   it("replaces the model's earlier comparison and keeps other models'", () => {
     expect(withComparison(["new", "other"], [old, other, latest], old)).toEqual(["other", "old"]);
+  });
+});
+
+describe("inspectedRun", () => {
+  it("shows the linked run while it is visible, else the newest visible run", () => {
+    expect(inspectedRun([latest, old], "old")).toBe(old);
+    expect(inspectedRun([latest, old], "hidden")).toBe(latest);
+    expect(inspectedRun([], "old")).toBeUndefined();
   });
 });
 
