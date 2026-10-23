@@ -44,6 +44,13 @@ describe("modelSelections", () => {
     expect(selections.map((selection) => selection.selected.id)).toEqual(["new", "other"]);
   });
 
+  it("keeps models in append order when a later model has the newest run", () => {
+    expect(modelSelections([other, old, latest], []).map(({ model }) => model)).toEqual([
+      other.model,
+      old.model,
+    ]);
+  });
+
   it("selects a compared run, and falls back to the latest when the comparison is missing", () => {
     expect(modelSelections(runs, ["old"]).map((selection) => selection.selected.id)).toEqual([
       "old",

@@ -1,8 +1,9 @@
 import type { Run } from "@probabench/domain";
 
+const byNewest = (a: Run, b: Run): number => b.startedAt.localeCompare(a.startedAt);
+
 /** Latest start first. */
-export const newestFirst = (runs: readonly Run[]): Run[] =>
-  runs.toSorted((a, b) => b.startedAt.localeCompare(a.startedAt));
+export const newestFirst = (runs: readonly Run[]): Run[] => runs.toSorted(byNewest);
 
 /** The model filter shared by the history graph, list and inspector. */
 export const visibleHistory = (runs: readonly Run[], hidden: readonly string[]): Run[] => {
@@ -22,23 +23,26 @@ export interface ModelSelection {
   readonly selected: Run;
 }
 
-/** Every model with the run the calibration chart compares, in latest-run order. */
+/** Every model in append order, the palette's, with the run the calibration chart compares. */
 export const modelSelections = (
   runs: readonly Run[],
   comparisons: readonly string[],
 ): ModelSelection[] => {
   const groups = new Map<string, [Run, ...Run[]]>();
-  for (const run of newestFirst(runs)) {
+  for (const run of runs) {
     const group = groups.get(run.model);
     if (group) group.push(run);
     else groups.set(run.model, [run]);
   }
   const compared = new Set(comparisons);
-  return [...groups].map(([model, history]) => ({
-    model,
-    runs: history,
-    selected: history.find((run) => compared.has(run.id)) ?? history[0],
-  }));
+  return [...groups].map(([model, history]) => {
+    history.sort(byNewest);
+    return {
+      model,
+      runs: history,
+      selected: history.find((run) => compared.has(run.id)) ?? history[0],
+    };
+  });
 };
 
 /** The comparisons with `run` in place of any other run of its model. */
