@@ -374,10 +374,13 @@ var (
 // brokenStore fails every operation with an error that is no fault kind.
 type brokenStore struct{}
 
-func (brokenStore) Send(context.Context, gateway.Participant, gateway.Participant, int64, string, string) (messages.Message, error) {
-	return messages.Message{}, errDiskGone
+func (brokenStore) Deliver(context.Context, gateway.Participant, gateway.Participant, messages.Send) (gateway.Delivery, error) {
+	return gateway.Delivery{}, errDiskGone
 }
 
+func (brokenStore) Receipt(context.Context, gateway.Participant, messages.Send) (*messages.Message, error) {
+	return nil, errDiskGone
+}
 func (brokenStore) Inbox(context.Context, gateway.Participant) ([]messages.Thread, error) {
 	return nil, errDiskGone
 }

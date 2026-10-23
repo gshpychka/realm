@@ -46,12 +46,15 @@ type Thread struct {
 
 // Message is one message in a thread, from one participant to another.
 type Message struct {
-	ID     int64     `json:"id"`
-	Thread int64     `json:"thread"`
-	From   string    `json:"from"`
-	To     string    `json:"to"`
-	Body   string    `json:"body"`
-	Sent   time.Time `json:"sent"`
+	ID             int64     `json:"id"`
+	Thread         int64     `json:"thread"`
+	From           string    `json:"from"`
+	To             string    `json:"to"`
+	Body           string    `json:"body"`
+	Sent           time.Time `json:"sent"`
+	FromID         string    `json:"fromId"`
+	ToID           string    `json:"toId"`
+	FromGeneration uint64    `json:"fromGeneration"`
 }
 
 // Conversation is a thread with its messages, oldest first.
@@ -66,9 +69,11 @@ type Conversation struct {
 // Send is a message to send; Thread 0 starts a new thread titled Subject, or the first line of Body when Subject is
 // empty.
 type Send struct {
-	To      string `json:"to"`
-	Thread  int64  `json:"thread,omitempty"`
-	Subject string `json:"subject,omitempty"`
+	To       string `json:"to"`
+	ToID     string `json:"toId,omitempty"`
+	ClientID string `json:"clientId,omitempty"`
+	Thread   int64  `json:"thread,omitempty"`
+	Subject  string `json:"subject,omitempty"`
 	// Body holds at most MaxBody bytes.
 	Body string `json:"body"`
 }

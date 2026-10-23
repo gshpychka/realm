@@ -64,6 +64,8 @@ func (a *app) send(ctx context.Context, args []string) error {
 	flags.SetOutput(io.Discard)
 	thread := flags.Int64("thread", 0, "")
 	subject := flags.String("subject", "", "")
+	clientID := flags.String("client-id", "", "")
+	toID := flags.String("to-id", "", "")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w: %w", fault.Invalid, err)
 	}
@@ -92,7 +94,7 @@ func (a *app) send(ctx context.Context, args []string) error {
 		return fmt.Errorf("%w: a message body is at most %d bytes", fault.Invalid, messages.MaxBody)
 	}
 
-	in := sessionapi.SendInput{To: to, Body: body, Thread: *thread, Subject: *subject}
+	in := sessionapi.SendInput{To: to, ToID: *toID, ClientID: *clientID, Body: body, Thread: *thread, Subject: *subject}
 	out, err := call[sessionapi.SendOutput](ctx, a.gateway, sessionapi.Send, in)
 	if err != nil {
 		return err

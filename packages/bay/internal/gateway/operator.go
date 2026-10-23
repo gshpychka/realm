@@ -32,9 +32,5 @@ func (o operatorService) Send(ctx context.Context, s messages.Send) (messages.Me
 }
 
 func (o operatorService) send(ctx context.Context, s messages.Send) (messages.Message, error) {
-	to, err := o.g.recipient(ctx, s.To)
-	if err != nil {
-		return messages.Message{}, err
-	}
-	return o.g.store.Send(ctx, operator, to, s.Thread, s.Subject, s.Body)
+	return o.g.deliverMessage(ctx, operator, s)
 }

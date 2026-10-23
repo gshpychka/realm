@@ -193,21 +193,7 @@ func (g *Gateway) send(ctx context.Context, caller identity.Session, in sessiona
 }
 
 func (g *Gateway) deliver(ctx context.Context, caller identity.Session, in sessionapi.SendInput) (messages.Message, error) {
-	to, err := g.recipient(ctx, in.To)
-	if err != nil {
-		return messages.Message{}, err
-	}
-	m, err := g.store.Send(ctx, participant(caller), to, in.Thread, in.Subject, in.Body)
-	if err != nil {
-		return messages.Message{}, err
-	}
-	if to.ID == messages.Operator {
-		// The message is stored, so a failed alert leaves the send successful.
-		if err := g.alert(ctx, caller.Name, MessageEvent); err != nil {
-			g.log.Warn("alert not delivered", "session", caller.Name, "event", MessageEvent, "err", err)
-		}
-	}
-	return m, nil
+	return g.deliverMessage(ctx, participant(caller), messages.Send{To: in.To, ToID: in.ToID, ClientID: in.ClientID, Thread: in.Thread, Subject: in.Subject, Body: in.Body})
 }
 
 func (g *Gateway) inbox(ctx context.Context, caller identity.Session, _ struct{}) (sessionapi.InboxOutput, error) {

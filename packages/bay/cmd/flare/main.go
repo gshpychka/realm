@@ -23,7 +23,7 @@ const usageText = `usage: flare [-json] COMMAND [ARGUMENT...]
 commands:
   whoami                                    print this session's name
   notify EVENT                              alert the operator; EVENT is one of %s
-  send [-thread N] [-subject S] TO [MESSAGE...]
+  send [-thread N] [-subject S] [-client-id KEY] [-to-id ID] TO [MESSAGE...]
                                             send MESSAGE, or standard input, to a session or to operator
   inbox                                     list threads with unread messages
   read THREAD [-before MESSAGE]             print a thread's messages, or an earlier page
