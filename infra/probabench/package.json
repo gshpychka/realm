@@ -3,13 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.2",
-  "engines": {
-    "node": ">=22.12.0"
-  },
   "scripts": {
     "postinstall": "bun2nix -o bun.nix",
-    "typecheck": "tsc -b && bun run --cwd packages/stack typecheck",
+    "typecheck": "tsc -p packages/domain && tsc -p packages/runner && tsc -p packages/web && tsc -p packages/web/src && tsc -p packages/stack",
     "lint": "cd ../.. && biome check --config-path biome.json infra/probabench",
     "format": "cd ../.. && biome format --config-path biome.json --write infra/probabench",
     "test": "vitest run",
@@ -25,15 +21,13 @@
   "devDependencies": {
     "@effect/vitest": "^0.29.0",
     "@types/node": "^22.10.5",
-    "typescript": "^5.9.3",
+    "effect": "3.21.4",
+    "typescript": "^6.0.3",
     "vitest": "^3.0.5"
   },
   "workspaces": [
     "packages/*"
   ],
-  "dependencies": {
-    "effect": "3.21.4"
-  },
   "trustedDependencies": [],
   "patchedDependencies": {
     "@distilled.cloud/aws@1.0.0-rc.15": "patches/@distilled.cloud%2Faws@1.0.0-rc.15.patch"

@@ -9,8 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc -b"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@effect-rx/rx": "^0.48.7",

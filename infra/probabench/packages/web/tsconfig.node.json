@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "rootDir": ".",
-    "outDir": "./.tsbuild/node",
-    "types": ["node"]
-  },
-  "include": ["vite.config.ts", "local-bench*.ts"]
-}

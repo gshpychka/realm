@@ -6,10 +6,7 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "scripts": {
-    "typecheck": "tsc -b"
-  },
   "dependencies": {
-    "effect": "^3.21.4"
+    "effect": "3.21.4"
   }
 }

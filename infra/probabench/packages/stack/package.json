@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc",
     "dev": "alchemy dev",
     "plan": "alchemy plan --stage prod",
     "deploy": "alchemy deploy --stage prod",
@@ -17,7 +16,6 @@
     "effect": "^4.0.4"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.3",
-    "typescript": "^6.0.3"
+    "@types/bun": "^1.4.3"
   }
 }

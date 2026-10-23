@@ -1,13 +1,11 @@
 node_modules/
-dist/
-.tsbuild/
+packages/web/dist/
 .direnv/
 .home/
 .ralph/
 .env
 .env.*
 !.env.example
-*.tsbuildinfo
 coverage/
 packages/web/public/data/*.lock
 *.log
