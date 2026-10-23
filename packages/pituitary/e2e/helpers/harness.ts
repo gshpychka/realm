@@ -8,7 +8,6 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { TuiTest } from "@microsoft/tui-test";
 import { survivors } from "./processes.ts";
@@ -36,7 +35,8 @@ const PROJECT_FILES = {
  * Where each run's throwaway HOME goes. The bridge's socket sits three levels inside it, and a
  * socket path holds at most 104 bytes on macOS, whose TMPDIR alone runs to about 50.
  */
-const SCRATCH = process.platform === "darwin" ? "/tmp" : tmpdir();
+// Socket paths stay short, and fixtures stay outside any checkout-local TMPDIR.
+const SCRATCH = "/tmp";
 
 /**
  * What describes the terminal the tests are run from, which OpenTUI reads to judge what its
