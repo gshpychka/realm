@@ -18,7 +18,7 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-`bun run dev` serves the notebook from Vite on 127.0.0.1 with the key decrypted
+`bun run dev` serves the notebook from Vite on localhost with the key decrypted
 through `sops exec-env`. Its dev bridge lets the page start a benchmark: it
 accepts same-origin requests only, runs one benchmark at a time by spawning the
 CLI, and limits a browser run to one model, 10,000 samples per target
