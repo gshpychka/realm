@@ -332,12 +332,8 @@ button.connection {
 /* NotebookTabs */
 .notebook-navigation {
   display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-}
-.notebook-navigation [role="tablist"] {
-  display: flex;
   gap: 30px;
+  border-bottom: 1px solid var(--line);
 
   @media (max-width: 650px) {
     gap: 17px;
@@ -346,7 +342,7 @@ button.connection {
     gap: 15px;
   }
 }
-.notebook-navigation [role="tab"] {
+.notebook-navigation > button {
   display: flex;
   gap: 9px;
   align-items: center;
@@ -365,7 +361,7 @@ button.connection {
     white-space: nowrap;
   }
 }
-.notebook-navigation [role="tab"][aria-selected="true"] {
+.notebook-navigation > button[aria-current="page"] {
   color: var(--text);
   border-bottom-color: var(--accent);
 }

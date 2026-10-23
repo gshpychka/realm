@@ -1,6 +1,6 @@
 import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
 import { lazy, useMemo, useRef } from "react";
-import { type NotebookView, tabId, toggleHidden, type UpdateView } from "../app/notebook-view";
+import { type NotebookView, PANEL_ID, toggleHidden, type UpdateView } from "../app/notebook-view";
 import { ChartBoundary } from "../common/chart-frame";
 import { count, date, modelName, percent, samplingText, time } from "../common/format";
 import { Measurements } from "../common/Measurements";
@@ -38,7 +38,7 @@ export function HistoryPage({
       comparisons: withComparison(view.comparisons, runs, run),
       hidden: view.hidden.filter((model) => model !== run.model),
     });
-    document.getElementById(tabId("calibration"))?.focus();
+    document.getElementById(PANEL_ID)?.focus();
   };
   const clearFilters = () => update({ query: "", hidden: [] }, "replace");
   const visible = useMemo(

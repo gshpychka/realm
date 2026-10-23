@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export const TABS = ["calibration", "history", "method"] as const;
 export type Tab = (typeof TABS)[number];
 
-/** DOM ids: each tab button, and the panel they control (the skip link's target too). */
-export const tabId = (tab: Tab): string => `tab-${tab}`;
+/**
+ * The DOM id of the panel that shows the current view: the skip link's target, and where
+ * focus goes when a view change unmounts the focused button.
+ */
 export const PANEL_ID = "notebook-content";
 
 export interface NotebookView {

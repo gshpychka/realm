@@ -11,7 +11,7 @@ import { RunSetup } from "../setup/RunSetup";
 import { EmptyNotebook } from "./EmptyNotebook";
 import { Hero } from "./Hero";
 import { NotebookTabs } from "./NotebookTabs";
-import { PANEL_ID, tabId, useNotebookView } from "./notebook-view";
+import { PANEL_ID, useNotebookView } from "./notebook-view";
 import { SiteHeader } from "./SiteHeader";
 import "./app.css";
 
@@ -78,7 +78,7 @@ export function App() {
       <main>
         <Hero runs={runs} />
         <NotebookTabs runCount={runs.length} view={view} update={update} />
-        <div id={PANEL_ID} role="tabpanel" aria-labelledby={tabId(view.tab)} tabIndex={-1}>
+        <div id={PANEL_ID} tabIndex={-1}>
           {panel()}
         </div>
       </main>
@@ -106,7 +106,7 @@ export function App() {
           onViewResults={() => {
             setSetupOpen(false);
             update({ tab: "history", runId: null, query: "", hidden: [] });
-            document.getElementById(tabId("history"))?.focus();
+            document.getElementById(PANEL_ID)?.focus();
           }}
         />
       ) : null}
