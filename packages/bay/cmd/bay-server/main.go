@@ -138,6 +138,9 @@ func serve(config Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := retainRecords(store, mirrors, log); err != nil {
+		return err
+	}
 	programs := map[string]sessions.Program{}
 	for name, p := range config.Programs {
 		programs[name] = sessions.Program{Command: p.Command, Resume: p.Resume, History: p.History, Monitor: p.Monitor}
@@ -223,6 +226,25 @@ func refreshMirrors(ctx context.Context, mirrors *repos.Mirrors, every time.Dura
 			cancel()
 		}
 	}
+}
+
+func retainRecords(store *records.Store, mirrors *repos.Mirrors, log *slog.Logger) error {
+	all, err := store.List()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	for _, record := range all {
+		for _, repo := range record.Repos {
+			if err := mirrors.Retain(ctx, repo); err != nil {
+				// An absent mirror must not stop the server: starting this session
+				// will fetch it again, or explain which revision is unavailable.
+				log.Warn("retain session revision", "session", record.Name, "repo", repo.Owner+"/"+repo.Name, "err", err)
+			}
+		}
+	}
+	return nil
 }
 
 // base makes the warm base the given guest image booted once.

@@ -81,3 +81,12 @@ func (r mirror) commit(ctx context.Context, rev string) (string, error) {
 	}
 	return strings.TrimSpace(out), err
 }
+
+// retain keeps a session's fixed revision reachable after a branch is deleted or
+// force-pushed. Fetch prunes only heads and tags, leaving these cache refs alone.
+// Like the shared mirrors themselves, these refs are cached across session removal;
+// Bay currently evicts neither individual mirrors nor their retained revisions.
+func (r mirror) retain(ctx context.Context, commit string) error {
+	_, err := r.git.run(ctx, r.dir, "update-ref", "refs/bay/commits/"+commit, commit)
+	return err
+}

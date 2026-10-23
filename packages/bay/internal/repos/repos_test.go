@@ -269,7 +269,7 @@ func TestMirrorHoldsBranchesAndTags(t *testing.T) {
 	if _, err := f.resolve("o", "n", ""); err != nil {
 		t.Fatal(err)
 	}
-	got := f.mirrorGit("o", "n", "for-each-ref", "--format=%(refname)")
+	got := f.mirrorGit("o", "n", "for-each-ref", "--format=%(refname)", "refs/heads", "refs/tags")
 	want := "refs/heads/feature/x\nrefs/heads/main\nrefs/tags/v1\nrefs/tags/v2"
 	if got != want {
 		t.Fatalf("mirror holds\n%s\nwant\n%s", got, want)
@@ -420,6 +420,51 @@ func TestArchiveCommitMissingFromRemote(t *testing.T) {
 	if buf.Len() != 0 {
 		t.Errorf("Archive wrote %d bytes for a commit it does not hold", buf.Len())
 	}
+}
+
+func TestSavedCommitSurvivesBranchDeletionAndGarbageCollection(t *testing.T) {
+	f := newFixture(t)
+	u := f.upstream("o", "n")
+	h := seed(u)
+	repo, err := f.resolve("o", "n", "feature/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.git("branch", "-D", "feature/x")
+	if err := f.m.RefreshAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.mirrorGit("o", "n", "gc", "--prune=now")
+	var archive bytes.Buffer
+	if err := f.m.Archive(context.Background(), repo, &archive); err != nil {
+		t.Fatalf("the saved session commit %s was lost: %v", h.feature, err)
+	}
+	dir := t.TempDir()
+	extract(t, &archive, dir)
+	runGit(t, "", "--git-dir="+dir, "cat-file", "-e", h.feature+"^{commit}")
+}
+
+func TestRetainProtectsRevisionsFromOlderRecords(t *testing.T) {
+	f := newFixture(t)
+	u := f.upstream("o", "n")
+	h := seed(u)
+	mir, err := f.m.locate("o", "n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mir.update(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	repo := records.Repo{Owner: "o", Name: "n", Commit: h.feature}
+	if err := f.m.Retain(context.Background(), repo); err != nil {
+		t.Fatal(err)
+	}
+	u.git("branch", "-D", "feature/x")
+	if err := f.m.RefreshAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.mirrorGit("o", "n", "gc", "--prune=now")
+	f.archive(repo)
 }
 
 func TestArchiveRejectsInvalidRepo(t *testing.T) {

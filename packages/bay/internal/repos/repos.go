@@ -86,6 +86,25 @@ func (m *Mirrors) Remote(r records.Repo) string {
 	return m.remote(r.Owner, r.Name)
 }
 
+// Retain protects an already cached revision from garbage collection. At startup
+// the server uses it for records written before Bay began retaining commit refs.
+// It does no network work; Archive can rebuild a missing mirror when needed.
+func (m *Mirrors) Retain(ctx context.Context, r records.Repo) error {
+	mir, err := m.locate(r.Owner, r.Name)
+	if err != nil {
+		return err
+	}
+	if !fullCommitID.MatchString(r.Commit) {
+		return fmt.Errorf("%w: commit %q", fault.Invalid, r.Commit)
+	}
+	unlock, err := m.lock(ctx, mir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return mir.retain(ctx, r.Commit)
+}
+
 // lock holds mir's lock until unlock is called, and fails when ctx ends first.
 func (m *Mirrors) lock(ctx context.Context, mir mirror) (unlock func(), err error) {
 	if err := ctx.Err(); err != nil {
@@ -145,6 +164,9 @@ func (m *Mirrors) resolve(ctx context.Context, mir mirror, ref string) (records.
 		if err != nil {
 			return records.Repo{}, err
 		}
+		if err := mir.retain(ctx, commit); err != nil {
+			return records.Repo{}, err
+		}
 		return records.Repo{Owner: mir.owner, Name: mir.name, Branch: l.branch, Commit: commit}, nil
 	}
 	return records.Repo{}, fmt.Errorf("%w: no branch, tag or unambiguous commit %q", fault.Invalid, ref)
@@ -194,6 +216,9 @@ func (m *Mirrors) archive(ctx context.Context, mir mirror, commit string, w io.W
 		return fmt.Errorf("%w: the remote does not have commit %s", fault.Conflict, commit)
 	}
 	if err != nil {
+		return err
+	}
+	if err := mir.retain(ctx, commit); err != nil {
 		return err
 	}
 	if err := writeTar(ctx, w, mir.dir); err != nil {
