@@ -9,16 +9,18 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { describePlan, InvalidOptions, resolvePlan, type SamplingOptions } from "../plan/plan";
+import { describeAliases, splitModels } from "../plan/targets";
 import { executePlan } from "./execute";
-import { describePlan, InvalidOptions, resolvePlan, type SamplingOptions } from "./plan";
-import { describeAliases, splitModels } from "./registry";
 import { promptRunSetup } from "./setup";
 
 /**
  * The web app's published history, which Vite serves at /data/results.json. Resolved
  * from this file rather than the working directory.
  */
-const DEFAULT_OUT = fileURLToPath(new URL("../../web/public/data/results.json", import.meta.url));
+const DEFAULT_OUT = fileURLToPath(
+  new URL("../../../web/public/data/results.json", import.meta.url),
+);
 
 const DEFAULTS: SamplingOptions = {
   trialsPerStep: 100,

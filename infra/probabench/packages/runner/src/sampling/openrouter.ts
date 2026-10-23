@@ -8,7 +8,7 @@ import * as Config from "effect/Config";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { BenchTarget } from "./registry";
+import type { BenchTarget } from "../plan/targets";
 
 export class MissingApiKey extends Data.TaggedError("MissingApiKey") {
   override get message() {

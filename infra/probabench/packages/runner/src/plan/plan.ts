@@ -4,7 +4,7 @@ import { planBudget, type ReasoningMode } from "@probabench/domain";
 import { isNonEmptyReadonlyArray, type NonEmptyReadonlyArray } from "effect/Array";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import { type BenchTarget, selectTargets } from "./registry";
+import { type BenchTarget, selectTargets } from "./targets";
 
 /** A rejected run request, raised before any credentials are read or samples drawn. */
 export class InvalidOptions extends Data.TaggedError("InvalidOptions")<{

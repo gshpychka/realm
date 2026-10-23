@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { ALL_TARGETS, isModelToken, MODEL_ALIASES } from "@probabench/domain";
-import { describeAliases, selectTargets, splitModels } from "./registry";
+import { describeAliases, selectTargets, splitModels } from "./targets";
 
 describe("OpenRouter model selection", () => {
   it("keeps convenient unique aliases and lists their canonical slugs", () => {

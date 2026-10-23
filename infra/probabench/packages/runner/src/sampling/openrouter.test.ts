@@ -3,9 +3,9 @@ import { describe, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type { BenchTarget } from "../plan/targets";
 import { openrouterClientLayer, openrouterModelLayer } from "./openrouter";
-import type { BenchTarget } from "./registry";
-import { chatEndpoint } from "./test-fixtures";
+import { chatEndpoint } from "./testing";
 
 /** Request fields that would override the model's native sampling. */
 const SAMPLING_OVERRIDES = ["temperature", "top_p", "top_k", "reasoning_effort"] as const;

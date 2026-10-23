@@ -5,10 +5,14 @@ import type * as HttpClient from "@effect/platform/HttpClient";
 import { type Run, summarizeRun } from "@probabench/domain";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { type MissingApiKey, openrouterClientLayer, openrouterModelLayer } from "./openrouter";
-import type { BenchPlan } from "./plan";
-import { ResultsStore, type ResultsStoreError } from "./results-store";
-import { type LlmError, sweep } from "./sweep";
+import type { BenchPlan } from "../plan/plan";
+import {
+  type MissingApiKey,
+  openrouterClientLayer,
+  openrouterModelLayer,
+} from "../sampling/openrouter";
+import { type LlmError, sweep } from "../sampling/sweep";
+import { ResultsStore, type ResultsStoreError } from "../store/results-store";
 
 const describeCompletedRun = (run: Run, out: string): string => {
   const { valid, total, meanCalibrationError } = summarizeRun(run);

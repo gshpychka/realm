@@ -39,7 +39,7 @@ export const splitModels = (list: string): readonly string[] =>
     .map((token) => token.trim())
     .filter(Boolean);
 
-export interface TargetSelection {
+interface TargetSelection {
   readonly targets: readonly BenchTarget[];
   readonly unknown: readonly string[];
 }

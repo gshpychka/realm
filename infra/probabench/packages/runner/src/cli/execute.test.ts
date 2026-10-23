@@ -2,11 +2,12 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import { describe, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import type { BenchPlan } from "../plan/plan";
+import type { BenchTarget } from "../plan/targets";
+import { chatEndpoint } from "../sampling/testing";
+import { ResultsStore } from "../store/results-store";
+import { withResultsStore } from "../store/testing";
 import { executePlan } from "./execute";
-import type { BenchPlan } from "./plan";
-import type { BenchTarget } from "./registry";
-import { ResultsStore } from "./results-store";
-import { chatEndpoint, withResultsStore } from "./test-fixtures";
 
 const target = (slug: string): BenchTarget => ({ id: slug, slug, reasoning: "off" });
 

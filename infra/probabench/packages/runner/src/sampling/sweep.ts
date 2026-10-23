@@ -15,8 +15,8 @@ import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import type { SamplingOptions } from "./plan";
-import type { BenchTarget } from "./registry";
+import type { SamplingOptions } from "../plan/plan";
+import type { BenchTarget } from "../plan/targets";
 import { type ProviderFailure, withProviderRetry } from "./retry";
 
 /** A sample whose request failed for good. An unparseable reply is an Outcome, not an error. */

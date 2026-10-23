@@ -6,8 +6,8 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/TestClock";
-import type { SamplingOptions } from "./plan";
-import type { BenchTarget } from "./registry";
+import type { SamplingOptions } from "../plan/plan";
+import type { BenchTarget } from "../plan/targets";
 import { sweep } from "./sweep";
 
 const target: BenchTarget = { id: "vendor/model", slug: "vendor/model", reasoning: "off" };

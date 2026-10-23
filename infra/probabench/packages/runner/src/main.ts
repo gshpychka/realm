@@ -5,8 +5,8 @@ import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { benchCommand } from "./cli";
-import { ResultsStore } from "./results-store";
+import { benchCommand } from "./cli/command";
+import { ResultsStore } from "./store/results-store";
 
 /**
  * Node's FileSystem, Path and Terminal for the CLI and the store, and an HTTP client

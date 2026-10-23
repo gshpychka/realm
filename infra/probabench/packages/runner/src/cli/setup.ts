@@ -10,8 +10,8 @@ import {
   SAMPLING_PRESETS,
 } from "@probabench/domain";
 import * as Effect from "effect/Effect";
-import type { SamplingOptions } from "./plan";
-import { modelLabel, selectTargets, splitModels } from "./registry";
+import type { SamplingOptions } from "../plan/plan";
+import { modelLabel, selectTargets, splitModels } from "../plan/targets";
 
 type Sizing = Pick<SamplingOptions, "trialsPerStep" | "stepPercent">;
 

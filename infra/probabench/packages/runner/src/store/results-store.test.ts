@@ -10,7 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { ResultsStore } from "./results-store";
-import { withResultsStore } from "./test-fixtures";
+import { withResultsStore } from "./testing";
 
 /** A second, independent store whose filesystem differs in `overrides`, like another process. */
 const otherStore = (fs: FileSystem.FileSystem, overrides: Partial<FileSystem.FileSystem>) =>

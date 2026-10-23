@@ -1,22 +1,9 @@
-// Test fixtures shared by the runner's suites. Never import this from application code.
-import { join } from "node:path";
-import * as FileSystem from "@effect/platform/FileSystem";
+// Test fixtures for suites that talk to OpenRouter over HTTP. Never import this
+// from application code.
 import * as HttpClient from "@effect/platform/HttpClient";
 import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { ResultsStore } from "./results-store";
-
-/** A ResultsStore over a fresh temporary directory, so writes exercise the real filesystem. */
-export const withResultsStore = <A, E, R>(
-  use: (path: string) => Effect.Effect<A, E, R | ResultsStore | FileSystem.FileSystem>,
-) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "probabench-test-" });
-    return yield* use(join(directory, "results.json")).pipe(Effect.provide(ResultsStore.Default));
-  }).pipe(Effect.scoped, Effect.provide(NodeFileSystem.layer));
 
 interface ChatRequest {
   readonly url: string;
