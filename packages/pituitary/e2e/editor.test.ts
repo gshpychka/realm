@@ -226,3 +226,15 @@ test("ctrl+g edits the draft in the external editor", async () => {
   await app.terminal.waitText("» a edited");
   await app.close();
 });
+
+test("a failing external editor explains the failure and preserves the draft", async () => {
+  const app = await launch({ scenario: "hello", env: { PITUITARY_EDITOR: "false" } });
+  await app.terminal.type("keep this draft");
+  await app.terminal.write(CTRL_G);
+  await app.terminal.waitText("external editor failed; your draft is unchanged");
+  const screen = await app.capture("editor-external-failed");
+  assert.match(screen, /» keep this draft/, screen);
+  await app.terminal.type(" safely");
+  await app.terminal.waitText("» keep this draft safely");
+  await app.close();
+});
