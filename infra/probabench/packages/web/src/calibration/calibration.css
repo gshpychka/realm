@@ -204,6 +204,16 @@
   background: var(--panel);
   color: var(--text);
 }
+.panel-note {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin-top: 18px;
+
+  @media (max-width: 900px) {
+    max-width: 390px;
+  }
+}
 
 /* Measurements */
 .measurements-panel {

@@ -318,6 +318,26 @@
 }
 
 /* App: loading and failure */
+.loading-line {
+  display: block;
+  width: 58px;
+  height: 2px;
+  margin: 0 auto;
+  background: var(--accent);
+  animation: pulse 1.6s infinite;
+}
+.state-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  font: italic 22px / 1 var(--serif);
+  color: var(--accent);
+}
 .notebook-loading,
 .notebook-error {
   text-align: center;

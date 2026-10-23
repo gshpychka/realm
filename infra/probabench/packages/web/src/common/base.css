@@ -184,16 +184,6 @@ var {
   border-radius: var(--radius-lg);
   background: var(--panel);
 }
-.panel-note {
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--muted);
-  margin-top: 18px;
-
-  @media (max-width: 900px) {
-    max-width: 390px;
-  }
-}
 
 .button {
   display: inline-flex;
@@ -291,26 +281,6 @@ var {
 .status-dot.pulse {
   background: var(--accent);
   animation: pulse 1.8s infinite;
-}
-.loading-line {
-  display: block;
-  width: 58px;
-  height: 2px;
-  margin: 0 auto;
-  background: var(--accent);
-  animation: pulse 1.6s infinite;
-}
-.state-symbol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin: 0 auto 22px;
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  font: italic 22px / 1 var(--serif);
-  color: var(--accent);
 }
 /* A + that turns into × while its details are open. */
 .expand-sign {
