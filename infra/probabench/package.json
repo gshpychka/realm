@@ -6,8 +6,6 @@
   "scripts": {
     "postinstall": "bun2nix -o bun.nix",
     "typecheck": "tsc -p packages/domain && tsc -p packages/runner && tsc -p packages/web && tsc -p packages/web/src && tsc -p packages/stack",
-    "lint": "cd ../.. && biome check --config-path biome.json infra/probabench",
-    "format": "cd ../.. && biome format --config-path biome.json --write infra/probabench",
     "test": "vitest run",
     "check": "bun run typecheck && bun run test && bun run build",
     "bench": "bun packages/runner/src/main.ts",

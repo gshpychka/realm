@@ -33,8 +33,8 @@ pkgs.mkShell {
     pkgs.google-cloud-sdk
     pkgs.awscli2
     pkgs.bun
+    # probabench: the vite, vitest and tsc bins run under #!/usr/bin/env node
     pkgs.nodejs
-    pkgs.biome
     bun2nix.packages.${system}.default
     pkgs.sops
     pkgs.age
