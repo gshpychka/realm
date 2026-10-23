@@ -130,7 +130,7 @@ export class Verifier {
             argv: [
               "/bin/sh",
               "-c",
-              'set -eu; test -d .git && test ! -L .git; temporary=$(mktemp -d); trap \'rm -rf "$temporary"\' EXIT; export GIT_INDEX_FILE="$temporary/index"; git read-tree "$1"; git -c core.hooksPath=/dev/null -c core.fsmonitor=false add -A -- .; git write-tree',
+              'set -eu; test -d .git && test ! -L .git; temporary=$(mktemp -d); trap \'rm -rf "$temporary"\' EXIT; export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1; GIT_ATTR_SOURCE=$(git mktree </dev/null); export GIT_ATTR_SOURCE GIT_INDEX_FILE="$temporary/index"; git read-tree "$1"; git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.attributesFile=/dev/null -c core.autocrlf=false add -A -- .; git write-tree',
               "verify-tree",
               artifact.tree,
             ],

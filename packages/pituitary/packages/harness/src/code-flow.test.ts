@@ -7,10 +7,11 @@ import { Bay } from "./bay.ts";
 import { BayExecutionEnv } from "./bay-environment.ts";
 import { bayWorkspaceFixture } from "./bay-workspace.fixture.ts";
 import type { AgentDefinition } from "./catalog.ts";
+import { type BayExecution, DEFAULT_RUN_LIMITS, type ExecutionContext, type Run } from "./model.ts";
 import { rootAttempt, waitRun } from "./runtime.fixture.ts";
 import { Runtime } from "./runtime.ts";
 import { startRuntime } from "./supervisor.ts";
-import { git } from "./workspaces.ts";
+import { git, Workspaces } from "./workspaces.ts";
 
 function role(name: string, tools: AgentDefinition["manifest"]["tools"]): AgentDefinition {
   return {
@@ -30,6 +31,59 @@ function role(name: string, tools: AgentDefinition["manifest"]["tools"]): AgentD
     machineRevision: (name === "writer" ? "a" : "b").repeat(64),
   };
 }
+
+test("workspace materialization, export and apply preserve working bytes with encoding attributes", async () => {
+  const root = await mkdtemp("/tmp/pituitary-raw-workspace-"),
+    cwd = join(root, "source"),
+    writer = role("writer", []),
+    bay = await bayWorkspaceFixture(root, { writer }),
+    workspaces = new Workspaces(join(root, "state"));
+  try {
+    await git(root, ["init", "-q", cwd]);
+    await writeFile(join(cwd, ".gitattributes"), "*.txt working-tree-encoding=UTF-16LE\n");
+    const original = Buffer.from("original\n", "utf16le"),
+      changed = Buffer.from("changed\n", "utf16le");
+    await writeFile(join(cwd, "source.txt"), original);
+    await git(cwd, ["add", "."]);
+    const index = await readFile(join(cwd, ".git/index")),
+      run = {
+        id: "raw-workspace",
+        cwd,
+        limits: { ...DEFAULT_RUN_LIMITS },
+        workspace: { includeUntracked: [] },
+      } as unknown as Run,
+      input = await workspaces.capture(run),
+      session = await new Bay(bay.catalog.baySocket).start("raw", writer, []),
+      execution: BayExecution = {
+        kind: "bay",
+        socket: bay.catalog.baySocket,
+        sessionName: session.name,
+        recordId: session.id,
+        generation: session.generation,
+        agent: writer,
+        repos: [],
+      };
+    await workspaces.materialize(run, execution, input, "materialize");
+    const guest = bay.guests.get(session.name)!;
+    expect(await readFile(join(guest.work, "workspace/source.txt"))).toEqual(original);
+    await writeFile(join(guest.work, "workspace/source.txt"), changed);
+    const output = await workspaces.export(
+        { run, task: { id: "writer" }, attempt: { id: "attempt", execution } } as ExecutionContext,
+        input,
+        "export",
+      ),
+      integrated = (await workspaces.integrate(run, input, output, "integrate")).artifact!;
+    run.integrationArtifactId = integrated.id;
+    run.acceptedArtifactId = integrated.id;
+    await workspaces.apply(run, input, integrated);
+    expect(await readFile(join(cwd, "source.txt"))).toEqual(changed);
+    expect(await readFile(join(cwd, ".git/index"))).toEqual(index);
+  } finally {
+    await workspaces.close();
+    await bay.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("the workspace fixture reports cancellation and keeps the environment usable", async () => {
   const root = await mkdtemp("/tmp/pituitary-fixture-cancel-"),

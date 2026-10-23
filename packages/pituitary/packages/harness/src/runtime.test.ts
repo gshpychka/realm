@@ -395,6 +395,51 @@ test("clients wait through startup 503 and can retry a rejected readiness check"
   }
 });
 
+test("an opening host that disappears returns to availability instead of waiting out startup", async () => {
+  const root = mkdtempSync("/tmp/pituitary-opening-loss-"),
+    socketPath = join(root, "runtime.sock");
+  const server = createServer((_req, response) => {
+    response.writeHead(503).end('{"ready":false}');
+    server.close();
+  });
+  await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+  try {
+    const client = new Runtime({ stateDirectory: root, socketPath, autoStart: false, startupTimeout: 2000 });
+    await expect(client.list()).rejects.toMatchObject({ code: expect.stringMatching(/ENOENT|ECONNREFUSED/) });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native host commands admit image payloads larger than one MiB", async () => {
+  const f = await fixture();
+  try {
+    const runtime = f.client(),
+      run = await runtime.start({ cwd: f.root }),
+      view = await runtime.attach(run.id);
+    const data = Buffer.alloc(1024 * 1024).toString("base64");
+    f.faux.setResponses([
+      (context) => {
+        const message = context.messages.findLast((entry) => entry.role === "user");
+        expect(message?.content).toContainEqual({ type: "image", mimeType: "image/png", data });
+        return fauxAssistantMessage("Image input received.");
+      },
+    ]);
+    await view.call({
+      type: "prompt",
+      message: "Read this image",
+      images: [{ type: "image", mimeType: "image/png", data }],
+    });
+    await until(async () => JSON.stringify(await view.getMessages()).includes("Image input received."));
+    expect(f.faux.state.callCount).toBe(1);
+    await view.close();
+  } finally {
+    await f.close();
+  }
+});
+
 test("concurrent observers reserve their bounded attachment slots before opening snapshots", async () => {
   const f = await fixture();
   const views: Array<Awaited<ReturnType<Runtime["connect"]>>> = [];
