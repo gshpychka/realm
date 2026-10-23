@@ -1,12 +1,8 @@
 .table-scroll {
   overflow-x: auto;
-  padding: 0 18px;
+  padding: 0 8px;
   /* Rounds the focus ring; the table scrolls by keyboard. */
   border-radius: var(--radius-sm);
-
-  @media (max-width: 650px) {
-    padding: 0 8px;
-  }
 }
 .measurement-table {
   width: 100%;

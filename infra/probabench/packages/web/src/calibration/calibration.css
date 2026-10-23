@@ -298,6 +298,14 @@
     font-size: 15px;
   }
 }
+/* 18px + the cells' 12px lines the first column up with .measurement-foot's 30px. */
+.measurement-run > .table-scroll {
+  padding: 0 18px;
+
+  @media (max-width: 650px) {
+    padding: 0 8px;
+  }
+}
 .measurement-foot {
   display: flex;
   flex-wrap: wrap;
