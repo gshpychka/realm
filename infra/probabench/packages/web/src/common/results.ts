@@ -5,8 +5,8 @@ import { Rx } from "@effect-rx/rx-react";
 import { Results } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 
-// The runner's DEFAULT_OUT lives in public/data, which Vite serves at this URL.
-const RESULTS_URL = "/data/results.json";
+// The runner's DEFAULT_OUT is data/results.json, which vite.config.ts serves at this URL.
+const RESULTS_URL = "/results.json";
 
 /** The history, decoded against the Results contract. */
 export const fetchResults = HttpClient.get(RESULTS_URL).pipe(

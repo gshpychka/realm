@@ -53,16 +53,17 @@ any other failure aborts the benchmark.
 
 ## History
 
-`packages/web/public/data/results.json` is the history and its only copy. The
-CLI appends to it, also when the dev bridge starts it, and the notebook reads
-it. Each model's run is appended as soon as it completes, so an aborted or
-cancelled benchmark keeps the runs it finished and loses only the one in progress.
-Commit the file after each benchmark: `bun run deploy` publishes the working-tree
-copy, committed or not.
+`data/results.json` is the history and its only copy. The CLI appends to it,
+also when the dev bridge starts it, and the notebook reads it. Each model's run
+is appended as soon as it completes, so an aborted or cancelled benchmark keeps
+the runs it finished and loses only the one in progress. Commit the file after
+each benchmark: `bun run deploy` publishes the working-tree copy, committed or
+not.
 
 Saves hold `results.json.lock`. A writer that finds it waits five seconds, then
 fails and names it. If a killed process left it behind, possibly with a
-`.probabench-*` temporary directory, and no benchmark is running, delete both.
+`.probabench-*` temporary directory, and no benchmark is running, delete both:
+`bun run deploy` publishes everything in `data/`.
 
 ## Deploy
 

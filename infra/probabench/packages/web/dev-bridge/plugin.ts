@@ -18,7 +18,7 @@ import { createBenchController, RequestError } from "./controller";
 /**
  * The CLI entry the infra shell's probabench runs, spawned directly so a cancel's SIGTERM
  * reaches the runner rather than a wrapper. Without --out the runner writes its
- * default history file, public/data/results.json, which the page reads back.
+ * default history file, data/results.json, which the page reads back.
  */
 const RUNNER_ENTRY = "packages/runner/src/main.ts";
 const MAX_BODY_BYTES = 4_096;

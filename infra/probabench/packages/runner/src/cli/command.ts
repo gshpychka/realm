@@ -15,12 +15,10 @@ import { executePlan } from "./execute";
 import { promptRunSetup } from "./setup";
 
 /**
- * The web app's published history, which Vite serves at /data/results.json. Resolved
- * from this file rather than the working directory.
+ * The workspace's history, data/results.json, which the web app serves at /results.json.
+ * Resolved from this file rather than the working directory.
  */
-const DEFAULT_OUT = fileURLToPath(
-  new URL("../../../web/public/data/results.json", import.meta.url),
-);
+const DEFAULT_OUT = fileURLToPath(new URL("../../../../data/results.json", import.meta.url));
 
 const DEFAULTS: SamplingOptions = {
   trialsPerStep: 100,
@@ -84,7 +82,7 @@ const options = {
       Schema.NonEmptyString.annotations({ message: () => "--out must be a file path." }),
     ),
     Options.withDefault(DEFAULT_OUT),
-    Options.withDescription("History file (default: the web app's public/data/results.json)."),
+    Options.withDescription("History file (default: the workspace's data/results.json)."),
   ),
   yes: Options.boolean("yes").pipe(
     Options.withAlias("y"),

@@ -21,10 +21,13 @@ export default Alchemy.Stack(
         output: "dist",
         // Vite imports the domain workspace directly. Include it in the build
         // hash so schema-only changes cannot reuse an outdated frontend build.
+        // The history sits outside packages/web too, so it is named here, or a
+        // data-only change would reuse an outdated build.
         include: [
           "**/*",
           "../domain/src/**",
           "../domain/package.json",
+          "../../data/results.json",
           "../../tsconfig.base.json",
           "../../package.json",
         ],
@@ -39,7 +42,7 @@ export default Alchemy.Stack(
           {
             // These filenames are stable across benchmark runs. Alchemy's
             // default for non-HTML files is a year-long immutable browser cache.
-            files: "data/*.json",
+            files: "results.json",
             cacheControl: "public,max-age=0,must-revalidate",
           },
         ],

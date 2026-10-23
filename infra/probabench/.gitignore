@@ -3,5 +3,5 @@
 # Vite build output
 packages/web/dist/
 # results-store write lock and temp dir: present while a save runs, left behind if its writer is killed
-packages/web/public/data/*.lock
-packages/web/public/data/.probabench-*
+data/*.lock
+data/.probabench-*

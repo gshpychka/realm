@@ -10,6 +10,8 @@ import { devBridgePlugin } from "./dev-bridge/plugin";
 // cannot load that source.
 export default defineConfig({
   plugins: [react(), devBridgePlugin()],
+  // Vite serves the workspace's benchmark history, data/results.json, at /results.json.
+  publicDir: "../../data",
   // devBridgePlugin's isLocalRequest guard assumes this loopback-only bind.
   server: { host: "127.0.0.1" },
   // Effect and React make up most of the entry chunk; recharts, the other heavy
