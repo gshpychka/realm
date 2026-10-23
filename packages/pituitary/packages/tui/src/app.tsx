@@ -324,6 +324,7 @@ export function App({
     "app.editor.external": (_key, text) => {
       const edited = editExternally(renderer, text);
       if (edited !== null) editor.current?.set(edited);
+      else flash("external editor failed; your draft is unchanged");
       return true;
     },
     "app.suspend": () => {
