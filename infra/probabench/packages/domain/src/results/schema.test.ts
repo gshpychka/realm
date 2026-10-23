@@ -57,15 +57,10 @@ describe("Run", () => {
 describe("Results", () => {
   it("keeps separate runs of the same model", () => {
     const results = Schema.decodeUnknownSync(Results)({
-      schemaVersion: 2,
       runs: [run, { ...run, id: "run-2" }],
     });
     expect(results.runs.map((entry) => entry.id)).toEqual(["run-1", "run-2"]);
   });
 
-  it.each([
-    { schemaVersion: 1, runs: [] },
-    { schemaVersion: 3, runs: [] },
-    { schemaVersion: 2, runs: [run, run] },
-  ])("rejects %j", rejects(Results));
+  it("rejects duplicate run ids", () => rejects(Results)({ runs: [run, run] }));
 });

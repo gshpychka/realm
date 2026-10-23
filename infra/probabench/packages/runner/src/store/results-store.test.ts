@@ -2,7 +2,6 @@ import { dirname } from "node:path";
 import * as PlatformError from "@effect/platform/Error";
 import * as FileSystem from "@effect/platform/FileSystem";
 import { describe, expect, it } from "@effect/vitest";
-import { SCHEMA_VERSION } from "@probabench/domain";
 import { makeRun } from "@probabench/domain/testing";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -23,7 +22,7 @@ describe("ResultsStore", () => {
     withResultsStore((path) =>
       Effect.gen(function* () {
         const store = yield* ResultsStore;
-        expect(yield* store.load(path)).toEqual({ schemaVersion: SCHEMA_VERSION, runs: [] });
+        expect(yield* store.load(path)).toEqual({ runs: [] });
       }),
     ),
   );

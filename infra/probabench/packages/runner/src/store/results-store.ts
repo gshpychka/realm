@@ -3,7 +3,7 @@
 import { dirname } from "node:path";
 import type { PlatformError } from "@effect/platform/Error";
 import * as FileSystem from "@effect/platform/FileSystem";
-import { Results, type Run, SCHEMA_VERSION } from "@probabench/domain";
+import { Results, type Run } from "@probabench/domain";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import type { ParseError } from "effect/ParseResult";
@@ -27,7 +27,7 @@ export class ResultsStoreError extends Data.TaggedError("ResultsStoreError")<{
 /** How long a writer waits for a busy history file before failing with HistoryLocked. */
 const LOCK_WAIT = Schedule.spaced("25 millis").pipe(Schedule.upTo("5 seconds"));
 
-const emptyResults: Results = { schemaVersion: SCHEMA_VERSION, runs: [] };
+const emptyResults: Results = { runs: [] };
 /** Results as pretty-printed JSON: the history file's format. */
 const ResultsFile = Schema.parseJson(Results, { space: 2 });
 const decode = Schema.decode(ResultsFile);

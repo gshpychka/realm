@@ -3,8 +3,6 @@ import * as Schema from "effect/Schema";
 import { ModelSlug, ReasoningMode } from "../plan/models";
 import { Probability, probabilityGrid, StepPercent, TrialsPerStep } from "../plan/sampling";
 
-export const SCHEMA_VERSION = 2;
-
 /** One trial's outcome: a bit, or the raw text of an unparseable reply. */
 export const Outcome = Schema.Union(
   Schema.Literal(0, 1),
@@ -82,10 +80,7 @@ export type Run = typeof Run.Type;
  * The append-only history document. Models can repeat; run IDs cannot.
  * Decoding ignores unknown keys.
  */
-export const Results = Schema.Struct({
-  schemaVersion: Schema.Literal(SCHEMA_VERSION),
-  runs: Schema.Array(Run),
-}).pipe(
+export const Results = Schema.Struct({ runs: Schema.Array(Run) }).pipe(
   Schema.filter(
     (results) => new Set(results.runs.map((run) => run.id)).size === results.runs.length,
     { message: () => "Run ids must be unique within results" },
