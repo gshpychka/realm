@@ -1,24 +1,22 @@
 import { describe, expect, it } from "@effect/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Job } from "../bridge/protocol";
-import type { Bridge, Connection } from "../bridge/use-bridge";
+import type { Bridge } from "../bridge/use-bridge";
 import { RunSetup } from "./RunSetup";
 
-const bridge = (connection: Connection): Bridge => ({
-  connection,
+const local = (job: Job | null = null, configured = true): Bridge => ({
+  connection: { kind: "local", status: { configured, job }, reconnecting: false },
   pending: false,
   start: () => Promise.resolve(null),
   cancel: () => Promise.resolve(null),
 });
-const local = (job: Job | null = null, configured = true) =>
-  bridge({ kind: "local", status: { configured, job }, reconnecting: false });
-const render = (connection: Bridge) =>
+const render = (bridge: Bridge) =>
   renderToStaticMarkup(
     <RunSetup
       open
       onClose={() => {}}
       onViewResults={() => {}}
-      bridge={connection}
+      bridge={bridge}
       modelSuggestions={[]}
     />,
   );

@@ -11,7 +11,10 @@ const heading = (job: Job | null): string => {
   return job.status === "running" ? "Benchmark in progress." : "Benchmark update.";
 };
 
-/** The benchmark dialog: the latest job while it runs or until it is set aside, else the setup form. */
+/**
+ * The benchmark dialog: the latest job while it runs or until it is set aside, else the
+ * setup form.
+ */
 export function RunSetup({
   open,
   onClose,
