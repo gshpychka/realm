@@ -36,38 +36,43 @@ The infra shell's `probabench` runs the CLI from any directory with the key
 decrypted:
 
 ```sh
-probabench          # guided setup in an interactive terminal
 probabench --list   # model aliases; any OpenRouter model ID works too
-probabench --model claude-haiku-4.5 --trials 10 --step 25 --dry-run
-probabench --model anthropic/claude-haiku-4.5,google/gemini-2.5-flash --trials 100 --yes
-probabench --model openai/gpt-5-mini --reasoning low --trials 20 --yes
+probabench --model claude-haiku-4.5 --dry-run
+probabench --model anthropic/claude-haiku-4.5,google/gemini-2.5-flash --yes
+probabench --model openai/gpt-5-mini --reasoning low --trials 10 --step 25
 probabench --help   # every option and its default
 ```
 
-It prints the plan with its sample count and asks before running unless `--yes`
-is given; without a terminal it refuses.
-`--dry-run` stops after the plan. The aliases are in
-`packages/domain/src/plan/models.ts`; `--reasoning` overrides an alias's mode,
-and a model ID defaults to off.
+`--model` takes comma-separated aliases or OpenRouter model IDs, or `all` for
+every alias. The aliases are in `packages/domain/src/plan/models.ts`;
+`--reasoning` overrides an alias's mode, and a model ID defaults to off.
+`--trials` and `--step` default to the Standard preset, which the page's form
+also starts from: 50 samples at each target probability, every 10%. The CLI
+prints the plan and asks before running unless `--yes` is given; without a
+terminal it refuses. `--dry-run` stops after the plan.
 
-Samples use the provider's default temperature, top_p and top_k. An attempt
-times out after two minutes; timeouts, transport failures, 408, 429 and 5xx
-responses retry up to five times, honoring `Retry-After` for up to a minute, and
-any other failure aborts the benchmark.
+Samples use the provider's default temperature, top_p and top_k. A reply may use
+16 output tokens with reasoning off, or `--max-tokens` (4096 by default) with it
+on; a model that cannot turn reasoning off can spend those 16 thinking and
+record an invalid reply. Target probabilities are sampled one after another, so
+`--concurrency` (10 by default) bounds the requests in flight at each one. An
+attempt times out after two minutes; timeouts, transport failures, 408, 429 and
+5xx responses retry up to five times, honoring `Retry-After` for up to a minute,
+and any other failure aborts the benchmark.
 
 ## History
 
 `data/results.json` is the history and its only copy. The CLI appends to it,
-also when the dev bridge starts it, and the notebook reads it. Each model's run
-is appended as soon as it completes, so an aborted or cancelled benchmark keeps
-the runs it finished and loses only the one in progress. Commit the file after
-each benchmark: `bun run deploy` publishes the working-tree copy, committed or
-not.
+whether started in a terminal or by the dev bridge, and the notebook reads it.
+Each model's run is appended as soon as it completes, so an aborted or cancelled
+benchmark keeps the runs it finished and loses only the one in progress. Commit
+the file after each benchmark: `bun run deploy` publishes the working-tree copy,
+committed or not.
 
-Saves hold `results.json.lock`. A writer that finds it waits five seconds, then
-fails and names it. If a killed process left it behind, possibly with a
-`.probabench-*` temporary directory, and no benchmark is running, delete both:
-`bun run deploy` publishes everything in `data/`.
+Saves are not serialized across processes, so run one benchmark at a time. Each
+save goes through a temporary `.probabench-*` directory beside the history, and
+a process killed mid-save can leave it behind. Delete it: `bun run deploy`
+publishes everything in `data/`.
 
 ## Deploy
 
