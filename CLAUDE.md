@@ -9,10 +9,11 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
 - `modules/system/` - System-level modules, split into `common/`, `darwin/`, and `nixos/`
 - `modules/home-manager/` - home-manager configs (neovim, zsh, tmux, git, and other user tooling)
 - `overlays/` - Package overlays
-- `packages/` - Custom package definitions
+- `packages/` - Application source and Nix packages: `pituitary/` (terminal frontend for regular Pi and Dura), `dura/` (Pi Durable harness and Bay connector), and `bay/` (Go module for isolated NixOS execution environments). Pituitary and Dura share the root Bun workspace.
+- `agents/` - Dura role declarations and their NixOS execution environments
 - `secrets/` - SOPS encrypted secrets
-- `tests/` - NixOS VM tests, exposed as flake checks
-- `infra/` - Cloud infrastructure: Terraform units (GCP VM for buoy, Cloudflare DNS and tunnels), the bootstrap GCE image under `infra/nixos/`, and the `link-sanitizer/` Alchemy stack (Telegram bot on AWS Lambda)
+- `tests/` - NixOS VM tests and declarative module/catalog checks, exposed as flake checks
+- `infra/` - Cloud infrastructure: Terraform units (GCP VM for buoy, Cloudflare DNS and tunnels), the bootstrap GCE image under `infra/nixos/`, and Alchemy stacks: `link-sanitizer/` (Telegram bot on AWS Lambda), `probabench/` (probability benchmark runner and static results site on an assets-only Cloudflare Worker at `probabench.<domain>`)
 - `scripts/` - Artifacts for devices outside the flake, one folder per device with a `runbook.md` as its deployment path: `mudi/` (GL.iNet travel router), `kodi/` (CoreELEC Kodi box) and `voice-pe/` (kitchen Home Assistant Voice PE firmware)
 
 ## Standards
@@ -23,6 +24,9 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
 - Weird / non-obvious things should be explained clearly in comments
 - Refactoring should not be feared
 - Assumptions about functionality should be avoided, or at least documented explicitly
+- Treat the code as fully greenfield. Describe and implement the steady state only: no legacy paths, backwards compatibility, migrations, or upgrade scaffolding.
+- Prefer deleting code to preserving it. Use upstream capabilities directly; retain custom machinery only when the steady-state design needs it.
+- Treat checks and builds as expensive. Batch validation at major milestones; use focused reruns only to resolve concrete failures.
 
 ## Machines
 - eve: M2 Pro MacBook (aarch64-darwin)
@@ -44,6 +48,9 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
     - Build with `nix build .#iso`; SSH into the booted installer via `ssh nixos@iso`
 
 ## Notes
+- Pituitary, Dura, and Bay are maintained here. Public modules are `modules/home-manager/pituitary.nix`, `modules/system/nixos/dura.nix`, `packages/dura/agent-module.nix`, and `modules/system/nixos/bay.nix`.
+- Use `nix develop .#pituitary`, `bun install` at the root, and `cd packages/pituitary && just live` to iterate on the frontend. `just dura attach RUN --watch` reloads only the Dura frontend. `just loop` runs Pituitary's full validation batch.
+- Use `nix develop .#dura` for the harness. Bay's `nix build .#bay` runs its Go tests; `.#checks.x86_64-linux.bay-vm` exercises nested VMs and needs KVM.
+- ProbaBench (`infra/probabench`) is worked on in `nix develop .#infra`: `bun run check` there runs its types, tests and production build, which `.#checks.x86_64-linux.probabench` repeats offline. After dependency changes, `bun install` regenerates `bun.nix`; commit it with `bun.lock`.
 - Nix only sees files that are tracked by git - run `git add` after creating new files before checking config
-- Check config after making non-trivial changes: `nix flake check --all-systems --no-build`
-- Perform a full build if on the relevant machine: `nix flake check`
+- At a major configuration milestone, evaluate with `nix flake check --all-systems --no-build`; build the relevant packages and checks together.

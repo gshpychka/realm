@@ -1,0 +1,15 @@
+{
+  "name": "@pituitary/tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@msgpack/msgpack": "^3.1.3",
+    "@opentui/core": "0.5.9",
+    "@opentui/react": "0.5.9",
+    "@pituitary/ember": "workspace:*",
+    "@pituitary/session": "workspace:*",
+    "@realm/dura": "workspace:*",
+    "react": "^19.2.0"
+  }
+}

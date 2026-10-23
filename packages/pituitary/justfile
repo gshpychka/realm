@@ -1,0 +1,76 @@
+# Every recipe assumes Realm's pituitary dev shell (`nix develop ../..#pituitary`).
+
+default: loop
+
+# One autonomous iteration: every gate, plus screens to read.
+loop:
+    @bash scripts/loop.sh
+
+install:
+    cd ../.. && bun install
+
+typecheck:
+    tsc -p .
+
+lint:
+    biome check .
+
+fmt:
+    biome check --write .
+
+# Build the package exported by Realm.
+package:
+    nix build ../..#pituitary --no-link
+
+# Build a home with every Pituitary option configured and inspect its wrapper.
+module:
+    nix build ../..#checks.$(nix eval --impure --raw --expr builtins.currentSystem).pituitary-home-manager --no-link
+
+# Native conversation projection, framing, pacing, and reducer.
+unit:
+    bun test packages/ scripts/
+
+# The UI in a headless PTY, driven through tui-test.
+e2e:
+    node --test --test-reporter=spec "e2e/**/*.test.ts"
+
+# Key-to-screen latency and rendering speed, one file at a time; figures land in artifacts/perf.
+perf:
+    node --test --test-concurrency=1 --test-reporter=spec "e2e/**/*.perf.ts"
+
+# Operate a live UI session step by step: just tui start --scenario tool, just tui submit hi, just tui screen --style
+[positional-arguments]
+tui *args:
+    @node scripts/tui.ts "$@"
+
+# Refresh artifacts/screens without asserting, for looking at the UI.
+screens:
+    node --test "e2e/**/*.test.ts" > /dev/null 2>&1 || true
+    @for f in artifacts/screens/*.txt; do printf '\n════ %s ════\n' "$(basename "$f" .txt)"; cat "$f"; done
+
+# A native Faux conversation in this terminal; no provider request.
+[positional-arguments]
+run scenario="hello" delay="25":
+    PITUITARY_FIXTURE_SCENARIO="$1" PITUITARY_FIXTURE_DELAY="$2" bun packages/tui/src/app.fixture.tsx
+
+# The frontend connected to regular Pi, using its configured provider credentials.
+[positional-arguments]
+live *args:
+    bun packages/tui/src/main.tsx "$@"
+
+# Dura's host and declared team: just dura run --agent coordinator --name review.
+[positional-arguments]
+dura *args:
+    bun ../dura/src/main.ts "$@"
+
+clean:
+    rm -rf artifacts .tmp
+
+# Every fire primitive in this terminal: just ember <tiles|row1|row2|columns>
+[positional-arguments]
+ember view="tiles":
+    EMBER_VIEW="$1" bun packages/ember/showcase/main.tsx
+
+# Rasterise the e2e screen captures.
+png:
+    @bash scripts/rasterise.sh artifacts/screens

@@ -5,7 +5,18 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["modules/**/*.ts", "modules/**/*.js", "infra/**/*.ts", "!**/node_modules"]
+    "includes": [
+      "package.json",
+      "tsconfig.base.json",
+      "packages/dura/**/*.ts",
+      "packages/dura/**/*.json",
+      "modules/**/*.ts",
+      "modules/**/*.js",
+      "infra/**/*.ts",
+      "infra/**/*.tsx",
+      "infra/**/*.css",
+      "!**/node_modules"
+    ]
   },
   "formatter": {
     "indentStyle": "space",
@@ -16,5 +27,28 @@
     "rules": {
       "preset": "recommended"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/dura/**"],
+      "formatter": { "lineWidth": 110 },
+      "linter": {
+        "rules": {
+          "suspicious": { "noConsole": "off" },
+          "style": { "useImportType": "error" },
+          "performance": { "noReExportAll": "error" }
+        }
+      }
+    },
+    {
+      "includes": ["infra/probabench/**/*.css"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    }
+  ]
 }

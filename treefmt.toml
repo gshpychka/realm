@@ -24,7 +24,12 @@ command = "ruff"
 options = ["format"]
 includes = ["*.py"]
 
+[formatter.gofmt]
+command = "gofmt"
+options = ["-w"]
+includes = ["*.go"]
+
 [formatter.biome]
 command = "biome"
 options = ["format", "--write", "--no-errors-on-unmatched"]
-includes = ["*.ts", "*.js"]
+includes = ["*.ts", "*.tsx", "*.js", "*.json", "*.css"]

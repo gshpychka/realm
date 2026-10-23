@@ -1,0 +1,21 @@
+{
+  "name": "@probabench/stack",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "alchemy dev",
+    "plan": "alchemy plan --stage prod",
+    "deploy": "alchemy deploy --stage prod",
+    "destroy": "alchemy destroy --stage prod"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "^4.0.4",
+    "@effect/platform-node": "^4.0.4",
+    "alchemy": "2.0.0-beta.83",
+    "effect": "^4.0.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3"
+  }
+}

@@ -1,0 +1,122 @@
+.chart-card {
+  padding: 22px 22px 18px;
+
+  @media (max-width: 650px) {
+    padding: 18px 13px 16px;
+  }
+}
+.chart-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+
+  @media (max-width: 650px) {
+    align-items: start;
+    gap: 8px;
+  }
+}
+.chart-heading h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.chart-heading p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 5px;
+
+  @media (max-width: 650px) {
+    max-width: 170px;
+    line-height: 1.7;
+  }
+}
+.chart-description {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin-top: 15px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+/* The negative margins bleed into the card padding, offsetting Recharts' chart margin. */
+.plot {
+  position: relative;
+  height: 300px;
+  margin: 14px -5px 0;
+
+  @media (max-width: 650px) {
+    margin-left: -13px;
+    margin-right: -7px;
+  }
+}
+/* Keep the chart's focus ring inside its svg, which fills the plot. */
+.plot svg:focus-visible {
+  outline-offset: -2px;
+}
+.plot-empty {
+  position: absolute;
+  /* Clear of the axes. */
+  inset: 110px 25px auto 55px;
+  text-align: center;
+  padding: 20px 10px;
+  background: color-mix(in srgb, var(--panel) 91%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.plot-empty span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 8px;
+}
+/* Both charts' tooltips */
+.chart-tooltip {
+  padding: 16px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  width: 288px;
+  max-width: calc(100vw - 48px);
+  box-shadow: 0 12px 36px #0004;
+  font-size: 13px;
+}
+.tooltip-heading {
+  color: var(--muted);
+  display: flex;
+  gap: 30px;
+  justify-content: space-between;
+}
+.tooltip-heading strong {
+  color: var(--text);
+}
+.tooltip-series {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.tooltip-model {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+}
+.tooltip-series strong {
+  overflow-wrap: anywhere;
+}
+.tooltip-observed {
+  margin-left: auto;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.tooltip-series .muted {
+  font-size: 12px;
+  margin-top: 5px;
+}
+.tooltip-value {
+  margin-top: 8px;
+  font: 16px / 1.4 var(--mono);
+}
+.tooltip-value > span {
+  display: block;
+  font: 12px / 1.5 var(--mono);
+  color: var(--muted);
+}

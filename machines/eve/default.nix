@@ -37,6 +37,9 @@
 
   nixpkgs.hostPlatform = "aarch64-darwin";
 
+  # the prompt comes from the user's zsh config
+  programs.zsh.promptInit = "";
+
   users.users.${config.my.user} = {
     home = "/Users/${config.my.user}";
     shell = pkgs.zsh;

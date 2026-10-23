@@ -1,5 +1,21 @@
-import { sanitize } from "@url-sanitize/merged";
+import { compileSanitizer } from "@url-sanitize/core";
+import { mergedCatalog } from "@url-sanitize/merged";
 import type { MessageEntity } from "./telegram.ts";
+
+// Add Instagram share parameters missing from the upstream catalog.
+const sanitize = compileSanitizer({
+  ...mergedCatalog,
+  rules: [
+    ...mergedCatalog.rules,
+    {
+      kind: "strip-param",
+      source: "custom",
+      provider: "instagram",
+      urlPattern: "^https?://(?:[a-z0-9-]+\\.)*instagram\\.com(?::[0-9]+)?(?:/|$)",
+      paramPattern: "^psln$",
+    },
+  ],
+});
 
 const schemePattern = /^[a-z][a-z\d+.-]*:\/\//i;
 

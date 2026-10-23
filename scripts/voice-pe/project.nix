@@ -4,7 +4,7 @@ let
   lock = builtins.fromJSON (builtins.readFile ./public-inputs.lock.json);
   assets = builtins.fromJSON (builtins.readFile ./assets.lock.json);
   fetch = item: pkgs.fetchurl { inherit (item) url sha256; };
-  inherit (pkgs) esphome;
+  esphome = import ./esphome.nix { inherit pkgs; };
   python = pkgs.python3.withPackages (_: esphome.propagatedBuildInputs);
   components = builtins.path {
     path = ./components;

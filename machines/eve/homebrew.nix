@@ -23,7 +23,11 @@
     extraEnv = {
       HOMEBREW_NO_ANALYTICS = "1";
     };
+    # `brew shellenv` costs ~300ms per interactive zsh; systemPath below
+    # carries its PATH entry
+    enableZshIntegration = false;
   };
+  environment.systemPath = [ "${config.homebrew.prefix}/bin" ];
   homebrew = {
     enable = true;
     taps = builtins.attrNames config.nix-homebrew.taps;
@@ -48,7 +52,6 @@
       "raycast"
       "ghostty"
       # -- utilities --
-      "mullvad-vpn"
       "transmission"
       "commander-one"
       "forklift"
@@ -95,7 +98,6 @@
         name = "plexamp";
         greedy = true;
       }
-      "jellyfin-media-player"
       "coconutbattery"
       "losslesscut"
       "handbrake-app"
@@ -122,7 +124,6 @@
         name = "zoom";
         greedy = true;
       }
-      "cursor"
     ];
     brews = [
       "dagger"

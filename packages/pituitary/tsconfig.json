@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/react"
+  },
+  "include": ["packages/**/*.ts", "packages/**/*.tsx", "e2e/**/*.ts", "scripts/**/*.ts"]
+}

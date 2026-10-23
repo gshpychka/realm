@@ -28,6 +28,7 @@ in
         window-padding-balance = true;
         quit-after-last-window-closed = true;
         auto-update = "off";
+        copy-on-select = "clipboard";
 
         font-family = "JetBrainsMono Nerd Font";
         font-family-bold = "JetBrainsMono Nerd Font";

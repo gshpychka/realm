@@ -11,34 +11,123 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  flake-check:
-    runs-on: ubuntu-latest
+  flake-eval:
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
-      # Private flake inputs are fetched over SSH with read-only deploy keys; a deploy key
-      # authorises one repository, so each repository gets a host alias offering only its key.
-      - name: Configure deploy keys
-        env:
-          BAY_DEPLOY_KEY: ${{ secrets.BAY_DEPLOY_KEY }}
-          PITUITARY_DEPLOY_KEY: ${{ secrets.PITUITARY_DEPLOY_KEY }}
-        run: |
-          # creates the SSH directory, private to the runner user
-          install -d -m 700 ~/.ssh
-          # routes fetches of gshpychka/<repo> through a host alias that authenticates with the given key
-          deploy_key() {
-            # writes the private key as ~/.ssh/<repo>, readable only by the runner user
-            (umask 077 && printf '%s\n' "$2" > ~/.ssh/"$1")
-            # declares <repo>.github.com as github.com, authenticating with that key alone
-            printf 'Host %s.github.com\n  HostName github.com\n  IdentityFile ~/.ssh/%s\n  IdentitiesOnly yes\n' "$1" "$1" >> ~/.ssh/config
-            # rewrites the flake input's URL onto the alias for every git invocation
-            git config --global url."ssh://git@$1.github.com/gshpychka/$1".insteadOf "ssh://git@github.com/gshpychka/$1"
-          }
-          # routes the bay input through its deploy key
-          deploy_key bay "$BAY_DEPLOY_KEY"
-          # routes the pituitary input through its deploy key
-          deploy_key pituitary "$PITUITARY_DEPLOY_KEY"
-      # Fleet-wide eval: all systems, no machine builds.
+      # Evaluate flake outputs on every supported system without building checks.
       - run: nix flake check --all-systems --no-build
-      # --no-build skips the check derivations, so build the lint/format checks to run them.
-      - run: nix build --no-link -L .#checks.x86_64-linux.statix .#checks.x86_64-linux.deadnix .#checks.x86_64-linux.treefmt
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Check lint and formatting
+        run: >-
+          nix build --no-link -L
+          .#checks.x86_64-linux.statix
+          .#checks.x86_64-linux.deadnix
+          .#checks.x86_64-linux.treefmt
+          .#checks.x86_64-linux.biome
+          .#checks.x86_64-linux.ruff
+          .#checks.x86_64-linux.bay-shellcheck
+
+  bay:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      # Building Bay runs every Go package's tests, including Flare's.
+      - name: Check Bay
+        run: >-
+          nix build --no-link -L
+          .#bay .#flare
+
+  pituitary:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Build Pituitary and check its Home Manager module
+        run: >-
+          nix build --no-link -L
+          .#pituitary
+          .#checks.x86_64-linux.pituitary-home-manager
+      - name: Check Pituitary
+        run: >-
+          nix develop .#pituitary --command bash -c
+          'bun install --frozen-lockfile && cd packages/pituitary && just typecheck unit e2e'
+
+  dura:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Build Dura and check its agent declarations
+        run: >-
+          nix build --no-link -L
+          .#dura
+          .#checks.x86_64-linux.dura-agents
+          .#checks.x86_64-linux.dura-catalog
+      - name: Check Dura
+        run: >-
+          nix develop .#dura --command bash -c
+          'bun install --frozen-lockfile && tsc -p packages/dura && bun test packages/dura'
+
+  pi-extensions:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.pi-extensions
+
+  link-sanitizer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.link-sanitizer
+
+  probabench:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.probabench
+
+  voice-pe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.voice-pe
+
+  voice-broker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.voice-broker
+
+  arr-sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.arr-sync
+
+  tautulli:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.tautulli
+
+  kodi:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.kodi
