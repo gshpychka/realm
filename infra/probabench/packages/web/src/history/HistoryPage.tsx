@@ -1,20 +1,16 @@
 import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
-import { lazy, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { type NotebookView, PANEL_ID, toggleHidden, type UpdateView } from "../app/notebook-view";
-import { ChartBoundary } from "../common/chart-frame";
 import { count, date, modelName, percent, samplingText, time } from "../common/format";
 import { Measurements } from "../common/Measurements";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { inspectedRun, runsByDay, visibleHistory, withComparison } from "../common/run-history";
+import { HistoryChart } from "./HistoryChart";
 import { RunDetail } from "./RunDetail";
 import "./history.css";
 
 // history.css stacks the inspector above the timeline at this width; keep the two in sync.
 const STACKED_LAYOUT = "(max-width: 900px)";
-
-const HistoryChart = lazy(() =>
-  import("./HistoryChart").then((module) => ({ default: module.HistoryChart })),
-);
 
 export function HistoryPage({
   runs,
@@ -91,14 +87,12 @@ export function HistoryPage({
             </button>
           ))}
         </fieldset>
-        <ChartBoundary>
-          <HistoryChart
-            runs={visible}
-            styles={styles}
-            selectedId={inspected?.id}
-            onSelect={inspect}
-          />
-        </ChartBoundary>
+        <HistoryChart
+          runs={visible}
+          styles={styles}
+          selectedId={inspected?.id}
+          onSelect={inspect}
+        />
       </section>
       {view.runId && !runs.some((run) => run.id === view.runId) ? (
         <p role="status" className="panel-note">

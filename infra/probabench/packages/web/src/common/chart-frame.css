@@ -123,30 +123,3 @@
   font: 12px / 1.5 var(--mono);
   color: var(--muted);
 }
-/* ChartBoundary */
-.chart-loading,
-.chart-failure {
-  min-height: 390px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 14px;
-}
-.chart-loading {
-  padding: 110px 20px;
-}
-.chart-loading .loading-line {
-  margin-bottom: 20px;
-}
-.chart-failure {
-  padding: 70px 20px;
-}
-.chart-failure h3 {
-  font: 400 var(--title-sm) / 1.3 var(--serif);
-  color: var(--text);
-}
-.chart-failure p {
-  font-size: 13px;
-  line-height: 1.8;
-  max-width: 330px;
-  margin: 14px auto 20px;
-}
