@@ -25,39 +25,6 @@ const describe = (job: Job, cancelling: boolean) => {
   };
 };
 
-/** A finished run leads with what is most likely next: its results, or another try. */
-function FinishedActions({
-  completed,
-  onViewResults,
-  onSetUpAnother,
-}: {
-  completed: boolean;
-  onViewResults: () => void;
-  onSetUpAnother: () => void;
-}) {
-  if (completed)
-    return (
-      <>
-        <button type="button" className="button primary" onClick={onViewResults}>
-          View results <span aria-hidden="true">↗</span>
-        </button>
-        <button type="button" className="text-button" onClick={onSetUpAnother}>
-          Set up another
-        </button>
-      </>
-    );
-  return (
-    <>
-      <button type="button" className="button primary" onClick={onSetUpAnother}>
-        Set up another benchmark <span aria-hidden="true">↗</span>
-      </button>
-      <button type="button" className="text-button" onClick={onViewResults}>
-        View saved history
-      </button>
-    </>
-  );
-}
-
 /** One job's progress, keyed by job id so a new job starts from fresh state. */
 export function JobProgress({
   job,
@@ -124,11 +91,14 @@ export function JobProgress({
             </button>
           </>
         ) : (
-          <FinishedActions
-            completed={job.status === "completed"}
-            onViewResults={onViewResults}
-            onSetUpAnother={onSetUpAnother}
-          />
+          <>
+            <button type="button" className="button primary" onClick={onViewResults}>
+              View results <span aria-hidden="true">↗</span>
+            </button>
+            <button type="button" className="text-button" onClick={onSetUpAnother}>
+              Set up another
+            </button>
+          </>
         )}
       </div>
       <details className="job-output" open={job.status === "failed"}>

@@ -36,7 +36,7 @@ describe("benchmark setup workflow", () => {
     const html = render(local());
     expect(html).toContain("550");
     expect(html).toContain("Start benchmark");
-    expect(html).toContain("Choose a custom budget");
+    expect(html).toContain("Custom budget");
     expect(html).not.toContain('id="benchmark-trials"');
     expect(html).not.toContain('id="benchmark-step"');
     expect(html).toContain('maxLength="200"');

@@ -36,11 +36,6 @@ export const initialSettings: Settings = {
 const submitLabel = (connection: Connection["kind"], pending: boolean): string =>
   connection === "connecting" ? "Connecting…" : pending ? "Starting…" : "Start benchmark";
 
-const customToggleLabel = (custom: boolean, onPreset: boolean): string => {
-  if (custom) return "Hide custom settings";
-  return onPreset ? "Choose a custom budget" : "Edit custom budget";
-};
-
 function NumberField({
   id,
   label,
@@ -185,7 +180,7 @@ export function SetupForm({
               aria-controls="custom-sampling"
               onClick={() => onChange({ custom: !custom })}
             >
-              {customToggleLabel(custom, selectedPreset !== undefined)}
+              Custom budget
               <span aria-hidden="true">{custom ? "−" : "+"}</span>
             </button>
           </fieldset>
