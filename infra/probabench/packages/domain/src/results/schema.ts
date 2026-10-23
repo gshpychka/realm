@@ -1,6 +1,6 @@
 // The persisted results contract.
 import * as Schema from "effect/Schema";
-import { ReasoningMode } from "../plan/models";
+import { ModelSlug, ReasoningMode } from "../plan/models";
 import { Probability, probabilityGrid, StepPercent, TrialsPerStep } from "../plan/sampling";
 
 export const SCHEMA_VERSION = 2;
@@ -43,7 +43,7 @@ export const Run = Schema.Struct({
    */
   model: Schema.NonEmptyTrimmedString,
   /** OpenRouter model ID sent to the API. */
-  modelSlug: Schema.NonEmptyTrimmedString,
+  modelSlug: ModelSlug,
   /** Reasoning mode used for every sample. */
   reasoning: ReasoningMode,
   trialsPerStep: TrialsPerStep,

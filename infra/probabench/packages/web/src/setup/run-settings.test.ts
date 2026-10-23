@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { makeRun } from "@probabench/domain/testing";
+import { BROWSER_LIMITS } from "../bridge/protocol";
 import { benchmarkCommand, DEFAULT_REQUEST, presetFor, rerunRequest } from "./run-settings";
 
 const request = { model: "vendor/model", trialsPerStep: 10, stepPercent: 25, concurrency: 5 };
@@ -38,6 +39,8 @@ describe("rerunRequest", () => {
   });
 
   it("offers no rerun the form cannot express", () => {
-    expect(rerunRequest(makeRun({ modelSlug: "not-a-slug" }))).toBeNull();
+    expect(
+      rerunRequest(makeRun({ modelSlug: `vendor/${"m".repeat(BROWSER_LIMITS.modelLength)}` })),
+    ).toBeNull();
   });
 });

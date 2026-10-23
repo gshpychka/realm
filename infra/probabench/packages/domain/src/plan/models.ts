@@ -36,8 +36,12 @@ export const MODEL_ALIASES: readonly [ModelAlias, ...ModelAlias[]] = [
 ];
 
 /** An OpenRouter vendor/model ID, optionally with a :variant such as :free. */
-const isModelSlug = (value: string): boolean =>
-  /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value);
+export const ModelSlug = Schema.String.pipe(
+  Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:/-]*$/, {
+    message: () => "Expected an OpenRouter vendor/model ID",
+  }),
+);
+const isModelSlug = Schema.is(ModelSlug);
 
 /**
  * The model one alias or OpenRouter model ID names, or undefined for any other token

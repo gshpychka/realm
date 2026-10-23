@@ -39,6 +39,7 @@ describe("Run", () => {
     { id: "  " },
     { model: "  " },
     { modelSlug: " vendor/model" },
+    { modelSlug: "not-a-slug" },
     { reasoning: undefined },
     { trialsPerStep: 0 },
     { trialsPerStep: 1.5 },

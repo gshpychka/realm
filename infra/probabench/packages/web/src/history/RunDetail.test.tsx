@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { makeRun } from "@probabench/domain/testing";
 import { renderToStaticMarkup } from "react-dom/server";
+import { BROWSER_LIMITS } from "../bridge/protocol";
 import { RunDetail } from "./RunDetail";
 
 const run = makeRun({
@@ -23,6 +24,8 @@ describe("RunDetail", () => {
 
   it("offers a rerun only when the setup form can express the run", () => {
     expect(render()).toContain("Run again");
-    expect(render(makeRun({ modelSlug: "not-a-slug" }))).not.toContain("Run again");
+    expect(
+      render(makeRun({ modelSlug: `vendor/${"m".repeat(BROWSER_LIMITS.modelLength)}` })),
+    ).not.toContain("Run again");
   });
 });
