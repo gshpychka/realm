@@ -32,6 +32,12 @@ func (c *cli) start(ctx context.Context, args []string) error {
 	if len(positional) > 1 {
 		spec.Program = positional[1]
 	}
+	if spec.Program != "" && len(command) > 0 {
+		return usageError("give a program or a command, not both")
+	}
+	if len(command) > 0 && command[0] == "" {
+		return usageError("the command is empty")
+	}
 	fmt.Fprintf(c.stderr, "starting %s...\n", name)
 	s, err := c.client.Start(ctx, name, spec)
 	if err != nil {

@@ -66,6 +66,17 @@ func (c *cli) run(args []string) int {
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
+		if len(args) == 2 && args[0] == "help" {
+			if slices.Contains([]string{"help", "-h", "--help"}, args[1]) {
+				usage(c.stdout)
+				return 0
+			}
+			return c.run([]string{args[1], "--help"})
+		}
+		if len(args) > 1 {
+			fmt.Fprintln(c.stderr, "usage: bay help [COMMAND]")
+			return exitUsage
+		}
 		usage(c.stdout)
 		return 0
 	}
@@ -84,7 +95,7 @@ func (c *cli) run(args []string) int {
 		fmt.Fprintf(c.stdout, "usage: bay %s\n%s\n", cmd.synopsis(), cmd.summary)
 		return 0
 	case errors.As(err, &mistake):
-		fmt.Fprintf(c.stderr, "bay %s: %s\nusage: bay %s\n", cmd.name, mistake, cmd.synopsis())
+		fmt.Fprintf(c.stderr, "bay %s: %s\nusage: bay %s\n", cmd.name, text.Printable(mistake.Error()), cmd.synopsis())
 		return exitUsage
 	default:
 		fmt.Fprintf(c.stderr, "bay: %s\n", text.Printable(err.Error()))

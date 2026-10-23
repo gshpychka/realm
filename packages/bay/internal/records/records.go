@@ -134,10 +134,16 @@ func (s *Store) Delete(name string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(dir, recordFile)); errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("%w: %s", ErrNotFound, name)
+	if _, err := os.Stat(filepath.Join(dir, recordFile)); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%w: %s", ErrNotFound, name)
+		}
+		return err
 	}
-	return os.RemoveAll(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	return syncDir(s.root)
 }
 
 // WriteHistory durably replaces the program history of the record named name with the tar archive read from r. An

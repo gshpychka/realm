@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -90,10 +91,16 @@ func run(args []string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := validateServeConfig(config); err != nil {
+		return fmt.Errorf("config %s: %w", *configPath, err)
+	}
 	return serve(config, log)
 }
 
 func loadConfig(file string) (Config, error) {
+	if file == "" {
+		return Config{}, errors.New("-config is required")
+	}
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return Config{}, err
@@ -104,7 +111,31 @@ func loadConfig(file string) (Config, error) {
 	if err := dec.Decode(&config); err != nil {
 		return Config{}, fmt.Errorf("config %s: %w", file, err)
 	}
+	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return Config{}, fmt.Errorf("config %s: expected one JSON object", file)
+	}
+	for _, field := range []struct{ name, value string }{
+		{"incusSocket", config.IncusSocket}, {"project", config.Project}, {"base", config.Base},
+	} {
+		if field.value == "" {
+			return Config{}, fmt.Errorf("config %s: %s is required", file, field.name)
+		}
+	}
 	return config, nil
+}
+
+func validateServeConfig(config Config) error {
+	for _, field := range []struct{ name, value string }{
+		{"records", config.Records}, {"mirrors", config.Mirrors}, {"gatewaySocket", config.GatewaySocket},
+	} {
+		if field.value == "" {
+			return fmt.Errorf("%s is required", field.name)
+		}
+	}
+	if config.MaxRunning < 1 || config.MirrorRefresh.Duration < 0 {
+		return errors.New("maxRunning must be positive and mirrorRefresh must not be negative")
+	}
+	return nil
 }
 
 func serve(config Config, log *slog.Logger) error {

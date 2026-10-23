@@ -62,9 +62,9 @@ type RepoRef struct {
 
 // ParseRepo parses "owner/name" or "owner/name@ref".
 func ParseRepo(spec string) (RepoRef, error) {
-	repo, ref, _ := strings.Cut(spec, "@")
+	repo, ref, hasRef := strings.Cut(spec, "@")
 	owner, name, ok := strings.Cut(repo, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") || (hasRef && ref == "") {
 		return RepoRef{}, fmt.Errorf("%w: repo %q is not owner/name or owner/name@ref", fault.Invalid, spec)
 	}
 	return RepoRef{Owner: owner, Name: name, Ref: ref}, nil

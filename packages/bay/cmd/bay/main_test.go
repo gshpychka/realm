@@ -18,9 +18,9 @@ func TestHelp(t *testing.T) {
 	names := []string{
 		"start", "attach", "list", "show", "suspend", "resume", "snap", "end", "rm", "threads", "read", "send", "help",
 	}
-	for _, arg := range []string{"help", "-h", "--help"} {
-		t.Run(arg, func(t *testing.T) {
-			got := h.run("", arg)
+	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"help", "help"}, {"help", "-h"}, {"help", "--help"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			got := h.run("", args...)
 			if got.code != 0 || got.stderr != "" {
 				t.Fatalf("exit %d, stderr %q", got.code, got.stderr)
 			}
@@ -62,6 +62,8 @@ func TestCommandHelp(t *testing.T) {
 		{[]string{"start", "foo", "--help"},
 			"usage: bay start NAME [PROGRAM] [--repo OWNER/NAME[@REF]]... [-- COMMAND...]\n"},
 		{[]string{"list", "-h"}, "usage: bay list [--json]\n"},
+		{[]string{"help", "list"}, "usage: bay list [--json]\n"},
+		{[]string{"help", "read"}, "usage: bay read THREAD [--json]\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.args[0], func(t *testing.T) {
@@ -85,10 +87,13 @@ func TestUsageErrors(t *testing.T) {
 	}{
 		{"start without a name", "", []string{"start"}, "missing argument"},
 		{"start with three names", "", []string{"start", "a", "b", "c"}, `unexpected argument "c"`},
+		{"start with a program and a command", "", []string{"start", "a", "claude", "--", "sh"}, "give a program or a command"},
+		{"start with an empty command", "", []string{"start", "a", "--", ""}, "the command is empty"},
 		{"start with an unknown flag", "", []string{"start", "foo", "--bogus"}, "flag provided but not defined: -bogus"},
 		{"start repo without a value", "", []string{"start", "foo", "--repo"}, "flag needs an argument: -repo"},
 		{"start with a malformed repo", "", []string{"start", "foo", "--repo", "nope"},
 			`invalid value "nope" for flag -repo: want OWNER/NAME or OWNER/NAME@REF`},
+		{"start with an empty repo revision", "", []string{"start", "foo", "--repo", "acme/bay@"}, "want OWNER/NAME or OWNER/NAME@REF"},
 		{"attach without a name", "", []string{"attach"}, "missing argument"},
 		{"list with an argument", "", []string{"list", "extra"}, `unexpected argument "extra"`},
 		{"show without a name", "", []string{"show"}, "missing argument"},
@@ -100,6 +105,7 @@ func TestUsageErrors(t *testing.T) {
 		{"threads with an argument", "", []string{"threads", "extra"}, `unexpected argument "extra"`},
 		{"read without a thread", "", []string{"read"}, "missing argument"},
 		{"read a thread that is not a number", "", []string{"read", "abc"}, `invalid thread "abc"`},
+		{"read a negative thread", "", []string{"read", "-1"}, "flag provided but not defined"},
 		{"send without a recipient", "", []string{"send"}, "missing argument"},
 		{"send to a thread that is not a number", "", []string{"send", "--thread", "x", "alice", "hi"}, "invalid value"},
 		{"send nothing", "", []string{"send", "alice"}, "empty message"},

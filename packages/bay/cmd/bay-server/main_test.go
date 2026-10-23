@@ -52,6 +52,9 @@ func TestLoadConfigRejects(t *testing.T) {
 		"a bad duration":    `{"mirrorRefresh": "soon"}`,
 		"a number duration": `{"mirrorRefresh": 5}`,
 		"not json":          `project: bay`,
+		"a second value":    `{} {}`,
+		"a null config":     `null`,
+		"an empty config":   `{}`,
 	} {
 		file := writeConfig(t, content)
 		if _, err := loadConfig(file); err == nil || !strings.Contains(err.Error(), file) {
@@ -109,5 +112,18 @@ func TestShutdownWaitsForRequestsInFlight(t *testing.T) {
 	}
 	if got := <-answered; got != "done" {
 		t.Fatalf("the request in flight got %q, want its answer", got)
+	}
+}
+
+func TestBaseConfigDoesNotRequireServeOnlyFields(t *testing.T) {
+	config, err := loadConfig(writeConfig(t, `{
+		"incusSocket":"/var/lib/incus/unix.socket", "project":"bay",
+		"base":"bay-base"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateServeConfig(config); err == nil {
+		t.Fatal("server accepted a base-only configuration")
 	}
 }
