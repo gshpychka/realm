@@ -1,12 +1,9 @@
 // Resolves the CLI's model tokens (aliases, OpenRouter model IDs and "all") into
 // benchmark targets, one per model series.
-import {
-  ALL_TARGETS,
-  isModelSlug,
-  MODEL_ALIASES,
-  type ModelAlias,
-  ReasoningMode,
-} from "@probabench/domain";
+import { MODEL_ALIASES, type Model, ReasoningMode, resolveModel } from "@probabench/domain";
+
+/** CLI token expanding to every alias; a browser run takes exactly one model. */
+export const ALL_ALIASES = "all";
 
 /** A resolved series; id is the series label persisted as Run.model, never a run identity. */
 export interface BenchTarget {
@@ -15,8 +12,6 @@ export interface BenchTarget {
   readonly slug: string;
   readonly reasoning: ReasoningMode;
 }
-
-type Model = Omit<ModelAlias, "alias">;
 
 export const modelLabel = (slug: string, reasoning: ReasoningMode): string =>
   reasoning === "off" ? slug : `${slug} [reasoning=${reasoning}]`;
@@ -27,10 +22,9 @@ const target = (model: Model, mode?: ReasoningMode): BenchTarget => {
 };
 
 const modelsFor = (token: string): readonly Model[] => {
-  if (token === ALL_TARGETS) return MODEL_ALIASES;
-  const alias = MODEL_ALIASES.find((candidate) => candidate.alias === token);
-  if (alias) return [alias];
-  return isModelSlug(token) ? [{ slug: token }] : [];
+  if (token === ALL_ALIASES) return MODEL_ALIASES;
+  const model = resolveModel(token);
+  return model ? [model] : [];
 };
 
 /** The tokens of a comma-separated model list, trimmed. */
@@ -67,6 +61,6 @@ export const describeAliases = (): string =>
   [
     "OpenRouter model aliases (or pass any OpenRouter model ID):",
     ...MODEL_ALIASES.map((model) => `  ${model.alias} → ${target(model).id}`),
-    `  ${ALL_TARGETS} → every alias`,
+    `  ${ALL_ALIASES} → every alias`,
     `Use --reasoning ${ReasoningMode.literals.join("|")} to override the selected models' reasoning mode.`,
   ].join("\n");

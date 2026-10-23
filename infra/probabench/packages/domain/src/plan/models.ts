@@ -6,7 +6,6 @@ import * as Schema from "effect/Schema";
 /** Reasoning a run requests from OpenRouter; "off" disables it. */
 export const ReasoningMode = Schema.Literal("off", "low", "medium", "high", "xhigh");
 export type ReasoningMode = typeof ReasoningMode.Type;
-export type ReasoningEffort = Exclude<ReasoningMode, "off">;
 
 export const REASONING_LABELS: Readonly<Record<ReasoningMode, string>> = {
   off: "Off",
@@ -16,11 +15,15 @@ export const REASONING_LABELS: Readonly<Record<ReasoningMode, string>> = {
   xhigh: "Extra high",
 };
 
-export interface ModelAlias {
-  readonly alias: string;
+export interface Model {
+  /** OpenRouter model ID. */
   readonly slug: string;
-  /** Reasoning the alias requests unless a run overrides it; absent means off. */
-  readonly reasoning?: ReasoningEffort;
+  /** Reasoning the model runs with unless a run overrides it; absent means off. */
+  readonly reasoning?: Exclude<ReasoningMode, "off">;
+}
+
+interface ModelAlias extends Model {
+  readonly alias: string;
 }
 
 /** Convenient starting points; any OpenRouter model ID also works. */
@@ -32,17 +35,16 @@ export const MODEL_ALIASES: readonly [ModelAlias, ...ModelAlias[]] = [
   { alias: "gemini-2.5-flash", slug: "google/gemini-2.5-flash" },
 ];
 
-/** CLI token expanding to every alias; a browser run takes exactly one model. */
-export const ALL_TARGETS = "all";
-
 /** An OpenRouter vendor/model ID, optionally with a :variant such as :free. */
-export const isModelSlug = (value: string): boolean =>
+const isModelSlug = (value: string): boolean =>
   /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value);
 
 /**
- * One alias or OpenRouter model ID: exactly the single tokens the runner resolves.
- * Neither form can start with "-" or contain a comma or whitespace, so a token is
- * also safe to pass as one command-line argument.
+ * The model one alias or OpenRouter model ID names, or undefined for any other token
+ * (the CLI's "all" is not one model). Neither form can start with "-" or contain a
+ * comma or whitespace, so a token that resolves is also safe to pass as one
+ * command-line argument.
  */
-export const isModelToken = (token: string): boolean =>
-  MODEL_ALIASES.some((model) => model.alias === token) || isModelSlug(token);
+export const resolveModel = (token: string): Model | undefined =>
+  MODEL_ALIASES.find((model) => model.alias === token) ??
+  (isModelSlug(token) ? { slug: token } : undefined);

@@ -82,6 +82,3 @@ export const Results = Schema.Struct({
   ),
 );
 export type Results = typeof Results.Type;
-
-/** Results as pretty-printed JSON: the on-disk format. */
-export const ResultsJson = Schema.parseJson(Results, { space: 2 });

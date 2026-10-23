@@ -27,7 +27,7 @@ export const probabilityGrid = (stepPercent: number): ReadonlyArray<Probability>
  */
 export const MAX_RETRIES = 5;
 
-export interface PlanBudget {
+interface PlanBudget {
   /** Target probabilities per model. */
   readonly points: number;
   readonly samples: number;

@@ -1,6 +1,6 @@
 // The dev bridge's HTTP contract, shared by the Vite plugin (dev-bridge/) and the
 // browser client. Every route answers with BridgeStatus, or BridgeFailure on error.
-import { isModelToken, planBudget, ReasoningMode } from "@probabench/domain";
+import { planBudget, ReasoningMode, resolveModel } from "@probabench/domain";
 import * as ParseResult from "effect/ParseResult";
 import * as Schema from "effect/Schema";
 
@@ -31,7 +31,7 @@ export const BenchRequest = Schema.Struct({
     Schema.maxLength(BROWSER_LIMITS.modelLength, {
       message: () => `Model IDs are at most ${BROWSER_LIMITS.modelLength} characters.`,
     }),
-    Schema.filter(isModelToken, {
+    Schema.filter((token) => resolveModel(token) !== undefined, {
       message: () => "Choose one model alias or OpenRouter vendor/model ID.",
     }),
   ),

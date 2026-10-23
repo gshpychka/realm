@@ -3,7 +3,7 @@
 import { measurePoint } from "../results/metrics";
 import type { Point } from "../results/schema";
 
-export interface PointProgress {
+interface PointProgress {
   /** The series label, Run.model. */
   readonly model: string;
   readonly point: Point;

@@ -4,13 +4,13 @@ import { fileURLToPath } from "node:url";
 import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Prompt from "@effect/cli/Prompt";
-import { ALL_TARGETS, ReasoningMode, StepPercent, TrialsPerStep } from "@probabench/domain";
+import { ReasoningMode, StepPercent, TrialsPerStep } from "@probabench/domain";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { describePlan, InvalidOptions, resolvePlan, type SamplingOptions } from "../plan/plan";
-import { describeAliases, splitModels } from "../plan/targets";
+import { ALL_ALIASES, describeAliases, splitModels } from "../plan/targets";
 import { executePlan } from "./execute";
 import { promptRunSetup } from "./setup";
 
@@ -47,7 +47,7 @@ const options = {
     Options.withAlias("m"),
     Options.optional,
     Options.withDescription(
-      `Comma-separated OpenRouter model IDs (vendor/model) or aliases; "${ALL_TARGETS}" selects every alias.`,
+      `Comma-separated OpenRouter model IDs (vendor/model) or aliases; "${ALL_ALIASES}" selects every alias.`,
     ),
   ),
   trials: integerFlag("trials", TrialsPerStep, "a positive integer").pipe(

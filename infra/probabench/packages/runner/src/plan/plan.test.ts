@@ -1,13 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ALL_TARGETS, MAX_RETRIES, MODEL_ALIASES } from "@probabench/domain";
+import { MAX_RETRIES, MODEL_ALIASES } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 import { describePlan, resolvePlan } from "./plan";
+import { ALL_ALIASES } from "./targets";
 
 describe("resolvePlan", () => {
   it.effect("describes every target with its samples and retry ceiling", () =>
     Effect.gen(function* () {
       const plan = yield* resolvePlan({
-        models: [ALL_TARGETS],
+        models: [ALL_ALIASES],
         reasoning: undefined,
         options: { trialsPerStep: 5, stepPercent: 50, concurrency: 1, maxTokens: 4096 },
         out: "results.json",

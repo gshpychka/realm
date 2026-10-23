@@ -1,10 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ALL_TARGETS, isModelToken, MODEL_ALIASES } from "@probabench/domain";
-import { describeAliases, selectTargets, splitModels } from "./targets";
+import { MODEL_ALIASES } from "@probabench/domain";
+import { ALL_ALIASES, describeAliases, selectTargets, splitModels } from "./targets";
 
 describe("OpenRouter model selection", () => {
-  it("keeps convenient unique aliases and lists their canonical slugs", () => {
-    expect(new Set(MODEL_ALIASES.map((model) => model.alias)).size).toBe(MODEL_ALIASES.length);
+  it("lists aliases with their canonical slugs", () => {
     expect(describeAliases()).toContain("claude-haiku-4.5 → anthropic/claude-haiku-4.5");
   });
 
@@ -13,7 +12,7 @@ describe("OpenRouter model selection", () => {
   });
 
   it("expands all aliases with distinct reasoning variants", () => {
-    const selection = selectTargets([ALL_TARGETS]);
+    const selection = selectTargets([ALL_ALIASES]);
     expect(selection.targets).toHaveLength(MODEL_ALIASES.length);
     expect(selection.unknown).toEqual([]);
     expect(selection.targets.map((target) => target.id)).toContain(
@@ -34,8 +33,8 @@ describe("OpenRouter model selection", () => {
     expect(selectTargets(["claude-haiku-4.5", "anthropic/claude-haiku-4.5"]).targets).toHaveLength(
       1,
     );
-    expect(selectTargets([ALL_TARGETS, "gpt-5-mini-low"]).targets).toEqual(
-      selectTargets([ALL_TARGETS]).targets,
+    expect(selectTargets([ALL_ALIASES, "gpt-5-mini-low"]).targets).toEqual(
+      selectTargets([ALL_ALIASES]).targets,
     );
   });
 
@@ -67,17 +66,5 @@ describe("OpenRouter model selection", () => {
     ]);
     expect(selection.targets).toHaveLength(1);
     expect(selection.unknown).toEqual(["typo", "vendor/", "/model", "vendor/model with spaces"]);
-  });
-
-  it.each([
-    "claude-haiku-4.5",
-    "vendor/model:free",
-    "future-model",
-    "vendor/model+x",
-    "a:b/c",
-    "vendor/",
-    "--help",
-  ])("agrees with the domain's model-token rule for %s", (token) => {
-    expect(isModelToken(token)).toBe(selectTargets([token]).unknown.length === 0);
   });
 });

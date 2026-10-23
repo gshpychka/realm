@@ -2,7 +2,6 @@
 // It runs offline, offering the aliases or any OpenRouter model ID.
 import * as Prompt from "@effect/cli/Prompt";
 import {
-  ALL_TARGETS,
   MODEL_ALIASES,
   planBudget,
   REASONING_LABELS,
@@ -11,7 +10,7 @@ import {
 } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 import type { SamplingOptions } from "../plan/plan";
-import { modelLabel, selectTargets, splitModels } from "../plan/targets";
+import { ALL_ALIASES, modelLabel, selectTargets, splitModels } from "../plan/targets";
 
 type Sizing = Pick<SamplingOptions, "trialsPerStep" | "stepPercent">;
 
@@ -21,7 +20,7 @@ const modelChoices: ReadonlyArray<Prompt.Prompt.SelectChoice<readonly string[] |
     value: [model.alias],
   })),
   { title: "Enter another OpenRouter model", value: "custom" },
-  { title: "Run every alias", value: [ALL_TARGETS] },
+  { title: "Run every alias", value: [ALL_ALIASES] },
 ];
 
 const sizeChoices: ReadonlyArray<Prompt.Prompt.SelectChoice<Sizing | "custom">> = [
