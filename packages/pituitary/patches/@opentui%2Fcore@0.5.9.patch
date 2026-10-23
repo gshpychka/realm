@@ -1,0 +1,142 @@
+diff --git a/index.bun.js b/index.bun.js
+index aac4107..0cf6902 100644
+--- a/index.bun.js
++++ b/index.bun.js
+@@ -11833,6 +11833,22 @@ class MarkdownRenderable extends Renderable {
+     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode;
+     this.updateBlocks();
+   }
++  add(child, index) {
++    // Finalizing streaming can replace a block without resizing the markdown.
++    // A new text node must inherit the same integer width as an existing one.
++    if (child instanceof CodeRenderable && this._lastLayoutFrame >= 0)
++      child.width = Math.max(1, Math.floor(this.width));
++    return super.add(child, index);
++  }
++  onResize(width, height) {
++    // Yoga can round a percentage-width text node one cell wider than its parent.
++    // Match drawing to the width used to measure wrapped rows and scroll offsets.
++    for (const child of this.getChildren()) {
++      if (child instanceof CodeRenderable)
++        child.width = Math.max(1, Math.floor(width));
++    }
++    super.onResize(width, height);
++  }
+   get content() {
+     return this._content;
+   }
+@@ -11962,10 +11978,10 @@ class MarkdownRenderable extends Renderable {
+     return this.createChunk(text, "default");
+   }
+   createInitialStyledText(token) {
+-    if (!this._streaming)
+-      return;
+     const chunks = [];
+-    if ("tokens" in token && Array.isArray(token.tokens)) {
++    if (token.type === "blockquote") {
++      this.renderInlineContent(x.lexInline(this.getBlockquoteContent(token)), chunks);
++    } else if ("tokens" in token && Array.isArray(token.tokens)) {
+       this.renderInlineContent(token.tokens, chunks);
+     }
+     if (chunks.length === 0 && "text" in token && typeof token.text === "string") {
+@@ -12135,7 +12151,7 @@ class MarkdownRenderable extends Renderable {
+       flexShrink: 0,
+       marginBottom
+     });
+-    renderable.add(this.createMarkdownCodeRenderable(this.getBlockquoteContent(token), `${id}-content`, 0, this._linkifyMarkdownChunks, "markup.quote"));
++    renderable.add(this.createMarkdownCodeRenderable(this.getBlockquoteContent(token), `${id}-content`, 0, this._linkifyMarkdownChunks, "markup.quote", this.createInitialStyledText(token)));
+     return renderable;
+   }
+   createListRenderable(token, id, marginBottom = 0) {
+@@ -12378,7 +12394,7 @@ class MarkdownRenderable extends Renderable {
+     renderable.marginBottom = marginBottom;
+     const child = renderable.getChildren()[0];
+     if (child instanceof CodeRenderable) {
+-      this.applyMarkdownCodeRenderable(child, this.getBlockquoteContent(token), 0, "markup.quote");
++      this.applyMarkdownCodeRenderable(child, this.getBlockquoteContent(token), 0, "markup.quote", this.createInitialStyledText(token));
+       return;
+     }
+     for (const existing of renderable.getChildren()) {
+@@ -14125,6 +14141,11 @@ class ScrollBoxRenderable extends BoxRenderable {
+       }
+     });
+     this.wrapper.add(this.horizontalScrollBar);
++    // A disabled axis must not briefly take space while the first layout settles.
++    if (!scrollX)
++      this.horizontalScrollBar.visible = false;
++    if (!scrollY)
++      this.verticalScrollBar.visible = false;
+     this.recalculateBarProps();
+     if (stickyStart && stickyScroll) {
+       this.applyStickyStart(stickyStart);
+diff --git a/index.node.js b/index.node.js
+index 3ed4085..3eced70 100644
+--- a/index.node.js
++++ b/index.node.js
+@@ -11832,6 +11832,22 @@ class MarkdownRenderable extends Renderable {
+     this._internalBlockMode = options.internalBlockMode ?? this._contentDefaultOptions.internalBlockMode;
+     this.updateBlocks();
+   }
++  add(child, index) {
++    // Finalizing streaming can replace a block without resizing the markdown.
++    // A new text node must inherit the same integer width as an existing one.
++    if (child instanceof CodeRenderable && this._lastLayoutFrame >= 0)
++      child.width = Math.max(1, Math.floor(this.width));
++    return super.add(child, index);
++  }
++  onResize(width, height) {
++    // Yoga can round a percentage-width text node one cell wider than its parent.
++    // Match drawing to the width used to measure wrapped rows and scroll offsets.
++    for (const child of this.getChildren()) {
++      if (child instanceof CodeRenderable)
++        child.width = Math.max(1, Math.floor(width));
++    }
++    super.onResize(width, height);
++  }
+   get content() {
+     return this._content;
+   }
+@@ -11961,10 +11977,10 @@ class MarkdownRenderable extends Renderable {
+     return this.createChunk(text, "default");
+   }
+   createInitialStyledText(token) {
+-    if (!this._streaming)
+-      return;
+     const chunks = [];
+-    if ("tokens" in token && Array.isArray(token.tokens)) {
++    if (token.type === "blockquote") {
++      this.renderInlineContent(x.lexInline(this.getBlockquoteContent(token)), chunks);
++    } else if ("tokens" in token && Array.isArray(token.tokens)) {
+       this.renderInlineContent(token.tokens, chunks);
+     }
+     if (chunks.length === 0 && "text" in token && typeof token.text === "string") {
+@@ -12134,7 +12150,7 @@ class MarkdownRenderable extends Renderable {
+       flexShrink: 0,
+       marginBottom
+     });
+-    renderable.add(this.createMarkdownCodeRenderable(this.getBlockquoteContent(token), `${id}-content`, 0, this._linkifyMarkdownChunks, "markup.quote"));
++    renderable.add(this.createMarkdownCodeRenderable(this.getBlockquoteContent(token), `${id}-content`, 0, this._linkifyMarkdownChunks, "markup.quote", this.createInitialStyledText(token)));
+     return renderable;
+   }
+   createListRenderable(token, id, marginBottom = 0) {
+@@ -12377,7 +12393,7 @@ class MarkdownRenderable extends Renderable {
+     renderable.marginBottom = marginBottom;
+     const child = renderable.getChildren()[0];
+     if (child instanceof CodeRenderable) {
+-      this.applyMarkdownCodeRenderable(child, this.getBlockquoteContent(token), 0, "markup.quote");
++      this.applyMarkdownCodeRenderable(child, this.getBlockquoteContent(token), 0, "markup.quote", this.createInitialStyledText(token));
+       return;
+     }
+     for (const existing of renderable.getChildren()) {
+@@ -14124,6 +14140,11 @@ class ScrollBoxRenderable extends BoxRenderable {
+       }
+     });
+     this.wrapper.add(this.horizontalScrollBar);
++    // A disabled axis must not briefly take space while the first layout settles.
++    if (!scrollX)
++      this.horizontalScrollBar.visible = false;
++    if (!scrollY)
++      this.verticalScrollBar.visible = false;
+     this.recalculateBarProps();
+     if (stickyStart && stickyScroll) {
+       this.applyStickyStart(stickyStart);

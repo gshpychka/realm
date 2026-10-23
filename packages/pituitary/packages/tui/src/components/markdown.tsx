@@ -51,6 +51,20 @@ export interface MarkdownProps {
   fg?: string;
 }
 
+const TABLES = { style: "grid" } as const;
+
 export function Markdown({ content, streaming = false, fg = theme.assistant }: MarkdownProps) {
-  return <markdown content={content} syntaxStyle={syntax} streaming={streaming} conceal fg={fg} />;
+  // Structured blocks keep the first frame's layout equal to the highlighted frame:
+  // headings and lists can draw immediately without exposing their markdown markers.
+  return (
+    <markdown
+      content={content}
+      syntaxStyle={syntax}
+      streaming={streaming}
+      internalBlockMode="top-level"
+      tableOptions={TABLES}
+      conceal
+      fg={fg}
+    />
+  );
 }

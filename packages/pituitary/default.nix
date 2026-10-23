@@ -17,7 +17,16 @@ let
       ./bun.lock
       ./tsconfig.json
       ./tsconfig.base.json
-      (lib.fileset.fileFilter (file: !(lib.hasSuffix ".test.ts" file.name)) ./packages)
+      ./patches
+      (lib.fileset.fileFilter (
+        file:
+        !(lib.any (suffix: lib.hasSuffix suffix file.name) [
+          ".test.ts"
+          ".test.tsx"
+          ".fixture.ts"
+          ".fixture.tsx"
+        ])
+      ) ./packages)
     ];
   };
 
@@ -47,7 +56,7 @@ let
     '';
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-mPj2/NamOsDEy8Ud+Tkcg0xtPCqocPOZ9FwaqjTZYZ4=";
+    outputHash = "sha256-VXtaZ23j8zNF4wVfQ3PspcN41nJapSlTl08tz74csos=";
   };
 in
 stdenvNoCC.mkDerivation {
