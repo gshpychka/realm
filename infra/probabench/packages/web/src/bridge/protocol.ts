@@ -12,7 +12,6 @@ export const BRIDGE_ROUTES = {
 
 /** What the page lets one run ask for; the CLI accepts larger runs. */
 export const BROWSER_LIMITS = {
-  modelLength: 200,
   trialsPerStep: 10_000,
   concurrency: 50,
   samples: 100_000,
@@ -28,9 +27,6 @@ const wholeNumber = (label: string, max: number) =>
 /** A run the page may start: settings the form can express, within the browser's sample budget. */
 export const BenchRequest = Schema.Struct({
   model: Schema.String.pipe(
-    Schema.maxLength(BROWSER_LIMITS.modelLength, {
-      message: () => `Model IDs are at most ${BROWSER_LIMITS.modelLength} characters.`,
-    }),
     Schema.filter((token) => resolveModel(token) !== undefined, {
       message: () => "Choose one model alias or OpenRouter vendor/model ID.",
     }),

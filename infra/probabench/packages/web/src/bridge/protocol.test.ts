@@ -16,19 +16,16 @@ const problem = (value: unknown) =>
   });
 
 describe("BenchRequest", () => {
-  it.each([
-    request,
-    { ...request, model: "gpt-5-mini-low" },
-    { ...request, model: `vendor/${"a".repeat(193)}` },
-    { ...request, reasoning: "xhigh" },
-  ])("accepts %j", (value) => {
-    expect(problem(value)).toBeNull();
-  });
+  it.each([request, { ...request, model: "gpt-5-mini-low" }, { ...request, reasoning: "xhigh" }])(
+    "accepts %j",
+    (value) => {
+      expect(problem(value)).toBeNull();
+    },
+  );
 
   it.each([
     [null, "Expected"],
     [{ ...request, model: "all" }, "Choose one model"],
-    [{ ...request, model: `vendor/${"a".repeat(194)}` }, "at most 200 characters"],
     [{ ...request, trialsPerStep: 0 }, "Samples per target must be a whole number"],
     [{ ...request, trialsPerStep: 1.5 }, "Samples per target must be a whole number"],
     [{ ...request, trialsPerStep: 10_001 }, "from 1 to 10,000"],

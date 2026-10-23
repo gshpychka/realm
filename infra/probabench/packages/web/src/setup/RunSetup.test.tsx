@@ -31,14 +31,13 @@ const job = (status: Job["status"]): Job => ({
 });
 
 describe("benchmark setup workflow", () => {
-  it("starts with clear presets, hides custom sample inputs, and validates the API's model length", () => {
+  it("starts with clear presets and hides custom sample inputs", () => {
     const html = render(local());
     expect(html).toContain("550");
     expect(html).toContain("Start benchmark");
     expect(html).toContain("Custom budget");
     expect(html).not.toContain('id="benchmark-trials"');
     expect(html).not.toContain('id="benchmark-step"');
-    expect(html).toContain('maxLength="200"');
     expect(html).toContain("Advanced settings");
   });
 

@@ -128,7 +128,6 @@ export function SetupForm({
             onChange={(event) => onChange({ model: event.target.value })}
             placeholder="anthropic/claude-haiku-4.5"
             required
-            maxLength={BROWSER_LIMITS.modelLength}
             autoComplete="off"
             spellCheck={false}
           />
@@ -141,11 +140,7 @@ export function SetupForm({
               />
             ))}
             {[...new Set(modelSuggestions)]
-              .filter(
-                (slug) =>
-                  slug.length <= BROWSER_LIMITS.modelLength &&
-                  !MODEL_ALIASES.some((alias) => alias.alias === slug),
-              )
+              .filter((slug) => !MODEL_ALIASES.some((alias) => alias.alias === slug))
               .map((slug) => (
                 <option key={slug} value={slug} />
               ))}
