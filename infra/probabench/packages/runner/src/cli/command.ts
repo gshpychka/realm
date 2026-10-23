@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Prompt from "@effect/cli/Prompt";
-import { RESULTS_FILE, ReasoningMode, StepPercent, TrialsPerStep } from "@probabench/domain";
+import {
+  DEFAULT_PRESET,
+  RESULTS_FILE,
+  ReasoningMode,
+  StepPercent,
+  TrialsPerStep,
+} from "@probabench/domain";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -24,8 +30,8 @@ export const DEFAULT_OUT = fileURLToPath(
 );
 
 const DEFAULTS: SamplingOptions = {
-  trialsPerStep: 100,
-  stepPercent: 10,
+  trialsPerStep: DEFAULT_PRESET.trialsPerStep,
+  stepPercent: DEFAULT_PRESET.stepPercent,
   concurrency: 10,
   maxTokens: 4096,
 };

@@ -36,9 +36,19 @@ export const planBudget = (
   return { points, samples: models * points * plan.trialsPerStep };
 };
 
+const STANDARD = {
+  label: "Standard",
+  description: "A closer look",
+  trialsPerStep: 50,
+  stepPercent: 10,
+} as const;
+
 export const SAMPLING_PRESETS = [
   { label: "Quick", description: "Find the shape", trialsPerStep: 10, stepPercent: 25 },
-  { label: "Standard", description: "A closer look", trialsPerStep: 50, stepPercent: 10 },
+  STANDARD,
   { label: "Thorough", description: "More evidence", trialsPerStep: 100, stepPercent: 5 },
 ] as const;
 export type SamplingPreset = (typeof SAMPLING_PRESETS)[number];
+
+/** Sizing when nothing else is chosen: the CLI without --trials/--step, and a new setup form. */
+export const DEFAULT_PRESET: SamplingPreset = STANDARD;

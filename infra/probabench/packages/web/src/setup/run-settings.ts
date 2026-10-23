@@ -2,6 +2,7 @@
 // terminal command for a request.
 import {
   benchArgs,
+  DEFAULT_PRESET,
   MODEL_ALIASES,
   type Run,
   SAMPLING_PRESETS,
@@ -14,14 +15,14 @@ import { BenchRequest } from "../bridge/protocol";
 /** A request handed to the setup form; a new key makes the form take it again. */
 export type BenchmarkDraft = BenchRequest & { readonly key: string };
 
-/** Gentler than the CLI default of 10; saved runs do not record concurrency, so reruns use it too. */
+/** Gentler than the CLI default; saved runs do not record concurrency, so reruns use it too. */
 const BROWSER_CONCURRENCY = 5;
 
-/** A new benchmark starts from the first alias and the Standard preset. */
+/** A new benchmark starts from the first alias and the default preset. */
 export const DEFAULT_REQUEST: BenchRequest = {
   model: MODEL_ALIASES[0].alias,
-  trialsPerStep: SAMPLING_PRESETS[1].trialsPerStep,
-  stepPercent: SAMPLING_PRESETS[1].stepPercent,
+  trialsPerStep: DEFAULT_PRESET.trialsPerStep,
+  stepPercent: DEFAULT_PRESET.stepPercent,
   concurrency: BROWSER_CONCURRENCY,
 };
 
