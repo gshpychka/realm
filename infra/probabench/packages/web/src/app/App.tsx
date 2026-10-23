@@ -1,4 +1,4 @@
-import { Result, useRxRefresh, useRxValue } from "@effect-rx/rx-react";
+import { Result, useAtomRefresh, useAtomValue } from "@effect-atom/atom-react";
 import type { Run } from "@probabench/domain";
 import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
@@ -12,7 +12,7 @@ import { RunSetup } from "../setup/RunSetup";
 import { EmptyNotebook } from "./EmptyNotebook";
 import { Masthead } from "./Masthead";
 import { NotebookTabs } from "./NotebookTabs";
-import { resultsRx } from "./results";
+import { resultsAtom } from "./results";
 import { SiteHeader } from "./SiteHeader";
 import "./app.css";
 
@@ -44,8 +44,8 @@ function NotebookError({ retrying, onRetry }: { retrying: boolean; onRetry: () =
 }
 
 export function App() {
-  const result = useRxValue(resultsRx);
-  const refresh = useRxRefresh(resultsRx);
+  const result = useAtomValue(resultsAtom);
+  const refresh = useAtomRefresh(resultsAtom);
   const bridge = useBridge();
   // A finished run may have appended to the history, so read it again. This also fires once
   // for a run that finished before the page loaded; that extra read is harmless.
