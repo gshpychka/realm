@@ -121,7 +121,11 @@ export function loadKeymap(
   agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
   own = ownKeybindingsFile(),
 ): Keymap {
-  return keymap({ ...readBindings(join(agentDir, "keybindings.json")), ...readBindings(own) });
+  const local = readBindings(own);
+  const inherited = Object.fromEntries(
+    Object.entries(readBindings(join(agentDir, "keybindings.json"))).filter(([action]) => !Object.hasOwn(local, action)),
+  );
+  return keymap({ ...inherited, ...local });
 }
 
 /** A keybindings file's action map; empty when the file is absent or malformed. */
