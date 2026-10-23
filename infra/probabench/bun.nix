@@ -738,8 +738,8 @@
     hash = "sha512-EOZmNzcV8uJ0mae3DhTsiHgoNCuu1J9mULQpGCh62zN3PxPTd+qI9tJvk5jOst8WHKQNwJWR3b39t0XvfBB0WQ==";
   };
   "@probabench/domain" = copyPathToStore ./packages/domain;
-  "@probabench/infra" = copyPathToStore ./infra;
   "@probabench/runner" = copyPathToStore ./packages/runner;
+  "@probabench/stack" = copyPathToStore ./packages/stack;
   "@probabench/web" = copyPathToStore ./packages/web;
   "@puppeteer/browsers@3.2.6" = fetchurl {
     url = "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-3.2.6.tgz";

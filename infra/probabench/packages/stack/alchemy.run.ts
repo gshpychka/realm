@@ -15,7 +15,7 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const site = yield* AWS.Website.StaticSite("Web", {
-      path: "../packages/web",
+      path: "../web",
       build: {
         command: "bun run build",
         output: "dist",
