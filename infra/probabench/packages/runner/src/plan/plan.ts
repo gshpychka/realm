@@ -1,5 +1,5 @@
-// A benchmark plan: the resolved model series, sampling options and history file
-// that the CLI prints, confirms and executes.
+// A benchmark plan: the resolved model series, sampling options and history file the
+// CLI executes; describePlan is what it prints and confirms.
 import { planBudget, type ReasoningMode } from "@probabench/domain";
 import { isNonEmptyReadonlyArray, type NonEmptyReadonlyArray } from "effect/Array";
 import * as Data from "effect/Data";
@@ -15,7 +15,7 @@ export class InvalidOptions extends Data.TaggedError("InvalidOptions")<{
 export interface SamplingOptions {
   readonly trialsPerStep: number;
   readonly stepPercent: number;
-  /** Most samples in flight at once. */
+  /** Most samples in flight at once, within one probability point. */
   readonly concurrency: number;
   /** Output ceiling for series that reason. */
   readonly maxTokens: number;
@@ -54,10 +54,11 @@ export const resolvePlan = (request: {
 };
 
 export const describePlan = ({ series, options }: BenchPlan): string => {
-  const { samples } = planBudget(options, series.length);
+  const { points, samples } = planBudget(options, series.length);
   return [
     `Models (${series.length}):`,
     ...series.map((entry) => `  ${entry.modelSlug} · reasoning ${entry.reasoning}`),
+    `Sampling: ${options.trialsPerStep} trials × ${points} points (${options.stepPercent}% step), ${options.concurrency} at a time`,
     `Projected samples: ${samples}`,
   ].join("\n");
 };

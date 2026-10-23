@@ -1,23 +1,24 @@
 import { describe, expect, it } from "@effect/vitest";
-import { MODEL_ALIASES } from "@probabench/domain";
-import * as Effect from "effect/Effect";
-import { describePlan, resolvePlan } from "./plan";
-import { ALL_ALIASES } from "./series";
+import { describePlan } from "./plan";
 
-describe("resolvePlan", () => {
-  it.effect("describes every series with its sample count", () =>
-    Effect.gen(function* () {
-      const plan = yield* resolvePlan({
-        models: [ALL_ALIASES],
-        reasoning: undefined,
-        options: { trialsPerStep: 5, stepPercent: 50, concurrency: 1, maxTokens: 4096 },
-        out: "results.json",
-      });
-      const samples = MODEL_ALIASES.length * 3 * 5;
-      const description = describePlan(plan);
-      expect(description).toContain(`Models (${MODEL_ALIASES.length}):`);
-      expect(description).toContain("  anthropic/claude-sonnet-4.5 · reasoning high");
-      expect(description).toContain(`Projected samples: ${samples}`);
-    }),
-  );
+describe("describePlan", () => {
+  it("prints every series and what the plan samples across all of them", () => {
+    const description = describePlan({
+      series: [
+        { model: "vendor/a", modelSlug: "vendor/a", reasoning: "off" },
+        { model: "vendor/b [reasoning=low]", modelSlug: "vendor/b", reasoning: "low" },
+      ],
+      options: { trialsPerStep: 5, stepPercent: 50, concurrency: 1, maxTokens: 16 },
+      out: "results.json",
+    });
+    expect(description).toBe(
+      [
+        "Models (2):",
+        "  vendor/a · reasoning off",
+        "  vendor/b · reasoning low",
+        "Sampling: 5 trials × 3 points (50% step), 1 at a time",
+        "Projected samples: 30",
+      ].join("\n"),
+    );
+  });
 });
