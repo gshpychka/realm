@@ -11,6 +11,7 @@ let
       fileset = lib.fileset.unions [
         ./go.mod
         ./go.sum
+        ./bay-session.sh
         ./cmd
         ./internal
       ];

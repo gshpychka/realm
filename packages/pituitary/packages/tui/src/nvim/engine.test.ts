@@ -158,6 +158,7 @@ describe("the draft engine", () => {
     engine.set("hello wöZrld 😀 x", 9);
     engine.input("abc");
     expect(await engine.take()).toBe("hello wöZabcrld 😀 x");
+    expect(textOf(engine.draft)).toBe("");
     await until((draft) => textOf(draft) === "" && draft.mode === "i");
   });
 
