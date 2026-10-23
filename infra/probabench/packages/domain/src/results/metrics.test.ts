@@ -19,11 +19,10 @@ describe("measurePoint", () => {
       valid: 3,
       total: 4,
       observed: 2 / 3,
-      error: 2 / 3 - 0.25,
     });
   });
 
-  it("reports no rate, interval or error when nothing is valid", () => {
+  it("reports no rate or interval when nothing is valid", () => {
     expect(measurePoint(point(0.5, [invalid, invalid]))).toEqual({
       ones: 0,
       zeros: 0,
@@ -32,7 +31,6 @@ describe("measurePoint", () => {
       total: 2,
       observed: null,
       interval: null,
-      error: null,
     });
   });
 

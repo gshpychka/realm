@@ -1,27 +1,8 @@
 // Calibration metrics over the results contract.
-import type { Outcome, Point, Run } from "./schema";
+import type { Point, Run } from "./schema";
 
 /** Two-sided 95% standard-normal quantile. */
 const Z_95 = 1.959963984540054;
-
-/** How a point's outcomes resolved. */
-export interface Tally {
-  readonly ones: number;
-  readonly zeros: number;
-  readonly invalid: number;
-}
-
-const tally = (outcomes: ReadonlyArray<Outcome>): Tally => {
-  let ones = 0;
-  let zeros = 0;
-  let invalid = 0;
-  for (const outcome of outcomes) {
-    if (outcome === 1) ones++;
-    else if (outcome === 0) zeros++;
-    else invalid++;
-  }
-  return { ones, zeros, invalid };
-};
 
 /** 95% Wilson score interval for `ones` successes in `valid` > 0 independent samples. */
 const wilson95 = (ones: number, valid: number): readonly [number, number] => {
@@ -37,32 +18,33 @@ const wilson95 = (ones: number, valid: number): readonly [number, number] => {
  * What was measured at one target. Invalid outcomes are counted but excluded from
  * the rate, so the rate fields are null when no outcome is valid.
  */
-export interface PointMeasurement extends Tally {
+export interface PointMeasurement {
+  readonly ones: number;
+  readonly zeros: number;
+  readonly invalid: number;
   readonly valid: number;
   readonly total: number;
   /** Fraction of valid outcomes that are 1. */
   readonly observed: number | null;
   readonly interval: readonly [number, number] | null;
-  /** Absolute calibration error; sampling noise keeps it above 0 even for a calibrated model. */
-  readonly error: number | null;
 }
 
-export const measurePoint = ({ x, outcomes }: Point): PointMeasurement => {
-  const counted = tally(outcomes);
-  const valid = counted.ones + counted.zeros;
-  const measured = { ...counted, valid, total: outcomes.length };
-  if (valid === 0) return { ...measured, observed: null, interval: null, error: null };
-  const observed = counted.ones / valid;
-  return {
-    ...measured,
-    observed,
-    interval: wilson95(counted.ones, valid),
-    error: Math.abs(observed - x),
-  };
+export const measurePoint = ({ outcomes }: Point): PointMeasurement => {
+  const ones = outcomes.filter((outcome) => outcome === 1).length;
+  const zeros = outcomes.filter((outcome) => outcome === 0).length;
+  const valid = ones + zeros;
+  const counts = { ones, zeros, invalid: outcomes.length - valid, valid, total: outcomes.length };
+  return valid === 0
+    ? { ...counts, observed: null, interval: null }
+    : { ...counts, observed: ones / valid, interval: wilson95(ones, valid) };
 };
 
 export interface RunSummary {
-  /** Mean absolute calibration error over the points with a valid outcome, as a fraction. */
+  /**
+   * Mean absolute calibration error over the points with a valid outcome, as a
+   * fraction. Sampling noise biases each point's error upward, so even a calibrated
+   * model averages above 0.
+   */
   readonly meanCalibrationError: number | null;
   readonly valid: number;
   readonly total: number;
@@ -80,8 +62,10 @@ export interface RunSummary {
  * noise remains; compare runs together with coverage and validity.
  */
 export const summarizeRun = (run: Run): RunSummary => {
-  const measured = run.points.map(measurePoint);
-  const errors = measured.flatMap((point) => (point.error === null ? [] : [point.error]));
+  const measured = run.points.map((point) => ({ x: point.x, ...measurePoint(point) }));
+  const errors = measured.flatMap(({ x, observed }) =>
+    observed === null ? [] : [Math.abs(observed - x)],
+  );
   const valid = measured.reduce((sum, point) => sum + point.valid, 0);
   const total = measured.reduce((sum, point) => sum + point.total, 0);
   return {
