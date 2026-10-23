@@ -107,6 +107,13 @@ button,
 summary {
   cursor: pointer;
 }
+/* Disclosures draw their own .expand-sign. */
+summary {
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -287,11 +294,12 @@ var {
   background: var(--accent);
   animation: pulse 1.8s infinite;
 }
-/* A + that turns into × while its details are open. */
+/* A + that turns into × while its disclosure is open. */
 .expand-sign {
+  display: inline-block;
   color: var(--muted);
 }
-details[open] > summary .expand-sign {
+:is(details[open] > summary, [aria-expanded="true"]) .expand-sign {
   transform: rotate(45deg);
 }
 

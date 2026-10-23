@@ -248,7 +248,6 @@
   align-items: center;
   gap: 10px;
   padding: 18px 20px;
-  list-style: none;
   font-size: 13px;
 
   @media (max-width: 650px) {
@@ -256,9 +255,6 @@
     padding: 16px;
     gap: 8px;
   }
-}
-.measurement-run > summary::-webkit-details-marker {
-  display: none;
 }
 .measurement-run[open] > summary {
   border-bottom: 1px solid var(--line);

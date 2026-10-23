@@ -215,7 +215,6 @@ body:has(.run-dialog[open]) {
   }
 }
 .advanced summary {
-  list-style: none;
   padding: 12px 0 15px;
   font-size: 12px;
 
@@ -223,20 +222,7 @@ body:has(.run-dialog[open]) {
     padding: 10px 0 12px;
   }
 }
-.advanced summary::-webkit-details-marker {
-  display: none;
-}
-.advanced summary::before {
-  content: "+";
-  display: inline-block;
-  font-size: 14px;
-  color: var(--muted);
-  margin-right: 8px;
-}
-.advanced[open] summary::before {
-  content: "−";
-}
-.advanced summary > span {
+.advanced summary > span:last-child {
   float: right;
   color: var(--muted);
 }

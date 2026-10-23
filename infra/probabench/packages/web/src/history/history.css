@@ -279,10 +279,6 @@
   align-items: center;
   font-size: 12px;
   padding: 18px 20px;
-  list-style: none;
-}
-.inspector-measurements > summary::-webkit-details-marker {
-  display: none;
 }
 .inspector-measurements > .table-scroll {
   padding: 0 8px;

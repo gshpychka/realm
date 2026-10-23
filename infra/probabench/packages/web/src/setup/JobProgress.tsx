@@ -101,7 +101,12 @@ export function JobProgress({
       </div>
       {job.log === "" ? null : (
         <details className="job-output" open={job.status === "failed"}>
-          <summary>Runner output</summary>
+          <summary>
+            Runner output{" "}
+            <span className="expand-sign" aria-hidden="true">
+              +
+            </span>
+          </summary>
           <pre
             // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll the runner output.
             tabIndex={0}

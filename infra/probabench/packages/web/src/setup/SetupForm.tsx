@@ -159,7 +159,9 @@ export function SetupForm({
               onClick={() => onChange({ custom: !custom })}
             >
               Custom budget
-              <span aria-hidden="true">{custom ? "−" : "+"}</span>
+              <span className="expand-sign" aria-hidden="true">
+                +
+              </span>
             </button>
           </fieldset>
           {custom ? (
@@ -183,7 +185,11 @@ export function SetupForm({
           ) : null}
           <details className="advanced">
             <summary>
-              Advanced settings <span>Concurrency & reasoning</span>
+              Advanced settings{" "}
+              <span className="expand-sign" aria-hidden="true">
+                +
+              </span>
+              <span>Concurrency & reasoning</span>
             </summary>
             <div className="form-grid">
               <NumberField
