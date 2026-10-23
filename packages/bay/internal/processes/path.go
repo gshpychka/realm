@@ -13,6 +13,10 @@ func Executable(name string, environment []string, cwd string) (string, error) {
 	if strings.ContainsRune(name, '/') {
 		return name, nil
 	}
+	cwd, err := filepath.Abs(cwd)
+	if err != nil {
+		return "", err
+	}
 	path := ""
 	for _, entry := range environment {
 		if strings.HasPrefix(entry, "PATH=") {

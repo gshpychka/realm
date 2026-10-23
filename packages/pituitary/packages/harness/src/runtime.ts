@@ -138,7 +138,11 @@ export class Runtime {
       return;
     } catch (error) {
       opening = error instanceof RuntimeError && error.status === 503;
-      if (!opening && (this.options.autoStart === false || this.external)) throw error;
+      if (
+        !opening &&
+        (this.options.autoStart === false || process.env.PITUITARY_AUTO_START === "0" || this.external)
+      )
+        throw error;
       if (
         !opening &&
         (!(error instanceof Error) ||
