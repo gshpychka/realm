@@ -16,8 +16,8 @@ import {
 import { createBenchController, RequestError } from "./controller";
 
 /**
- * Same entry as the root bench script, spawned directly so a cancel's SIGTERM reaches
- * the runner rather than a `bun run` wrapper. Without --out the runner writes its
+ * The CLI entry the infra shell's probabench runs, spawned directly so a cancel's SIGTERM
+ * reaches the runner rather than a wrapper. Without --out the runner writes its
  * default history file, public/data/results.json, which the page reads back.
  */
 const RUNNER_ENTRY = "packages/runner/src/main.ts";
@@ -113,8 +113,7 @@ export function devBridgePlugin(): Plugin {
           }
         })();
       });
-      // server.close() (restart or exit) stops the active run; SIGTERM interrupts the
-      // runner, which still saves completed sweeps.
+      // A restart or exit closes the server; cancel the active run so no runner outlives it.
       server.httpServer?.once("close", () => controller.cancel());
     },
   };

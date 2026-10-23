@@ -8,7 +8,6 @@
     "typecheck": "tsc -p packages/domain && tsc -p packages/runner && tsc -p packages/web && tsc -p packages/web/src && tsc -p packages/stack",
     "test": "vitest run",
     "check": "bun run typecheck && bun run test && bun run build",
-    "bench": "bun packages/runner/src/main.ts",
     "dev": "sops exec-env ../../secrets/infra/probabench.env 'bun run --cwd packages/web dev'",
     "build": "bun run --cwd packages/web build",
     "plan": "bun run --cwd packages/stack plan",
