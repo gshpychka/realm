@@ -230,9 +230,19 @@ func (s *Service) Start(ctx context.Context, name string, spec StartSpec) (Sessi
 		if err := checkExpected(rec, []identity.Precondition{spec.Expected}); err != nil {
 			return Session{}, err
 		}
-	}
-	if err := s.disconnectConnections(name); err != nil {
-		return Session{}, err
+		if !spec.empty() {
+			return Session{}, fmt.Errorf("%w: session %s exists; start it again without a program, command or repos", fault.Conflict, name)
+		}
+		status, err := s.instances.Status(ctx, name)
+		if err != nil {
+			return Session{}, err
+		}
+		if status != InstanceAbsent {
+			return Session{}, fmt.Errorf("%w: session %s has not ended", fault.Conflict, name)
+		}
+		if spec.MachineRevision != "" && rec.Machine.Revision != spec.MachineRevision {
+			return Session{}, fmt.Errorf("%w: session %s is pinned to a different machine revision", fault.Conflict, name)
+		}
 	}
 	memory := 0
 	if fresh {
@@ -256,26 +266,13 @@ func (s *Service) Start(ctx context.Context, name string, spec StartSpec) (Sessi
 	}
 	defer unreserve()
 
-	switch {
-	case fresh:
+	if fresh {
 		if rec, err = s.newRecord(ctx, name, spec); err != nil {
 			return Session{}, err
 		}
-	case err != nil:
+	}
+	if err := s.disconnectConnections(name); err != nil {
 		return Session{}, err
-	case !spec.empty():
-		return Session{}, fmt.Errorf("%w: session %s exists; start it again without a program, command or repos", fault.Conflict, name)
-	default:
-		status, err := s.instances.Status(ctx, name)
-		if err != nil {
-			return Session{}, err
-		}
-		if status != InstanceAbsent {
-			return Session{}, fmt.Errorf("%w: session %s has not ended", fault.Conflict, name)
-		}
-		if spec.MachineRevision != "" && rec.Machine.Revision != spec.MachineRevision {
-			return Session{}, fmt.Errorf("%w: session %s is pinned to a different machine revision", fault.Conflict, name)
-		}
 	}
 	if !fresh {
 		if rec, err = s.records.AdvanceGeneration(name); err != nil {
@@ -482,10 +479,10 @@ func (s *Service) Suspend(ctx context.Context, name string, expected ...identity
 	if err := checkExpected(rec, expected); err != nil {
 		return err
 	}
-	if err := s.disconnectConnections(name); err != nil {
+	if err := s.require(ctx, name, InstanceRunning); err != nil {
 		return err
 	}
-	if err := s.require(ctx, name, InstanceRunning); err != nil {
+	if err := s.disconnectConnections(name); err != nil {
 		return err
 	}
 	if err := s.instances.Suspend(ctx, name); err != nil {
@@ -511,9 +508,6 @@ func (s *Service) Resume(ctx context.Context, name, snapshot string, discard []s
 		return err
 	}
 	if err := checkExpected(rec, expected); err != nil {
-		return err
-	}
-	if err := s.disconnectConnections(name); err != nil {
 		return err
 	}
 	status, err := s.instances.Status(ctx, name)
@@ -543,6 +537,9 @@ func (s *Service) Resume(ctx context.Context, name, snapshot string, discard []s
 		if later := snapshots[at+1:]; !sameSet(later, discard) {
 			return fmt.Errorf("%w: rolling session %s back to %s deletes snapshots %s", fault.Conflict, name, snapshot, list(later))
 		}
+		if err := s.disconnectConnections(name); err != nil {
+			return err
+		}
 		if _, err = s.records.AdvanceGeneration(name); err != nil {
 			return err
 		}
@@ -551,6 +548,9 @@ func (s *Service) Resume(ctx context.Context, name, snapshot string, discard []s
 		}
 		s.log.Info("session rolled back", "session", name, "snapshot", snapshot)
 		return nil
+	}
+	if err := s.disconnectConnections(name); err != nil {
+		return err
 	}
 	if rec, err = s.records.AdvanceGeneration(name); err != nil {
 		return err
@@ -585,6 +585,9 @@ func (s *Service) relaunchStopped(ctx context.Context, rec records.Record) error
 	}
 	if running {
 		return fmt.Errorf("%w: session %s is running", fault.Conflict, rec.Name)
+	}
+	if err := s.disconnectConnections(rec.Name); err != nil {
+		return err
 	}
 	if rec, err = s.records.AdvanceGeneration(rec.Name); err != nil {
 		return err
@@ -626,9 +629,6 @@ func (s *Service) Snap(ctx context.Context, name, snapshot string, expected ...i
 	if err := checkExpected(rec, expected); err != nil {
 		return "", err
 	}
-	if err := s.disconnectConnections(name); err != nil {
-		return "", err
-	}
 	if err := s.require(ctx, name, InstanceRunning); err != nil {
 		return "", err
 	}
@@ -648,6 +648,9 @@ func (s *Service) Snap(ctx context.Context, name, snapshot string, expected ...i
 	}
 	if slices.Contains(existing, snapshot) {
 		return "", fmt.Errorf("%w: session %s has a snapshot %s", fault.Conflict, name, snapshot)
+	}
+	if err := s.disconnectConnections(name); err != nil {
+		return "", err
 	}
 	if err := s.instances.Snapshot(ctx, name, snapshot); err != nil {
 		return "", err
@@ -673,9 +676,6 @@ func (s *Service) End(ctx context.Context, name string, acknowledged []string, e
 	if err := checkExpected(rec, expected); err != nil {
 		return err
 	}
-	if err := s.disconnectConnections(name); err != nil {
-		return err
-	}
 	status, err := s.instances.Status(ctx, name)
 	if err != nil {
 		return err
@@ -692,6 +692,9 @@ func (s *Service) End(ctx context.Context, name string, acknowledged []string, e
 	}
 	program, err := s.program(rec)
 	if err != nil {
+		return err
+	}
+	if err := s.disconnectConnections(name); err != nil {
 		return err
 	}
 	if len(program.History) > 0 {
