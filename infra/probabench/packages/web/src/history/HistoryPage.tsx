@@ -17,6 +17,65 @@ import "./history.css";
 // history.css stacks the inspector above the timeline at this width; keep the two in sync.
 const STACKED_LAYOUT = "(max-width: 900px)";
 
+/** The runs grouped by UTC day; a row inspects its run. */
+function RunTimeline({
+  runs,
+  styles,
+  inspectedId,
+  onInspect,
+}: {
+  runs: readonly Run[];
+  styles: ReadonlyMap<string, ModelStyle>;
+  inspectedId: string | undefined;
+  onInspect: (run: Run) => void;
+}) {
+  return (
+    <div className="card">
+      {runsByDay(runs).map(([day, items]) => (
+        <section key={day} className="timeline-day">
+          <h3>
+            {date(day)}
+            <span>UTC</span>
+          </h3>
+          <ol>
+            {items.map((run) => {
+              const summary = summarizeRun(run);
+              return (
+                <li key={run.id}>
+                  <button
+                    type="button"
+                    className="history-row"
+                    aria-pressed={run.id === inspectedId}
+                    onClick={() => onInspect(run)}
+                  >
+                    <span
+                      className="timeline-node"
+                      style={{ background: styleOf(styles, run.model).color }}
+                    />
+                    <span className="history-row-main">
+                      <strong>{modelName(run.model)}</strong>
+                      <span>
+                        {time(run.startedAt)} · {samplingText(run)}
+                      </span>
+                    </span>
+                    <span className="history-row-metric">
+                      <strong>{calibrationErrorText(summary.meanCalibrationError)}</strong>
+                      <span>{percent(summary.validity, 0)} valid</span>
+                    </span>
+                    <span className="row-arrow" aria-hidden="true">
+                      ↗
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function HistoryPage({
   runs,
   styles,
@@ -102,49 +161,12 @@ export function HistoryPage({
           </aside>
         ) : null}
         {visible.length > 0 ? (
-          <div className="card">
-            {runsByDay(visible).map(([day, items]) => (
-              <section key={day} className="timeline-day">
-                <h3>
-                  {date(day)}
-                  <span>UTC</span>
-                </h3>
-                <ol>
-                  {items.map((run) => {
-                    const summary = summarizeRun(run);
-                    return (
-                      <li key={run.id}>
-                        <button
-                          type="button"
-                          className="history-row"
-                          aria-pressed={inspected?.id === run.id}
-                          onClick={() => inspect(run)}
-                        >
-                          <span
-                            className="timeline-node"
-                            style={{ background: styleOf(styles, run.model).color }}
-                          />
-                          <span className="history-row-main">
-                            <strong>{modelName(run.model)}</strong>
-                            <span>
-                              {time(run.startedAt)} · {samplingText(run)}
-                            </span>
-                          </span>
-                          <span className="history-row-metric">
-                            <strong>{calibrationErrorText(summary.meanCalibrationError)}</strong>
-                            <span>{percent(summary.validity, 0)} valid</span>
-                          </span>
-                          <span className="row-arrow" aria-hidden="true">
-                            ↗
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </section>
-            ))}
-          </div>
+          <RunTimeline
+            runs={visible}
+            styles={styles}
+            inspectedId={inspected?.id}
+            onInspect={inspect}
+          />
         ) : null}
       </div>
     </section>

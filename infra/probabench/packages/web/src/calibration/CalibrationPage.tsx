@@ -8,6 +8,51 @@ import { modelSelections, withComparison } from "../common/run-history";
 import { CalibrationChart } from "./CalibrationChart";
 import "./calibration.css";
 
+/** Every shown run's measurements, one disclosure each. */
+function MeasurementsPanel({
+  runs,
+  styles,
+}: {
+  runs: readonly Run[];
+  styles: ReadonlyMap<string, ModelStyle>;
+}) {
+  return (
+    <section className="measurements-panel">
+      <header>
+        <h3>Measurements</h3>
+        <span className="tag">
+          {runs.length} selected {runs.length === 1 ? "run" : "runs"}
+        </span>
+      </header>
+      {runs.length === 0 ? (
+        <p className="muted measurement-empty">Select a model to see its measurements.</p>
+      ) : (
+        runs.map((run) => (
+          <details className="measurement-run" key={run.id}>
+            <summary>
+              <span
+                className="color-dot"
+                style={{ background: styleOf(styles, run.model).color }}
+              />
+              <strong>{modelName(run.model)}</strong>
+              <span className="measurement-date">{timestamp(run.startedAt)}</span>
+              <span className="measurement-error">
+                {calibrationErrorText(summarizeRun(run).meanCalibrationError)}
+                <small>mean error</small>
+              </span>
+              <span className="expand-sign" aria-hidden="true">
+                +
+              </span>
+            </summary>
+            <Measurements run={run} />
+            <div className="measurement-foot">{samplingText(run)}</div>
+          </details>
+        ))
+      )}
+    </section>
+  );
+}
+
 export function CalibrationPage({
   runs,
   styles,
@@ -112,39 +157,7 @@ export function CalibrationPage({
           </p>
         </aside>
       </div>
-      <section className="measurements-panel">
-        <header>
-          <h3>Measurements</h3>
-          <span className="tag">
-            {shown.length} selected {shown.length === 1 ? "run" : "runs"}
-          </span>
-        </header>
-        {shown.length === 0 ? (
-          <p className="muted measurement-empty">Select a model to see its measurements.</p>
-        ) : (
-          shown.map((run) => (
-            <details className="measurement-run" key={run.id}>
-              <summary>
-                <span
-                  className="color-dot"
-                  style={{ background: styleOf(styles, run.model).color }}
-                />
-                <strong>{modelName(run.model)}</strong>
-                <span className="measurement-date">{timestamp(run.startedAt)}</span>
-                <span className="measurement-error">
-                  {calibrationErrorText(summarizeRun(run).meanCalibrationError)}
-                  <small>mean error</small>
-                </span>
-                <span className="expand-sign" aria-hidden="true">
-                  +
-                </span>
-              </summary>
-              <Measurements run={run} />
-              <div className="measurement-foot">{samplingText(run)}</div>
-            </details>
-          ))
-        )}
-      </section>
+      <MeasurementsPanel runs={shown} styles={styles} />
     </section>
   );
 }
