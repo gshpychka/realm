@@ -649,6 +649,9 @@ func (s *Service) Snap(ctx context.Context, name, snapshot string, expected ...i
 	if slices.Contains(existing, snapshot) {
 		return "", fmt.Errorf("%w: session %s has a snapshot %s", fault.Conflict, name, snapshot)
 	}
+	if err := s.guest(name).SnapshotReady(ctx); err != nil {
+		return "", fmt.Errorf("%w: session %s cannot snapshot: %v", fault.Conflict, name, err)
+	}
 	if err := s.disconnectConnections(name); err != nil {
 		return "", err
 	}
