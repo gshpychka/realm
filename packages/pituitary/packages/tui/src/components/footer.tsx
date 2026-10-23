@@ -97,43 +97,40 @@ export interface Row {
 }
 
 const cells = (text: string) => Bun.stringWidth(text);
-const span = (segs: readonly Seg[]) => segs.reduce((sum, seg) => sum + cells(seg.text), 0);
+const textOf = (segs: readonly Seg[]) => segs.map((seg) => seg.text).join("");
+const span = (segs: readonly Seg[]) => cells(textOf(segs));
 
-/** The end of `path` that fits `columns`, where the directory's own name is. */
+/** A range of the assembled text, retaining the styles of the segments it crosses. */
+function sliceSegments(segs: readonly Seg[], start: number, end: number): Seg[] {
+  let offset = 0;
+  return segs.flatMap((seg) => {
+    const text = seg.text.slice(Math.max(0, start - offset), Math.max(0, end - offset));
+    offset += seg.text.length;
+    return text ? [{ ...seg, text }] : [];
+  });
+}
+
+/** The end of a path that fits, where the directory's own name is. */
 function tail(path: string, columns: number): string {
   if (cells(path) <= columns) return path;
   if (columns <= 1) return "…";
   return `…${tailCells(path, columns - 1)}`;
 }
 
-/** The first `columns` of `segs`, the last kept cell an ellipsis when any are cut. */
+/** The first columns of the styled text, with an ellipsis when it is cut. */
 function clipEnd(segs: readonly Seg[], columns: number): Seg[] {
-  if (span(segs) <= columns) return [...segs];
-  const kept: Seg[] = [];
-  let room = columns - 1;
-  for (const seg of segs) {
-    if (room <= 0) break;
-    const text = headCells(seg.text, room);
-    kept.push({ ...seg, text });
-    room -= cells(text);
-    if (text !== seg.text) break;
-  }
+  if (columns <= 0) return [];
+  const text = textOf(segs);
+  if (cells(text) <= columns) return [...segs];
+  const kept = sliceSegments(segs, 0, headCells(text, columns - 1).length);
   const last = kept.at(-1);
-  return columns > 0 ? [...kept, { text: "…", fg: last?.fg, bg: last?.bg }] : [];
+  return [...kept, { text: "…", fg: last?.fg, bg: last?.bg }];
 }
 
-/** The last `columns` of `segs`. */
+/** The last columns of the assembled styled text. */
 function clipStart(segs: readonly Seg[], columns: number): Seg[] {
-  const kept: Seg[] = [];
-  let room = columns;
-  for (const seg of [...segs].reverse()) {
-    if (room <= 0) break;
-    const text = tailCells(seg.text, room);
-    kept.unshift({ ...seg, text });
-    room -= cells(text);
-    if (text !== seg.text) break;
-  }
-  return kept;
+  const text = textOf(segs);
+  return sliceSegments(segs, text.length - tailCells(text, columns).length, text.length);
 }
 
 function contextTone(percent: number): LimitTone {
@@ -432,7 +429,8 @@ function fitPlace(
   if (over <= 0) return whole;
   const columns = cells(p.path) - over;
   if (columns < Math.min(keep, cells(p.path))) return null;
-  return place(p, style, { ...options, path: tail(p.path, columns) });
+  const fitted = place(p, style, { ...options, path: tail(p.path, columns) });
+  return span(fitted) <= room ? fitted : null;
 }
 
 /** Hearth widths from the chosen one down: ¾, ½, then the narrowest. */
@@ -468,10 +466,11 @@ export function footerRows(p: Parts, columns: number, style: FooterStyle, open: 
       { name, pull: true },
       PATH_KEPT,
     );
-    if (left) {
+    const leading = left && [...left, ...(statuses.length > 0 ? [{ text: " " }, ...statuses] : [])];
+    if (leading && span([...leading, ...right]) + widest + 1 <= columns) {
       return [
         {
-          left: [...left, ...(statuses.length > 0 ? [{ text: " " }, ...statuses] : [])],
+          left: leading,
           right,
           hearth: widest,
         },
