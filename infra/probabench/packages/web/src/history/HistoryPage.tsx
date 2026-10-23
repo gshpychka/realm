@@ -87,12 +87,7 @@ export function HistoryPage({
             </button>
           ))}
         </fieldset>
-        <HistoryChart
-          runs={visible}
-          styles={styles}
-          selectedId={inspected?.id}
-          onSelect={inspect}
-        />
+        <HistoryChart runs={visible} styles={styles} />
       </section>
       {view.runId && !runs.some((run) => run.id === view.runId) ? (
         <p role="status" className="panel-note">

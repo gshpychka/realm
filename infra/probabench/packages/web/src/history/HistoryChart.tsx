@@ -1,5 +1,5 @@
 import { calibrationErrorText, type Run } from "@probabench/domain";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo } from "react";
 import {
   CartesianGrid,
   Line,
@@ -58,56 +58,6 @@ function HistoryTooltip({
   );
 }
 
-/** A focusable chart point: the history list offers the same action as a native button. */
-function HistoryDot({
-  cx,
-  cy,
-  point,
-  color,
-  selected,
-  onSelect,
-}: {
-  cx: number;
-  cy: number;
-  point: HistoryPoint;
-  color: string;
-  selected: boolean;
-  onSelect: (run: Run) => void;
-}) {
-  const { run } = point;
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: Native HTML buttons cannot render as SVG chart points; the history list provides the same action.
-    <g
-      className="history-dot"
-      stroke={color}
-      strokeWidth={selected ? 3 : 2}
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      aria-label={`Inspect ${run.model}, ${timestamp(run.startedAt)}, mean calibration error ${calibrationErrorText(point.calibrationError)}, run ${run.id}`}
-      onClick={() => onSelect(run)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect(run);
-        }
-      }}
-    >
-      <title>
-        {run.model} · {calibrationErrorText(point.calibrationError)}
-      </title>
-      <circle cx={cx} cy={cy} r={12} fill="transparent" stroke="none" />
-      <circle
-        cx={cx}
-        cy={cy}
-        r={selected ? 7 : 4.5}
-        fill={selected ? color : CHART.surface}
-        pointerEvents="none"
-      />
-    </g>
-  );
-}
-
 const emptyPlot = (points: readonly HistoryPoint[]) => {
   if (points.length === 0)
     return { title: "No runs shown.", detail: "Show a model or clear the history search." };
@@ -123,22 +73,11 @@ const emptyPlot = (points: readonly HistoryPoint[]) => {
 export function HistoryChart({
   runs,
   styles,
-  selectedId,
-  onSelect,
 }: {
   runs: readonly Run[];
   styles: ReadonlyMap<string, ModelStyle>;
-  selectedId: string | undefined;
-  onSelect: (run: Run) => void;
 }) {
   const descriptionId = useId();
-  const [tooltipEnabled, setTooltipEnabled] = useState(true);
-  const select = (run: Run) => {
-    // Recharts preserves its active hover payload after a touch selection and
-    // programmatic scroll. Keep the inspector clear until the next interaction.
-    setTooltipEnabled(false);
-    onSelect(run);
-  };
   const { points, series, domain, yMax, tickFormat } = useMemo(
     () => buildHistoryChartModel(runs, styles),
     [runs, styles],
@@ -149,14 +88,6 @@ export function HistoryChart({
       className="plot"
       aria-label="Calibration error over time"
       aria-describedby={descriptionId}
-      onPointerMove={(event) => {
-        if (event.pointerType !== "touch") setTooltipEnabled(true);
-      }}
-      onPointerDown={() => setTooltipEnabled(true)}
-      onFocusCapture={() => setTooltipEnabled(true)}
-      onKeyDownCapture={(event) => {
-        if (event.key.startsWith("Arrow")) setTooltipEnabled(true);
-      }}
     >
       <ResponsiveContainer width="100%" height={300} minWidth={0}>
         <LineChart margin={{ top: 22, right: 26, bottom: 30, left: 8 }} accessibilityLayer>
@@ -196,7 +127,6 @@ export function HistoryChart({
             }}
           />
           <Tooltip
-            {...(tooltipEnabled ? {} : { active: false })}
             filterNull={false}
             cursor={CHART.cursor}
             content={({ active, label }) => (
@@ -212,23 +142,7 @@ export function HistoryChart({
               stroke={style.color}
               strokeDasharray={style.dash}
               strokeWidth={2}
-              dot={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: HistoryPoint }) =>
-                cx === undefined ||
-                cy === undefined ||
-                !payload ||
-                payload.calibrationError === null ? (
-                  <g />
-                ) : (
-                  <HistoryDot
-                    cx={cx}
-                    cy={cy}
-                    point={payload}
-                    color={style.color}
-                    selected={payload.run.id === selectedId}
-                    onSelect={select}
-                  />
-                )
-              }
+              dot={{ r: 4, strokeWidth: 2, fill: CHART.surface }}
               activeDot={false}
               connectNulls={false}
               isAnimationActive={false}
@@ -240,9 +154,9 @@ export function HistoryChart({
       {empty ? <PlotEmpty {...empty} /> : null}
       <figcaption id={descriptionId} className="chart-description">
         Mean absolute calibration error across recorded targets with valid replies, in percentage
-        points. Lower is better. Each point is a saved run; select a point to inspect its settings.
-        Runs with no valid replies leave gaps and remain available in the history list. Different
-        target grids and sample budgets affect this error.
+        points. Lower is better. Each point is a saved run. Runs with no valid replies leave gaps
+        and remain available in the history list. Different target grids and sample budgets affect
+        this error.
       </figcaption>
     </figure>
   );

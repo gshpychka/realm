@@ -78,14 +78,6 @@
 .history-graph-legend > button[aria-pressed="false"] {
   opacity: 0.6;
 }
-.history-dot {
-  cursor: pointer;
-}
-.history-dot:focus-visible {
-  stroke: var(--text);
-  stroke-width: 4px;
-  outline: none;
-}
 
 .history-layout {
   display: grid;
