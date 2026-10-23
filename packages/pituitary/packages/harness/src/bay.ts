@@ -54,7 +54,7 @@ export function assertBayJob(job: BayJob, identity: BayIdentity, id: string, com
       job.cwd !== command.cwd ||
       job.timeoutMs !== command.timeoutMs ||
       job.maxOutputBytes !== command.maxOutputBytes ||
-      job.inputDigest !== command.inputDigest ||
+      (job.inputDigest ?? "") !== (command.inputDigest ?? "") ||
       job.machineRevision !== command.machineRevision)
   )
     throw new Error("Bay job receipt does not match its frozen command, input, or machine");
@@ -387,7 +387,7 @@ export function assertBaySession(
   if (
     !session.id ||
     session.name !== expected.name ||
-    (expected.id && session.id !== expected.id) ||
+    (expected.id !== undefined && expected.id !== null && session.id !== expected.id) ||
     (expected.generation !== undefined &&
       expected.generation !== null &&
       session.generation !== expected.generation) ||

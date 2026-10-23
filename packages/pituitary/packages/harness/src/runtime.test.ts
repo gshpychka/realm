@@ -24,6 +24,7 @@ async function fixture() {
       await host.close();
       host = await startRuntime(options);
     },
+    closeHost: () => host.close(),
     async close() {
       await host.close();
       rmSync(root, { recursive: true, force: true });
@@ -98,7 +99,8 @@ test("one input lease coexists with observers and cancellation revokes an alread
     await expect(runtime.attach(run.id)).rejects.toThrow("input lease");
     await expect(observer.prompt("not allowed")).rejects.toThrow("input authority");
     await runtime.stop(run.id);
-    await expect(writer.prompt("too late")).rejects.toThrow("input authority");
+    await until(async () => !writer.controlsInput);
+    await expect(writer.prompt("too late")).rejects.toThrow("task changed");
     await writer.close();
     await observer.close();
   } finally {
@@ -160,6 +162,136 @@ test("a second host cannot open the same native storage while its socket owner i
     await f.close();
   }
 });
+
+test("a cached runtime revalidates after a lost connection without replaying uncertain commands", async () => {
+  const root = mkdtempSync("/tmp/pituitary-reconnect-"),
+    socketPath = join(root, "runtime.sock");
+  let status = 0,
+    reads = 0,
+    disconnect = false;
+  const server = createServer((req, res) => {
+    if (req.url === "/v1/status") {
+      status++;
+      res.end('{"ready":true}');
+      return;
+    }
+    reads++;
+    if (disconnect) {
+      disconnect = false;
+      req.socket.destroy();
+      return;
+    }
+    res.end("[]");
+  });
+  await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+  try {
+    const runtime = new Runtime({ stateDirectory: root, socketPath, autoStart: false });
+    expect(await runtime.list()).toEqual([]);
+    disconnect = true;
+    await expect(runtime.list()).rejects.toMatchObject({ code: "ECONNRESET" });
+    expect(reads).toBe(2);
+    expect(await runtime.list()).toEqual([]);
+    expect(status).toBe(2);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("frontend handoff waits for an old input lease's admitted command to drain", async () => {
+  const f = await fixture();
+  let release!: () => void, aborted!: () => void;
+  const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+    aborting = new Promise<void>((resolve) => {
+      aborted = resolve;
+    });
+  try {
+    const runtime = f.client(),
+      run = await runtime.start({ cwd: f.root }),
+      writer = await runtime.attach(run.id);
+    f.faux.setResponses([
+      async (_context, options) => {
+        await new Promise<void>((resolve) =>
+          options?.signal?.addEventListener(
+            "abort",
+            () => {
+              aborted();
+              resolve();
+            },
+            { once: true },
+          ),
+        );
+        await gate;
+        return fauxAssistantMessage("Stopped", { stopReason: "aborted" });
+      },
+    ]);
+    await writer.prompt("Wait for cancellation");
+    await until(async () => f.faux.state.callCount === 1);
+    const active = writer.abort().catch(() => {});
+    await aborting;
+    await writer.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const takeover = runtime.attach(run.id);
+    void takeover.catch(() => {});
+    release();
+    const next = await takeover;
+    expect(next.controlsInput).toBe(true);
+    await next.close();
+    await active;
+  } finally {
+    release();
+    await f.close();
+  }
+}, 30_000);
+
+test("graceful host shutdown drains an admitted stop before closing its storage", async () => {
+  const f = await fixture();
+  let release!: () => void, aborted!: () => void;
+  const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+    aborting = new Promise<void>((resolve) => {
+      aborted = resolve;
+    });
+  try {
+    const runtime = f.client(),
+      run = await runtime.start({ cwd: f.root }),
+      view = await runtime.attach(run.id);
+    f.faux.setResponses([
+      async (_context, options) => {
+        await new Promise<void>((resolve) =>
+          options?.signal?.addEventListener(
+            "abort",
+            () => {
+              aborted();
+              resolve();
+            },
+            { once: true },
+          ),
+        );
+        await gate;
+        return fauxAssistantMessage("Stopped", { stopReason: "aborted" });
+      },
+    ]);
+    await view.prompt("Work until stopped");
+    await until(async () => f.faux.state.callCount === 1);
+    const stopping = runtime.stop(run.id);
+    await aborting;
+    const closing = f.closeHost();
+    release();
+    expect((await stopping).desired).toBe("stopped");
+    await closing;
+    await f.restart();
+    expect((await runtime.inspect(run.id)).run.desired).toBe("stopped");
+    await view.close();
+  } finally {
+    release();
+    await f.close();
+  }
+}, 30_000);
 
 test("an explicit remote socket never starts a local daemon", async () => {
   const root = mkdtempSync("/tmp/pituitary-tunnel-"),

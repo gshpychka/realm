@@ -159,6 +159,7 @@ export class Verifier {
           });
           break;
         }
+        if (!(await alive())) throw new Error("Verification was superseded before check dispatch");
         const result = await waitJob(
           bay,
           bayIdentity(execution),

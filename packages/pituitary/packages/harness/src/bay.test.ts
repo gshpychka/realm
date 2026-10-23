@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assertBaySession, Bay, BayError, type BaySession } from "./bay.ts";
+import { assertBayJob, assertBaySession, Bay, type BayCommand, BayError, type BaySession } from "./bay.ts";
 import type { AgentDefinition } from "./catalog.ts";
 
 const agent: AgentDefinition = {
@@ -45,6 +45,34 @@ test("Bay identity pins the record, generation, program, machine and image revis
   );
   expect(() => assertBaySession({ ...session, id: "" }, { name: session.name, agent })).toThrow(
     "identity or machine changed",
+  );
+  expect(() => assertBaySession(session, { ...expected, id: "" })).toThrow("identity or machine changed");
+});
+
+test("Bay receipts treat an empty input digest as absent without relaxing pinned inputs", () => {
+  const command: BayCommand = {
+    argv: ["true"],
+    cwd: ".",
+    timeoutMs: 1000,
+    maxOutputBytes: 1024,
+    machineRevision: agent.machineRevision,
+    inputDigest: "",
+  };
+  const receipt = {
+    ...command,
+    id: "job",
+    recordId: session.id,
+    generation: session.generation,
+    status: "succeeded" as const,
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+    inputDigest: undefined,
+  };
+  const identity = { sessionName: session.name, recordId: session.id, generation: session.generation };
+  expect(() => assertBayJob(receipt, identity, "job", command)).not.toThrow();
+  expect(() => assertBayJob(receipt, identity, "job", { ...command, inputDigest: "a".repeat(64) })).toThrow(
+    "does not match its frozen command",
   );
 });
 

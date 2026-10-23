@@ -154,6 +154,26 @@ test("superseding a completed check prevents its evidence acknowledgement", asyn
   }
 });
 
+test("superseding the pre-check snapshot prevents command dispatch", async () => {
+  const f = await fixture({ content: { command: ["sh", "-c", "touch check-ran"], timeoutMs: 5000 } });
+  try {
+    const alive = () =>
+      ![...f.bay.guests.values()]
+        .flatMap((guest) => [...guest.jobs.values()])
+        .some((job) => job.argv[3] === "verify-tree" && job.status === "succeeded");
+    await expect(f.verifier.run(f.run, f.verification, f.artifact, f.journal, alive)).rejects.toThrow(
+      "superseded before check dispatch",
+    );
+    const guest = [...f.bay.guests.values()][0]!;
+    expect([...guest.jobs.values()].some((job) => job.argv.includes("touch check-ran"))).toBe(false);
+    await expect(readFile(join(guest.work, "workspace/check-ran"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(f.checkpoint().result).toBeUndefined();
+    expect(guest.session.state).toBe("suspended");
+  } finally {
+    await f.close();
+  }
+});
+
 test("verification marks bounded combined stdout and stderr as truncated", async () => {
   const f = await fixture({
     output: {
