@@ -1,10 +1,21 @@
-import type { InputRenderable, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
+import type { TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import type { DialogRequest, DialogResponse } from "@pituitary/session";
 import { useEffect, useRef, useState } from "react";
 import { useKeyHint } from "../keymap-context.tsx";
 import { wrappedRows } from "../text-width.ts";
 import { theme } from "../theme.ts";
+
+/** A terminal-owned team question or revision, independent of conversation transport. */
+export type DialogRequest = { type: "dialog"; id: string; title: string } & (
+  | { method: "select"; options: string[] }
+  | { method: "editor"; prefill?: string }
+);
+export interface DialogResponse {
+  type: "dialog_response";
+  id: string;
+  value?: string;
+  cancelled?: boolean;
+}
 
 export interface DialogProps {
   dialog: DialogRequest;
@@ -97,10 +108,6 @@ function Body({
           <Hint text="↑↓ choose · enter pick" />
         </box>
       );
-    case "confirm":
-      return <Confirm id={id} message={dialog.message} onAnswer={onAnswer} ready={ready} rows={rows} />;
-    case "input":
-      return <Input id={id} placeholder={dialog.placeholder ?? ""} onAnswer={onAnswer} ready={ready} />;
     case "editor":
       return (
         <Editor
@@ -112,74 +119,6 @@ function Body({
         />
       );
   }
-}
-
-function Confirm({
-  id,
-  message,
-  onAnswer,
-  ready,
-  rows,
-}: {
-  id: string;
-  message: string;
-  onAnswer: DialogProps["onAnswer"];
-  ready: boolean;
-  rows: number;
-}) {
-  const scroll = useRef<ScrollBoxRenderable | null>(null);
-  const { width } = useTerminalDimensions();
-  useKeyboard((key) => {
-    if (!ready || key.defaultPrevented || key.ctrl || key.meta) return;
-    const by = { up: -1, down: 1, pageup: -rows, pagedown: rows }[key.name];
-    if (by) {
-      key.preventDefault();
-      scroll.current?.scrollBy(by);
-      return;
-    }
-    if (key.name === "y" || key.name === "return" || key.name === "kpenter")
-      onAnswer({ type: "dialog_response", id, confirmed: true });
-    else if (key.name === "n") onAnswer({ type: "dialog_response", id, confirmed: false });
-  });
-  return (
-    <box flexDirection="column">
-      <scrollbox
-        ref={scroll}
-        height={Math.max(1, Math.min(rows, wrappedRows(message, width - 4)))}
-        flexShrink={0}
-        scrollX={false}
-        focusable={false}
-      >
-        <text fg={theme.assistant}>{message}</text>
-      </scrollbox>
-      <Hint text="y / enter yes · n no" />
-    </box>
-  );
-}
-
-function Input({
-  id,
-  placeholder,
-  onAnswer,
-  ready,
-}: {
-  id: string;
-  placeholder: string;
-  onAnswer: DialogProps["onAnswer"];
-  ready: boolean;
-}) {
-  const field = useRef<InputRenderable | null>(null);
-  return (
-    <box flexDirection="column">
-      <input
-        ref={field}
-        focused={ready}
-        placeholder={placeholder}
-        onSubmit={() => onAnswer({ type: "dialog_response", id, value: field.current?.value ?? "" })}
-      />
-      <Hint text="enter submit" />
-    </box>
-  );
 }
 
 function Editor({

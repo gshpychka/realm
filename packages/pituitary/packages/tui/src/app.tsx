@@ -1,10 +1,11 @@
 import type { BoxRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core";
 import { usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
-import { type ConversationLink, type DialogRequest, plain } from "@pituitary/session";
+import { type ConversationLink, plain } from "@pituitary/session";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BUILTINS, builtin } from "./commands/commands.ts";
 import { runCommand } from "./commands/run-command.ts";
 import { Conversation, type Display } from "./components/conversation.tsx";
+import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
 import { Editor, type EditorHandle } from "./components/editor.tsx";
 import { Footer } from "./components/footer.tsx";
 import { type Burn, Mascot, MascotProvider, MascotStage } from "./components/mascot.tsx";
@@ -297,9 +298,8 @@ export function App({
   };
   const manage = (operation: Promise<void>) =>
     void operation.catch((error) => session.notify("error", String(error)));
-  const answerDialog = (id: string, response: import("@pituitary/session").DialogResponse) => {
-    const cancelled = "cancelled" in response && response.cancelled;
-    const value = "value" in response ? response.value : undefined;
+  const answerDialog = (id: string, response: DialogResponse) => {
+    const { cancelled, value } = response;
     if (operatorQuestion && id === `question:${operatorQuestion.id}`) {
       if (!cancelled && value?.trim() && team) manage(team.answer(operatorQuestion.id, value));
       setOperatorQuestion(null);
@@ -601,6 +601,7 @@ export function App({
 
   /** A key while the draft holds the keyboard: the completion list's, a bound action, paging, or recall. */
   const draftKey = (key: KeyEvent, action: Action | null, text: string, standing: Offer | null): boolean => {
+    if (action === "app.interrupt" && key.name !== "escape") return actions[action]();
     if (completions.key(key, action === "app.interrupt", runChosen)) return true;
     // Escape leaves insert mode first, where the draft has a use for it.
     if (action === "app.interrupt" && key.name === "escape" && editor.current?.wantsEscape()) return false;
