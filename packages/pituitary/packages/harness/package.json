@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./agent": "./src/agent.ts"
+    "./agent": "./src/agent.ts",
+    "./conversation": "./src/conversation.ts"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",
