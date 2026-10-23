@@ -41,8 +41,8 @@ pkgs.mkShell {
     pkgs.terragrunt
     (sopsExecEnv "tf" "terraform.env" (lib.getExe terraform))
     (sopsExecEnv "tg" "terraform.env" (lib.getExe pkgs.terragrunt))
-    # the ProbaBench CLI with its OpenRouter key; the entry runs in the caller's
-    # directory, so a relative --out resolves there, and the default from the runner
+    # the ProbaBench CLI with its OpenRouter key; it finds its history file from its
+    # own path, so it runs from any directory
     (sopsExecEnv "probabench" "probabench.env"
       "${lib.getExe pkgs.bun} $REPO_ROOT/infra/probabench/packages/runner/src/main.ts"
     )

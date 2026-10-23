@@ -323,8 +323,7 @@
               link-sanitizer = bunCheck { src = ./infra/link-sanitizer; };
               probabench = bunCheck {
                 src = ./infra/probabench;
-                # run the vite, vitest and tsc bins (#!/usr/bin/env node) on Node, as the
-                # infra shell does; without it bun stands in for node and the Vite build differs
+                # vite, vitest and tsc run on Node, as in the infra shell
                 nativeBuildInputs = [ pkgs.nodejs ];
               };
               # the Voice PE component's ESP-free logic, built for the host

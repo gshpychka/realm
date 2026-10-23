@@ -22,7 +22,8 @@ export default Alchemy.Stack(
         // Vite imports the domain workspace directly. Include it in the build
         // hash so schema-only changes cannot reuse an outdated frontend build.
         // The history sits outside packages/web too, so it is named here, or a
-        // data-only change would reuse an outdated build.
+        // data-only change would reuse an outdated build. An explicit include
+        // leaves bun.lock out of the hash unless lockfile is set.
         include: [
           "**/*",
           "../domain/src/**",
