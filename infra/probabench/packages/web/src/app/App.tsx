@@ -1,6 +1,6 @@
 import { Result, useRxRefresh, useRxValue } from "@effect-rx/rx-react";
 import type { Run } from "@probabench/domain";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useBridge } from "../bridge/use-bridge";
 import { CalibrationPage } from "../calibration/CalibrationPage";
 import { modelStyles } from "../common/palette";
@@ -43,7 +43,14 @@ function NotebookError({ onRetry }: { onRetry: () => void }) {
 export function App() {
   const result = useRxValue(resultsRx);
   const refresh = useRxRefresh(resultsRx);
-  const bridge = useBridge(refresh);
+  const bridge = useBridge();
+  // A finished run may have appended to the history, so read it again. This also fires once
+  // for a run that finished before the page loaded; that extra read is harmless.
+  const job = bridge.connection.kind === "local" ? bridge.connection.status.job : null;
+  const finishedJobId = job !== null && job.status !== "running" ? job.id : null;
+  useEffect(() => {
+    if (finishedJobId !== null) refresh();
+  }, [finishedJobId, refresh]);
   const [view, update] = useNotebookView();
   const [setupOpen, setSetupOpen] = useState(false);
   const runs = Result.isSuccess(result) ? result.value.runs : NO_RUNS;

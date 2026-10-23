@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { cancelRun, fetchStatus, startRun } from "./client";
 import type { BenchRequest, BridgeStatus } from "./protocol";
 
@@ -10,7 +10,8 @@ export type Connection =
   /** The dev bridge's latest status; `reconnecting` while it stops answering. */
   | { readonly kind: "local"; readonly status: BridgeStatus; readonly reconnecting: boolean };
 
-export const POLL_MS = { running: 1_200, idle: 6_000, retry: 1_500 } as const;
+/** How often the page asks the dev bridge for its status. */
+const POLL_MS = 1_000;
 
 /** A failed poll keeps the last status, so a running job stays visible while the bridge is away. */
 export const nextConnection = (previous: Connection, status: BridgeStatus | null): Connection =>
@@ -19,19 +20,6 @@ export const nextConnection = (previous: Connection, status: BridgeStatus | null
     : previous.kind === "local"
       ? { ...previous, reconnecting: true }
       : previous;
-
-/** Milliseconds until the next poll, or null when there is nothing to poll. */
-export const nextDelay = (connection: Connection): number | null => {
-  switch (connection.kind) {
-    case "published":
-      return null;
-    case "connecting":
-      return POLL_MS.retry;
-    case "local":
-      if (connection.reconnecting) return POLL_MS.retry;
-      return connection.status.job?.status === "running" ? POLL_MS.running : POLL_MS.idle;
-  }
-};
 
 // The plugin applies only to `vite serve`, so only the dev server has a bridge to ask.
 const INITIAL: Connection = import.meta.env.DEV ? { kind: "connecting" } : { kind: "published" };
@@ -44,30 +32,11 @@ export interface Bridge {
   readonly cancel: () => Promise<boolean>;
 }
 
-export function useBridge(onJobFinished: () => void): Bridge {
+export function useBridge(): Bridge {
   const [connection, setConnection] = useState(INITIAL);
-  // The poll loop reads this rather than its closure's stale state.
-  const latest = useRef(INITIAL);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [revision, setRevision] = useState(0);
-  const finishedJobId = useRef<string | null>(null);
-  const onJobFinishedRef = useRef(onJobFinished);
-  onJobFinishedRef.current = onJobFinished;
 
-  const apply = useCallback((status: BridgeStatus | null): Connection => {
-    const next = nextConnection(latest.current, status);
-    latest.current = next;
-    setConnection(next);
-    const job = status?.job;
-    if (job && job.status !== "running" && job.id !== finishedJobId.current) {
-      finishedJobId.current = job.id;
-      onJobFinishedRef.current();
-    }
-    return next;
-  }, []);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new revision restarts polling at once.
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     let alive = true;
@@ -75,23 +44,22 @@ export function useBridge(onJobFinished: () => void): Bridge {
     const poll = async () => {
       const status = await fetchStatus();
       if (!alive) return;
-      const delay = nextDelay(apply(status));
-      if (delay !== null) timer = setTimeout(() => void poll(), delay);
+      setConnection((previous) => nextConnection(previous, status));
+      timer = setTimeout(() => void poll(), POLL_MS);
     };
     void poll();
     return () => {
       alive = false;
       clearTimeout(timer);
     };
-  }, [apply, revision]);
+  }, []);
 
   const act = async (action: () => Promise<BridgeStatus>): Promise<boolean> => {
     setPending(true);
     setError(null);
     try {
-      apply(await action());
-      // Poll again now, at the cadence the new status calls for.
-      setRevision((value) => value + 1);
+      const status = await action();
+      setConnection((previous) => nextConnection(previous, status));
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
