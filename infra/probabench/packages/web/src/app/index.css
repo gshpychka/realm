@@ -294,14 +294,18 @@ button.connection {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
   gap: 64px;
-  padding: 50px 0 44px;
+  padding: 50px 0 68px;
   align-items: center;
+}
+.hero-copy {
+  container-type: inline-size;
 }
 .hero-copy > .eyebrow {
   color: #bdae93;
 }
+/* Sized to its column: 1.4fr of two above 650px, the full width below. */
 .hero h1 {
-  font: 400 clamp(40px, 4.2vw, 60px) / 1.08 var(--serif);
+  font: 400 clamp(38px, 8cqi, 60px) / 1.08 var(--serif);
   letter-spacing: -1.5px;
   margin-top: 20px;
 }
@@ -351,111 +355,44 @@ button.connection {
   color: var(--muted);
   margin-top: 18px;
 }
-.has-results .hero {
-  padding: 26px 0 20px;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-}
-.has-results .hero-copy {
+.masthead {
   display: flex;
   align-items: baseline;
   gap: 24px;
+  padding: 26px 0 20px;
 }
-.has-results .hero h1 {
-  font-size: 30px;
+.masthead h1 {
+  font: 400 30px / 1.08 var(--serif);
   letter-spacing: -0.5px;
-  margin-top: 0;
 }
-.has-results .hero h1 br {
-  display: none;
-}
-.has-results .hero-copy > p:last-child {
-  font-size: 14px;
-  margin-top: 0;
-}
-.has-results .hero-copy > p:last-child br {
-  display: none;
-}
-.has-results .hero-copy > p:last-child br::after {
-  content: " ";
-}
-.has-results .hero-note {
-  padding-left: 26px;
-  margin-top: 0;
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  max-width: 290px;
-}
-.has-results .hero-formula {
-  font-size: 25px;
-  gap: 8px;
-  margin-bottom: 0;
-  white-space: nowrap;
-}
-.has-results .hero-formula var {
-  font-size: 36px;
-}
-.has-results .hero-formula .formula-equals {
-  font-size: 18px;
-}
-.has-results .hero-note-text p {
-  font-size: 12px;
-  margin-top: 7px;
-}
-.has-results .hero-note-text .eyebrow,
-.has-results .hero-note-link {
-  display: none;
-}
-.has-results .notebook-overview {
-  border: 0;
-  padding: 0 0 20px;
-}
-.has-results .notebook-overview dl {
-  gap: 28px;
-}
-.has-results .notebook-overview dl > div {
-  display: flex;
-  flex-direction: row-reverse;
-  align-items: baseline;
-  gap: 8px;
-}
-.has-results .notebook-overview dt {
-  font-size: 12px;
-  margin-bottom: 0;
-}
-.has-results .notebook-overview dd {
-  font-size: 15px;
-  letter-spacing: -0.3px;
-}
-.has-results .notebook-navigation {
-  margin-top: 0;
-}
-.has-results .section-heading {
-  margin-top: 24px;
-  margin-bottom: 20px;
+.masthead p {
+  line-height: 1.8;
+  color: #bdae93;
 }
 .notebook-overview {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 32px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 25px 0;
+  padding-bottom: 20px;
 }
 .notebook-overview dl {
   display: flex;
-  gap: 70px;
+  gap: 28px;
+}
+.notebook-overview dl > div {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: baseline;
+  gap: 8px;
 }
 .notebook-overview dt {
   color: var(--muted);
   font-size: 12px;
-  margin-bottom: 7px;
 }
 .notebook-overview dd {
-  font: 24px / 1.2 var(--mono);
-  letter-spacing: -0.8px;
+  font: 15px / 1.2 var(--mono);
+  letter-spacing: -0.3px;
 }
 .overview-date {
   font-size: 12px;
@@ -476,7 +413,6 @@ button.connection {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
-  margin-top: 24px;
 }
 .notebook-navigation [role="tablist"] {
   display: flex;
@@ -554,7 +490,7 @@ button.connection {
   align-items: flex-end;
   justify-content: space-between;
   gap: 32px;
-  margin: 37px 0 26px;
+  margin: 24px 0 20px;
 }
 .section-heading h2 {
   font: 400 28px / 1.2 var(--serif);
@@ -1847,25 +1783,12 @@ button.connection {
   :root {
     --page-gutter: 28px;
   }
-  .has-results .hero {
-    grid-template-columns: minmax(0, 1fr);
+  .masthead {
+    display: block;
     padding: 24px 0 18px;
   }
-  .has-results .hero-copy {
-    display: block;
-  }
-  .has-results .hero-copy > p:last-child {
+  .masthead p {
     margin-top: 8px;
-  }
-  .has-results .hero-note {
-    display: none;
-  }
-  .hero {
-    padding-top: 52px;
-    padding-bottom: 45px;
-  }
-  .hero h1 {
-    font-size: 53px;
   }
   .hero-note {
     max-width: 260px;
@@ -1875,9 +1798,6 @@ button.connection {
   }
   .hero-formula var {
     font-size: 48px;
-  }
-  .notebook-overview dl {
-    gap: 38px;
   }
   .overview-date time > span {
     display: block;
@@ -1931,29 +1851,6 @@ button.connection {
   :root {
     --page-gutter: 20px;
   }
-  .has-results .hero {
-    padding: 22px 0 18px;
-  }
-  .has-results .hero h1 {
-    font-size: 28px;
-    line-height: 1.15;
-  }
-  .has-results .hero-copy > p:last-child {
-    font-size: 14px;
-  }
-  .has-results .notebook-overview dl {
-    gap: 12px;
-  }
-  .has-results .notebook-overview dl > div {
-    display: block;
-  }
-  .has-results .notebook-overview dt {
-    font-size: 11px;
-    margin-bottom: 6px;
-  }
-  .has-results .notebook-overview dd {
-    font-size: 18px;
-  }
   .site-header {
     padding: 18px 0;
     gap: 14px;
@@ -1978,16 +1875,17 @@ button.connection {
   .hero {
     display: block;
     padding-top: 42px;
-    padding-bottom: 36px;
+    padding-bottom: 48px;
   }
   .hero-copy > .eyebrow {
-    font-size: 11px;
     letter-spacing: 1.5px;
   }
-  .hero h1 {
-    font-size: clamp(39px, 9.3vw, 57px);
-    margin-top: 21px;
-    letter-spacing: -1.1px;
+  .masthead {
+    padding: 22px 0 18px;
+  }
+  .masthead h1 {
+    font-size: 28px;
+    line-height: 1.15;
   }
   .hero-copy > p:last-child {
     font-size: 14px;
@@ -1997,25 +1895,25 @@ button.connection {
   .hero-note {
     display: none;
   }
-  .notebook-overview {
-    padding: 22px 0;
-  }
   .notebook-overview dl {
     justify-content: space-between;
     width: 100%;
     gap: 12px;
   }
+  .notebook-overview dl > div {
+    display: block;
+  }
   .notebook-overview dt {
-    font-size: 12px;
+    font-size: 11px;
+    margin-bottom: 6px;
   }
   .notebook-overview dd {
-    font-size: 21px;
+    font-size: 18px;
   }
   .overview-date {
     display: none;
   }
   .notebook-navigation {
-    margin-top: 12px;
     gap: 8px;
   }
   .notebook-navigation [role="tablist"] {
@@ -2047,8 +1945,6 @@ button.connection {
   }
   .section-heading {
     display: block;
-    margin-top: 28px;
-    margin-bottom: 23px;
   }
   .section-heading > p {
     max-width: none;

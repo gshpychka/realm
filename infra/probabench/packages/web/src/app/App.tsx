@@ -70,7 +70,7 @@ export function App() {
   };
 
   return (
-    <div className={`notebook ${runs.length > 0 ? "has-results" : ""}`}>
+    <div className="notebook">
       <a className="skip-link" href={`#${PANEL_ID}`}>
         Skip to notebook
       </a>

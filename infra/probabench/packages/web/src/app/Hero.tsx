@@ -67,12 +67,10 @@ export function Hero({ runs }: { runs: readonly Run[] }) {
     );
   return (
     <>
-      <section className="hero">
-        <div className="hero-copy">
-          <h1>A sampling notebook.</h1>
-          <p>How closely do language models follow a probability?</p>
-        </div>
-      </section>
+      <header className="masthead">
+        <h1>A sampling notebook.</h1>
+        <p>How closely do language models follow a probability?</p>
+      </header>
       <NotebookOverview runs={runs} />
     </>
   );
