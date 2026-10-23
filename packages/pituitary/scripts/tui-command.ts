@@ -10,7 +10,7 @@ export interface Command {
 }
 
 const OPTIONS: Record<string, readonly string[]> = {
-  start: ["pi", "env", "scenario", "delay", "cols", "rows", "entry", "ready", "settle", "tmux"],
+  start: ["env", "scenario", "delay", "cols", "rows", "entry", "ready", "settle", "tmux"],
   type: [],
   submit: [],
   key: [],
@@ -55,7 +55,7 @@ export function prepareDriverSocket(): string {
 export const HELP = `Usage: just tui <command> [arguments]
 
 start [--scenario tool] [--delay 40] [--cols 100 --rows 28]
-      [--pi 'arguments or JSON array'] [--env 'KEY=value;KEY2=value']
+      [--env 'KEY=value;KEY2=value']
       [--entry path --ready text] [--settle false] [--tmux]
 submit [text]        send text, or the current draft
 type text            type into the editor
@@ -143,7 +143,6 @@ export function validateCommand(value: unknown): Command {
   if (options.settle !== undefined && !["true", "false"].includes(options.settle))
     throw new Error("--settle must be true or false");
   if (options.env !== undefined) environment(options.env);
-  if (options.pi !== undefined) piArguments(options.pi);
   return command;
 }
 
@@ -166,15 +165,4 @@ export function environment(pairs: string): Record<string, string> {
         return [pair.slice(0, equals), pair.slice(equals + 1)];
       }),
   );
-}
-
-export function piArguments(value: string): string[] {
-  if (!value.trimStart().startsWith("[")) return value.trim().split(/\s+/).filter(Boolean);
-  try {
-    const args: unknown = JSON.parse(value);
-    if (Array.isArray(args) && args.every((arg) => typeof arg === "string")) return args;
-  } catch {
-    /* The CLI shows the same actionable error for invalid syntax and shape. */
-  }
-  throw new Error("--pi must be arguments or a JSON array of strings");
 }

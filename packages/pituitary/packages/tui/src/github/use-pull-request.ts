@@ -1,4 +1,4 @@
-import type { AgentLink } from "@pituitary/rpc";
+import type { ConversationLink } from "@pituitary/session";
 import { useEffect, useRef, useState } from "react";
 import { openLog } from "../config.ts";
 import { ghCommand } from "./gh.ts";
@@ -12,7 +12,7 @@ const log = openLog();
  * gh cannot say.
  */
 export function usePullRequest(
-  link: AgentLink,
+  link: ConversationLink,
   cwd: string | null,
   branch: string | null,
 ): PullRequest | null {

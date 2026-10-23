@@ -5,8 +5,6 @@ import { theme } from "../theme.ts";
 
 /** What the rules around the draft signal. */
 export interface DraftSignal {
-  /** The draft is a `!` shell command. */
-  command: boolean;
   /** A step away from the draft waits on the operator to ask for it again. */
   confirming?: boolean;
 }
@@ -14,7 +12,7 @@ export interface DraftSignal {
 /** The colour of both rules around the draft. */
 export function ruleColour(signal: DraftSignal): string {
   if (signal.confirming) return theme.user;
-  return signal.command ? theme.tool : theme.border;
+  return theme.border;
 }
 
 /** Rows the frame adds around the draft's own: a rule above and a rule below. */
@@ -42,8 +40,7 @@ export interface Mark {
 }
 
 /** The mark a draft carries outside any mode: `$` for a shell command, the steering mark while pi works, `»` otherwise. */
-export function draftMark(command: boolean, steering: boolean): Mark {
-  if (command) return { label: "$", tone: theme.tool };
+export function draftMark(steering: boolean): Mark {
   if (steering) return { label: glyphs.steering, tone: theme.tool };
   return { label: "\u00bb", tone: theme.user };
 }

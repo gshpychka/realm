@@ -73,7 +73,7 @@ func (f *machineServer) DeleteInstance(name string) (incus.Operation, error) {
 func TestPreparedMachinesCoexistAndCloneTheirPinnedResources(t *testing.T) {
 	ctx := context.Background()
 	server := &machineServer{instances: map[string]*api.Instance{}}
-	driver := &Driver{server: server, base: "base"}
+	driver := &Driver{server: server}
 	dir := t.TempDir()
 	metadata, disk := filepath.Join(dir, "metadata"), filepath.Join(dir, "disk")
 	if err := os.WriteFile(metadata, []byte("metadata"), 0o600); err != nil {

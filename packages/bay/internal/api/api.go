@@ -131,6 +131,7 @@ type Attach struct {
 
 // Service is the Bay server's session operations.
 type Service interface {
+	Operations
 	// List returns every session, without their snapshots.
 	List(ctx context.Context) ([]Session, error)
 	Get(ctx context.Context, name string) (Session, error)
@@ -151,6 +152,7 @@ const messagesPrefix = "/v1/messages"
 // Handler serves svc, and messaging through msgs, which serves the messages contract.
 func Handler(svc Service, msgs http.Handler) http.Handler {
 	mux := http.NewServeMux()
+	operationsHandler(mux, svc)
 	mux.HandleFunc("GET /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		sessions, err := svc.List(r.Context())
 		respond(w, sessions, err)
@@ -170,7 +172,7 @@ func Handler(svc Service, msgs http.Handler) http.Handler {
 	})
 	mux.HandleFunc("POST /v1/sessions/{name}/suspend", func(w http.ResponseWriter, r *http.Request) {
 		var suspend Suspend
-		if err := wire.ReadOptional(r, &suspend); err != nil {
+		if err := wire.Read(r, &suspend); err != nil {
 			wire.Fail(w, err)
 			return
 		}
@@ -222,6 +224,7 @@ func Handler(svc Service, msgs http.Handler) http.Handler {
 		respond(w, a, err)
 	})
 	mux.HandleFunc("POST /v1/sessions/{name}/connect", connectHandler(svc))
+	mux.HandleFunc("POST /v1/sessions/{name}/environment", environmentHandler(svc))
 	// This relay is available only through the operator socket, alongside lifecycle operations.
 	mux.Handle("POST /v1/sessions/{name}/messages", http.StripPrefix("/v1", msgs))
 	mux.Handle(messagesPrefix+"/", http.StripPrefix(messagesPrefix, msgs))

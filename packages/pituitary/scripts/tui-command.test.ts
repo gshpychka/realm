@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { driverSocket, environment, parseCommand, piArguments, validateCommand } from "./tui-command.ts";
+import { driverSocket, environment, parseCommand, validateCommand } from "./tui-command.ts";
 
 describe("development CLI arguments", () => {
   test("literal flags reach the editor after --", () => {
@@ -12,8 +12,8 @@ describe("development CLI arguments", () => {
 
   test("boolean switches never consume following words", () => {
     expect(() => parseCommand(["screen", "--style", "unexpected"])).toThrow("takes no arguments");
-    expect(parseCommand(["start", "--tmux", "--cols=40", "--pi", "--no-session"])).toMatchObject({
-      options: { tmux: "", cols: "40", pi: "--no-session" },
+    expect(parseCommand(["start", "--tmux", "--cols=40"])).toMatchObject({
+      options: { tmux: "", cols: "40" },
     });
   });
 
@@ -68,14 +68,4 @@ test("environment assignments preserve empty values and embedded equals", () => 
   for (const value of ["BROKEN", "=value", "bad name=value"]) {
     expect(() => environment(value)).toThrow("KEY=value");
   }
-});
-
-test("JSON pi arguments preserve extension paths with spaces", () => {
-  expect(piArguments('["--no-session","-e","/path with spaces/extension.ts"]')).toEqual([
-    "--no-session",
-    "-e",
-    "/path with spaces/extension.ts",
-  ]);
-  expect(piArguments("--no-session -e extension.ts")).toEqual(["--no-session", "-e", "extension.ts"]);
-  expect(() => piArguments('["valid",2]')).toThrow("JSON array of strings");
 });

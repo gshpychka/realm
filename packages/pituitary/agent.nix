@@ -1,8 +1,7 @@
-# Evaluate one agent as a real Bay NixOS guest and a separately delivered role manifest.
+# Evaluate an agent's NixOS execution environment and its independent host role.
 {
   name,
   pkgs,
-  workerPackage,
   incus ? pkgs.incus,
   bay ? pkgs.callPackage ../bay { },
   modules ? [ ],
@@ -13,24 +12,12 @@ let
     inherit pkgs incus bay;
     modules = [
       ./agent-module.nix
-      { environment.systemPackages = [ workerPackage ]; }
+      { environment.systemPackages = [ pkgs.ripgrep ]; }
     ]
     ++ modules;
   };
   role = guest.system.config.pituitary.agent;
-  state = "/home/dev/.local/state/pituitary";
-  socket = "${state}/worker.sock";
-  worker = lib.getExe workerPackage;
-  command = [
-    worker
-    "--role-required"
-    "--socket"
-    socket
-    "--state"
-    state
-    "--cwd"
-    "/work"
-  ];
+  command = [ "${pkgs.bashInteractive}/bin/bash" ];
   manifest = {
     schemaVersion = 1;
     inherit name;
@@ -51,29 +38,14 @@ assert lib.assertMsg (builtins.match "[a-zA-Z][a-zA-Z0-9_-]*" name != null)
   inherit (guest) system;
   image = { inherit (guest) metadata disk; };
   inherit manifest;
+  inherit (role) verification;
   manifestFile = (pkgs.formats.json { }).generate "pituitary-agent-${name}.json" manifest;
-  # The same connector and image serve different roles. The manifest is delivered
-  # separately by the orchestration runtime; embedding it here would rebuild the OS for prompt edits.
+  # Pi Durable runs on the host. Bay provides files, commands and an operator shell.
+  # Role metadata stays outside the image, so prompt edits require no OS rebuild.
   program = {
     inherit command;
     resume = command;
-    connect = [
-      worker
-      "connect"
-      "--socket"
-      socket
-    ];
-    # Process ownership and sockets belong to an instance, never restored history.
-    history = map (path: ".local/state/pituitary/${path}") [
-      "worker.json"
-      "role.json"
-      "assignment.json"
-      "commands.json"
-      "domain.json"
-      "sessions"
-      "agent"
-    ];
+    history = [ ];
     monitor = false;
-    maxConnections = 8;
   };
 }

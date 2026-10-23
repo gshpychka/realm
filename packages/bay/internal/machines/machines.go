@@ -55,9 +55,6 @@ func (d Definition) Validate(name string) error {
 }
 
 func ValidateCatalog(catalog map[string]Definition) error {
-	if len(catalog) == 0 {
-		return nil
-	}
 	if _, ok := catalog[Default]; !ok {
 		return fmt.Errorf("machine catalog needs a default machine")
 	}

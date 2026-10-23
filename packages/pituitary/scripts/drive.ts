@@ -15,7 +15,6 @@ import {
   driverSocket,
   environment,
   HELP,
-  piArguments,
   prepareDriverSocket,
   validateCommand,
 } from "./tui-command.ts";
@@ -206,7 +205,6 @@ function open(options: Record<string, string>): Promise<Harness> {
   }
   return launch({
     ...size,
-    pi: options.pi !== undefined ? piArguments(options.pi) : undefined,
     scenario: options.scenario,
     delayMs: options.delay ? Number(options.delay) : undefined,
     env: options.env ? environment(options.env) : undefined,

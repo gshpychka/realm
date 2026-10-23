@@ -1,12 +1,5 @@
 import { expect, test } from "bun:test";
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseCommand } from "./main.ts";
-import { rootAttempt, waitRun } from "./runtime.fixture.ts";
-import { Runtime } from "./runtime.ts";
-import { startRuntime } from "./supervisor.ts";
 
 test("managed CLI accepts an objective and preserves literal leading dashes", () => {
   const command = parseCommand(["run", "--detach", "--name", "builder", "--", "--check", "this tree"], {});
@@ -87,67 +80,52 @@ test("options remain scoped to the command that supports them", () => {
   expect(() => parseCommand(["runs", "review"], {})).toThrow("does not take a run name");
 });
 
-test("the source CLI starts, inspects, and explicitly stops a persistent native run", async () => {
-  const root = mkdtempSync("/tmp/pituitary-cli-");
-  const entry = fileURLToPath(new URL("./main.ts", import.meta.url));
-  const workerEnvironment = {
-    PITUITARY_AUTH_FILE: join(root, "credentials", "auth.json"),
-    PITUITARY_CONFIG_DIRECTORY: join(root, "configuration"),
-  };
-  const host = await startRuntime({ stateDirectory: root, workerEnvironment });
-  const runtime = new Runtime({ stateDirectory: root, autoStart: false });
-  const command = (...args: string[]) =>
-    new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve, reject) => {
-      const child = spawn(process.execPath, [entry, ...args, "--state", root], {
-        env: { ...process.env, ...workerEnvironment },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      let stdout = "",
-        stderr = "";
-      child.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString();
-      });
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-      child.once("error", reject);
-      child.once("exit", (status) => resolve({ status, stdout, stderr }));
-    });
-  try {
-    const started = await command("run", "--name", "persistent", "--detach", "--cwd", root);
-    expect(started.status).toBe(0);
-    expect(started.stdout.trim()).toBe("persistent");
-    const ready = await waitRun(runtime, "persistent", (detail) => rootAttempt(detail).status === "ready");
-    const listed = await command("runs", "--json");
-    expect(listed.status).toBe(0);
-    expect(JSON.parse(listed.stdout)).toMatchObject([
-      {
-        run: { name: "persistent", desired: "running" },
-        attempts: [{ status: "ready", sessionId: rootAttempt(ready).sessionId }],
-      },
-    ]);
-    const inspected = await command("inspect", "persistent", "--json");
-    expect(inspected.status).toBe(0);
-    expect(JSON.parse(inspected.stdout).events.at(-1).type).toBe("worker_ready");
-    const stopped = await command("stop", "persistent");
-    expect(stopped.status).toBe(0);
-    expect(stopped.stdout).toContain("Stopping persistent");
-    const final = await waitRun(runtime, "persistent", (detail) => rootAttempt(detail).status === "stopped");
-    expect(final.run.desired).toBe("stopped");
-    expect(rootAttempt(final).sessionId).toBe(rootAttempt(ready).sessionId);
-  } finally {
-    try {
-      if ((await runtime.list()).length) {
-        await runtime.stop("persistent");
-        await waitRun(runtime, "persistent", (detail) => rootAttempt(detail).status === "stopped");
-      }
-    } finally {
-      runtime.close();
-      try {
-        await host.close();
-      } finally {
-        rmSync(root, { recursive: true, force: true });
-      }
-    }
-  }
-}, 30_000);
+test("workspace capture and UI iteration options express one isolated input", () => {
+  expect(
+    parseCommand(
+      ["run", "--agent", "builder", "--workspace", "/tmp/source", "--include-untracked", "new.ts", "--watch"],
+      {},
+    ),
+  ).toMatchObject({ cwd: "/tmp/source", workspace: { includeUntracked: ["new.ts"] }, watch: true });
+  expect(() => parseCommand(["run", "--workspace", "/tmp/source"], {})).toThrow("--agent");
+  expect(() => parseCommand(["run", "--include-untracked", "new.ts"], {})).toThrow("--workspace");
+  expect(() =>
+    parseCommand(["run", "--agent", "builder", "--workspace", "/tmp/source", "--cwd", "/tmp/other"], {}),
+  ).toThrow("same directory");
+  expect(() => parseCommand(["run", "--watch", "--detach"], {})).toThrow("attached frontend");
+  expect(parseCommand(["attach", "review", "--socket", "/tmp/tunnel.sock", "--watch"], {})).toMatchObject({
+    socketPath: "/tmp/tunnel.sock",
+    watch: true,
+  });
+});
+
+test("operator edits carry the expected current revision", () => {
+  expect(parseCommand(["retry", "task-1", "--revision", "3"], {})).toMatchObject({
+    taskId: "task-1",
+    revision: 3,
+  });
+  expect(() => parseCommand(["retry", "task-1"], {})).toThrow("--revision");
+  expect(
+    parseCommand(
+      [
+        "revise",
+        "task-1",
+        "--revision",
+        "3",
+        "--accept",
+        "Preserve the index",
+        "--depends-on",
+        "task-2",
+        "Improve",
+        "the result",
+      ],
+      {},
+    ),
+  ).toMatchObject({
+    input: { objective: "Improve the result", acceptance: ["Preserve the index"], dependsOn: ["task-2"] },
+  });
+  expect(parseCommand(["answer", "question-1", "Use", "the", "existing", "menu"], {})).toMatchObject({
+    questionId: "question-1",
+    answer: "Use the existing menu",
+  });
+});

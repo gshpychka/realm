@@ -35,18 +35,16 @@ import (
 
 // Config is the server's configuration file.
 type Config struct {
-	IncusSocket string `json:"incusSocket"`
-	Project     string `json:"project"`
-	// Base names the warm base instance every session's instance is cloned from.
-	Base          string                         `json:"base"`
+	IncusSocket   string                         `json:"incusSocket"`
+	Project       string                         `json:"project"`
 	Records       string                         `json:"records"`
 	Mirrors       string                         `json:"mirrors"`
 	MirrorRefresh duration                       `json:"mirrorRefresh"`
 	GatewaySocket string                         `json:"gatewaySocket"`
 	MaxRunning    int                            `json:"maxRunning"`
-	MaxMemory     int                            `json:"maxMemory,omitempty"`
+	MaxMemory     int                            `json:"maxMemory"`
 	Programs      map[string]Program             `json:"programs"`
-	Machines      map[string]machines.Definition `json:"machines,omitempty"`
+	Machines      map[string]machines.Definition `json:"machines"`
 }
 
 // Program is a program definition as configured.
@@ -117,19 +115,16 @@ func loadConfig(file string) (Config, error) {
 	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return Config{}, fmt.Errorf("config %s: expected one JSON object", file)
 	}
-	if config.Base == "" {
-		config.Base = "base"
-	}
 	for _, field := range []struct{ name, value string }{
-		{"incusSocket", config.IncusSocket}, {"project", config.Project}, {"base", config.Base},
+		{"incusSocket", config.IncusSocket}, {"project", config.Project},
 		{"records", config.Records}, {"mirrors", config.Mirrors}, {"gatewaySocket", config.GatewaySocket},
 	} {
 		if field.value == "" {
 			return Config{}, fmt.Errorf("config %s: %s is required", file, field.name)
 		}
 	}
-	if config.MaxRunning < 1 || config.MaxMemory < 0 || config.MirrorRefresh.Duration < 0 {
-		return Config{}, fmt.Errorf("config %s: maxRunning must be positive and mirrorRefresh must not be negative", file)
+	if config.MaxRunning < 1 || config.MaxMemory < 1 || config.MirrorRefresh.Duration < 0 {
+		return Config{}, fmt.Errorf("config %s: maxRunning and maxMemory must be positive and mirrorRefresh must not be negative", file)
 	}
 	if err := machines.ValidateCatalog(config.Machines); err != nil {
 		return Config{}, fmt.Errorf("config %s: %w", file, err)
@@ -152,7 +147,7 @@ func serve(config Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	driver, err := incus.Connect(config.IncusSocket, config.Project, config.Base)
+	driver, err := incus.Connect(config.IncusSocket, config.Project)
 	if err != nil {
 		return err
 	}
@@ -171,7 +166,7 @@ func serve(config Config, log *slog.Logger) error {
 		Programs:   programs,
 		MaxRunning: config.MaxRunning,
 		MaxMemory:  config.MaxMemory,
-		Reserved:   append(driver.Reserved(), messages.Operator),
+		Reserved:   []string{messages.Operator},
 		Machines:   config.Machines,
 	}, log)
 	if err != nil {
@@ -290,22 +285,18 @@ func base(args []string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	driver, err := incus.Connect(config.IncusSocket, config.Project, config.Base)
+	driver, err := incus.Connect(config.IncusSocket, config.Project)
 	if err != nil {
 		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	ready := func(ctx context.Context, exec guest.Exec) error { return guest.New(exec).Ready(ctx) }
-	if *machine != "" {
-		definition, ok := config.Machines[*machine]
-		if !ok {
-			return fmt.Errorf("undeclared machine %q", *machine)
-		}
-		if err := driver.EnsureBase(ctx, definition, *metadata, *disk, ready); err != nil {
-			return err
-		}
-	} else if err := driver.UpdateBase(ctx, *metadata, *disk, ready); err != nil {
+	definition, ok := config.Machines[*machine]
+	if !ok {
+		return fmt.Errorf("undeclared machine %q", *machine)
+	}
+	if err := driver.EnsureBase(ctx, definition, *metadata, *disk, ready); err != nil {
 		return err
 	}
 	log.Info("warm base ready")

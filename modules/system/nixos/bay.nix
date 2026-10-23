@@ -22,7 +22,6 @@ let
   pool = "bay";
   bridge = "baybr0";
   acl = "bay-sessions";
-  base = "base";
   apiSocket = "/run/bay/bay.sock";
   identitySocket = "/run/bay/identity.sock";
   gatewaySocket = "/run/bay-gateway/operator.sock";
@@ -40,7 +39,7 @@ let
 
   serverConfig = json.generate "bay-server.json" {
     incusSocket = "/var/lib/incus/unix.socket";
-    inherit project base gatewaySocket;
+    inherit project gatewaySocket;
     records = "/var/lib/bay/sessions";
     mirrors = "/var/lib/bay/mirrors";
     inherit (cfg) mirrorRefresh;

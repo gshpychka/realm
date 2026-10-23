@@ -17,7 +17,7 @@ export function useHeldKeys(
   editor: RefObject<EditorHandle | null>,
   onKey: (key: KeyEvent) => void,
   holding: boolean,
-  /** A newly opened extension dialog or component must not receive keys meant for the draft. */
+  /** A new operator dialog must not receive keys meant for the draft. */
   boundary: object | null = null,
 ): void {
   const held = useRef<{ key: KeyEvent; boundary: object | null }[]>([]);
@@ -68,7 +68,7 @@ export function useHeldKeys(
       // Holding the key took it; a fresh copy says whether the app takes it now.
       const replay = new KeyEvent(next.key);
       // A shortcut may have opened a picker. Route through the same global handlers
-      // and focused input, while an unrelated extension dialog drops the old input.
+      // and focused input, while a new operator dialog drops the old input.
       replaying.current = true;
       try {
         renderer.keyInput.emit("keypress", replay);

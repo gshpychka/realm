@@ -31,31 +31,6 @@ type Record struct {
 	Created    time.Time           `json:"created"`
 }
 
-// PinMachine upgrades a legacy record once, before its next fresh instance. A
-// record already pinned to a revision cannot be silently moved to another one.
-func (s *Store) PinMachine(name string, machine machines.Selection, program *ProgramDefinition) (Record, error) {
-	dir, err := s.dir(name)
-	if err != nil {
-		return Record{}, err
-	}
-	r, err := read(dir)
-	if err != nil {
-		return Record{}, err
-	}
-	if r.Machine != nil {
-		if *r.Machine != machine {
-			return Record{}, fmt.Errorf("session %s already has a pinned machine", name)
-		}
-		return r, nil
-	}
-	r.Machine = &machine
-	r.Program.Runtime = program
-	if err := replace(dir, r); err != nil {
-		return Record{}, err
-	}
-	return r, nil
-}
-
 // AdvanceGeneration durably revokes the previous execution before a fresh launch or restore. The session service
 // holds its lifecycle lock while changing a record, including while this replacement is committed.
 func (s *Store) AdvanceGeneration(name string) (Record, error) {
@@ -66,6 +41,9 @@ func (s *Store) AdvanceGeneration(name string) (Record, error) {
 	r, err := read(dir)
 	if err != nil {
 		return Record{}, err
+	}
+	if r.Generation < 1 {
+		return Record{}, fmt.Errorf("session %s has no execution generation", name)
 	}
 	if r.Generation >= math.MaxInt64 {
 		return Record{}, fmt.Errorf("session %s exhausted its execution generations", name)

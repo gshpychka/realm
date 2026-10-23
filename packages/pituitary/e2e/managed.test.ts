@@ -1,186 +1,137 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { pathToFileURL } from "node:url";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { closeAll } from "@microsoft/tui-test";
 import { boot, type Harness, pastGrace, REPO, waitMatch } from "./helpers/harness.ts";
 
 after(async () => {
   await closeAll();
 });
-
-test("managed conversation survives closing and reopening the terminal UI", async () => {
+test("managed UI reload, host restart and archive preserve one native conversation", async () => {
   const root = mkdtempSync("/tmp/pituitary-managed-");
-  const cwd = join(root, "managed");
-  const state = join(root, "state");
+  const cwd = join(root, "workspace"),
+    state = join(root, "state");
   mkdirSync(cwd);
   mkdirSync(state, { mode: 0o700 });
-  const session = SessionManager.create(cwd, join(state, "sessions"));
-  session.appendMessage({
-    role: "user",
-    content: "Keep this conversation while the terminal is closed.",
-    timestamp: Date.now(),
-  });
-  session.appendMessage({
-    role: "assistant",
-    content: [{ type: "text", text: "The worker kept this reply across frontend restarts." }],
-    api: "anthropic-messages",
-    provider: "anthropic",
-    model: "claude-sonnet-5",
-    usage: {
-      input: 1,
-      output: 1,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 2,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: "stop",
-    timestamp: Date.now(),
-  });
-  const file = session.getSessionFile();
-  assert.ok(file);
   const environment = {
     HOME: root,
     XDG_CONFIG_HOME: join(root, "config"),
-    PITUITARY_AUTH_FILE: join(root, "auth.json"),
-    PITUITARY_CONFIG_DIRECTORY: join(root, "config"),
     PITUITARY_GH: "",
     PITUITARY_STILL: "1",
     PITUITARY_STATE_DIR: state,
     PITUITARY_RUN_NAME: "managed",
-    PI_AGENT_ARGS_JSON: "[]",
     PITUITARY_LOG: join(root, "tui.log"),
+    PITUITARY_UI_STATE: join(root, "frontend.json"),
   };
-  // The Bun host owns its worker; the Node PTY harness interacts through the public Runtime API.
-  const driver = join(root, "runtime-fixture.ts");
-  writeFileSync(
-    driver,
-    `
-    import { Runtime } from ${JSON.stringify(pathToFileURL(join(REPO, "packages/harness/src/runtime.ts")).href)};
-    import { startRuntime } from ${JSON.stringify(pathToFileURL(join(REPO, "packages/harness/src/supervisor.ts")).href)};
-    const stateDirectory = ${JSON.stringify(state)};
-    const host = await startRuntime({stateDirectory, workerCommand: [process.execPath,
-      ${JSON.stringify(join(REPO, "packages/harness/src/worker.ts"))}, "--session", ${JSON.stringify(file)}]});
-    const runtime = new Runtime({stateDirectory, autoStart:false});
-    const run = await runtime.start({name:"managed",cwd:${JSON.stringify(cwd)}});
-    const current = async () => {
-      const detail = await runtime.inspect(run.id);
-      const task = detail.tasks.find(item => item.id === detail.run.rootTaskId);
-      return detail.attempts.find(item => item.id === task.currentAttemptId);
-    };
-    const stop = async () => {
-      await runtime.stop(run.id);
-      const deadline = Date.now() + 10000;
-      while ((await current()).status !== "stopped") {
-        if (Date.now() > deadline) throw new Error("Managed fixture stop timed out");
-        await new Promise(resolve => setTimeout(resolve,25));
-      }
-    };
-    let closing;
-    const close = () => closing ??= stop().then(() => host.close());
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", input => {
-      if (input.trim() === "archive") void stop().then(() => console.log(JSON.stringify({archived:true})));
-    });
-    process.once("SIGTERM", () => { void close().then(() => process.exit(0), error => {console.error(error);process.exit(1);}); });
-    const deadline = Date.now() + 10000;
-    while ((await current()).status !== "ready") {
-      if (Date.now() > deadline) {await close();throw new Error("Managed fixture startup timed out");}
-      await new Promise(resolve => setTimeout(resolve,25));
-    }
-    console.log(JSON.stringify({runId:run.id,directory:(await current()).directory}));
-  `,
-  );
-  const host = spawn("bun", [driver], {
+  const host = spawn("bun", [join(REPO, "packages/harness/src/managed-runtime.fixture.ts"), state, cwd], {
     env: { ...process.env, ...environment },
     stdio: ["pipe", "pipe", "pipe"],
   });
-  let errors = "";
+  let errors = "",
+    output = "";
   host.stderr.on("data", (chunk: Buffer) => {
     errors += chunk.toString();
   });
-  const exited = new Promise<void>((resolve) => host.once("close", () => resolve()));
-  const ready = new Promise<{ runId: string; directory: string }>((resolve, reject) => {
-    let output = "";
-    host.stdout.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-      const newline = output.indexOf("\n");
-      if (newline < 0) return;
-      try {
-        resolve(JSON.parse(output.slice(0, newline)));
-      } catch (error) {
-        reject(error);
-      }
-    });
-    host.once("error", reject);
-    host.once("exit", (code) => reject(new Error(`runtime fixture exited ${code}: ${errors}`)));
+  const messages: Array<Record<string, unknown>> = [];
+  const listeners = new Set<() => void>();
+  host.stdout.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+    const lines = output.split("\n");
+    output = lines.pop() ?? "";
+    for (const line of lines) {
+      messages.push(JSON.parse(line));
+      for (const listener of listeners) listener();
+    }
   });
+  const exited = new Promise<void>((resolve) => host.once("close", () => resolve()));
+  const message = (predicate: (item: Record<string, unknown>) => boolean) =>
+    new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        listeners.delete(check);
+        reject(new Error(`Runtime fixture did not reply: ${errors}`));
+      }, 20000);
+      const check = () => {
+        const found = messages.find(predicate);
+        if (found) {
+          clearTimeout(timer);
+          listeners.delete(check);
+          resolve(found);
+        }
+      };
+      listeners.add(check);
+      host.once("exit", (code) => {
+        clearTimeout(timer);
+        listeners.delete(check);
+        reject(new Error(`Runtime fixture exited ${code}: ${errors}`));
+      });
+      check();
+    });
   let app: Harness | undefined;
   try {
-    const managed = await ready;
-    const identityPath = join(managed.directory, "worker.json");
-    const identity = readFileSync(identityPath, "utf8");
-    const launch = (ready = "The worker kept this reply") =>
+    const ready = await message((item) => typeof item.runId === "string");
+    const launch = (text = "The host kept this reply", resume = false) =>
       boot({
         entry: join(REPO, "packages/tui/src/main.tsx"),
         cwd,
-        ready,
-        env: { ...environment, PITUITARY_RUN_ID: managed.runId },
+        ready: text,
+        env: {
+          ...environment,
+          PITUITARY_RUN_ID: String(ready.runId),
+          ...(resume ? { PITUITARY_UI_RESUME: "1" } : {}),
+        },
       });
     app = await launch();
-    assert.match(await app.capture("managed-attached"), /The worker kept this reply/);
-    await app.terminal.write("\x04");
-    await app.terminal.waitExit({ timeout: 10_000 });
+    assert.match(await app.capture("managed-attached"), /The host kept this reply/);
+    await app.terminal.type("Keep my draft across frontend reload");
+    await app.terminal.write("\x12");
+    await app.terminal.waitExit({ timeout: 10000 });
     await app.close();
     app = undefined;
-    assert.equal(host.exitCode, null, "detaching stopped the runtime");
-    assert.equal(readFileSync(identityPath, "utf8"), identity);
+    assert.equal(host.exitCode, null, "frontend reload stopped the host");
+    const saved = JSON.parse(readFileSync(environment.PITUITARY_UI_STATE, "utf8"));
+    assert.match(JSON.stringify(saved.views), /Keep my draft across frontend reload/);
+    app = await launch("Keep my draft across frontend reload", true);
+    assert.match(await app.capture("managed-ui-reloaded"), /The host kept this reply/);
+    await app.close();
+    app = undefined;
+    host.stdin.write("restart\n");
+    const restarted = await message((item) => item.restarted === true);
+    assert.equal(restarted.conversationId, ready.conversationId);
+    assert.equal(restarted.modelCalls, 1);
     app = await launch();
     assert.match(
       await app.capture("managed-reconnected"),
-      /The worker kept this reply across frontend restarts/,
+      /The host kept this reply across frontend and runtime restarts/,
     );
     await app.close();
     app = undefined;
-    const archived = new Promise<void>((resolve, reject) => {
-      let output = "";
-      host.stdout.on("data", (chunk: Buffer) => {
-        output += chunk.toString();
-        if (output.includes('"archived":true')) resolve();
-      });
-      host.once("exit", () => reject(new Error(`runtime exited before archiving: ${errors}`)));
-    });
     host.stdin.write("archive\n");
-    await archived;
+    const archived = await message((item) => item.archived === true);
+    assert.equal(archived.conversationId, ready.conversationId);
     app = await launch("Archived · read only");
-    const archiveScreen = await app.capture("managed-archived");
-    assert.match(archiveScreen, /The worker kept this reply across frontend restarts/);
-    assert.match(archiveScreen, /Archived · read only/);
-    assert.doesNotMatch(archiveScreen, /ask pi · !cmd/);
-    await app.terminal.write("must not become a prompt\r\x1b[Z");
+    const screen = await app.capture("managed-archived");
+    assert.match(screen, /The host kept this reply/);
+    assert.doesNotMatch(screen, /ask pi · !cmd/);
+    await app.terminal.write("must not become a prompt\r");
     assert.doesNotMatch(await app.terminal.text(), /must not become a prompt/);
-    assert.equal(readFileSync(identityPath, "utf8"), identity);
     await app.terminal.write("/");
-    await waitMatch(app.terminal, /archived conversation/);
+    await app.terminal.waitText("archived conversation");
     const commands = await app.capture("managed-archived-commands");
     assert.match(commands, /\/copy/);
-    assert.match(commands, /\/session/);
     assert.doesNotMatch(commands, /\/model|\/compact|\/settings/);
     await pastGrace();
-    await app.terminal.write("\x1b");
+    await app.terminal.keyboard.press("Escape");
     await waitMatch(app.terminal, /^(?![\s\S]*archived conversation)/);
     await app.terminal.write("\x04");
-    await app.terminal.waitExit({ timeout: 10_000 });
+    await app.terminal.waitExit({ timeout: 10000 });
   } finally {
     try {
       await app?.close();
     } finally {
       host.kill("SIGTERM");
-      const killer = setTimeout(() => host.kill("SIGKILL"), 15_000);
+      const killer = setTimeout(() => host.kill("SIGKILL"), 15000);
       try {
         await exited;
       } finally {

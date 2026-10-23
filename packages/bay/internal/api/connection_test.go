@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
+	"github.com/gshpychka/realm/packages/bay/internal/identity"
 )
 
 type connectionService struct {
@@ -24,6 +25,10 @@ type connectionService struct {
 
 func (s connectionService) Connect(ctx context.Context, name, id string, generation ...uint64) (io.ReadWriteCloser, error) {
 	return s.open(ctx, name, id)
+}
+
+func (s connectionService) Environment(ctx context.Context, name string, expected identity.Precondition, _ string) (io.ReadWriteCloser, error) {
+	return s.open(ctx, name, expected.ID)
 }
 
 func connectionClient(t *testing.T, open func(context.Context, string, string) (io.ReadWriteCloser, error)) *Client {
@@ -135,5 +140,18 @@ func TestBridgeFailureDoesNotCorruptProgramBytes(t *testing.T) {
 	data, err := io.ReadAll(c)
 	if string(data) != "program output" || err == nil || !strings.Contains(err.Error(), "connection failed") {
 		t.Fatalf("failed bridge returned %q, %v", data, err)
+	}
+}
+
+func TestEnvironmentRejectsStaleIdentityBeforeInputEnds(t *testing.T) {
+	client := connectionClient(t, func(_ context.Context, _, _ string) (io.ReadWriteCloser, error) {
+		return nil, fmt.Errorf("%w: stale execution", fault.Conflict)
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	generation := uint64(3)
+	_, err := client.Environment(ctx, "one", identity.Precondition{ID: "stale", Generation: &generation}, "machine-revision")
+	if !errors.Is(err, fault.Conflict) {
+		t.Fatalf("stale environment handshake waited for input instead of rejecting: %v", err)
 	}
 }

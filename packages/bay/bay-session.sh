@@ -8,6 +8,7 @@ usage: bay-session ready
        bay-session program
        bay-session attach
        bay-session connect -- COMMAND...
+       bay-session operator --record ID --generation GENERATION OPERATION KEY
        bay-session stop
        bay-session save-history -- PATH...
        bay-session restore-history
@@ -93,6 +94,11 @@ connect)
     env -i HOME="$SESSION_HOME" USER="$SESSION_USER" LOGNAME="$SESSION_USER" \
     PATH="/run/wrappers/bin:/etc/profiles/per-user/$SESSION_USER/bin:/run/current-system/sw/bin" \
     LANG=C.UTF-8 bash -lc 'exec "$@"' bridge "$@"
+  ;;
+
+operator)
+  # This fixed helper owns root-protected receipts and immutable bytes. Its requested commands drop to SESSION_USER.
+  exec "$BAY_GUEST" --user "$SESSION_USER" --home "$SESSION_HOME" --work "$WORK" "$@"
   ;;
 
 stop)

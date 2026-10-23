@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { agentManifestDigest } from "./agent.ts";
 import { loadCatalog, parseCatalog } from "./catalog.ts";
-import { agentManifestDigest } from "./protocol.ts";
 
 const reader = {
   schemaVersion: 1,
@@ -14,6 +14,7 @@ const reader = {
   tools: ["read", "grep"],
   delegatesTo: [],
   credentials: ["model-provider"],
+  limits: { maxChildren: 0, maxDepth: 0 },
   program: "pituitary-reader",
   machine: "pituitary-reader",
   machineRevision: "machine-revision-1",
@@ -35,6 +36,7 @@ test("a declarative catalog separates the reusable machine from its immutable ro
       tools: ["read", "grep"],
       delegatesTo: [],
       credentials: ["model-provider"],
+      limits: { maxChildren: 0, maxDepth: 0 },
     },
     program: reader.program,
     machine: reader.machine,

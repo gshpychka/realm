@@ -371,6 +371,8 @@ func newServiceOver(t *testing.T, maxRunning int, repos Repos) (*Service, *fakeI
 			"tool":  {Command: []string{"tool"}, Monitor: true},
 		},
 		MaxRunning: maxRunning,
+		MaxMemory:  maxRunning,
+		Machines:   map[string]machines.Definition{machines.Default: machineDefinition("a", 1)},
 		Reserved:   []string{"base", "operator"},
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -1092,6 +1094,10 @@ func TestNewRejectsAConfigNoSessionCanRunUnder(t *testing.T) {
 		{MaxRunning: 1, Programs: programs("a/")},
 		{MaxRunning: 1, Programs: programs(".ok", "../bad")},
 	} {
+		if config.MaxRunning > 0 {
+			config.MaxMemory = 8
+			config.Machines = map[string]machines.Definition{machines.Default: machineDefinition("a", 1)}
+		}
 		if svc, err := New(store, newFakeInstances(), fakeRepos{}, config, log); err == nil || svc != nil {
 			t.Errorf("New(%+v) = %v, %v; want an error", config, svc, err)
 		}
@@ -1101,6 +1107,8 @@ func TestNewRejectsAConfigNoSessionCanRunUnder(t *testing.T) {
 		{MaxRunning: 8, Programs: programs()},
 		{MaxRunning: 1, Programs: programs(".claude/projects", ".counter/log", "a", "..a", "a..b")},
 	} {
+		config.MaxMemory = 8
+		config.Machines = map[string]machines.Definition{machines.Default: machineDefinition("a", 1)}
 		if _, err := New(store, newFakeInstances(), fakeRepos{}, config, log); err != nil {
 			t.Errorf("New(%+v) = %v", config, err)
 		}

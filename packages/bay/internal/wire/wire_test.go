@@ -66,7 +66,7 @@ func TestClientReturnsFailuresAsTheirFaultKind(t *testing.T) {
 	}
 }
 
-func TestCapacityFailureHasStableCodeAndRetainsConflictCompatibility(t *testing.T) {
+func TestCapacityFailureHasStableCodeAndRetainsConflictKind(t *testing.T) {
 	sent := fmt.Errorf("%w: 2 of 2 sessions are running", fault.Capacity)
 	response := httptest.NewRecorder()
 	wire.Fail(response, sent)
@@ -147,24 +147,5 @@ func TestReadRequiresOneBoundedJSONObject(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{\"name\":\"a\"}\n\t "))
 	if err := wire.Read(req, &in); err != nil || in.Name != "a" {
 		t.Fatalf("valid JSON followed by whitespace: %+v, %v", in, err)
-	}
-}
-
-func TestReadOptionalAllowsEmptyBodiesWithoutSkippingValidation(t *testing.T) {
-	for _, body := range []string{"", " \n\t", `{}`, `{"id":"record-id"}`} {
-		var in struct{ ID string }
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-		// Chunked requests have no known length; validation must inspect the body itself.
-		req.ContentLength = -1
-		if err := wire.ReadOptional(req, &in); err != nil {
-			t.Errorf("ReadOptional(%q) = %v", body, err)
-		}
-	}
-	for _, body := range []string{`null`, `{"unknown":1}`, `{} {}`, strings.Repeat(" ", (1<<20)+1)} {
-		var in struct{ ID string }
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-		if err := wire.ReadOptional(req, &in); !errors.Is(err, fault.Invalid) {
-			t.Errorf("ReadOptional accepted malformed or oversized body (%d bytes): %v", len(body), err)
-		}
 	}
 }

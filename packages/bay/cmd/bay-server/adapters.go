@@ -7,6 +7,7 @@ import (
 	"github.com/gshpychka/realm/packages/bay/internal/api"
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
 	"github.com/gshpychka/realm/packages/bay/internal/identity"
+	"github.com/gshpychka/realm/packages/bay/internal/operations"
 	"github.com/gshpychka/realm/packages/bay/internal/records"
 	"github.com/gshpychka/realm/packages/bay/internal/sessions"
 )
@@ -14,6 +15,22 @@ import (
 // operatorAPI serves the session service through the API contract.
 type operatorAPI struct {
 	svc *sessions.Service
+}
+
+func (o operatorAPI) PutBlob(ctx context.Context, name string, expected identity.Precondition, digest string, r io.Reader) (operations.Blob, error) {
+	return o.svc.PutBlob(ctx, name, expected, digest, r)
+}
+func (o operatorAPI) Capture(ctx context.Context, name string, expected identity.Precondition, id string, request operations.Capture) (operations.Blob, error) {
+	return o.svc.Capture(ctx, name, expected, id, request)
+}
+func (o operatorAPI) ReadCapture(ctx context.Context, name string, expected identity.Precondition, id string) (operations.Blob, io.ReadCloser, error) {
+	return o.svc.ReadCapture(ctx, name, expected, id)
+}
+func (o operatorAPI) StartJob(ctx context.Context, name string, expected identity.Precondition, id string, request operations.Command) (operations.Job, error) {
+	return o.svc.StartJob(ctx, name, expected, id, request)
+}
+func (o operatorAPI) Job(ctx context.Context, name string, expected identity.Precondition, id string) (operations.Job, error) {
+	return o.svc.Job(ctx, name, expected, id)
 }
 
 func (o operatorAPI) List(ctx context.Context) ([]api.Session, error) {
@@ -128,4 +145,8 @@ func (r resolver) Session(ctx context.Context, name string) (identity.Session, e
 
 func toIdentity(rec records.Record) identity.Session {
 	return identity.Session{ID: rec.ID, Name: rec.Name, Generation: rec.Generation}
+}
+
+func (a operatorAPI) Environment(ctx context.Context, name string, expected identity.Precondition, revision string) (io.ReadWriteCloser, error) {
+	return a.svc.Environment(ctx, name, expected, revision)
 }

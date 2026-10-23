@@ -76,18 +76,20 @@ func TestGetMissing(t *testing.T) {
 	}
 }
 
-func TestLegacyGenerationAdvancesAndSurvivesReopen(t *testing.T) {
+func TestExecutionGenerationAdvancesAndSurvivesReopen(t *testing.T) {
 	root := t.TempDir()
 	s, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Create(testRecord("old", time.Now())); err != nil {
+	initial := testRecord("old", time.Now())
+	initial.Generation = 1
+	if err := s.Create(initial); err != nil {
 		t.Fatal(err)
 	}
-	legacy, err := s.Get("old")
-	if err != nil || legacy.Generation != 0 {
-		t.Fatalf("legacy generation: %+v, %v", legacy, err)
+	before, err := s.Get("old")
+	if err != nil || before.Generation != 1 {
+		t.Fatalf("initial generation: %+v, %v", before, err)
 	}
 	if _, err := s.AdvanceGeneration("old"); err != nil {
 		t.Fatal(err)
@@ -97,7 +99,7 @@ func TestLegacyGenerationAdvancesAndSurvivesReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened, err := s.Get("old")
-	if err != nil || reopened.Generation != 1 || reopened.ID != legacy.ID {
+	if err != nil || reopened.Generation != 2 || reopened.ID != before.ID {
 		t.Fatalf("durable generation: %+v, %v", reopened, err)
 	}
 }

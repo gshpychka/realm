@@ -1,6 +1,5 @@
 import type { TextareaRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import type { EditorSeed } from "@pituitary/rpc";
 import {
   type Ref,
   type RefObject,
@@ -50,8 +49,9 @@ export interface EditorProps {
   steering: boolean;
   /** False while something else, such as a dialog, holds the keyboard. */
   focused: boolean;
-  /** Text an extension put in the editor, replacing the draft. */
-  seed: EditorSeed | null;
+  /** Draft and cursor restored when this conversation is attached. */
+  initialDraft?: string;
+  initialCursor?: number;
   /** A passing message about the keys, drawn into the rule above the draft. */
   note: string | null;
   /** What a second press of the key just pressed does, shown until another key passes it up. */
@@ -148,7 +148,8 @@ function PlainEditor({
   onSubmit,
   steering,
   focused,
-  seed,
+  initialDraft,
+  initialCursor,
   note,
   confirm,
   onChange,
@@ -158,7 +159,6 @@ function PlainEditor({
 }: EditorProps & { initial: string; maxRows: number }) {
   const area = useRef<TextareaRenderable | null>(null);
   const [rows, setRows] = useState(1);
-  const [bash, setBash] = useState(false);
 
   const changed = useRef(onChange);
   changed.current = onChange;
@@ -168,7 +168,6 @@ function PlainEditor({
     changed.current?.(field.plainText, field.cursorOffset);
     // Counted from the text and the width it has, so the editor grows before the layout wraps it.
     setRows(Math.min(maxRows, Math.max(1, rowsFor(field.plainText, field.width))));
-    setBash(field.plainText.startsWith("!"));
   }, [maxRows]);
 
   useEffect(measure, [measure]);
@@ -188,8 +187,8 @@ function PlainEditor({
   useImperativeHandle(ref, () => plainHandle(area, set));
 
   useEffect(() => {
-    if (seed) set(seed.text);
-  }, [seed, set]);
+    if (initialDraft !== undefined) set(initialDraft, initialCursor);
+  }, [initialDraft, initialCursor, set]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: carries the draft over once, when this editor takes over
   useEffect(() => {
@@ -200,13 +199,7 @@ function PlainEditor({
   const shownRows = Math.min(rows, maxRows);
 
   return (
-    <EditorFrame
-      signal={{ command: bash }}
-      rows={shownRows}
-      note={note}
-      confirm={confirm}
-      mark={draftMark(bash, steering)}
-    >
+    <EditorFrame signal={{}} rows={shownRows} note={note} confirm={confirm} mark={draftMark(steering)}>
       <textarea
         ref={area}
         focused={focused}
@@ -215,7 +208,7 @@ function PlainEditor({
         keyBindings={BINDINGS}
         textColor={theme.assistant}
         placeholderColor={theme.dim}
-        placeholder={steering ? "queue a steering message" : "ask pi · !cmd runs a shell command"}
+        placeholder={steering ? "queue a steering message" : "ask pi"}
         onContentChange={measure}
         onSizeChange={measure}
         onCursorChange={measure}

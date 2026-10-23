@@ -113,7 +113,6 @@
         in
         {
           pituitary = pkgs.callPackage ./packages/pituitary { };
-          pituitary-worker = pkgs.callPackage ./packages/pituitary/worker.nix { };
         }
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           inherit bay;

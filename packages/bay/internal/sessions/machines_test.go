@@ -73,22 +73,6 @@ func TestSessionPinsMachineAndProgramAcrossCatalogChanges(t *testing.T) {
 	}
 }
 
-func TestLegacyRecordPinsOnceWhenCatalogIsIntroduced(t *testing.T) {
-	svc, _, store := newService(t, 2)
-	mustStart(t, svc, "old", StartSpec{Program: "agent"})
-	if err := svc.End(context.Background(), "old", nil); err != nil {
-		t.Fatal(err)
-	}
-	svc.config.Machines = map[string]machines.Definition{machines.Default: machineDefinition("a", 4)}
-	if _, err := svc.Start(context.Background(), "old", StartSpec{}); err != nil {
-		t.Fatal(err)
-	}
-	record, err := store.Get("old")
-	if err != nil || record.Machine == nil || record.Machine.Name != machines.Default || record.Program.Runtime == nil {
-		t.Fatalf("legacy pin = %+v, %v", record, err)
-	}
-}
-
 func TestMachineMemoryAdmissionUsesPinnedAndInFlightLimits(t *testing.T) {
 	svc, instances, store := machineService(t, 12)
 	held := instances.hold("large", "ready")
@@ -126,9 +110,9 @@ func TestMachineCatalogRejectsUndeclaredProgramAndBadDefinitions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, config := range []Config{
-		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{"p"}, Machine: "missing"}}},
-		{MaxRunning: 1, Machines: map[string]machines.Definition{"other": machineDefinition("a", 1)}},
-		{MaxRunning: 1, Machines: map[string]machines.Definition{machines.Default: {Base: "base", Revision: "mutable"}}},
+		{MaxRunning: 1, MaxMemory: 4, Programs: map[string]Program{"p": {Command: []string{"p"}, Machine: "missing"}}},
+		{MaxRunning: 1, MaxMemory: 4, Machines: map[string]machines.Definition{"other": machineDefinition("a", 1)}},
+		{MaxRunning: 1, MaxMemory: 4, Machines: map[string]machines.Definition{machines.Default: {Base: "base", Revision: "mutable"}}},
 	} {
 		if _, err := New(store, newFakeInstances(), fakeRepos{}, config, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
 			t.Fatalf("invalid catalog accepted: %+v", config)

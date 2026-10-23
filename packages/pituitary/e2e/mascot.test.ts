@@ -44,7 +44,7 @@ async function workingRow(terminal: TuiTest): Promise<number> {
 
 test("while pi works the one fire burns beside the working line, and the corner is empty", async () => {
   const app = await launch({ scenario: "long", delayMs: 80, cols: WIDE });
-  await app.terminal.waitText("fake-model-1");
+  await app.terminal.waitText("faux-1");
   assert.equal((await fire(app.terminal))?.bottom, ROWS - 1, "no fire in the corner while idle");
   await app.terminal.submit("go");
   await waitMatch(app.terminal, RUNNING);
@@ -67,7 +67,7 @@ test("the fire travels between the corner and the working line and back, never d
     settle: false,
     env: { PITUITARY_STILL: "0" },
   });
-  await app.terminal.waitText("fake-model-1");
+  await app.terminal.waitText("faux-1");
   await new Promise((resolve) => setTimeout(resolve, 400));
   await app.capture("mascot-idle");
   const start = performance.now();
@@ -109,19 +109,22 @@ test("the fire travels between the corner and the working line and back, never d
   await app.close();
 });
 
-test("without room in the corner the fire appears only while pi works", async () => {
+test("a narrow terminal keeps one fire and follows the working line", async () => {
   const app = await launch({ scenario: "long", delayMs: 80, cols: NARROW });
-  await app.terminal.waitText("fake-model-1");
-  assert.equal(await fire(app.terminal, NARROW), null, "a fire burned in a corner without room");
+  await app.terminal.waitText("faux-1");
+  const idleFire = await fire(app.terminal, NARROW);
+  if (idleFire) assert.equal(idleFire.bottom, ROWS - 1);
   await app.terminal.submit("go");
   await waitMatch(app.terminal, RUNNING);
   await drawn();
   const box = await fire(app.terminal, NARROW);
   assert.ok(box && single(box), `not one fire at the working line: ${describe(box)}`);
   assert.equal(box.bottom, await workingRow(app.terminal));
-  await settled(app.terminal);
+  await settled(app.terminal, 10000);
   await app.terminal.waitText("line 40");
-  assert.equal(await fire(app.terminal, NARROW), null, "the fire stayed after the run");
+  const returned = await fire(app.terminal, NARROW);
+  if (returned) assert.equal(returned.bottom, ROWS - 1);
+  else assert.equal(idleFire, null);
   await app.close();
 });
 

@@ -66,10 +66,16 @@ export function Picker({
 
   const shown = useMemo(() => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return items.filter((item) => {
-      const haystack = `${item.label} ${item.detail ?? ""}`.toLowerCase();
-      return words.every((word) => haystack.includes(word));
-    });
+    return items
+      .filter((item) => {
+        const haystack = `${item.label} ${item.detail ?? ""}`.toLowerCase();
+        return words.every((word) => haystack.includes(word));
+      })
+      .sort(
+        (a, b) =>
+          Number(words.every((word) => b.label.toLowerCase().includes(word))) -
+          Number(words.every((word) => a.label.toLowerCase().includes(word))),
+      );
   }, [items, query]);
   const index = Math.max(0, Math.min(selected, shown.length - 1));
   const height = Math.max(1, Math.min(ROWS, rows));

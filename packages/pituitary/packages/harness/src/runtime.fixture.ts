@@ -1,5 +1,5 @@
+import type { Attempt, RunDetail } from "./model.ts";
 import type { Runtime } from "./runtime.ts";
-import type { Attempt, RunDetail } from "./store.ts";
 
 export function rootAttempt(detail: RunDetail): Attempt {
   const task = detail.tasks.find((item) => item.id === detail.run.rootTaskId);

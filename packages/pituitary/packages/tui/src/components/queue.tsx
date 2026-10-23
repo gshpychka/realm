@@ -1,4 +1,4 @@
-import type { SessionView } from "@pituitary/rpc";
+import type { SessionView } from "@pituitary/session";
 import { glyphs } from "../glyphs.ts";
 import { counted } from "../plural.ts";
 import { theme } from "../theme.ts";

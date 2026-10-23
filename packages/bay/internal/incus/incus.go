@@ -30,60 +30,43 @@ const (
 type Driver struct {
 	server  incus.InstanceServer
 	project string
-	base    string
 }
 
-// Connect returns a driver for the instances in project, cloned from the instance named base.
-func Connect(socket, project, base string) (*Driver, error) {
+// Connect returns a driver for the instances in project.
+func Connect(socket, project string) (*Driver, error) {
 	server, err := incus.ConnectIncusUnix(socket, &incus.ConnectionArgs{UserAgent: "bay"})
 	if err != nil {
 		return nil, fmt.Errorf("connect to incus: %w", err)
 	}
-	return &Driver{server: server.UseProject(project), project: project, base: base}, nil
+	return &Driver{server: server.UseProject(project), project: project}, nil
 }
 
 var _ sessions.Instances = (*Driver)(nil)
 
 func (d *Driver) Create(ctx context.Context, name, sessionID string, machine *machines.Selection) error {
-	base := d.base
-	put := api.InstancePut{Config: map[string]string{sessionKey: sessionID}}
 	if machine == nil {
-		alias, _, err := d.server.GetImageAlias(legacyAlias(d.base))
-		if err == nil {
-			if len(alias.Target) < 40 {
-				return fmt.Errorf("invalid default machine image alias")
-			}
-			base = legacyBase(alias.Target)
-		} else if !isNotFound(err) {
-			return err
-		}
+		return fmt.Errorf("%w: a pinned machine is required", fault.Invalid)
 	}
-	if machine != nil {
-		if err := machine.Validate(machine.Name); err != nil {
-			return fmt.Errorf("%w: invalid pinned machine: %v", fault.Invalid, err)
-		}
-		base = machine.Base
-		inst, _, err := d.server.GetInstance(base)
-		if err != nil {
-			return fmt.Errorf("pinned machine %s (%s) is unavailable: %w", machine.Name, machine.Revision, err)
-		}
-		if inst.Config[baseReadyKey] != "true" {
-			return fmt.Errorf("%w: machine %s is not prepared", fault.Conflict, machine.Name)
-		}
-		if inst.Config[machineKey] != machine.Revision {
-			return fmt.Errorf("%w: pinned machine %s's base has a different revision", fault.Conflict, machine.Name)
-		}
-		put, err = d.instanceResources(machine.Resources)
-		if err != nil {
-			return err
-		}
-		put.Config[sessionKey] = sessionID
-		put.Config[machineKey] = machine.Revision
+	if err := machine.Validate(machine.Name); err != nil {
+		return fmt.Errorf("%w: invalid pinned machine: %v", fault.Invalid, err)
 	}
+	inst, _, err := d.server.GetInstance(machine.Base)
+	if err != nil {
+		return fmt.Errorf("pinned machine %s (%s) is unavailable: %w", machine.Name, machine.Revision, err)
+	}
+	if inst.Config[baseReadyKey] != "true" || inst.Config[machineKey] != machine.Revision {
+		return fmt.Errorf("%w: machine %s's pinned revision is not prepared", fault.Conflict, machine.Name)
+	}
+	put, err := d.instanceResources(machine.Resources)
+	if err != nil {
+		return err
+	}
+	put.Config[sessionKey] = sessionID
+	put.Config[machineKey] = machine.Revision
 	op, err := d.server.CreateInstance(api.InstancesPost{
 		Name:        name,
 		Type:        api.InstanceTypeVM,
-		Source:      api.InstanceSource{Type: "copy", Source: base, InstanceOnly: true},
+		Source:      api.InstanceSource{Type: "copy", Source: machine.Base, InstanceOnly: true},
 		InstancePut: put,
 	})
 	if err != nil {

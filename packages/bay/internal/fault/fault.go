@@ -8,7 +8,7 @@ var (
 	NotFound = errors.New("not found")
 	// Conflict: the request is valid but the current state refuses it.
 	Conflict = errors.New("conflict")
-	// Capacity refuses admission before allocating a new instance. It remains a Conflict for existing clients.
+	// Capacity is a resource admission Conflict, refused before allocating a new instance.
 	Capacity = capacityFault{}
 	// Invalid: the request itself is malformed.
 	Invalid = errors.New("invalid")

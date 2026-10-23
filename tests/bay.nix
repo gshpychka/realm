@@ -137,6 +137,91 @@ inputs.nixpkgs.lib.nixos.runTest {
           print(json.dumps(pids))
         '';
 
+        environment.etc."bay-environment-test.py".text = ''
+          import base64
+          import http.client
+          import json
+          import socket
+          import sys
+          import time
+
+          session = json.loads(sys.argv[1])
+          connection = socket.socket(socket.AF_UNIX)
+          connection.settimeout(20)
+          connection.connect("/run/bay/bay.sock")
+          connection.sendall((
+              "POST /v1/sessions/one/environment HTTP/1.1\r\nHost: bay\r\n"
+              f"Bay-Session-ID: {session['id']}\r\n"
+              f"Bay-Session-Generation: {session['generation']}\r\n"
+              f"Bay-Machine-Revision: {session['machineRevision']}\r\n"
+              "Transfer-Encoding: chunked\r\n\r\n"
+          ).encode())
+          response = http.client.HTTPResponse(connection)
+          response.begin()
+          assert response.status == 200, response.read()
+          sequence = 0
+          def send(operation, **values):
+              global sequence
+              sequence += 1
+              data = (json.dumps(dict(id=sequence, op=operation, **values)) + "\n").encode()
+              connection.sendall(f"{len(data):x}\r\n".encode() + data + b"\r\n")
+              return sequence
+          def receive(wanted):
+              output = bytearray()
+              while True:
+                  line = response.readline()
+                  assert line, "environment closed before its receipt"
+                  frame = json.loads(line)
+                  assert frame["id"] == wanted, frame
+                  if "stream" in frame:
+                      output += base64.b64decode(frame["data"])
+                  else:
+                      return frame, bytes(output)
+          def call(operation, **values):
+              frame, output = receive(send(operation, **values))
+              assert "error" not in frame, frame
+              return frame.get("value")
+          def data(value):
+              return base64.b64encode(value).decode()
+          def write(path, value):
+              handle = call("openWrite", path=path)
+              call("writeChunk", handle=handle, data=data(value))
+              call("close", handle=handle)
+          try:
+              write("/work/env-source", b"first")
+              handle = call("open", path="/work/env-source")
+              call("rename", path="/work/env-source", to="/work/env-renamed")
+              write("/work/env-source", b"replacement")
+              assert base64.b64decode(call("read", handle=handle, offset=0, length=64)) == b"first"
+              call("close", handle=handle)
+              denied, _ = receive(send("openWrite", path="/root/forbidden"))
+              assert denied["error"]["code"] == "permission_denied", denied
+              command = send("exec", path="/work", command=["/bin/sh", "-c", "id -u; printf warning >&2; exit 7"], spill=dict(afterBytes=1, afterLines=1))
+              result, output = receive(command)
+              assert result["value"]["exitCode"] == 7 and b"warning" in output and int(output.replace(b"warning", b"").strip()) > 0, (result, output)
+              assert result["value"]["spillPath"].startswith("/tmp/"), result
+              migration = 'group=$(sed -n "s/^0:://p" /proc/self/cgroup); parent=$(dirname "$group"); if (printf "%s" "$$" > "/sys/fs/cgroup$parent/cgroup.procs") 2>/dev/null; then exit 99; fi; printf protected'
+              result, output = receive(send("exec", path="/work", command=["/bin/sh", "-c", migration]))
+              assert result["value"]["exitCode"] == 0 and output == b"protected", (result, output)
+              command = send("exec", path="/work", command=["setsid", "sh", "-c", "echo $$; sleep 60"])
+              ready = json.loads(response.readline())
+              assert ready["id"] == command and ready["stream"] == "stdout", ready
+              cancelled_pid = int(base64.b64decode(ready["data"]))
+              send("cancel", handle=command)
+              cancelled, _ = receive(command)
+              assert cancelled["error"]["code"] == "aborted", cancelled
+              assert call("exists", path="/work/env-renamed") is True
+              command = send("exec", path="/work", command=["setsid", "sh", "-c", "echo $$; sleep 60"])
+              ready = json.loads(response.readline())
+              assert ready["id"] == command and ready["stream"] == "stdout", ready
+              disconnected_pid = int(base64.b64decode(ready["data"]))
+          finally:
+              connection.shutdown(socket.SHUT_RDWR)
+              response.close()
+              connection.close()
+          print(json.dumps([cancelled_pid, disconnected_pid]))
+        '';
+
         services.bay = {
           enable = true;
           operator = "alice";
@@ -254,6 +339,7 @@ inputs.nixpkgs.lib.nixos.runTest {
     in
     ''
       import json
+      import hashlib
       import shlex
       import time
       from datetime import timedelta
@@ -279,6 +365,25 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       def history(session):
           return guest(session, "cat /home/dev/.counter/log").strip().splitlines()
+
+      def operation(session, method, path, body=None, upload=None):
+          command = ["curl", "-fsS", "--unix-socket", "/run/bay/bay.sock", "-X", method,
+                     "-H", f"Bay-Session-ID: {session['id']}", "-H", f"Bay-Session-Generation: {session['generation']}"]
+          if body is not None:
+              command += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+          if upload is not None:
+              command += ["--data-binary", "@" + upload]
+          command += ["http://bay/v1/sessions/" + session["name"] + path]
+          return host.succeed("su - alice -c " + shlex.quote(shlex.join(command)))
+
+      def job_result(session, job):
+          deadline = time.monotonic() + 30
+          while True:
+              result = json.loads(operation(session, "GET", "/jobs/" + job))
+              if result["status"] != "running":
+                  return result
+              assert time.monotonic() < deadline, result
+              time.sleep(0.1)
 
       # the counter rises by one a second for as long as its program runs
       def counting(session):
@@ -311,6 +416,56 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       with subtest("saving history writes nothing when no history path exists"):
           assert guest("one", "bay-session save-history -- .counter/none | wc -c").strip() == "0"
+
+      with subtest("operator transfers and detached commands preserve immutable bytes, exact identity and user privileges"):
+          session = json.loads(bay("show one --json"))
+          data = "private local input\n"
+          host.succeed("printf 'private local input\\n' > /tmp/bay-input")
+          digest = hashlib.sha256(data.encode()).hexdigest()
+          blob = json.loads(operation(session, "PUT", "/blobs/" + digest, upload="/tmp/bay-input"))
+          assert blob["sha256"] == digest and blob["size"] == len(data)
+          script = "id -u; cat " + shlex.quote(blob["path"]) + "; printf once >> executions; printf original > transfer-result"
+          request = {"argv": ["/bin/sh", "-c", script], "cwd": ".", "inputDigest": digest,
+                     "machineRevision": session["machineRevision"], "timeoutMs": 5000, "maxOutputBytes": 1024}
+          operation(session, "POST", "/jobs/materialize", request)
+          job = job_result(session, "materialize")
+          assert job["status"] == "succeeded" and job["exitCode"] == 0, job
+          assert job["recordId"] == session["id"] and job["generation"] == session["generation"], job
+          assert job["inputDigest"] == digest and job["machineRevision"] == session["machineRevision"], job
+          uid = guest("one", "id -u dev").strip()
+          assert uid != "0" and job["stdout"] == uid + "\n" + data, job
+          assert json.loads(operation(session, "POST", "/jobs/materialize", request))["status"] == "succeeded"
+          assert guest("one", "cat /work/executions") == "once"
+          capture = json.loads(operation(session, "POST", "/captures/result", {"path": "transfer-result", "maxBytes": 1024}))
+          guest("one", "runuser -u dev -- sh -c " + shlex.quote("printf later > /work/transfer-result"))
+          assert operation(session, "GET", "/captures/result") == "original"
+          assert json.loads(operation(session, "POST", "/captures/result", {"path": "transfer-result", "maxBytes": 1024})) == capture
+          assert capture["sha256"] == hashlib.sha256(b"original").hexdigest()
+          guest_fails("one", "runuser -u dev -- sh -c " + shlex.quote("printf corrupt > " + shlex.quote(blob["path"])))
+          guest_fails("one", f"runuser -u dev -- cat /var/lib/bay/operator/{session['id']}/{session['generation']}/jobs/materialize/state.json")
+          expired = dict(session, generation=session["generation"] + 1)
+          command = ["curl", "-sS", "--unix-socket", "/run/bay/bay.sock", "-o", "/dev/null", "-w", "%{http_code}",
+                     "-H", f"Bay-Session-ID: {expired['id']}", "-H", f"Bay-Session-Generation: {expired['generation']}",
+                     "http://bay/v1/sessions/one/jobs/materialize"]
+          assert host.succeed("su - alice -c " + shlex.quote(shlex.join(command))) == "409"
+          timeout = dict(request, argv=["/bin/sh", "-c", "sleep 30"], timeoutMs=100)
+          operation(session, "POST", "/jobs/timeout", timeout)
+          assert job_result(session, "timeout")["status"] == "timed_out"
+          detached = dict(request, argv=["/bin/sh", "-c", "setsid sh -c 'echo $$ > detached.pid; sleep 60' >/dev/null 2>&1 & while ! test -s detached.pid; do sleep 0.01; done; cat detached.pid"])
+          operation(session, "POST", "/jobs/detached", detached)
+          detached_result = job_result(session, "detached")
+          assert detached_result["status"] == "succeeded", detached_result
+          detached_pid = int(detached_result["stdout"].strip())
+          guest("one", f"bash -c '! pgrep -s {detached_pid} >/dev/null'")
+
+      with subtest("operator environments preserve file handles and kill detached shell descendants on cancel or disconnect"):
+          session = json.loads(bay("show one --json"))
+          command = "${pkgs.python3}/bin/python3 /etc/bay-environment-test.py " + shlex.quote(json.dumps(session))
+          pids = json.loads(host.succeed("su - alice -c " + shlex.quote(command)))
+          for pid in pids:
+              host.wait_until_succeeds(f"incus exec --disable-stdin --project bay one -- bash -c '! pgrep -s {pid} >/dev/null'", timeout=timedelta(seconds=15))
+          assert guest("one", "bay-session program").strip() == "running"
+          assert counting("one"), "environment cleanup killed the independent terminal program"
 
       with subtest("declared machines keep immutable bases and pinned sessions across catalog changes"):
           bay("start pinned counter")

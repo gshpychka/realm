@@ -25,36 +25,6 @@ const imageKey = "user.bay.image"
 const baseReadyKey = "user.bay.prepared"
 const machineKey = "user.bay.machine"
 
-// Reserved are the instance names the driver keeps for itself.
-func (d *Driver) Reserved() []string {
-	return []string{d.base, d.base + "-next"}
-}
-
-// UpdateBase preserves the legacy single-machine CLI. Its logical base is an
-// image alias pointing at an immutable prepared base, published only when ready.
-func (d *Driver) UpdateBase(ctx context.Context, metadata, disk string, ready func(context.Context, guest.Exec) error) error {
-	image, err := d.importImage(ctx, metadata, disk)
-	if err != nil {
-		return err
-	}
-	definition := machines.Definition{Base: legacyBase(image), Revision: image}
-	if err := d.ensureBase(ctx, definition, image, ready); err != nil {
-		return err
-	}
-	alias := legacyAlias(d.base)
-	_, etag, err := d.server.GetImageAlias(alias)
-	if isNotFound(err) {
-		return d.server.CreateImageAlias(api.ImageAliasesPost{ImageAliasesEntry: api.ImageAliasesEntry{Name: alias, ImageAliasesEntryPut: api.ImageAliasesEntryPut{Target: image}}})
-	}
-	if err != nil {
-		return fmt.Errorf("read default machine alias: %w", err)
-	}
-	return d.server.UpdateImageAlias(alias, api.ImageAliasesEntryPut{Target: image}, etag)
-}
-
-func legacyAlias(base string) string { return "bay-current-" + base }
-func legacyBase(image string) string { return machines.BasePrefix + image[:40] }
-
 // EnsureBase prepares exactly the declared immutable image/resource revision.
 // Old bases and images stay available to pinned records; this operation never
 // prunes another machine or replaces a prepared base during a new launch.
@@ -130,9 +100,6 @@ func (d *Driver) ensureBase(ctx context.Context, machine machines.Definition, im
 // device by name, rather than merging individual keys from the profile.
 func (d *Driver) instanceResources(resources machines.Resources) (api.InstancePut, error) {
 	put := api.InstancePut{Config: map[string]string{}}
-	if resources == (machines.Resources{}) {
-		return put, nil
-	}
 	profile, _, err := d.server.GetProfile("default")
 	if err != nil {
 		return put, fmt.Errorf("read machine resource profile: %w", err)

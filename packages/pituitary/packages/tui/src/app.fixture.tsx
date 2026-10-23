@@ -1,34 +1,72 @@
-import { join } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, extend } from "@opentui/react";
-import { PiRpcClient } from "@pituitary/rpc";
+import { connectConversation } from "@pituitary/harness/conversation";
+import { serveConversationFixture } from "../../harness/src/conversation.fixture.ts";
 import { App } from "./app.tsx";
 import { OptInText } from "./components/text.ts";
+import { prewarm } from "./nvim/engine.ts";
+import * as profile from "./profile.ts";
 
-const client = new PiRpcClient({
-  command: process.execPath,
-  args: [join(import.meta.dirname, "../../fake-pi/src/main.ts")],
+profile.mark("modules");
+const directory = mkdtempSync("/tmp/pituitary-ui-fixture-");
+const local = process.env.PITUITARY_FIXTURE_REMOTE !== "1";
+const archived = process.env.PITUITARY_FIXTURE_ARCHIVED === "1";
+const cwd = local ? process.cwd() : "/work/workspace";
+const server = await serveConversationFixture(
+  directory,
+  [{ id: "solo", currentAttemptId: "attempt", objective: "", role: local ? null : "builder" }],
+  {
+    local,
+    cwd: process.cwd(),
+    scenario: process.env.PITUITARY_FIXTURE_SCENARIO ?? "hello",
+    delayMs: Number(process.env.PITUITARY_FIXTURE_DELAY ?? 0),
+    archived,
+    model: process.env.PITUITARY_FIXTURE_MODEL !== "none",
+  },
+);
+const client = await connectConversation({
+  socketPath: server.socketPath,
+  runId: "run-team",
+  taskId: "solo",
+  control: !archived,
 });
-client.start();
-await client.call({ type: "set_session_name", name: "remote-build" });
+profile.mark("agent-spawned");
+prewarm();
 const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });
+profile.mark("renderer");
 extend({ text: OptInText });
 const root = createRoot(renderer);
+renderer.once("frame", () => profile.mark("first-frame"));
+let closing = false;
 const quit = () => {
+  if (closing) return;
+  closing = true;
+  profile.mark("quit");
   root.unmount();
+  profile.mark("ui-unmounted");
   renderer.destroy();
-  void client.close().then(() => process.exit(0));
+  profile.mark("renderer-destroyed");
+  void client
+    .close()
+    .then(() => server.close())
+    .then(() => {
+      profile.mark("agent-closed");
+      rmSync(directory, { recursive: true, force: true });
+      process.exit(0);
+    });
 };
-process.on("SIGTERM", quit);
-const archived = process.env.PITUITARY_FIXTURE_ARCHIVED === "1";
+process.once("SIGTERM", quit);
+process.once("exit", () => profile.mark("exit"));
 root.render(
   <App
     link={client}
     workspace={{
-      cwd: "/work",
-      local: false,
-      label: archived ? "builder · archived" : "builder",
-      readonly: archived,
+      cwd,
+      local: local && process.env.PITUITARY_REMOTE_UI !== "1",
+      modelSelectable: local,
+      label: !local ? "builder" : process.env.PITUITARY_REMOTE_UI === "1" ? "remote" : undefined,
+      access: archived ? "archive" : "control",
     }}
     onQuit={quit}
   />,

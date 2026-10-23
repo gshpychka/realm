@@ -3,7 +3,6 @@
 let
   inherit (pkgs) lib;
   evaluate = import ../packages/pituitary/agent.nix;
-  workerPackage = pkgs.writeShellScriptBin "pituitary-worker" "exit 0";
   common =
     { pkgs, ... }:
     {
@@ -13,7 +12,7 @@ let
   agent =
     name: role: extra:
     evaluate {
-      inherit name pkgs workerPackage;
+      inherit name pkgs;
       modules = [
         {
           imports = [ common ];
@@ -71,31 +70,16 @@ let
     normalModules =
       builder.system.config.environment.variables.PITUITARY_MACHINE_CHECK == "shared machine";
     declaredPackages = lib.elem pkgs.ripgrep builder.system.config.environment.systemPackages;
-    installedWorker = lib.elem workerPackage builder.system.config.environment.systemPackages;
     sharedSystem =
       builder.system.config.system.build.toplevel.drvPath
       == reviewer.system.config.system.build.toplevel.drvPath;
     sharedImage = builder.image == reviewer.image;
     distinctMachine = builder.image.disk != changedMachine.image.disk;
     distinctManifest = builder.manifestFile != reviewer.manifestFile;
-    connection =
-      builder.program.connect == [
-        (lib.getExe workerPackage)
-        "connect"
-        "--socket"
-        "/home/dev/.local/state/pituitary/worker.sock"
-      ];
+    executionShell = builder.program.command == [ "${pkgs.bashInteractive}/bin/bash" ];
+    hostOwnsConversations = !(builder.program ? connect);
     resume = builder.program.command == builder.program.resume;
-    history =
-      builder.program.history == [
-        ".local/state/pituitary/worker.json"
-        ".local/state/pituitary/role.json"
-        ".local/state/pituitary/assignment.json"
-        ".local/state/pituitary/commands.json"
-        ".local/state/pituitary/domain.json"
-        ".local/state/pituitary/sessions"
-        ".local/state/pituitary/agent"
-      ];
+    history = builder.program.history == [ ];
     unknownTool = rejects { tools = [ "arbitrary-host-tool" ]; };
     malformedModel = rejects { model = "missing-provider"; };
     credentialPath = rejects { credentials = [ "/run/secrets/token" ]; };

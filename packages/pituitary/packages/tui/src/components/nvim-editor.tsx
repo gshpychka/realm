@@ -53,7 +53,8 @@ export function NvimEditor({
   onSubmit,
   steering,
   focused,
-  seed,
+  initialDraft,
+  initialCursor,
   note,
   confirm,
   onChange,
@@ -85,7 +86,7 @@ export function NvimEditor({
   }, [engine, maxRows]);
 
   useEffect(() => {
-    engine.placeholder(steering ? "queue a steering message" : "ask pi · !cmd runs a shell command");
+    engine.placeholder(steering ? "queue a steering message" : "ask pi");
   }, [engine, steering]);
 
   useImperativeHandle(ref, () => ({
@@ -104,8 +105,8 @@ export function NvimEditor({
   }));
 
   useEffect(() => {
-    if (seed) engine.set(seed.text);
-  }, [seed, engine]);
+    if (initialDraft !== undefined) engine.set(initialDraft, initialCursor);
+  }, [initialDraft, initialCursor, engine]);
 
   const onKeyDown = (key: KeyEvent) => {
     const { mode } = engine.draft;
@@ -156,10 +157,9 @@ export function NvimEditor({
   }
 
   const rows = Math.min(maxRows, heightOf(frame));
-  const bash = textOf(draft).startsWith("!");
-  const mark = (frame && tagOf(frame.mode)) ?? draftMark(bash, steering);
+  const mark = (frame && tagOf(frame.mode)) ?? draftMark(steering);
   return (
-    <EditorFrame signal={{ command: bash }} rows={rows} note={note} confirm={confirm} mark={mark}>
+    <EditorFrame signal={{}} rows={rows} note={note} confirm={confirm} mark={mark}>
       <box
         ref={area}
         focusable

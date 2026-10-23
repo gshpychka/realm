@@ -1,6 +1,6 @@
 import type { InputRenderable, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import type { DialogRequest, RpcExtensionUIResponse } from "@pituitary/rpc";
+import type { DialogRequest, DialogResponse } from "@pituitary/session";
 import { useEffect, useRef, useState } from "react";
 import { useKeyHint } from "../keymap-context.tsx";
 import { wrappedRows } from "../text-width.ts";
@@ -10,7 +10,7 @@ export interface DialogProps {
   dialog: DialogRequest;
   /** Dialogs waiting behind this one. */
   behind: number;
-  onAnswer(response: RpcExtensionUIResponse): void;
+  onAnswer(response: DialogResponse): void;
   /** Rows the dialog's list or text area may take, so it fits the screen. */
   rows?: number;
 }
@@ -27,7 +27,7 @@ const EDITOR_ROWS = 6;
 export const GRACE_MS = 400;
 
 /**
- * The dialog an extension is waiting on, in the editor's place.
+ * An operator question or edit, in the editor's place.
  *
  * Esc cancels every kind; the caller owns that key, since it also aborts a run.
  */
@@ -91,7 +91,7 @@ function Body({
             keyBindings={[{ name: "kpenter", action: "select-current" }]}
             onSelect={(index) => {
               const value = dialog.options[index];
-              if (value !== undefined) onAnswer({ type: "extension_ui_response", id, value });
+              if (value !== undefined) onAnswer({ type: "dialog_response", id, value });
             }}
           />
           <Hint text="↑↓ choose · enter pick" />
@@ -138,8 +138,8 @@ function Confirm({
       return;
     }
     if (key.name === "y" || key.name === "return" || key.name === "kpenter")
-      onAnswer({ type: "extension_ui_response", id, confirmed: true });
-    else if (key.name === "n") onAnswer({ type: "extension_ui_response", id, confirmed: false });
+      onAnswer({ type: "dialog_response", id, confirmed: true });
+    else if (key.name === "n") onAnswer({ type: "dialog_response", id, confirmed: false });
   });
   return (
     <box flexDirection="column">
@@ -175,7 +175,7 @@ function Input({
         ref={field}
         focused={ready}
         placeholder={placeholder}
-        onSubmit={() => onAnswer({ type: "extension_ui_response", id, value: field.current?.value ?? "" })}
+        onSubmit={() => onAnswer({ type: "dialog_response", id, value: field.current?.value ?? "" })}
       />
       <Hint text="enter submit" />
     </box>
@@ -200,7 +200,7 @@ function Editor({
   useEffect(() => {
     area.current?.gotoBufferEnd();
   }, []);
-  const save = () => onAnswer({ type: "extension_ui_response", id, value: area.current?.plainText ?? "" });
+  const save = () => onAnswer({ type: "dialog_response", id, value: area.current?.plainText ?? "" });
   useKeyboard((key) => {
     if (ready && !key.defaultPrevented && key.ctrl && key.name === "s") {
       key.preventDefault();

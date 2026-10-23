@@ -1,207 +1,269 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { createServer } from "node:http";
+import { basename, dirname, join } from "node:path";
+import { createModels, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { rootAttempt, waitRun } from "./runtime.fixture.ts";
-import { Runtime, type RuntimeOptions } from "./runtime.ts";
+import { Runtime, runtimeSocket } from "./runtime.ts";
 import { startRuntime } from "./supervisor.ts";
 
-async function fixture(options: Partial<RuntimeOptions> = {}) {
-  const root = mkdtempSync(join(tmpdir(), "pituitary-runtime-"));
-  const configured = {
-    stateDirectory: root,
-    workerEnvironment: {
-      PITUITARY_AUTH_FILE: join(root, "credentials", "auth.json"),
-      PITUITARY_CONFIG_DIRECTORY: join(root, "configuration"),
-    },
-    ...options,
-  };
-  let host = await startRuntime(configured);
-  const runtime = new Runtime({ ...configured, autoStart: false });
+async function fixture() {
+  const root = mkdtempSync("/tmp/pituitary-host-"),
+    faux = fauxProvider(),
+    models = createModels();
+  models.setProvider(faux.provider);
+  const options = { stateDirectory: root, models, environment: { PITUITARY_MODEL: "faux/faux-1" } };
+  let host = await startRuntime(options);
+  const client = () => new Runtime({ stateDirectory: root, autoStart: false });
   return {
     root,
-    runtime,
-    reconnect: () => new Runtime({ stateDirectory: root, autoStart: false }),
-    async restartHost() {
+    faux,
+    options,
+    client,
+    async restart() {
       await host.close();
-      host = await startRuntime(configured);
+      host = await startRuntime(options);
     },
     async close() {
-      try {
-        for (const run of await runtime.list()) await runtime.stop(run.id);
-        for (const run of await runtime.list())
-          await waitRun(runtime, run.id, (detail) =>
-            detail.attempts.every((attempt) => ["stopped", "failed"].includes(attempt.status)),
-          );
-      } finally {
-        runtime.close();
-        try {
-          await host.close();
-        } finally {
-          rmSync(root, { recursive: true, force: true });
-        }
-      }
+      await host.close();
+      rmSync(root, { recursive: true, force: true });
     },
   };
 }
+async function until(predicate: () => Promise<boolean>): Promise<void> {
+  const deadline = Date.now() + 10000;
+  while (!(await predicate())) {
+    if (Date.now() > deadline) throw new Error("Native conversation did not settle");
+    await new Promise((done) => setTimeout(done, 20));
+  }
+}
 
-test("native worker survives runtime and frontend disconnection, then stops explicitly", async () => {
-  const environment = await fixture();
-  let runtime = environment.runtime;
+test("frontend detach and host restart retain the same native conversation without another worker", async () => {
+  const f = await fixture();
   try {
-    const run = await runtime.start({ name: "durable-solo", cwd: environment.root });
-    const ready = rootAttempt(
-      await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "ready"),
-    );
-    expect(ready.sessionId).toBeTruthy();
-    runtime.close();
-
-    const first = await environment.reconnect().attach(run.id);
-    const original = first.identity;
+    const runtime = f.client(),
+      run = await runtime.start({ name: "durable", cwd: f.root });
+    const ready = await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "ready");
+    const first = await runtime.attach(run.id),
+      conversation = (await first.getState()).sessionId;
+    f.faux.setResponses([fauxAssistantMessage("Retained native answer.")]);
+    await first.prompt("Keep this answer");
+    await until(async () => JSON.stringify(await first.getMessages()).includes("Retained native answer."));
     await first.close();
-    const second = await environment.reconnect().attach(run.id);
-    expect(second.identity.incarnation).toBe(original.incarnation);
-    expect((await second.getState()).sessionId).toBe(ready.sessionId as string);
+    await f.restart();
+    const second = await f.client().attach(run.id);
+    expect((await second.getState()).sessionId).toBe(conversation);
+    expect(JSON.stringify(await second.getMessages())).toContain("Retained native answer.");
+    expect(rootAttempt(await runtime.inspect(run.id)).id).toBe(rootAttempt(ready).id);
+    expect(f.faux.state.callCount).toBe(1);
     await second.close();
-
-    await environment.restartHost();
-    runtime = environment.reconnect();
-    const recovered = rootAttempt(
-      await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "ready"),
-    );
-    expect(recovered.sessionId).toBe(ready.sessionId);
-    expect(recovered.incarnation).toBe(original.incarnation);
-    expect((await runtime.stop(run.id)).desired).toBe("stopped");
+    await runtime.stop(run.id);
     const stopped = await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "stopped");
-    expect((await runtime.stop(run.id)).desired).toBe("stopped");
-    expect(
-      stopped.events
-        .filter((event) =>
-          ["run_created", "worker_ready", "stop_requested", "worker_stopped"].includes(event.type),
-        )
-        .map((event) => event.type),
-    ).toEqual(["run_created", "worker_ready", "worker_ready", "stop_requested", "worker_stopped"]);
-  } finally {
-    await environment.close();
-  }
-}, 20_000);
-
-test("a failed executable leaves an inspectable attempt and no repeated launch", async () => {
-  const environment = await fixture({
-    workerCommand: ["/nonexistent/pituitary-worker"],
-    startupTimeout: 1000,
-  });
-  try {
-    const run = await environment.runtime.start({ name: "failed-worker", cwd: environment.root });
-    const failed = await waitRun(
-      environment.runtime,
-      run.id,
-      (detail) => rootAttempt(detail).status === "failed",
-    );
-    expect(rootAttempt(failed).error).toContain("ENOENT");
-    expect(await environment.runtime.list()).toHaveLength(1);
-    const again = await environment.runtime.inspect(run.id);
-    expect(rootAttempt(again)).toEqual(rootAttempt(failed));
-    expect(again.events.filter((event) => event.type === "attempt_interrupted")).toHaveLength(1);
-  } finally {
-    await environment.close();
-  }
-});
-
-test("startup filesystem failures leave an inspectable attempt with a useful journal", async () => {
-  const environment = await fixture();
-  try {
-    writeFileSync(join(environment.root, "runs"), "not a directory");
-    const run = await environment.runtime.start({ name: "blocked-state", cwd: environment.root });
-    const failed = await waitRun(
-      environment.runtime,
-      run.id,
-      (detail) => rootAttempt(detail).status === "failed",
-    );
-    expect(rootAttempt(failed).error).toContain("ENOTDIR");
-    expect(failed.events.map((event) => event.type)).toContain("attempt_interrupted");
-    expect(failed.events.find((event) => event.type === "attempt_interrupted")?.data.error).toContain(
-      "ENOTDIR",
-    );
-  } finally {
-    await environment.close();
-  }
-});
-
-test("a stalled handshake respects its deadline and cannot leave an unready child alive", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pituitary-stalled-fixture-"));
-  const script = join(root, "stalled-worker.ts");
-  writeFileSync(
-    script,
-    `
-    import { createServer } from "node:net";
-    process.on("SIGTERM", () => {});
-    createServer(socket => socket.on("error", () => {}))
-      .listen(process.argv[process.argv.indexOf("--socket") + 1]);
-  `,
-  );
-  const environment = await fixture({ workerCommand: [process.execPath, script], startupTimeout: 150 });
-  try {
-    const started = Date.now();
-    const run = await environment.runtime.start({ name: "stalled-worker", cwd: environment.root });
-    const failed = rootAttempt(
-      await waitRun(environment.runtime, run.id, (detail) => rootAttempt(detail).status === "failed", 2500),
-    );
-    expect(Date.now() - started).toBeLessThan(2500);
-    expect(failed.error).toContain("timed out");
-    expect(failed.pid).toBeTruthy();
-    expect(() => process.kill(failed.pid as number, 0)).toThrow();
-  } finally {
-    await environment.close();
-    rmSync(root, { recursive: true, force: true });
-  }
-}, 5000);
-
-test("a launch completing after stop cannot revive a cancelled task", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pituitary-delayed-fixture-"));
-  const script = join(root, "delayed-worker.ts");
-  const worker = new URL("./worker.ts", import.meta.url).href;
-  writeFileSync(
-    script,
-    `
-    await new Promise(resolve => setTimeout(resolve, 200));
-    const { startWorker } = await import(${JSON.stringify(worker)});
-    const args = process.argv.slice(2);
-    const argument = flag => args[args.indexOf(flag) + 1];
-    const worker = await startWorker({socketPath:argument("--socket"),stateDirectory:argument("--state"),cwd:argument("--cwd")});
-    process.on("SIGTERM", () => { void worker.close().then(() => process.exit(0)); });
-  `,
-  );
-  const environment = await fixture({ workerCommand: [process.execPath, script] });
-  try {
-    const run = await environment.runtime.start({ name: "stopped-during-launch", cwd: environment.root });
-    await waitRun(environment.runtime, run.id, (detail) => rootAttempt(detail).status === "starting");
-    await environment.runtime.stop(run.id);
-    const stopped = await waitRun(
-      environment.runtime,
-      run.id,
-      (detail) => rootAttempt(detail).status === "stopped",
-    );
     expect(stopped.run.desired).toBe("stopped");
-    expect(stopped.tasks[0]?.status).toBe("cancelled");
-    expect(rootAttempt(stopped).desired).toBe("stopped");
-    const final = await environment.runtime.inspect(run.id);
-    expect(rootAttempt(final).status).toBe("stopped");
-    expect(final.events.filter((event) => event.type === "worker_ready")).toEqual([]);
-    expect(final.events.at(-1)?.type).toBe("worker_stopped");
+    const archive = await runtime.attach(run.id);
+    expect(archive.identity.archived).toBe(true);
+    expect(archive.controlsInput).toBe(false);
+    expect(JSON.stringify(await archive.getMessages())).toContain("Retained native answer.");
+    await archive.close();
   } finally {
-    await environment.close();
+    await f.close();
+  }
+}, 30000);
+
+test("one input lease coexists with observers and cancellation revokes an already open view", async () => {
+  const f = await fixture();
+  try {
+    const runtime = f.client(),
+      run = await runtime.start({ cwd: f.root });
+    await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "ready");
+    const writer = await runtime.attach(run.id),
+      observer = await runtime.connect(run.id, false);
+    expect(writer.controlsInput).toBe(true);
+    expect(observer.controlsInput).toBe(false);
+    await expect(runtime.attach(run.id)).rejects.toThrow("input lease");
+    await expect(observer.prompt("not allowed")).rejects.toThrow("input authority");
+    await runtime.stop(run.id);
+    await expect(writer.prompt("too late")).rejects.toThrow("input authority");
+    await writer.close();
+    await observer.close();
+  } finally {
+    await f.close();
+  }
+}, 30000);
+
+test("native recovery resumes an interrupted generation without resubmitting its input", async () => {
+  const f = await fixture();
+  try {
+    const runtime = f.client(),
+      run = await runtime.start({ cwd: f.root });
+    await waitRun(runtime, run.id, (detail) => rootAttempt(detail).status === "ready");
+    const view = await runtime.attach(run.id),
+      sessionId = (await view.getState()).sessionId;
+    f.faux.setResponses([
+      async (_context, options) => {
+        await new Promise<void>((done) => {
+          if (options?.signal?.aborted) done();
+          else options?.signal?.addEventListener("abort", () => done(), { once: true });
+        });
+        return fauxAssistantMessage("Interrupted output", { stopReason: "aborted" });
+      },
+      fauxAssistantMessage("Recovered from the native checkpoint."),
+    ]);
+    await view.prompt("Continue this exact input");
+    await until(async () => f.faux.state.callCount === 1);
+    await f.restart();
+    await view.close();
+    const resumed = await runtime.attach(run.id);
+    expect((await resumed.getState()).sessionId).toBe(sessionId);
+    await until(async () =>
+      JSON.stringify(await resumed.getMessages()).includes("Recovered from the native checkpoint."),
+    );
+    const messages = await resumed.getMessages();
+    expect(
+      messages.filter(
+        (message) =>
+          !!message &&
+          typeof message === "object" &&
+          "role" in message &&
+          message.role === "user" &&
+          JSON.stringify(message).includes("Continue this exact input"),
+      ),
+    ).toHaveLength(1);
+    expect(f.faux.state.callCount).toBe(2);
+    await resumed.close();
+  } finally {
+    await f.close();
+  }
+}, 30000);
+
+test("a second host cannot open the same native storage while its socket owner is alive", async () => {
+  const f = await fixture();
+  try {
+    await expect(startRuntime(f.options)).rejects.toThrow("already owns");
+    expect(await f.client().list()).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("an explicit remote socket never starts a local daemon", async () => {
+  const root = mkdtempSync("/tmp/pituitary-tunnel-"),
+    socket = join(root, "tunnel.sock");
+  const calls: string[] = [];
+  const server = createServer((req, res) => {
+    calls.push(req.url ?? "");
+    res.setHeader("content-type", "application/json");
+    res.end(req.url === "/v1/status" ? '{"ready":true}' : "[]");
+  });
+  await new Promise<void>((done) => server.listen(socket, done));
+  try {
+    expect(await new Runtime({ stateDirectory: join(root, "uncreated"), socketPath: socket }).list()).toEqual(
+      [],
+    );
+    expect(calls).toEqual(["/v1/status", "/v1/runs"]);
+  } finally {
+    await new Promise<void>((done) => server.close(() => done()));
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("an invalid worker command does not create runtime state", () => {
-  const root = mkdtempSync(join(tmpdir(), "pituitary-runtime-invalid-"));
-  const stateDirectory = join(root, "unused");
+test("cold attachment waits for the native conversation created by a new run", async () => {
+  const f = await fixture();
   try {
-    expect(() => new Runtime({ stateDirectory, workerCommand: [] })).toThrow("must not be empty");
-    expect(existsSync(stateDirectory)).toBe(false);
+    const runtime = f.client(),
+      run = await runtime.start({ cwd: f.root });
+    const view = await runtime.attach(run.id);
+    expect(view.identity.runId).toBe(run.id);
+    expect(view.controlsInput).toBe(true);
+    await view.close();
   } finally {
+    await f.close();
+  }
+}, 30000);
+
+test("state-directory aliases cannot start a second socket owner for the same database", async () => {
+  const f = await fixture(),
+    alias = mkdtempSync("/tmp/pituitary-alias-");
+  try {
+    symlinkSync(dirname(f.root), join(alias, "parent"));
+    const state = join(alias, "parent", basename(f.root));
+    expect(runtimeSocket(state)).toBe(runtimeSocket(f.root));
+    await expect(startRuntime({ ...f.options, stateDirectory: state })).rejects.toThrow("already owns");
+    expect(await f.client().list()).toEqual([]);
+  } finally {
+    await f.close();
+    rmSync(alias, { recursive: true, force: true });
+  }
+});
+
+test("removing a live socket does not bypass the native database's process lock", async () => {
+  const f = await fixture();
+  try {
+    rmSync(runtimeSocket(f.root));
+    await expect(startRuntime(f.options)).rejects.toThrow(/locked|busy/i);
+    await f.restart();
+    expect(await f.client().list()).toEqual([]);
+  } finally {
+    await f.close();
+  }
+}, 30000);
+
+test("clients wait through startup 503 and can retry a rejected readiness check", async () => {
+  const root = mkdtempSync("/tmp/pituitary-startup-"),
+    socket = join(root, "runtime.sock");
+  let mode: "opening" | "rejected" | "ready" = "rejected",
+    remaining = 2;
+  const server = createServer((req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    if (req.url !== "/v1/status") {
+      res.end("[]");
+      return;
+    }
+    if (mode === "rejected") {
+      res.writeHead(400).end('{"error":"temporarily refused"}');
+      return;
+    }
+    if (mode === "opening" && remaining-- > 0) {
+      res.writeHead(503).end('{"ready":false}');
+      return;
+    }
+    res.end('{"ready":true}');
+  });
+  await new Promise<void>((resolve) => server.listen(socket, resolve));
+  try {
+    const client = new Runtime({
+      stateDirectory: join(root, "uncreated"),
+      socketPath: socket,
+      autoStart: false,
+      startupTimeout: 2000,
+    });
+    await expect(client.list()).rejects.toThrow("temporarily refused");
+    mode = "opening";
+    expect(await client.list()).toEqual([]);
+    expect(remaining).toBeLessThanOrEqual(0);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("concurrent observers reserve their bounded attachment slots before opening snapshots", async () => {
+  const f = await fixture();
+  const views: Array<Awaited<ReturnType<Runtime["connect"]>>> = [];
+  try {
+    const runtime = f.client(),
+      run = await runtime.start({ cwd: f.root });
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 33 }, () => runtime.connect(run.id, false)),
+    );
+    for (const outcome of outcomes) if (outcome.status === "fulfilled") views.push(outcome.value);
+    const refused = outcomes.filter((outcome) => outcome.status === "rejected");
+    expect(views).toHaveLength(32);
+    expect(refused).toHaveLength(1);
+    expect(String((refused[0] as PromiseRejectedResult).reason)).toContain("Too many conversation views");
+  } finally {
+    await Promise.allSettled(views.map((view) => view.close()));
+    await f.close();
+  }
+}, 30000);

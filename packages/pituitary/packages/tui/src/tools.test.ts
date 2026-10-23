@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Entry, ToolView } from "@pituitary/rpc";
+import type { Entry, ToolView } from "@pituitary/session";
 import { compact, filetypeOf, heading, latestTasks, preview, took, toolGlyph } from "./tools.ts";
 
 const tool = (

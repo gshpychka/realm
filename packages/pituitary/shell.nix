@@ -39,21 +39,18 @@ pkgs.mkShell {
     realm_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     pituitary_root="$realm_root/packages/pituitary"
 
-    export PI_SKIP_VERSION_CHECK=1
-    export PI_OFFLINE=1
     echo "pituitary dev shell · bun $(bun --version) · node $(node --version)"
     if [ -f "$pituitary_root/packages/tui/src/main.tsx" ]; then
       # Keep development state within the checkout. Entering this shell from an
       # unrelated directory must not create a spurious packages/pituitary tree.
       export BUN_INSTALL_CACHE_DIR="$pituitary_root/.cache/bun"
       export npm_config_cache="$pituitary_root/.cache/npm"
-      export PI_CODING_AGENT_SESSION_DIR="$pituitary_root/.pi/sessions"
       export PITUITARY_STATE_DIR="$pituitary_root/.pi/runs"
       export PATH="$pituitary_root/node_modules/.bin:$PATH"
-      mkdir -p "$BUN_INSTALL_CACHE_DIR" "$npm_config_cache" "$PI_CODING_AGENT_SESSION_DIR"
+      mkdir -p "$BUN_INSTALL_CACHE_DIR" "$npm_config_cache"
       echo "cd $pituitary_root && just"
     else
-      echo "Enter the dev shell from a Realm checkout to isolate caches and pi sessions."
+      echo "Enter the dev shell from a Realm checkout to isolate caches and harness state."
     fi
   '';
 }

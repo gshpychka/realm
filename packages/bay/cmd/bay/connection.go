@@ -20,8 +20,8 @@ func (c *cli) connect(ctx context.Context, args []string) error {
 	var generations []uint64
 	if *generation != "" {
 		value, err := strconv.ParseUint(*generation, 10, 64)
-		if err != nil {
-			return usageError("--generation must be a non-negative integer from bay show --json")
+		if err != nil || value < 1 {
+			return usageError("--generation must be a positive integer from bay show --json")
 		}
 		generations = []uint64{value}
 	}

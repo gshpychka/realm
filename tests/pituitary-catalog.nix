@@ -2,18 +2,19 @@
 { pkgs }:
 let
   inherit (pkgs) lib;
-  workerPackage = pkgs.writeShellScriptBin "pituitary-worker" "exit 0";
   bayPackage = (pkgs.writeShellScriptBin "bay" "exit 0") // {
     flare = pkgs.writeShellScriptBin "flare" "exit 0";
+    guestTools = pkgs.writeShellScriptBin "bay-guest" "exit 0";
   };
   clientPackage = pkgs.writeShellScriptBin "pituitary" ''
-    printf '%s\n' "$PITUITARY_CATALOG" "$PITUITARY_BAY_COMMAND"
+    printf '%s\n' "$PITUITARY_CATALOG"
   '';
   common = { pkgs, ... }: {
     environment.systemPackages = [ pkgs.ripgrep ];
   };
   host = pkgs.nixos {
     imports = [ ../modules/system/nixos/pituitary.nix ];
+    system.stateVersion = "26.05";
     users.users.alice.isNormalUser = true;
     services.bay = {
       package = bayPackage;
@@ -29,7 +30,6 @@ let
       enable = true;
       operator = "alice";
       package = clientPackage;
-      inherit workerPackage;
       credentialProfiles.primary = {
         provider = "anthropic";
         file = "/run/secrets/pituitary-api-key";
@@ -44,6 +44,10 @@ let
             limits = {
               maxChildren = 2;
               maxDepth = 1;
+            };
+            verification = {
+              agent = "reviewer";
+              checks.unit.command = [ "true" ];
             };
           };
         };
@@ -68,6 +72,7 @@ let
   disabled =
     (pkgs.nixos {
       imports = [ ../modules/system/nixos/pituitary.nix ];
+      system.stateVersion = "26.05";
     }).config;
   roleEdited =
     (host.extendModules {
@@ -80,6 +85,16 @@ let
   resourceEdited =
     (host.extendModules {
       modules = [ { services.bay.sessions.memory = lib.mkForce 2; } ];
+    }).config;
+  verificationEdited =
+    (host.extendModules {
+      modules = [
+        {
+          services.pituitary.agents.builder.pituitary.agent.verification.checks.unit.command = lib.mkForce [
+            "false"
+          ];
+        }
+      ];
     }).config;
   invalid =
     (host.extendModules {
@@ -115,14 +130,34 @@ let
       toString cfg.services.pituitary.catalogFile != toString roleEdited.services.pituitary.catalogFile;
     resourceIdentity = machineName cfg != machineName resourceEdited;
     resourceIndependentImage = (machine cfg).disk == (machine resourceEdited).disk;
-    roleRequired = lib.elem "--role-required" cfg.services.bay.programs.pituitary-builder.command;
-    connections = cfg.services.bay.programs.pituitary-builder.maxConnections == 8;
+    executionShell =
+      cfg.services.bay.programs.pituitary-builder.command == [ "${pkgs.bashInteractive}/bin/bash" ];
+    verificationIndependentImage = (machine cfg).disk == (machine verificationEdited).disk;
+    verificationChangesCatalog =
+      toString cfg.services.pituitary.catalogFile
+      != toString verificationEdited.services.pituitary.catalogFile;
+    verificationOutsideRole =
+      !(builtins.hasAttr "verification"
+        (import ../packages/pituitary/agent.nix {
+          name = "separate";
+          inherit pkgs;
+          bay = bayPackage;
+          modules = [
+            {
+              pituitary.agent.verification = {
+                agent = "reviewer";
+                checks.test.command = [ "true" ];
+              };
+            }
+          ];
+        }).manifest
+      );
+    hostOwnsConversations = cfg.services.bay.programs.pituitary-builder.connect == [ ];
     memoryBudget = cfg.services.bay.sessions.maxMemory == 2;
     stableCatalogPath =
       cfg.environment.sessionVariables.PITUITARY_CATALOG == "/etc/pituitary/agents.json";
     daemonOperator = cfg.systemd.services.pituitary.serviceConfig.User == "alice";
     daemonState = cfg.environment.sessionVariables.PITUITARY_STATE_DIR == "/var/lib/pituitary";
-    daemonLifetime = cfg.systemd.services.pituitary.serviceConfig.KillMode == "process";
     credentialReference =
       cfg.systemd.services.pituitary.environment.PITUITARY_CREDENTIAL_PROFILES
       == "/etc/pituitary/credentials.json";
@@ -142,7 +177,8 @@ pkgs.runCommand "pituitary-catalog-check" { nativeBuildInputs = [ pkgs.jq ]; } '
   jq -e '.schemaVersion == 1 and .baySocket == "/run/bay/bay.sock"
     and .agents.builder.name == "builder" and .agents.builder.program == "pituitary-builder"
     and .agents.builder.delegatesTo == ["reviewer"] and .agents.builder.credentials == ["primary"]
-    and .agents.builder.limits == {maxChildren: 2, maxDepth: 1} and .agents.reviewer.tools == ["read", "grep"]' \
+    and .agents.builder.limits == {maxChildren: 2, maxDepth: 1} and .agents.reviewer.tools == ["read", "grep"]
+    and .agents.builder.verification == {agent: "reviewer", checks: {unit: {command: ["true"], timeoutMs: 300000}}}' \
     "$catalog" >/dev/null
   jq -e --slurpfile catalog "$catalog" '. as $server | $catalog[0].agents.builder.machine as $machine
     | $server.programs["pituitary-builder"].machine == $machine
@@ -150,6 +186,6 @@ pkgs.runCommand "pituitary-catalog-check" { nativeBuildInputs = [ pkgs.jq ]; } '
     and ($server.machines[$machine].base | startswith("bay-base-"))
     and $server.machines[$machine].resources == {cpus: 1, memory: 1, disk: 6}
     and $server.maxMemory == 2' ${serverConfig} >/dev/null
-  test "$(${client}/bin/pituitary)" = ${lib.escapeShellArg "/etc/pituitary/agents.json\n${lib.getExe bayPackage}"}
+  test "$(${client}/bin/pituitary)" = /etc/pituitary/agents.json
   cp ${pkgs.writeText "pituitary-catalog-checks.json" (builtins.toJSON checks)} "$out"
 ''

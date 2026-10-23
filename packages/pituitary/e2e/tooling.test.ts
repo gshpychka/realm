@@ -82,17 +82,3 @@ test("development driver forwards entry environment and handles fragmented input
     assert.equal(existsSync(driverSocket(name)), false);
   }
 });
-
-test("demo help and unknown scenes are resolved before building tools", () => {
-  for (const args of [["--help"], ["typo"]]) {
-    const result = spawnSync(process.execPath, [join(REPO, "scripts/demo/record.ts"), ...args], {
-      cwd: REPO,
-      encoding: "utf8",
-      timeout: 10_000,
-      env: { ...process.env, PATH: "" },
-    });
-    assert.equal(result.status, args[0] === "--help" ? 0 : 1, result.stderr);
-    assert.match(result.stdout + result.stderr, /work,? vim,? palette/);
-    assert.doesNotMatch(result.stderr, /nix build|ENOENT/);
-  }
-});

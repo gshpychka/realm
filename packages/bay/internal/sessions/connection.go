@@ -46,44 +46,18 @@ func (s *Service) Connect(ctx context.Context, name, id string, generation ...ui
 	if err := s.require(ctx, name, InstanceRunning); err != nil {
 		return nil, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	limit := program.MaxConnections
 	if limit == 0 {
 		limit = 1
 	}
-	if len(s.connections[name]) >= limit {
-		return nil, fmt.Errorf("%w: session %s has reached its limit of %d program connections", fault.Conflict, name, limit)
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	in, input := io.Pipe()
-	output, out := io.Pipe()
-	c := &programConnection{input: input, output: output, cancel: cancel, done: make(chan struct{})}
-	if s.connections[name] == nil {
-		s.connections[name] = map[*programConnection]struct{}{}
-	}
-	s.connections[name][c] = struct{}{}
-	go func() {
-		g := guest.New(func(ctx context.Context, argv []string, stdin io.Reader, stdout io.Writer) error {
-			return s.instances.Connect(ctx, name, id, argv, stdin, stdout)
-		})
-		err := g.Connect(ctx, program.Connect, in, out)
-		in.CloseWithError(err)
-		out.CloseWithError(err)
-		cancel()
-		s.mu.Lock()
-		delete(s.connections[name], c)
-		if len(s.connections[name]) == 0 {
-			delete(s.connections, name)
-		}
-		close(c.done)
-		s.mu.Unlock()
-	}()
-	return c, nil
+	return s.openConnection(ctx, name, "program", limit, func(ctx context.Context, g guest.Guest, in io.Reader, out io.Writer) error {
+		return g.Connect(ctx, program.Connect, in, out)
+	}, id)
 }
 
 // Pipes provide backpressure without accumulating a program's output in memory.
 type programConnection struct {
+	kind   string
 	input  *io.PipeWriter
 	output *io.PipeReader
 	cancel context.CancelFunc

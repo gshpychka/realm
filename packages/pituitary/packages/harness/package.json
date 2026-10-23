@@ -4,18 +4,17 @@
   "private": true,
   "type": "module",
   "bin": {
-    "pituitary": "./src/main.ts",
-    "pituitary-worker": "./src/worker.ts"
+    "pituitary": "./src/main.ts"
   },
   "exports": {
-    "./protocol": "./src/protocol.ts",
     "./runtime": "./src/runtime.ts",
-    "./worker": "./src/worker.ts",
-    "./worker-client": "./src/worker-client.ts"
+    "./agent": "./src/agent.ts",
+    "./conversation": "./src/conversation.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.87.1",
-    "@earendil-works/pi-coding-agent": "0.87.1",
-    "@pituitary/rpc": "workspace:*"
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0",
+    "@pituitary/session": "workspace:*"
   }
 }

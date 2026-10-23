@@ -1,52 +1,86 @@
 #!/usr/bin/env bun
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { plain } from "@pituitary/rpc";
+import { plain } from "@pituitary/session";
 import { loadCatalog } from "./catalog.ts";
-import { Runtime } from "./runtime.ts";
-import type { Run } from "./store.ts";
+import type { ReviseTaskInput, Run } from "./model.ts";
+import { privateDirectory } from "./paths.ts";
+import { Runtime, runtimeSocket } from "./runtime.ts";
 
-const VERBS = ["run", "attach", "runs", "agents", "inspect", "recover", "stop", "serve"] as const;
+const VERBS = [
+  "run",
+  "attach",
+  "runs",
+  "agents",
+  "inspect",
+  "recover",
+  "stop",
+  "serve",
+  "answer",
+  "retry",
+  "revise",
+  "integrate",
+  "apply",
+  "socket",
+] as const;
 type Verb = (typeof VERBS)[number];
 const HELP = `Usage:
-  pituitary run [--agent ROLE] [--repo OWNER/NAME@REF] [--name NAME] [--cwd DIR] [--detach] [OBJECTIVE]
+  pituitary [--model PROVIDER/MODEL] [OBJECTIVE]
+  pituitary run [--agent ROLE] [--repo OWNER/NAME@REF] [--name NAME] [--cwd DIR] [--detach] [--watch] [OBJECTIVE]
+  pituitary run --agent ROLE --workspace DIR [--include-untracked PATH] [OBJECTIVE]
   pituitary agents [--json] [--catalog FILE]
-  pituitary attach RUN [--task TASK]
+  pituitary attach RUN [--task TASK] [--watch]
   pituitary runs [--json]
   pituitary inspect RUN [--json]
+  pituitary answer QUESTION ANSWER
+  pituitary retry TASK --revision N
+  pituitary revise TASK --revision N [--input-artifact ID] [--depends-on TASK] [--accept CONDITION] [OBJECTIVE]
+  pituitary integrate TASK --revision N
+  pituitary apply RUN [--json]
   pituitary recover RUN
   pituitary stop RUN
+  pituitary socket
   pituitary serve [--catalog FILE]
 
-Runs keep their worker alive when the terminal closes. Stop ends the worker explicitly.
-All commands accept --state DIR (or PITUITARY_STATE_DIR) for an isolated workspace.
-Ordinary pituitary and Pi options continue to use the existing single-agent interface.
+--workspace captures tracked working files without changing the operator's branch or index.
+Untracked files enter the snapshot only when selected explicitly. Apply requires current independent checks.
+Runs keep working when the terminal closes. Stop retains conversations and VM workspaces.
+--watch reloads the frontend while the host harness keeps running.
+Client commands accept --socket PATH (or PITUITARY_RUNTIME_SOCKET) for an existing runtime, including SSH tunnels.
+All commands accept --state DIR (or PITUITARY_STATE_DIR) for local runtime state.
+Without a command, Pituitary starts a local durable conversation.
 `;
 
-export type Command = {
-  state: string;
-  help: false;
-} & (
-  | {
-      verb: "run";
-      name?: string;
-      cwd: string;
-      prompt?: string;
-      detach: boolean;
-      agent?: string;
-      repos: string[];
-      catalogFile?: string;
-    }
-  | { verb: "runs"; json: boolean }
-  | { verb: "agents"; json: boolean; catalogFile?: string }
-  | { verb: "serve"; catalogFile?: string }
-  | { verb: "attach"; name: string; json: boolean; taskId?: string }
-  | { verb: Exclude<Verb, "run" | "runs" | "agents" | "attach" | "serve">; name: string; json: boolean }
-);
-
+type Common = { state: string; socketPath?: string; help: false };
+export type Command = Common &
+  (
+    | {
+        verb: "run";
+        name?: string;
+        cwd: string;
+        prompt?: string;
+        detach: boolean;
+        watch: boolean;
+        agent?: string;
+        model?: string;
+        repos: string[];
+        catalogFile?: string;
+        workspace?: { includeUntracked: string[] };
+      }
+    | { verb: "runs"; json: boolean }
+    | { verb: "agents"; json: boolean; catalogFile?: string }
+    | { verb: "serve"; catalogFile?: string }
+    | { verb: "attach"; name: string; json: boolean; taskId?: string; watch: boolean }
+    | { verb: "inspect" | "recover" | "stop" | "apply"; name: string; json: boolean }
+    | { verb: "answer"; questionId: string; answer: string }
+    | { verb: "retry" | "integrate"; taskId: string; revision: number }
+    | { verb: "revise"; taskId: string; revision: number; input: ReviseTaskInput }
+    | { verb: "socket" }
+  );
 type Help = { help: true; state: string };
-
 function isVerb(value: string | undefined): value is Verb {
   return VERBS.some((verb) => verb === value);
 }
@@ -60,16 +94,25 @@ export function parseCommand(
   let state =
     environment.PITUITARY_STATE_DIR ??
     join(environment.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "pituitary");
-  let cwd = process.cwd();
-  let name: string | undefined;
-  let detach = false;
-  let json = false;
-  let help = false;
-  let agent: string | undefined;
-  let catalogFile: string | undefined;
-  let taskId: string | undefined;
-  const repos: string[] = [];
-  const words: string[] = [];
+  let cwd = process.cwd(),
+    socketPath = environment.PITUITARY_RUNTIME_SOCKET;
+  let name: string | undefined,
+    agent: string | undefined,
+    catalogFile: string | undefined,
+    taskId: string | undefined,
+    workspacePath: string | undefined,
+    revision: number | undefined,
+    inputArtifactId: string | undefined;
+  let model: string | undefined;
+  let detach = false,
+    watch = false,
+    json = false,
+    help = false;
+  const repos: string[] = [],
+    untracked: string[] = [],
+    dependsOn: string[] = [],
+    acceptance: string[] = [],
+    words: string[] = [];
   const seen = new Set<string>();
   const remaining = args.slice(1).values();
   for (const arg of remaining) {
@@ -85,74 +128,120 @@ export function parseCommand(
       help = true;
       continue;
     }
-    if (seen.has(arg) && arg !== "--repo") throw new Error(`Option ${arg} was supplied more than once`);
+    if (seen.has(arg) && !["--repo", "--include-untracked", "--depends-on", "--accept"].includes(arg))
+      throw new Error(`Option ${arg} was supplied more than once`);
     seen.add(arg);
     if (arg === "--detach" && verb === "run") {
       detach = true;
       continue;
     }
-    if (arg === "--json" && ["runs", "agents", "inspect"].includes(verb)) {
+    if (arg === "--watch" && ["run", "attach"].includes(verb)) {
+      watch = true;
+      continue;
+    }
+    if (arg === "--json" && ["runs", "agents", "inspect", "apply"].includes(verb)) {
       json = true;
       continue;
     }
     if (
       arg === "--state" ||
-      (["--cwd", "--name", "--agent", "--repo"].includes(arg) && verb === "run") ||
+      (arg === "--socket" && !["serve", "agents"].includes(verb)) ||
+      (["--cwd", "--name", "--agent", "--model", "--repo", "--workspace", "--include-untracked"].includes(
+        arg,
+      ) &&
+        verb === "run") ||
       (arg === "--catalog" && ["run", "agents", "serve"].includes(verb)) ||
-      (arg === "--task" && verb === "attach")
+      (arg === "--task" && verb === "attach") ||
+      (arg === "--revision" && ["retry", "revise", "integrate"].includes(verb)) ||
+      (["--input-artifact", "--depends-on", "--accept"].includes(arg) && verb === "revise")
     ) {
       const value = remaining.next().value;
       if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
       if (arg === "--state") state = resolve(value);
+      if (arg === "--socket") socketPath = resolve(value);
       if (arg === "--cwd") cwd = resolve(value);
       if (arg === "--name") name = value;
       if (arg === "--agent") agent = value;
+      if (arg === "--model") model = value;
       if (arg === "--repo") repos.push(value);
       if (arg === "--catalog") catalogFile = resolve(value);
       if (arg === "--task") taskId = value;
+      if (arg === "--workspace") workspacePath = resolve(value);
+      if (arg === "--include-untracked") untracked.push(value);
+      if (arg === "--input-artifact") inputArtifactId = value;
+      if (arg === "--depends-on") dependsOn.push(value);
+      if (arg === "--accept") acceptance.push(value);
+      if (arg === "--revision") {
+        revision = Number(value);
+        if (!Number.isSafeInteger(revision) || revision < 1)
+          throw new Error("--revision requires a positive integer");
+      }
       continue;
     }
     throw new Error(`Unknown option ${arg} for ${verb}`);
   }
   if (help) return { help: true, state };
+  const common: Common = { state, help: false, ...(socketPath ? { socketPath } : {}) };
   if (verb === "run") {
     if (repos.length && !agent) throw new Error("--repo requires --agent");
+    if (agent && model) throw new Error("Declared agents select their model in Nix");
+    if (model && !/^[^/\s]+\/[^\s]+$/.test(model)) throw new Error("--model requires PROVIDER/MODEL");
+    if (workspacePath && !agent) throw new Error("--workspace requires --agent");
+    if (untracked.length && !workspacePath) throw new Error("--include-untracked requires --workspace");
+    if (workspacePath && seen.has("--cwd") && cwd !== workspacePath)
+      throw new Error("--workspace and --cwd must identify the same directory");
+    if (watch && detach) throw new Error("--watch requires an attached frontend; omit --detach");
     return {
+      ...common,
       verb,
-      state,
       name,
-      cwd,
+      cwd: workspacePath ?? cwd,
       prompt: words.join(" ") || undefined,
       detach,
+      watch,
       agent,
+      model,
       repos,
       catalogFile,
-      help: false,
+      ...(workspacePath ? { workspace: { includeUntracked: untracked } } : {}),
     };
   }
-  if (verb === "runs") {
-    if (words.length) throw new Error("runs does not take a run name");
-    return { verb, state, json, help: false };
-  }
-  if (verb === "agents") {
-    if (words.length) throw new Error("agents does not take a run name");
-    return { verb, state, json, catalogFile, help: false };
-  }
-  if (verb === "serve") {
-    if (words.length) throw new Error("serve does not take a run name");
-    return { verb, state, catalogFile, help: false };
+  if (verb === "runs" || verb === "agents" || verb === "serve" || verb === "socket") {
+    if (words.length) throw new Error(`${verb} does not take a run name`);
+    if (verb === "agents") return { ...common, verb, json, catalogFile };
+    if (verb === "serve") return { ...common, verb, catalogFile };
+    if (verb === "runs") return { ...common, verb, json };
+    return { ...common, verb: "socket" };
   }
   const target = words[0];
-  if (words.length !== 1 || !target) throw new Error(`${verb} requires exactly one run name or ID`);
-  return { verb, state, name: target, json, ...(verb === "attach" && taskId ? { taskId } : {}), help: false };
-}
-
-export async function main(args = process.argv.slice(2)): Promise<void> {
-  if (!isVerb(args[0])) {
-    await import("../../tui/src/main.tsx");
-    return;
+  if (verb === "answer") {
+    if (!target || words.length < 2) throw new Error("answer requires a question ID and answer text");
+    return { ...common, verb, questionId: target, answer: words.slice(1).join(" ") };
   }
-  const command = parseCommand(args);
+  if (verb === "retry" || verb === "revise" || verb === "integrate") {
+    if (!target || (verb !== "revise" && words.length !== 1))
+      throw new Error(`${verb} requires exactly one task ID`);
+    if (revision === undefined) throw new Error(`${verb} requires --revision from the current task`);
+    if (verb === "revise") {
+      const objective = words.slice(1).join(" ");
+      const input: ReviseTaskInput = {
+        ...(objective ? { objective } : {}),
+        ...(inputArtifactId ? { inputArtifactId } : {}),
+        ...(seen.has("--depends-on") ? { dependsOn } : {}),
+        ...(seen.has("--accept") ? { acceptance } : {}),
+      };
+      if (!Object.keys(input).length)
+        throw new Error("revise requires an objective or an input/acceptance change");
+      return { ...common, verb, taskId: target, revision, input };
+    }
+    return { ...common, verb, taskId: target, revision };
+  }
+  if (words.length !== 1 || !target) throw new Error(`${verb} requires exactly one run name or ID`);
+  if (verb === "attach") return { ...common, verb, name: target, json, watch, ...(taskId ? { taskId } : {}) };
+  return { ...common, verb, name: target, json };
+}
+export async function main(args = process.argv.slice(2)): Promise<void> {
+  const command = parseCommand(isVerb(args[0]) ? args : ["run", ...args]);
   if (command.help) {
     process.stdout.write(HELP);
     return;
@@ -170,8 +259,13 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
     await serveRuntime({ stateDirectory: command.state, catalogFile: command.catalogFile });
     return;
   }
+  if (command.verb === "socket") {
+    process.stdout.write(`${command.socketPath ?? runtimeSocket(command.state)}\n`);
+    return;
+  }
   const runtime = new Runtime({
     stateDirectory: command.state,
+    socketPath: command.socketPath,
     catalogFile: command.verb === "run" ? command.catalogFile : undefined,
   });
   try {
@@ -181,13 +275,44 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         cwd: command.cwd,
         prompt: command.prompt,
         agent: command.agent,
+        model: command.model,
         repos: command.repos,
+        workspace: command.workspace,
       });
       if (command.detach) process.stdout.write(`${run.name}\n`);
-      else await attach(run, command.state);
+      else
+        await attach(run, command.state, undefined, command.watch, command.socketPath, !!command.socketPath);
     } else if (command.verb === "attach") {
       const detail = await runtime.inspect(command.name);
-      await attach(detail.run, command.state, command.taskId);
+      await attach(
+        detail.run,
+        command.state,
+        command.taskId,
+        command.watch,
+        command.socketPath,
+        !!command.socketPath,
+      );
+    } else if (command.verb === "answer") {
+      const answer = await runtime.answer(command.questionId, command.answer);
+      process.stdout.write(`Answered ${answer.id}.\n`);
+    } else if (command.verb === "retry") {
+      const task = await runtime.retry(command.taskId, command.revision);
+      process.stdout.write(
+        `Queued task ${task.id} revision ${task.revision}, attempt ${task.currentAttemptId}.\n`,
+      );
+    } else if (command.verb === "revise") {
+      const task = await runtime.revise(command.taskId, command.revision, command.input);
+      process.stdout.write(`Revised task ${task.id} to revision ${task.revision}.\n`);
+    } else if (command.verb === "integrate") {
+      const integration = await runtime.integrate(command.taskId, command.revision);
+      process.stdout.write(`Queued integration ${integration.id}.\n`);
+    } else if (command.verb === "apply") {
+      const result = await runtime.apply(command.name);
+      process.stdout.write(
+        command.json
+          ? `${JSON.stringify(result)}\n`
+          : `${result.applied ? "Applied" : "Already applied"} artifact ${result.artifactId}.\n`,
+      );
     } else if (command.verb === "runs") {
       const runs = await Promise.all((await runtime.list()).map((run) => runtime.inspect(run.id)));
       if (command.json) process.stdout.write(`${JSON.stringify(runs, null, 2)}\n`);
@@ -208,7 +333,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
         for (const task of detail.tasks) {
           const attempt = detail.attempts.find((item) => item.id === task.currentAttemptId);
           process.stdout.write(
-            `${task.id}  ${task.role ?? "solo"}  ${task.status} / ${attempt?.status ?? "unknown"}\n`,
+            `${task.id}  ${task.role ?? "solo"}  revision ${task.revision}  ${task.status} / ${attempt?.status ?? "unknown"}\n`,
           );
           if (attempt?.error) process.stdout.write(`  Attention: ${plain(attempt.error)}\n`);
           if (task.report)
@@ -218,13 +343,31 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
                 .map((line) => `    ${line}`)
                 .join("\n")}\n`,
             );
+          if (task.artifactId) process.stdout.write(`  Artifact: ${task.artifactId}\n`);
         }
+        for (const question of detail.questions.filter((question) => question.status === "open"))
+          process.stdout.write(`Question ${question.id}: ${plain(question.question)}\n`);
+        for (const integration of detail.integrations.filter(
+          (integration) => integration.status === "conflicted",
+        ))
+          process.stdout.write(
+            `Conflict ${integration.id}: ${integration.conflicts.map(plain).join(", ")}\n`,
+          );
+        for (const verification of detail.verifications.filter(
+          (verification) => verification.status === "failed" || verification.error,
+        )) {
+          process.stdout.write(
+            `Verification ${verification.id} ${verification.status} for tree ${verification.tree}.\n`,
+          );
+          if (verification.error) process.stdout.write(`  Attention: ${plain(verification.error)}\n`);
+        }
+        if (run.acceptedArtifactId) process.stdout.write(`Accepted artifact: ${run.acceptedArtifactId}\n`);
         process.stdout.write(`History: ${detail.events.length} recorded transitions\n`);
       }
     } else if (command.verb === "recover") {
       const run = await runtime.recover(command.name);
       process.stdout.write(`Recovered ${run.name}.\n`);
-    } else {
+    } else if (command.verb === "stop") {
       const run = await runtime.stop(command.name);
       process.stdout.write(`Stopping ${run.name}. Conversations and workspaces are retained.\n`);
     }
@@ -233,16 +376,61 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
   }
 }
 
-async function attach(run: Run, state: string, taskId?: string): Promise<void> {
-  delete process.env.PITUITARY_WORKER_SOCKET;
-  if (taskId) process.env.PITUITARY_TASK_ID = taskId;
-  else delete process.env.PITUITARY_TASK_ID;
-  process.env.PITUITARY_RUN_ID = run.id;
-  process.env.PITUITARY_RUN_NAME = run.name;
-  process.env.PITUITARY_STATE_DIR = resolve(state);
-  process.chdir(run.cwd);
-  process.argv = [process.execPath, fileURLToPath(new URL("../../tui/src/main.tsx", import.meta.url))];
-  await import("../../tui/src/main.tsx");
+async function attach(
+  run: Run,
+  state: string,
+  taskId?: string,
+  watch = false,
+  socketPath?: string,
+  remote = false,
+): Promise<void> {
+  const directory = join(resolve(state), "ui");
+  privateDirectory(directory);
+  const view = mkdtempSync(join(directory, `${run.id}-`));
+  const entry = fileURLToPath(new URL("../../tui/src/main.tsx", import.meta.url));
+  let cwd = process.cwd();
+  if (!remote) {
+    try {
+      if (statSync(run.cwd).isDirectory()) cwd = run.cwd;
+    } catch {}
+  }
+  let resume = false;
+  try {
+    for (;;) {
+      const environment = {
+        ...process.env,
+        PITUITARY_RUN_ID: run.id,
+        PITUITARY_RUN_NAME: run.name,
+        PITUITARY_STATE_DIR: resolve(state),
+        PITUITARY_UI_STATE: join(view, "view.json"),
+        ...(taskId ? { PITUITARY_TASK_ID: taskId } : {}),
+        ...(socketPath ? { PITUITARY_RUNTIME_SOCKET: socketPath } : {}),
+        ...(remote ? { PITUITARY_REMOTE_UI: "1" } : {}),
+        ...(watch ? { PITUITARY_UI_WATCH: "1" } : {}),
+        ...(resume ? { PITUITARY_UI_RESUME: "1" } : {}),
+      };
+      if (!taskId) delete environment.PITUITARY_TASK_ID;
+      if (!watch) delete environment.PITUITARY_UI_WATCH;
+      if (!resume) delete environment.PITUITARY_UI_RESUME;
+      if (!remote) delete environment.PITUITARY_REMOTE_UI;
+      const code = await new Promise<number>((done, reject) => {
+        const child = spawn(process.execPath, [entry], {
+          stdio: "inherit",
+          env: environment,
+          cwd,
+        });
+        child.once("error", reject);
+        child.once("exit", (code, signal) => done(signal ? 1 : (code ?? 1)));
+      });
+      if (code !== 75) {
+        process.exitCode = code;
+        return;
+      }
+      resume = true;
+    }
+  } finally {
+    rmSync(view, { recursive: true, force: true });
+  }
 }
 
 if (import.meta.main) {

@@ -26,7 +26,7 @@ package:
 module:
     nix build ../..#checks.$(nix eval --impure --raw --expr builtins.currentSystem).pituitary-home-manager --no-link
 
-# Reducer, framing, pacing, and transport, against the scripted agent.
+# Native conversation projection, framing, pacing, and reducer.
 unit:
     bun test packages/ scripts/
 
@@ -48,20 +48,15 @@ screens:
     node --test "e2e/**/*.test.ts" > /dev/null 2>&1 || true
     @for f in artifacts/screens/*.txt; do printf '\n════ %s ════\n' "$(basename "$f" .txt)"; cat "$f"; done
 
-# The UI against the scripted agent, in this terminal.
+# A native Faux conversation in this terminal; no provider request.
 [positional-arguments]
 run scenario="hello" delay="25":
-    PI_AGENT_CMD=bun PI_AGENT_ARGS_JSON="$(jq -nc --arg entry {{quote(justfile_directory() + "/packages/fake-pi/src/main.ts")}} '[$entry]')" \
-    FAKE_PI_SCENARIO="$1" FAKE_PI_DELAY_MS="$2" \
-    PITUITARY_LOG={{quote(justfile_directory() + "/artifacts/tui.log")}} \
-    bun packages/tui/src/main.tsx
+    PITUITARY_FIXTURE_SCENARIO="$1" PITUITARY_FIXTURE_DELAY="$2" bun packages/tui/src/app.fixture.tsx
 
-# The UI against the real pi CLI. Needs a provider credential in the environment.
+# The native harness and terminal, using configured provider credentials.
 [positional-arguments]
 live *args:
-    PI_AGENT_CMD={{quote(justfile_directory() + "/node_modules/.bin/pi")}} \
-    PITUITARY_LOG={{quote(justfile_directory() + "/artifacts/tui.log")}} \
-    bun packages/tui/src/main.tsx "$@"
+    bun packages/harness/src/main.ts "$@"
 
 # Persistent native runs from source: just harness run --name review, just harness attach review.
 [positional-arguments]
@@ -75,11 +70,6 @@ clean:
 [positional-arguments]
 ember view="tiles":
     EMBER_VIEW="$1" bun packages/ember/showcase/main.tsx
-
-# The showcase recordings: asciinema casts, GIFs, and stills in artifacts/demo. just demo [work vim …]
-[positional-arguments]
-demo *scenes:
-    node scripts/demo/record.ts "$@"
 
 # Rasterise the e2e screen captures.
 png:

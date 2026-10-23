@@ -11,7 +11,6 @@ let
   keybindingsFile = "${config.xdg.configHome}/pituitary/keybindings.json";
 
   environment = {
-    PI_AGENT_CMD = cfg.agent.command;
     PITUITARY_FIRELIGHT = cfg.firelight.reach;
     PITUITARY_FIRELIGHT_STRENGTH = cfg.firelight.strength;
     PITUITARY_FIRELIGHT_ON = cfg.firelight.on;
@@ -29,9 +28,8 @@ let
     PITUITARY_FOOTER_PALETTE = cfg.footer.palette;
     PITUITARY_FOOTER_HEARTH = toString cfg.footer.hearth;
   }
-  // lib.optionalAttrs (cfg.agent.args != [ ]) {
-    PI_AGENT_ARGS_JSON = builtins.toJSON cfg.agent.args;
-  }
+  // lib.optionalAttrs (cfg.model != null) { PITUITARY_MODEL = cfg.model; }
+  // lib.optionalAttrs (cfg.runtimeSocket != null) { PITUITARY_RUNTIME_SOCKET = cfg.runtimeSocket; }
   // lib.optionalAttrs (cfg.nvimPackage != null) {
     PITUITARY_NVIM = lib.getExe' cfg.nvimPackage "nvim";
   }
@@ -64,7 +62,7 @@ let
 in
 {
   options.programs.pituitary = {
-    enable = mkEnableOption "pituitary, the terminal workspace for the pi coding agent";
+    enable = mkEnableOption "Pituitary, a durable agent workspace";
 
     package = mkOption {
       type = types.package;
@@ -77,7 +75,20 @@ in
       type = types.nullOr types.str;
       default = null;
       example = "/home/me/.local/state/pituitary";
-      description = "Managed run records and worker state; null follows XDG_STATE_HOME or ~/.local/state/pituitary.";
+      description = "Private durable harness and frontend state; null follows XDG_STATE_HOME or ~/.local/state/pituitary.";
+    };
+
+    model = mkOption {
+      type = types.nullOr (types.strMatching "[^/[:space:]]+/[^[:space:]]+");
+      default = null;
+      example = "anthropic/your-model";
+      description = "Initial provider/model for local conversations. Declared agents use their own model.";
+    };
+
+    runtimeSocket = mkOption {
+      type = types.nullOr (types.strMatching "/.*");
+      default = null;
+      description = "Existing host runtime socket, including an SSH Unix-socket tunnel. Null uses local state discovery.";
     };
 
     nvimPackage = mkOption {
@@ -96,34 +107,10 @@ in
       example = lib.literalExpression "pkgs.gh";
       description = ''
         The GitHub CLI pituitary runs under the user's own `gh` login: the footer asks it
-        for the current branch's pull request, and `/share` creates a secret gist with it.
+        for the current branch's pull request.
         `null` keeps the build the package pins. Setting `extraEnvironment.PITUITARY_GH = ""`
-        runs no gh, turning both off.
+        runs no gh, disabling that lookup.
       '';
-    };
-
-    agent = {
-      command = mkOption {
-        type = types.str;
-        default = "pi";
-        example = "/etc/profiles/per-user/me/bin/pi";
-        description = "The pi executable pituitary starts in RPC mode, looked up on PATH when it is a bare name.";
-      };
-
-      args = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-        example = [
-          "--model"
-          "claude-opus-5-5"
-          "--thinking"
-          "high"
-        ];
-        description = ''
-          Arguments given to pi ahead of the ones on pituitary's command line. Each list item
-          is one argument; spaces, quotes, and empty arguments are preserved.
-        '';
-      };
     };
 
     glyphs = mkOption {
@@ -145,7 +132,7 @@ in
       travels = mkOption {
         type = types.bool;
         default = true;
-        description = "Whether the fire leaves its corner for the working line while pi works. `false` keeps it in the corner.";
+        description = "Whether the fire leaves its corner for the working line during a turn. `false` keeps it in the corner.";
       };
 
       coals = mkOption {
@@ -336,7 +323,7 @@ in
       type = types.nullOr types.str;
       default = null;
       example = "/tmp/pituitary.log";
-      description = "Where pi's stderr and pituitary's own diagnostics go. `null` discards them.";
+      description = "Where frontend diagnostics go. `null` discards them; the host runtime has its own durable log.";
     };
 
     profileFile = mkOption {
@@ -357,8 +344,7 @@ in
         ];
       };
       description = ''
-        Keys for pituitary's actions, named as pi names its keybinding actions. Each entry
-        replaces that action's keys from pi's own `keybindings.json`, which stays pi's to manage.
+        Keys for Pituitary's named actions. Each entry replaces that action's default keys.
       '';
     };
 
@@ -366,9 +352,9 @@ in
       type = types.attrsOf types.str;
       default = { };
       example = {
-        PI_CODING_AGENT_SESSION_DIR = "/home/me/pi-sessions";
+        PITUITARY_CATALOG = "/etc/pituitary/agents.json";
       };
-      description = "Further variables set for pituitary and the pi it starts.";
+      description = "Further variables set for Pituitary.";
     };
   };
 

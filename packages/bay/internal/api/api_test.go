@@ -20,12 +20,12 @@ func (s *suspendService) Suspend(_ context.Context, name string, option Suspend)
 	return nil
 }
 
-func TestSuspendAcceptsLegacyEmptyBodyAndRecordPrecondition(t *testing.T) {
+func TestSuspendAcceptsOptionsAndRecordPrecondition(t *testing.T) {
 	for _, test := range []struct {
 		body string
 		id   string
 	}{
-		{"", ""}, {" \n\t", ""}, {`{}`, ""}, {`{"id":"record-id"}`, "record-id"},
+		{`{}`, ""}, {`{"id":"record-id"}`, "record-id"},
 	} {
 		t.Run(test.body, func(t *testing.T) {
 			svc := &suspendService{}
@@ -37,5 +37,14 @@ func TestSuspendAcceptsLegacyEmptyBodyAndRecordPrecondition(t *testing.T) {
 				t.Fatalf("status %d, called %v, name %q, options %+v", response.Code, svc.called, svc.name, svc.option)
 			}
 		})
+	}
+}
+
+func TestSuspendRejectsEmptyBody(t *testing.T) {
+	svc := &suspendService{}
+	response := httptest.NewRecorder()
+	Handler(svc, http.NotFoundHandler()).ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/sessions/one/suspend", strings.NewReader("")))
+	if response.Code != http.StatusBadRequest || svc.called {
+		t.Fatalf("empty options accepted: %d", response.Code)
 	}
 }

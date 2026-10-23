@@ -16,6 +16,7 @@ const agent: AgentDefinition = {
     tools: ["read", "bash"],
     delegatesTo: [],
     credentials: [],
+    limits: { maxChildren: 0, maxDepth: 0 },
   },
   program: "pituitary-builder",
   machine: "pituitary-builder",
@@ -49,6 +50,7 @@ test("Bay identity pins the record, generation, program, machine and image revis
 
 test("Bay lifecycle uses structured JSON and requires a record identity when suspending", async () => {
   const root = mkdtempSync(join(tmpdir(), "pi-bay-api-"));
+  const selected = { ...session, name: "run/name" };
   const calls: Array<{ method?: string; path?: string; body?: unknown }> = [];
   const server = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
@@ -70,15 +72,15 @@ test("Bay lifecycle uses structured JSON and requires a record identity when sus
         .writeHead(409)
         .end(JSON.stringify({ error: "The frozen machine revision changed", code: "launch_rejected" }));
     } else {
-      response.end(JSON.stringify(session));
+      response.end(JSON.stringify(selected));
     }
   });
   const socket = join(root, "bay.sock");
   await new Promise<void>((resolve) => server.listen(socket, resolve));
   try {
     const bay = new Bay(socket);
-    expect(await bay.start("run/name", agent, ["owner/repo@pinned-ref"])).toEqual(session);
-    expect(await bay.get("run/name")).toEqual(session);
+    expect(await bay.start("run/name", agent, ["owner/repo@pinned-ref"])).toEqual(selected);
+    expect(await bay.get("run/name")).toEqual(selected);
     await bay.suspend("run/name", session.id, session.generation);
     expect(calls).toEqual([
       {
@@ -90,6 +92,7 @@ test("Bay lifecycle uses structured JSON and requires a record identity when sus
           repos: ["owner/repo@pinned-ref"],
         },
       },
+      { method: "GET", path: "/v1/sessions/run%2Fname", body: undefined },
       { method: "GET", path: "/v1/sessions/run%2Fname", body: undefined },
       {
         method: "POST",
@@ -119,5 +122,79 @@ test("Bay lifecycle uses structured JSON and requires a record identity when sus
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a native task abort cancels Bay HTTP I/O instead of blocking harness shutdown", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-bay-abort-")),
+    socket = join(root, "bay.sock");
+  let arrived!: () => void;
+  const requestArrived = new Promise<void>((resolve) => (arrived = resolve));
+  const server = createServer((_request, _response) => {
+    arrived();
+  });
+  await new Promise<void>((resolve) => server.listen(socket, resolve));
+  try {
+    const controller = new AbortController(),
+      pending = new Bay(socket, controller.signal).get("waiting");
+    await requestArrived;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("suspension is idempotent only for the same record and execution", async () => {
+  for (const scenario of [
+    "already",
+    "already-replaced",
+    "concurrent",
+    "replaced",
+    "resumed",
+    "still-running",
+  ] as const) {
+    const root = mkdtempSync(join(tmpdir(), "pi-bay-suspend-")),
+      socket = join(root, "bay.sock");
+    let current: BaySession = {
+        ...session,
+        state: scenario.startsWith("already") ? "suspended" : "running",
+        ...(scenario === "already-replaced" ? { id: "new-record" } : {}),
+      },
+      posts = 0;
+    const server = createServer(async (request, response) => {
+      response.setHeader("Content-Type", "application/json");
+      if (request.method === "GET") {
+        response.end(JSON.stringify(current));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual({
+        id: session.id,
+        generation: session.generation,
+      });
+      posts++;
+      current = {
+        ...current,
+        state: scenario === "still-running" ? "running" : "suspended",
+        ...(scenario === "replaced" ? { id: "new-record" } : {}),
+        ...(scenario === "resumed" ? { generation: session.generation + 1 } : {}),
+      };
+      response.writeHead(409).end(JSON.stringify({ error: "Session changed during cleanup" }));
+    });
+    await new Promise<void>((resolve) => server.listen(socket, resolve));
+    try {
+      const pending = new Bay(socket).suspend(session.name, session.id, session.generation);
+      if (scenario === "already" || scenario === "concurrent") await pending;
+      else await expect(pending).rejects.toThrow();
+      expect(posts).toBe(scenario.startsWith("already") ? 0 : 1);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(root, { recursive: true, force: true });
+    }
   }
 });

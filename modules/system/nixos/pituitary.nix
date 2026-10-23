@@ -13,7 +13,6 @@ let
     name: module:
     evaluate {
       inherit name pkgs;
-      inherit (cfg) workerPackage;
       bay = config.services.bay.package;
       incus = config.virtualisation.incus.package;
       modules = [ module ];
@@ -39,6 +38,7 @@ let
         program = "pituitary-${name}";
         machine = machineName agent;
         machineRevision = (machineIdentity agent).revision;
+        inherit (agent) verification;
       }
     ) agents;
   };
@@ -48,7 +48,6 @@ let
   credentialProfilesFile =
     (pkgs.formats.json { }).generate "pituitary-credentials.json"
       cfg.credentialProfiles;
-  bayCommand = lib.getExe config.services.bay.package;
   package = pkgs.symlinkJoin {
     name = "pituitary-with-agents";
     paths = [ cfg.package ];
@@ -56,7 +55,6 @@ let
     postBuild = ''
       wrapProgram $out/bin/pituitary \
         --set-default PITUITARY_CATALOG ${lib.escapeShellArg catalogPath} \
-        --set-default PITUITARY_BAY_COMMAND ${lib.escapeShellArg bayCommand} \
         --set-default PITUITARY_STATE_DIR ${lib.escapeShellArg cfg.stateDirectory} \
         --set-default PITUITARY_CREDENTIAL_PROFILES ${lib.escapeShellArg credentialProfilesPath} \
         --set-default PITUITARY_RUN_LIMITS ${lib.escapeShellArg (builtins.toJSON cfg.limits)}
@@ -79,12 +77,6 @@ in
       defaultText = lib.literalExpression "pkgs.callPackage ../../../packages/pituitary { }";
       description = "Pituitary client configured to use this host's declared agents.";
     };
-    workerPackage = mkOption {
-      type = types.package;
-      default = pkgs.callPackage ../../../packages/pituitary/worker.nix { };
-      defaultText = lib.literalExpression "pkgs.callPackage ../../../packages/pituitary/worker.nix { }";
-      description = "Native worker installed in every agent's NixOS machine.";
-    };
     stateDirectory = mkOption {
       type = types.strMatching "/.*";
       default = "/var/lib/pituitary";
@@ -99,7 +91,7 @@ in
       maxLiveAttempts = mkOption {
         type = types.ints.positive;
         default = 4;
-        description = "Maximum live attempts per run, including waiting or unreachable workers.";
+        description = "Maximum live attempts per run, including waiting or unreachable environments.";
       };
       maxDepth = mkOption {
         type = types.ints.unsigned;
@@ -115,6 +107,11 @@ in
         type = types.ints.between 1 65536;
         default = 65536;
         description = "Maximum UTF-8 bytes in a submitted report.";
+      };
+      artifactBytes = mkOption {
+        type = types.ints.between 1 134217728;
+        default = 67108864;
+        description = "Maximum bytes in one retained Git artifact bundle.";
       };
     };
     credentialProfiles = mkOption {
@@ -162,12 +159,24 @@ in
         assertion = config.services.bay.operator == cfg.operator;
         message = "services.pituitary and services.bay must use the same operator.";
       }
+      {
+        assertion =
+          let
+            providers = map (profile: profile.provider) (builtins.attrValues cfg.credentialProfiles);
+          in
+          lib.unique providers == providers;
+        message = "services.pituitary.credentialProfiles must declare one profile per provider.";
+      }
     ]
     ++ lib.concatLists (
       lib.mapAttrsToList (name: agent: [
         {
           assertion = lib.all (target: builtins.hasAttr target cfg.agents) agent.manifest.delegatesTo;
           message = "services.pituitary.agents.${name} delegates to an undeclared agent.";
+        }
+        {
+          assertion = agent.verification == null || builtins.hasAttr agent.verification.agent agents;
+          message = "services.pituitary.agents.${name} verifies with an undeclared agent.";
         }
         {
           assertion = lib.all (
@@ -200,7 +209,6 @@ in
     # discover the same host catalog without duplicating its declarations.
     environment.sessionVariables = {
       PITUITARY_CATALOG = catalogPath;
-      PITUITARY_BAY_COMMAND = bayCommand;
       PITUITARY_STATE_DIR = cfg.stateDirectory;
       PITUITARY_CREDENTIAL_PROFILES = credentialProfilesPath;
       PITUITARY_RUN_LIMITS = builtins.toJSON cfg.limits;
@@ -218,7 +226,6 @@ in
       environment = {
         PITUITARY_CATALOG = catalogPath;
         PITUITARY_STATE_DIR = cfg.stateDirectory;
-        PITUITARY_BAY_COMMAND = bayCommand;
         PITUITARY_CREDENTIAL_PROFILES = credentialProfilesPath;
         PITUITARY_RUN_LIMITS = builtins.toJSON cfg.limits;
       };
@@ -235,9 +242,6 @@ in
         ];
         Restart = "on-failure";
         RestartSec = 2;
-        # Workers have their own durable lifetimes. A daemon restart must detach
-        # from local workers rather than killing them with the service cgroup.
-        KillMode = "process";
       };
     };
   };

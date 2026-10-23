@@ -3,11 +3,8 @@ import { KeyEvent, parseKeypress } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
 import { act, type ReactNode } from "react";
-import { Checklist } from "./checklist.tsx";
-import { CustomPanel } from "./custom-panel.tsx";
 import { Dialog, GRACE_MS } from "./dialog.tsx";
 import { Picker } from "./picker.tsx";
-import { TodoPanel } from "./widgets.tsx";
 
 async function draw(view: ReactNode) {
   const environment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
@@ -155,7 +152,7 @@ test("a late alternate picker response cannot replace the current list", async (
   }
 });
 
-test("mouse choices pick a model and toggle a checklist row", async () => {
+test("mouse choices pick a model", async () => {
   let picked = "";
   const picker = await draw(
     <Picker
@@ -175,17 +172,6 @@ test("mouse choices pick a model and toggle a checklist row", async () => {
   } finally {
     picker.close();
   }
-  const checklist = await draw(
-    <Checklist spec={{ title: "models", items, checked: null, onSave() {} }} onClose={() => {}} />,
-  );
-  try {
-    await act(async () => checklist.mockMouse.click(8, 4));
-    await checklist.renderOnce();
-    expect(checklist.captureCharFrame()).toContain("▸ · match second");
-    expect(checklist.captureCharFrame()).toContain("2 of 3 checked");
-  } finally {
-    checklist.close();
-  }
 });
 
 test("the wheel moves a choice without moving the text filter", async () => {
@@ -202,7 +188,7 @@ test("the wheel moves a choice without moving the text filter", async () => {
   }
 });
 
-test("keypad Enter picks and checks the focused choice", async () => {
+test("keypad Enter picks the focused model", async () => {
   let picked = "";
   const picker = await draw(
     <Picker
@@ -222,22 +208,13 @@ test("keypad Enter picks and checks the focused choice", async () => {
   } finally {
     picker.close();
   }
-  const checklist = await draw(
-    <Checklist spec={{ title: "models", items, checked: null, onSave() {} }} onClose={() => {}} />,
-  );
-  try {
-    await checklist.keypad();
-    expect(checklist.captureCharFrame()).toContain("2 of 3 checked");
-  } finally {
-    checklist.close();
-  }
 });
 
 for (const method of ["select", "confirm", "input", "editor"] as const) {
-  test(`keypad Enter answers an extension ${method} dialog`, async () => {
+  test(`keypad Enter answers an operator ${method} dialog`, async () => {
     let answer: unknown;
     const dialog = {
-      type: "extension_ui_request" as const,
+      type: "dialog" as const,
       id: "dialog",
       title: "Question",
       ...(method === "select"
@@ -262,7 +239,7 @@ for (const method of ["select", "confirm", "input", "editor"] as const) {
       if (method === "input") await app.type("reply");
       await app.keypad(method === "editor");
       expect(answer).toEqual({
-        type: "extension_ui_response",
+        type: "dialog_response",
         id: "dialog",
         ...(method === "confirm"
           ? { confirmed: true }
@@ -273,100 +250,3 @@ for (const method of ["select", "confirm", "input", "editor"] as const) {
     }
   });
 }
-
-test("clipping an extension row keeps its prefix across ANSI style runs", async () => {
-  const app = await draw(
-    <box width={9}>
-      <CustomPanel view={{ id: "custom", lines: ["AAAA界\x1b[31mX"] }} rows={1} />
-    </box>,
-  );
-  try {
-    expect(app.captureCharFrame()).toContain("AAAA");
-    expect(app.captureCharFrame()).not.toContain("AAAAX");
-  } finally {
-    app.close();
-  }
-});
-
-test("a checklist starts a narrowed search at its first result", async () => {
-  const app = await draw(
-    <Checklist spec={{ title: "models", items, checked: null, onSave() {} }} onClose={() => {}} />,
-  );
-  try {
-    await app.key("ARROW_DOWN");
-    await app.key("ARROW_DOWN");
-    await app.type("match");
-    expect(app.captureCharFrame()).toContain("▸ ✓ match first");
-  } finally {
-    app.close();
-  }
-});
-
-test("a checklist can recover from arrow navigation through an empty search", async () => {
-  const app = await draw(
-    <Checklist spec={{ title: "models", items, checked: null, onSave() {} }} onClose={() => {}} />,
-  );
-  try {
-    await app.type("z");
-    await app.key("ARROW_UP");
-    await app.key("BACKSPACE");
-    expect(app.captureCharFrame()).toContain("▸ ✓ match first");
-  } finally {
-    app.close();
-  }
-});
-
-test("checking and unchecking follows the item as checked rows reorder", async () => {
-  const app = await draw(
-    <Checklist spec={{ title: "models", items, checked: null, onSave() {} }} onClose={() => {}} />,
-  );
-  try {
-    await app.key("ARROW_DOWN");
-    await app.key("RETURN");
-    expect(app.captureCharFrame()).toContain("▸ · match second");
-    await app.key("RETURN");
-    expect(app.captureCharFrame()).toContain("all checked");
-    expect(app.captureCharFrame()).toContain("▸ ✓ match second");
-  } finally {
-    app.close();
-  }
-});
-
-test("the todo panel keeps active work visible after a long completed prefix", async () => {
-  const tasks = [
-    ...Array.from({ length: 8 }, (_, id) => ({
-      id,
-      subject: `finished ${id}`,
-      status: "completed" as const,
-    })),
-    { id: 8, subject: "active task", status: "in_progress" as const },
-    { id: 9, subject: "next task", status: "pending" as const },
-    { id: 10, subject: "removed task", status: "deleted" as const },
-  ];
-  const app = await draw(<TodoPanel tasks={tasks} />);
-  try {
-    const frame = app.captureCharFrame();
-    expect(frame).toContain("todo 8/10");
-    expect(frame).toContain("active task");
-    expect(frame).toContain("next task");
-    expect(frame).not.toContain("removed task");
-  } finally {
-    app.close();
-  }
-});
-
-test("completed and deleted tasks leave no empty todo panel", async () => {
-  const app = await draw(
-    <TodoPanel
-      tasks={[
-        { id: 1, subject: "finished", status: "completed" },
-        { id: 2, subject: "removed", status: "deleted" },
-      ]}
-    />,
-  );
-  try {
-    expect(app.captureCharFrame()).not.toContain("todo");
-  } finally {
-    app.close();
-  }
-});

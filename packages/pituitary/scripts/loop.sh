@@ -9,7 +9,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 realm_root="$(git rev-parse --show-toplevel)"
 system="$(nix eval --impure --raw --expr builtins.currentSystem)"
 mkdir -p artifacts/logs artifacts/screens
-rm -rf artifacts/perf
+rm -rf artifacts/perf artifacts/screens
+mkdir -p artifacts/screens
 report=artifacts/report.md
 : >"$report"
 

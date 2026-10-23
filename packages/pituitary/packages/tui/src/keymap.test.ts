@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { actionFor, keymap, loadKeymap, matches } from "./keymap.ts";
@@ -39,15 +39,15 @@ describe("keymap", () => {
   });
 
   test("an override binds an action, and replaces what it had", () => {
-    const map = keymap({ "app.session.new": "alt+n", "app.model.select": ["ctrl+k"] });
-    expect(actionFor(map, { name: "n", meta: true })).toBe("app.session.new");
+    const map = keymap({ "app.team.tasks": "alt+n", "app.model.select": ["ctrl+k"] });
+    expect(actionFor(map, { name: "n", meta: true })).toBe("app.team.tasks");
     expect(actionFor(map, { name: "k", ctrl: true })).toBe("app.model.select");
     expect(actionFor(map, { name: "l", ctrl: true })).toBeNull();
   });
 
   test("an explicit override can reuse another action's default key", () => {
-    const map = keymap({ "app.session.new": "ctrl+l" });
-    expect(actionFor(map, { name: "l", ctrl: true })).toBe("app.session.new");
+    const map = keymap({ "app.team.tasks": "ctrl+l" });
+    expect(actionFor(map, { name: "l", ctrl: true })).toBe("app.team.tasks");
     expect(map["app.model.select"]).toEqual([]);
   });
 
@@ -58,30 +58,13 @@ describe("keymap", () => {
 });
 
 describe("loadKeymap", () => {
-  const dirs = () => {
-    const root = mkdtempSync(join(tmpdir(), "pituitary-keymap-"));
-    const agent = join(root, "agent");
-    mkdirSync(agent);
-    return { agent, own: join(root, "own.json") };
-  };
-
-  test("pituitary's own file overrides pi's, action by action", () => {
-    const { agent, own } = dirs();
-    writeFileSync(
-      join(agent, "keybindings.json"),
-      JSON.stringify({ "app.model.select": "ctrl+k", "app.exit": "ctrl+q" }),
-    );
-    writeFileSync(own, JSON.stringify({ "app.model.select": ["alt+m"] }));
-    const map = loadKeymap(agent, own);
-    expect(map["app.model.select"]).toEqual(["alt+m"]);
-    expect(map["app.exit"]).toEqual(["ctrl+q"]);
-  });
-
-  test("a missing or malformed file leaves the other in force", () => {
-    const { agent, own } = dirs();
+  test("loads only the declared Pituitary bindings file", () => {
+    const directory = mkdtempSync(join(tmpdir(), "pituitary-keymap-")),
+      own = join(directory, "keys.json");
+    writeFileSync(own, JSON.stringify({ "app.model.select": ["alt+m"], "app.exit": "ctrl+q" }));
+    expect(loadKeymap(own)["app.model.select"]).toEqual(["alt+m"]);
+    expect(loadKeymap(own)["app.exit"]).toEqual(["ctrl+q"]);
     writeFileSync(own, "not json");
-    expect(loadKeymap(agent, own)["app.model.select"]).toEqual(["ctrl+l"]);
-    writeFileSync(own, JSON.stringify({ "app.exit": "ctrl+q" }));
-    expect(loadKeymap(agent, own)["app.exit"]).toEqual(["ctrl+q"]);
+    expect(loadKeymap(own)["app.model.select"]).toEqual(["ctrl+l"]);
   });
 });

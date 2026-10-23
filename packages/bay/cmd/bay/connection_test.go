@@ -58,8 +58,16 @@ func TestConnectForwardsExplicitExecutionGeneration(t *testing.T) {
 		go func() { io.Copy(io.Discard, in); in.Close(); out.Close() }()
 		return &pipeConnection{PipeReader: output, input: input}
 	}
-	got := h.run("", "connect", "one", "--id", "id-one", "--generation", "0")
-	if got.code != 0 || len(h.svc.gotGeneration) != 1 || h.svc.gotGeneration[0] != 0 {
+	got := h.run("", "connect", "one", "--id", "id-one", "--generation", "3")
+	if got.code != 0 || len(h.svc.gotGeneration) != 1 || h.svc.gotGeneration[0] != 3 {
 		t.Fatalf("fenced connect = %+v, generations %v", got, h.svc.gotGeneration)
+	}
+}
+
+func TestConnectRejectsZeroGenerationBeforeOpeningConnection(t *testing.T) {
+	h := newHarness(t)
+	got := h.run("", "connect", "one", "--id", "id-one", "--generation", "0")
+	if got.code != 2 || !strings.Contains(got.stderr, "positive integer") || len(h.svc.calls) != 0 {
+		t.Fatalf("zero generation reached service: %+v, calls %q", got, h.svc.calls)
 	}
 }

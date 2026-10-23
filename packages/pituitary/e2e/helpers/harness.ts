@@ -16,9 +16,7 @@ import { survivors } from "./processes.ts";
 export { survivors };
 
 export const REPO = join(import.meta.dirname, "..", "..");
-const TUI_ENTRY = join(REPO, "packages/tui/src/main.tsx");
-const FAKE_AGENT = join(REPO, "packages/fake-pi/src/main.ts");
-const PI = join(REPO, "node_modules/.bin/pi");
+const TUI_ENTRY = join(REPO, "packages/tui/src/app.fixture.tsx");
 const FAKE_GH = join(REPO, "e2e/fixtures/gh");
 const SCREENS = join(REPO, "artifacts", "screens");
 
@@ -88,7 +86,9 @@ function recorded(command: string[], file: string): string[] {
 /** The UI process running with `home` as its HOME. */
 export function uiPid(home: string): number {
   const ui = survivors(home).find(
-    (line) => line.includes("packages/tui/src/main.tsx") && !line.includes(" script "),
+    (line) =>
+      (line.includes("packages/tui/src/main.tsx") || line.includes("packages/tui/src/app.fixture.tsx")) &&
+      !line.includes(" script "),
   );
   if (!ui) throw new Error(`no UI process runs with HOME=${home}`);
   return Number(ui.split(" ")[0]);
@@ -307,12 +307,7 @@ function isolatedTmux() {
 }
 
 export interface LaunchOptions {
-  /**
-   * Arguments for the real pi, which the UI then drives in place of the scripted agent.
-   * Nothing reaches a model provider unless the arguments send a prompt to one.
-   */
-  pi?: string[];
-  /** Scripted agent reply set, from packages/fake-pi/scenarios. */
+  /** Native Faux provider fixture: hello, long, tool, thinking, or sprawl. */
   scenario?: string;
   /** Milliseconds between scripted events, for observing intermediate states. */
   delayMs?: number;
@@ -359,7 +354,7 @@ export interface Launched extends Harness {
 }
 
 /**
- * Runs the UI against the scripted agent, or against real pi when `pi` is given.
+ * Runs the UI against an actual native Harness and upstream Faux model.
  *
  * HOME, the session directory, and the working directory point into a throwaway tree, so
  * a run reads and writes none of the operator's pi state and sees none of the checkout it
@@ -367,7 +362,6 @@ export interface Launched extends Harness {
  */
 export async function launch(options: LaunchOptions = {}): Promise<Launched> {
   const {
-    pi,
     scenario = "hello",
     delayMs = 0,
     cols = COLS,
@@ -382,8 +376,6 @@ export async function launch(options: LaunchOptions = {}): Promise<Launched> {
   } = options;
   // The UI and pi see their working directory with symlinks resolved.
   const home = realpathSync(mkdtempSync(join(SCRATCH, "pituitary-e2e-")));
-  mkdirSync(join(home, ".pi", "agent"), { recursive: true });
-  writeFileSync(join(home, ".pi", "agent", "settings.json"), "{}");
   const sessions = join(home, "sessions");
   mkdirSync(sessions, { recursive: true });
   mkdirSync(join(home, "run"), { mode: 0o700 });
@@ -415,12 +407,9 @@ export async function launch(options: LaunchOptions = {}): Promise<Launched> {
       PITUITARY_GH: FAKE_GH,
       FAKE_GH_STATE: "none",
       FAKE_GH_LOG: join(home, "gh.log"),
-      PI_AGENT_CMD: pi ? PI : "bun",
-      PI_AGENT_ARGS_JSON: JSON.stringify(pi ?? [FAKE_AGENT]),
       PITUITARY_LOG: join(home, "tui.log"),
-      PI_CODING_AGENT_SESSION_DIR: sessions,
-      FAKE_PI_SCENARIO: scenario,
-      FAKE_PI_DELAY_MS: String(delayMs),
+      PITUITARY_FIXTURE_SCENARIO: scenario,
+      PITUITARY_FIXTURE_DELAY: String(delayMs),
       ...env,
     },
   });

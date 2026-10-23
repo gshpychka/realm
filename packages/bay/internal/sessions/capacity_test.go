@@ -15,7 +15,7 @@ func TestAdmissionRefusalIsDefiniteAndCreatesNoRecordOrInstance(t *testing.T) {
 			svc, instances, store := machineService(t, 8)
 			if resource == "count" {
 				svc.config.MaxRunning = 1
-				svc.config.MaxMemory = 0
+				svc.config.MaxMemory = 16
 			}
 			mustStart(t, svc, "one", StartSpec{Program: "agent"})
 			_, err := svc.Start(context.Background(), "refused", StartSpec{Program: "agent"})

@@ -58,7 +58,7 @@ const drawn = () => new Promise((resolve) => setTimeout(resolve, 150));
 
 async function working(env: Record<string, string> = {}, settle = true) {
   const app = await launch({ scenario: "long", delayMs: 80, cols: COLS, env, settle });
-  await app.terminal.waitText("fake-model-1");
+  await app.terminal.waitText("faux-1");
   await app.terminal.submit("go");
   await waitMatch(app.terminal, RUNNING);
   return app;

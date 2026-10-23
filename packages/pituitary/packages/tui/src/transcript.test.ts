@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AssistantEntry, Entry, ToolView } from "@pituitary/rpc";
+import type { AssistantEntry, Entry, ToolView } from "@pituitary/session";
 import { type Item, summary, transcriptOf, type Work, worked } from "./transcript.ts";
 
 const tool = (id: string, state: ToolView["state"] = "ok"): ToolView => ({

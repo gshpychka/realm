@@ -32,6 +32,7 @@ test("a remote agent shows its own workspace and never offers the operator's fil
         HOME: root,
         XDG_CONFIG_HOME: join(root, "config"),
         PITUITARY_GH: gh,
+        PITUITARY_FIXTURE_REMOTE: "1",
         GH_PROBE_PATH: ghCalls,
         PITUITARY_STILL: "1",
         PITUITARY_LOG: join(root, "tui.log"),
@@ -39,7 +40,6 @@ test("a remote agent shows its own workspace and never offers the operator's fil
     });
     const attached = await app.capture("remote-workspace-attached");
     assert.match(attached, /builder:\/work/);
-    assert.match(attached, /remote-build/);
     assert.doesNotMatch(attached, /HOST_ONLY_BRANCH|host-checkout|#999/);
     assert.doesNotMatch(attached, /files to mention|pick a model|take the next model/);
     assert.equal(existsSync(ghCalls), false, "remote footer invoked the operator's GitHub CLI");
@@ -48,13 +48,9 @@ test("a remote agent shows its own workspace and never offers the operator's fil
     const mentioning = await app.terminal.text();
     assert.doesNotMatch(mentioning, /HOST_ONLY_SECRET\.ts|tab completes/);
     await app.terminal.write("\x03");
-    await app.terminal.submit("/resume");
-    await app.terminal.waitText("/resume requires a local session.");
     await app.terminal.submit("/model");
     await app.terminal.waitText("The model is declared by this agent's role.");
-    await app.terminal.submit("/share");
-    await app.terminal.waitText("/share requires a local session.");
-    assert.equal(existsSync(ghCalls), false, "remote share invoked the operator's GitHub CLI");
+    assert.equal(existsSync(ghCalls), false, "remote UI invoked the operator's GitHub CLI");
     await app.terminal.submit("/name reviewed remotely");
     await app.terminal.waitText("reviewed remotely");
     await app.terminal.type("/co");
@@ -65,5 +61,32 @@ test("a remote agent shows its own workspace and never offers the operator's fil
   } finally {
     await app?.close();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a tunneled solo conversation can choose models without reading frontend files", async () => {
+  const directory = mkdtempSync("/tmp/pituitary-tunnel-ui-");
+  writeFileSync(join(directory, "FRONTEND_ONLY.txt"), "not the remote workspace");
+  let app: Harness | undefined;
+  try {
+    app = await boot({
+      entry: join(REPO, "packages/tui/src/app.fixture.tsx"),
+      cwd: directory,
+      ready: "remote:",
+      env: { HOME: directory, PITUITARY_REMOTE_UI: "1", PITUITARY_GH: "", PITUITARY_STILL: "1" },
+    });
+    const attached = await app.capture("tunneled-solo-workspace");
+    assert.match(attached, /pick a model/);
+    assert.doesNotMatch(attached, /files to mention/);
+    await app.terminal.type("@FRONTEND_ONLY");
+    await app.terminal.waitIdle();
+    assert.doesNotMatch(await app.terminal.text(), /FRONTEND_ONLY\.txt|tab completes/);
+    await app.terminal.write("\x03");
+    await app.terminal.write("\x0c");
+    await app.terminal.waitText("faux-2");
+    await app.capture("tunneled-solo-model-picker");
+  } finally {
+    await app?.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });

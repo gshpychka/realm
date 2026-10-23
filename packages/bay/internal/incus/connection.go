@@ -26,8 +26,7 @@ func (d *Driver) Connect(ctx context.Context, name, sessionID string, argv []str
 	if !ok {
 		return errors.New("the Incus client cannot open cancellable connections")
 	}
-	server := contextual.WithContext(ctx)
-	inst, _, err := server.GetInstance(name)
+	inst, _, err := contextual.WithContext(ctx).GetInstance(name)
 	if err != nil {
 		return d.notFound(err, name)
 	}
@@ -37,6 +36,13 @@ func (d *Driver) Connect(ctx context.Context, name, sessionID string, argv []str
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// The SDK's WaitContext cancels its server-side operation and closes its
+	// listener immediately when that context ends. Such a return is not proof
+	// that the guest has exited. Caller cancellation controls TERM/KILL below;
+	// this separate lifetime remains until a final server operation is observed.
+	lifetime, release := context.WithCancel(context.WithoutCancel(ctx))
+	defer release()
+	server := contextual.WithContext(lifetime)
 	stderr := &head{max: stderrLimit}
 	finished := make(chan struct{})
 	defer close(finished)
@@ -52,23 +58,30 @@ func (d *Driver) Connect(ctx context.Context, name, sessionID string, argv []str
 				}
 			}
 			control.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			control.WriteJSON(api.InstanceExecControl{Command: "signal", Signal: int(syscall.SIGKILL)})
+			control.WriteJSON(api.InstanceExecControl{Command: "signal", Signal: int(syscall.SIGTERM)})
+			// The fixed environment launcher acknowledges its unit's cleanup
+			// before exiting. Killing that launcher would destroy this proof
+			// while a separate systemd unit could still be running.
+			<-finished
 		},
 	}
 	op, err := server.ExecInstance(name, api.InstanceExecPost{Command: argv, WaitForWS: true}, args)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", name, err)
 	}
-	if err := op.WaitContext(ctx); err != nil {
-		// Await the bridge's exit before lifecycle operations can reuse the name.
-		// An unavailable guest must not keep an operator request alive forever.
-		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		op.WaitContext(cleanup)
+	state, err := awaitConnectionExit(lifetime, contextual, op)
+	if err != nil {
 		return fmt.Errorf("connect to %s: %w", name, err)
 	}
-	<-args.DataDone
-	code, ok := op.Get().Metadata["return"].(float64)
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("connect to %s: %w", name, err)
+	}
+	select {
+	case <-args.DataDone:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	code, ok := state.Metadata["return"].(float64)
 	if !ok {
 		return fmt.Errorf("connect to %s: no exit status", name)
 	}
@@ -76,4 +89,35 @@ func (d *Driver) Connect(ctx context.Context, name, sessionID string, argv []str
 		return fmt.Errorf("exit status %d: %s", int(code), strings.TrimSpace(stderr.String()))
 	}
 	return nil
+}
+
+type contextualServer interface {
+	WithContext(context.Context) incus.InstanceServer
+}
+
+func awaitConnectionExit(ctx context.Context, server contextualServer, op incus.Operation) (api.Operation, error) {
+	err := op.WaitContext(ctx)
+	state := op.Get()
+	if state.StatusCode.IsFinal() {
+		return state, err
+	}
+	// A lost event listener can also unblock WaitContext without a final state.
+	// Each independent status request is bounded; an uncertain bridge stays
+	// tracked while lifecycle requests fail closed instead of reusing its VM.
+	for {
+		request, cancel := context.WithTimeout(ctx, 5*time.Second)
+		current, _, requestErr := server.WithContext(request).GetOperation(state.ID)
+		cancel()
+		if requestErr == nil && current != nil && current.StatusCode.IsFinal() {
+			if current.Err != "" {
+				return *current, errors.New(current.Err)
+			}
+			return *current, nil
+		}
+		select {
+		case <-ctx.Done():
+			return state, ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
 }
