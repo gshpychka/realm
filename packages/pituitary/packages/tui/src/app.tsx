@@ -401,6 +401,7 @@ export function App({
 
   /** A key while the draft holds the keyboard: the completion list's, a bound action, paging, or recall. */
   const draftKey = (key: KeyEvent, action: Action | null, text: string, standing: Offer | null): boolean => {
+    if (action === "app.interrupt" && key.name !== "escape") return actions[action]();
     if (completions.key(key, action === "app.interrupt", runChosen)) return true;
     // Escape leaves insert mode first, where the draft has a use for it.
     if (action === "app.interrupt" && key.name === "escape" && editor.current?.wantsEscape()) return false;
