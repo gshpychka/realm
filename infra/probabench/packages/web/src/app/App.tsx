@@ -62,12 +62,11 @@ export function App() {
     if (Result.isFailure(result)) return <NotebookError onRetry={refresh} />;
     if (runs.length === 0)
       return <EmptyNotebook onNew={openSetup} onMethod={() => update({ tab: "method" })} />;
-    const page = { runs, styles, view, update };
-    return view.tab === "history" ? (
-      <HistoryPage {...page} onRerun={rerun} />
-    ) : (
-      <CalibrationPage {...page} />
-    );
+    if (view.tab === "history")
+      return (
+        <HistoryPage runs={runs} styles={styles} view={view} update={update} onRerun={rerun} />
+      );
+    return <CalibrationPage runs={runs} styles={styles} view={view} update={update} />;
   };
 
   return (
