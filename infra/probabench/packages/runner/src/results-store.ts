@@ -1,12 +1,12 @@
 // ResultsStore persists the shared Results document via @effect/platform's
-// FileSystem. Legacy data upgrades on read. Every completed sweep appends its
-// independent execution id, retaining previous experiments for the same model.
+// FileSystem. Every completed sweep appends its independent execution id,
+// retaining previous experiments for the same model.
 // Writes flush a sibling temporary file before atomically replacing the document.
 
 import { dirname, join } from "node:path";
 import { type PlatformError, SystemError } from "@effect/platform/Error";
 import * as FileSystem from "@effect/platform/FileSystem";
-import { PersistedResults, Results, type Run, SCHEMA_VERSION } from "@probabench/domain";
+import { type Results, ResultsJson, type Run, SCHEMA_VERSION } from "@probabench/domain";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import type { ParseError } from "effect/ParseResult";
@@ -30,9 +30,7 @@ export const appendRun = (results: Results, run: Run): Results => ({
   runs: [...results.runs, run],
 });
 
-/** The Results document encoded as pretty-printed JSON. */
-const ResultsJson = Schema.parseJson(Results, { space: 2 });
-const decode = Schema.decode(Schema.parseJson(PersistedResults));
+const decode = Schema.decode(ResultsJson);
 const encode = Schema.encode(ResultsJson);
 
 /** Reads history and atomically persists completed experiments. */

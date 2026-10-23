@@ -1,26 +1,22 @@
 import { describe, expect, it } from "@effect/vitest";
-import { PersistedResults } from "@probabench/domain";
+import { Run } from "@probabench/domain";
 import * as Schema from "effect/Schema";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Measurements, RunDetail } from "./RunDetail";
 
-const fixture = Schema.decodeUnknownSync(PersistedResults)({
-  schemaVersion: 1,
-  runs: [
-    {
-      model: "model.<script>",
-      trialsPerStep: 2,
-      stepPercent: 50,
-      startedAt: "2026-06-26T00:00:00.000Z",
-      points: [
-        { x: 0.5, outcomes: [1, { invalidText: "nope" }] },
-        { x: 1, outcomes: [{ invalidText: "x" }, { invalidText: "y" }] },
-      ],
-    },
+const run = Schema.decodeUnknownSync(Run)({
+  id: "run-1",
+  model: "model.<script>",
+  modelSlug: "vendor/model",
+  reasoning: "off",
+  trialsPerStep: 2,
+  stepPercent: 50,
+  startedAt: "2026-06-26T00:00:00.000Z",
+  points: [
+    { x: 0.5, outcomes: [1, { invalidText: "nope" }] },
+    { x: 1, outcomes: [{ invalidText: "x" }, { invalidText: "y" }] },
   ],
 });
-const run = fixture.runs[0];
-if (!run) throw new Error("Missing fixture run");
 
 describe("Accessible observations", () => {
   it("provides semantic measurements and keeps invalid replies separate from valid bits", () => {
@@ -35,9 +31,9 @@ describe("Accessible observations", () => {
     expect(html).not.toContain("<script>");
   });
 
-  it("marks missing legacy reasoning metadata as unrecorded", () => {
+  it("summarizes the run's reasoning, mean gap and valid samples", () => {
     const html = renderToStaticMarkup(<RunDetail run={run} />);
-    expect(html).toContain("Unrecorded reasoning");
+    expect(html).toContain("off reasoning");
     expect(html).toContain("25%");
     expect(html).toContain("1 valid / 4");
   });

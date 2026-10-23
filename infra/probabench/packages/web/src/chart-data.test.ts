@@ -1,13 +1,16 @@
 import { describe, expect, it } from "@effect/vitest";
-import { PersistedResults as Results } from "@probabench/domain";
+import { Results } from "@probabench/domain";
 import * as Schema from "effect/Schema";
 import { buildChartModel, MODEL_COLORS, modelColors, modelDash, REFERENCE_KEY } from "./chart-data";
 
 const fixture = Schema.decodeUnknownSync(Results)({
-  schemaVersion: 1,
+  schemaVersion: 2,
   runs: [
     {
+      id: "haiku",
       model: "claude-haiku-4.5",
+      modelSlug: "anthropic/claude-haiku-4.5",
+      reasoning: "off",
       trialsPerStep: 2,
       stepPercent: 50,
       startedAt: "2026-06-26T00:00:00.000Z",
@@ -18,7 +21,10 @@ const fixture = Schema.decodeUnknownSync(Results)({
       ],
     },
     {
+      id: "sonnet",
       model: "claude-sonnet-4.5-high",
+      modelSlug: "anthropic/claude-sonnet-4.5",
+      reasoning: "high",
       trialsPerStep: 2,
       stepPercent: 50,
       startedAt: "2026-06-26T00:00:00.000Z",
@@ -107,8 +113,12 @@ describe("buildChartModel", () => {
 
   it("avoids model ids colliding with structural keys, object prototypes, and Recharts dotted paths", () => {
     const results = Schema.decodeUnknownSync(Results)({
-      schemaVersion: 1,
-      runs: ["x", "reference", "__proto__", "a.b"].map((model) => ({ ...fixture.runs[0], model })),
+      schemaVersion: 2,
+      runs: ["x", "reference", "__proto__", "a.b"].map((model) => ({
+        ...fixture.runs[0],
+        id: model,
+        model,
+      })),
     });
     const shaped = buildChartModel(results);
     expect(shaped.rows[1]?.x).toBe(0.5);
@@ -123,7 +133,7 @@ describe("buildChartModel", () => {
   });
 
   it("keeps a complete diagonal reference for a sparse or empty document", () => {
-    const results = Schema.decodeUnknownSync(Results)({ schemaVersion: 1, runs: [] });
+    const results = Schema.decodeUnknownSync(Results)({ schemaVersion: 2, runs: [] });
     expect(buildChartModel(results).rows).toEqual([
       { x: 0, reference: 0 },
       { x: 1, reference: 1 },
@@ -139,7 +149,7 @@ describe("buildChartModel", () => {
 
   it("sorts a run's points independently and does not invent samples at reference endpoints", () => {
     const results = Schema.decodeUnknownSync(Results)({
-      schemaVersion: 1,
+      schemaVersion: 2,
       runs: [
         { ...fixture.runs[0], points: [fixture.runs[0]?.points[1], fixture.runs[0]?.points[0]] },
       ],

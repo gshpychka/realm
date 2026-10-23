@@ -1,17 +1,18 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as Effect from "effect/Effect";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { decodeResults, PersistedResults, Probability, Results, Run, Trial } from "./schema";
+import { Probability, Results, Run, Trial } from "./schema";
 
-const legacyRun = {
-  model: "claude-haiku-4.5",
+const run = {
+  id: "run-1",
+  model: "anthropic/claude-haiku-4.5",
+  modelSlug: "anthropic/claude-haiku-4.5",
+  reasoning: "off",
   trialsPerStep: 2,
   stepPercent: 50,
   startedAt: "2026-06-26T00:00:00.000Z",
   points: [{ x: 0.5, outcomes: [0, 1] }],
 } as const;
-const run = { id: "run-1", ...legacyRun } as const;
 
 describe("Probability", () => {
   it("decodes fractions including endpoints", () => {
@@ -102,61 +103,11 @@ describe("Results", () => {
     ).toBe(true);
   });
 
-  it("preserves separate executions of the same model and optional provider metadata", () => {
+  it("preserves separate executions of the same model", () => {
     const results = Schema.decodeUnknownSync(Results)({
       schemaVersion: 2,
-      runs: [
-        run,
-        { ...run, id: "run-2", modelSlug: "anthropic/claude-haiku-4.5", reasoning: "off" },
-      ],
+      runs: [run, { ...run, id: "run-2" }],
     });
     expect(results.runs.map((entry) => entry.id)).toEqual(["run-1", "run-2"]);
-    expect(results.runs[1]?.modelSlug).toBe("anthropic/claude-haiku-4.5");
-    expect(results.runs[1]?.reasoning).toBe("off");
-  });
-});
-
-describe("PersistedResults", () => {
-  it.effect("upgrades v1 without discarding measurements and assigns deterministic ids", () =>
-    decodeResults({ schemaVersion: 1, runs: [legacyRun] }).pipe(
-      Effect.map((results) => {
-        expect(results.schemaVersion).toBe(2);
-        expect(results.runs[0]).toMatchObject(legacyRun);
-        expect(results.runs[0]?.id).toBe("legacy-v1:16:claude-haiku-4.5:2026-06-26T00:00:00.000Z");
-        expect(Schema.encodeSync(PersistedResults)(results)).toEqual(results);
-        return results;
-      }),
-    ),
-  );
-
-  it("keeps migrated identities stable when model order changes", () => {
-    const decode = Schema.decodeUnknownSync(PersistedResults);
-    const second = { ...legacyRun, model: "odd:model/\ud800" };
-    const original = decode({ schemaVersion: 1, runs: [legacyRun, second] });
-    const reversed = decode({ schemaVersion: 1, runs: [second, legacyRun] });
-    expect(original.runs[0]?.id).toBe(reversed.runs[1]?.id);
-    expect(original.runs[1]?.id).toBe(reversed.runs[0]?.id);
-    expect(new Set(original.runs.map((entry) => entry.id)).size).toBe(2);
-  });
-
-  it("reads v2 history and empty v1 documents", () => {
-    const current = { schemaVersion: 2, runs: [run, { ...run, id: "run-2" }] };
-    expect(Schema.decodeUnknownSync(PersistedResults)(current)).toEqual(current);
-    expect(Schema.decodeUnknownSync(PersistedResults)({ schemaVersion: 1, runs: [] })).toEqual({
-      schemaVersion: 2,
-      runs: [],
-    });
-  });
-
-  it("keeps raw measurement/version/uniqueness validation during migration", () => {
-    for (const document of [
-      { schemaVersion: 3, runs: [] },
-      { schemaVersion: 1, runs: [legacyRun, legacyRun] },
-      { schemaVersion: 1, runs: [{ ...legacyRun, trialsPerStep: 3 }] },
-      { schemaVersion: 2, runs: [run, run] },
-      { schemaVersion: 2, runs: [legacyRun] },
-    ]) {
-      expect(Either.isLeft(Schema.decodeUnknownEither(PersistedResults)(document))).toBe(true);
-    }
   });
 });

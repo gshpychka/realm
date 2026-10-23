@@ -25,7 +25,9 @@ describe("Benchmark.run sweep", () => {
     Effect.gen(function* () {
       const benchmark = yield* Benchmark;
       const run = yield* benchmark.run({
-        model: "claude-haiku-4.5",
+        model: "anthropic/claude-haiku-4.5",
+        modelSlug: "anthropic/claude-haiku-4.5",
+        reasoning: "off",
         trialsPerStep: 4,
         stepPercent: 50,
         concurrency: 2,
@@ -34,7 +36,7 @@ describe("Benchmark.run sweep", () => {
       const outcomes: ReadonlyArray<Trial> = [1, 1, 1, 1];
       expect(run.points).toEqual([0, 0.5, 1].map((x) => ({ x: Probability.make(x), outcomes })));
 
-      expect(run.model).toBe("claude-haiku-4.5");
+      expect(run.model).toBe("anthropic/claude-haiku-4.5");
       expect(run.trialsPerStep).toBe(4);
       expect(run.stepPercent).toBe(50);
       expect(run.startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -70,7 +72,9 @@ describe("Benchmark.run validation and concurrency", () => {
       return Effect.gen(function* () {
         const benchmark = yield* Benchmark;
         const run = yield* benchmark.run({
-          model: "test",
+          model: "vendor/model",
+          modelSlug: "vendor/model",
+          reasoning: "off",
           trialsPerStep: 5,
           stepPercent: 30,
           concurrency: 2,
@@ -98,7 +102,9 @@ describe("Benchmark.run validation and concurrency", () => {
         const benchmark = yield* Benchmark;
         const error = yield* Effect.flip(
           benchmark.run({
-            model: "test",
+            model: "vendor/model",
+            modelSlug: "vendor/model",
+            reasoning: "off",
             trialsPerStep: 1,
             stepPercent: 10,
             concurrency: 1,

@@ -16,8 +16,8 @@ import { type InvalidOptions, probabilityPercentages, validateSamplingOptions } 
 /** A single target sweep request: the Run's series id and the grid/concurrency shape. */
 export interface BenchmarkConfig {
   readonly model: string;
-  readonly modelSlug?: string;
-  readonly reasoning?: string;
+  readonly modelSlug: string;
+  readonly reasoning: string;
   readonly trialsPerStep: number;
   readonly stepPercent: number;
   readonly concurrency: number;
@@ -84,8 +84,8 @@ const run = (
     return {
       id: randomUUID(),
       model: config.model,
-      ...(config.modelSlug === undefined ? {} : { modelSlug: config.modelSlug }),
-      ...(config.reasoning === undefined ? {} : { reasoning: config.reasoning }),
+      modelSlug: config.modelSlug,
+      reasoning: config.reasoning,
       trialsPerStep: config.trialsPerStep,
       stepPercent: config.stepPercent,
       startedAt,

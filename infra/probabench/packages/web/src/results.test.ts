@@ -27,7 +27,7 @@ const stubClientLayer = (body: string, status = 200) =>
     ),
   );
 
-const emptyResults = JSON.stringify({ schemaVersion: 1, runs: [] });
+const emptyResults = JSON.stringify({ schemaVersion: 2, runs: [] });
 
 describe("fetchResults", () => {
   it.effect("decodes an empty results document", () =>
@@ -42,7 +42,7 @@ describe("fetchResults", () => {
     Effect.gen(function* () {
       const exit = yield* Effect.exit(fetchResults);
       expect(Exit.isFailure(exit)).toBe(true);
-    }).pipe(Effect.provide(stubClientLayer(JSON.stringify({ schemaVersion: 1 })))),
+    }).pipe(Effect.provide(stubClientLayer(JSON.stringify({ schemaVersion: 2 })))),
   );
 
   it.effect("rejects a non-success HTTP status even when the body is valid results JSON", () =>

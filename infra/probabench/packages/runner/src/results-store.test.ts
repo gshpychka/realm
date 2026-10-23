@@ -12,6 +12,8 @@ import { withResultsStore } from "./test-fixtures";
 const makeRun = (model: string, startedAt = "2026-06-26T00:00:00.000Z"): Run => ({
   id: randomUUID(),
   model,
+  modelSlug: model,
+  reasoning: "off",
   trialsPerStep: 2,
   stepPercent: 100,
   startedAt,
@@ -137,26 +139,6 @@ it.effect("prepares a missing output without creating a document or leaving stag
       yield* store.prepare(path);
       expect(yield* fs.exists(path)).toBe(false);
       expect(yield* fs.readDirectory(dirname(path))).toEqual([]);
-    }),
-  ),
-);
-
-it.effect("loads v1 history and appends a new run without losing or changing legacy data", () =>
-  withResultsStore((path) =>
-    Effect.gen(function* () {
-      const store = yield* ResultsStore;
-      const fs = yield* FileSystem.FileSystem;
-      const { id: _id, ...legacy } = makeRun("legacy-model");
-      yield* fs.writeFileString(path, JSON.stringify({ schemaVersion: 1, runs: [legacy] }));
-      const loaded = yield* store.load(path);
-      expect(loaded.schemaVersion).toBe(2);
-      expect(loaded.runs[0]?.id).toMatch(/^legacy-v1:/);
-      const repeated = makeRun("legacy-model");
-      yield* store.append(path, repeated);
-      const reloaded = yield* store.load(path);
-      expect(reloaded.runs).toEqual([...loaded.runs, repeated]);
-      expect(JSON.parse(yield* fs.readFileString(path)).schemaVersion).toBe(2);
-      void _id;
     }),
   ),
 );

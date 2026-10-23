@@ -32,8 +32,12 @@ export const Point = Schema.Struct({
 });
 export type Point = typeof Point.Type;
 
-const RunFields = {
+/** One immutable sweep. `id` identifies this execution; repeated model labels preserve history. */
+export const Run = Schema.Struct({
+  id: NonBlankString,
   model: NonBlankString,
+  modelSlug: NonBlankString,
+  reasoning: NonBlankString,
   trialsPerStep: PositiveInteger,
   stepPercent: PositiveInteger.pipe(Schema.lessThanOrEqualTo(100)),
   startedAt: Schema.String.pipe(
@@ -46,33 +50,18 @@ const RunFields = {
     ),
   ),
   points: Schema.Array(Point).pipe(Schema.minItems(1)),
-};
-
-const validTrialCounts = (run: {
-  readonly trialsPerStep: number;
-  readonly points: ReadonlyArray<Point>;
-}): boolean => run.points.every((point) => point.outcomes.length === run.trialsPerStep);
-const uniqueProbabilities = (run: { readonly points: ReadonlyArray<Point> }): boolean =>
-  new Set(run.points.map((point) => point.x)).size === run.points.length;
-
-/** One immutable sweep. `id` identifies this execution; repeated model labels preserve history. */
-export const Run = Schema.Struct({
-  id: NonBlankString,
-  ...RunFields,
-  modelSlug: Schema.optional(NonBlankString),
-  reasoning: Schema.optional(NonBlankString),
 }).pipe(
-  Schema.filter((run) => validTrialCounts(run), {
+  Schema.filter((run) => run.points.every((point) => point.outcomes.length === run.trialsPerStep), {
     message: () => "Every point must contain trialsPerStep outcomes",
   }),
-  Schema.filter((run) => uniqueProbabilities(run), {
+  Schema.filter((run) => new Set(run.points.map((point) => point.x)).size === run.points.length, {
     message: () => "Target probabilities must be unique within a run",
   }),
 );
 export type Run = typeof Run.Type;
 
 /**
- * The current append-only document. Models can repeat; execution IDs cannot.
+ * The append-only history document. Models can repeat; execution IDs cannot.
  * Decoding ignores unknown keys.
  */
 export const Results = Schema.Struct({
@@ -88,49 +77,5 @@ export const Results = Schema.Struct({
 );
 export type Results = typeof Results.Type;
 
-const LegacyRun = Schema.Struct(RunFields).pipe(
-  Schema.filter((run) => validTrialCounts(run), {
-    message: () => "Every point must contain trialsPerStep outcomes",
-  }),
-  Schema.filter((run) => uniqueProbabilities(run), {
-    message: () => "Target probabilities must be unique within a run",
-  }),
-);
-const LegacyResults = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
-  runs: Schema.Array(LegacyRun),
-}).pipe(
-  Schema.filter(
-    (results) => new Set(results.runs.map((run) => run.model)).size === results.runs.length,
-    {
-      message: () => "Model ids must be unique within version 1 results",
-    },
-  ),
-);
-
-/**
- * Read v1 or v2; always produce and encode v2. Legacy IDs are deterministic under
- * reordering. Length-prefixing the model prevents delimiter collisions without
- * platform crypto or URI encoding (which rejects lone UTF-16 surrogates).
- */
-export const PersistedResults = Schema.transform(
-  Schema.Union(Results, LegacyResults),
-  Schema.typeSchema(Results),
-  {
-    strict: true,
-    decode: (document): Results =>
-      document.schemaVersion === SCHEMA_VERSION
-        ? document
-        : {
-            schemaVersion: SCHEMA_VERSION,
-            runs: document.runs.map((run) => ({
-              ...run,
-              id: `legacy-v1:${run.model.length}:${run.model}:${run.startedAt}`,
-            })),
-          },
-    encode: (document) => document,
-  },
-);
-
-/** Decode an already-parsed document, upgrading legacy history when needed. */
-export const decodeResults = Schema.decodeUnknown(PersistedResults);
+/** Results as pretty-printed JSON: the on-disk format. */
+export const ResultsJson = Schema.parseJson(Results, { space: 2 });

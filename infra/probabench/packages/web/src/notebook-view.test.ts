@@ -11,7 +11,7 @@ describe("Notebook addresses", () => {
   it("restores exact runs, comparison selections, filters and uncertainty settings", () => {
     const view = {
       tab: "history" as const,
-      runId: "legacy-v1:a/b:2025-01-01T00:00:00.000Z",
+      runId: "run:a/b?2025-01-01T00:00:00.000Z",
       comparisons: ["run?one&two", "different run"],
       hidden: ["vendor/model:free", "模型/一"],
       query: "model + reasoning=low",

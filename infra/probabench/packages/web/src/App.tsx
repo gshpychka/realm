@@ -100,13 +100,11 @@ export function App() {
     const reasoning = run.reasoning;
     setDraft({
       key: crypto.randomUUID(),
-      model: run.modelSlug ?? run.model,
+      model: run.modelSlug,
       trials: run.trialsPerStep,
       step: run.stepPercent,
       concurrency: 5,
-      ...(reasoning && ["off", "low", "medium", "high", "xhigh"].includes(reasoning)
-        ? { reasoning }
-        : {}),
+      ...(["off", "low", "medium", "high", "xhigh"].includes(reasoning) ? { reasoning } : {}),
     });
     openSetup();
   };
@@ -394,7 +392,7 @@ export function App() {
               open={setup}
               onClose={() => setSetup(false)}
               bridge={bridge}
-              modelSuggestions={runs.map((run) => run.modelSlug ?? run.model)}
+              modelSuggestions={runs.map((run) => run.modelSlug)}
               {...(draft ? { draft } : {})}
               onViewResults={() => {
                 setSetup(false);

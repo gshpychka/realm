@@ -118,8 +118,7 @@ as a validated version 2 results document.
 
 History is append-only. Each completed sweep has a unique execution ID, model,
 reasoning mode, timestamp, settings and raw outcomes. Rerunning a model keeps
-its earlier sweeps. Version 1 result files upgrade automatically when read and
-are written as version 2 at the next save. Every save validates history, flushes
+its earlier sweeps. Every save validates history, flushes
 a temporary file and atomically renames it. Invalid existing history fails
 before paid requests. A short filesystem lock serializes saves across the local
 page and independent CLI processes, so simultaneous completed runs retain both

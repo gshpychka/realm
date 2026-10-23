@@ -23,9 +23,7 @@ export const visibleHistory = (
   return newestFirst(runs).filter(
     (run) =>
       !excluded.has(run.model) &&
-      `${run.model} ${run.modelSlug ?? ""} ${run.id} ${run.reasoning ?? ""}`
-        .toLowerCase()
-        .includes(term),
+      `${run.model} ${run.modelSlug} ${run.id} ${run.reasoning}`.toLowerCase().includes(term),
   );
 };
 

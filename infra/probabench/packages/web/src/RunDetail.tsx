@@ -1,11 +1,13 @@
 import {
   counts,
   observedRate,
+  ResultsJson,
   type Run,
   rateInterval,
   SCHEMA_VERSION,
   summarizeRun,
 } from "@probabench/domain";
+import * as Schema from "effect/Schema";
 import { validateBenchmarkOptions } from "./benchmark";
 import { date, modelName, number, percent, time } from "./format";
 
@@ -62,7 +64,7 @@ export function Measurements({ run }: { run: Run }) {
 }
 
 function downloadRun(run: Run) {
-  const contents = `${JSON.stringify({ schemaVersion: SCHEMA_VERSION, runs: [run] }, null, 2)}\n`;
+  const contents = `${Schema.encodeSync(ResultsJson)({ schemaVersion: SCHEMA_VERSION, runs: [run] })}\n`;
   const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
   const link = document.createElement("a");
   link.href = url;
@@ -84,7 +86,7 @@ export function RunDetail({
   const summary = summarizeRun(run);
   const canRerun =
     validateBenchmarkOptions({
-      model: run.modelSlug ?? run.model,
+      model: run.modelSlug,
       trials: run.trialsPerStep,
       step: run.stepPercent,
       concurrency: 5,
@@ -93,15 +95,13 @@ export function RunDetail({
     <section className="run-detail" aria-label={`Run details for ${run.model}`}>
       <p className="eyebrow">Selected observation</p>
       <h3>{modelName(run.model)}</h3>
-      <p className="model-slug">{run.modelSlug ?? run.model}</p>
+      <p className="model-slug">{run.modelSlug}</p>
       <div className="detail-timestamp">
         <time dateTime={run.startedAt}>
           {date(run.startedAt)}
           <span>{time(run.startedAt)} UTC</span>
         </time>
-        <span className="tag">
-          {run.reasoning ? `${run.reasoning} reasoning` : "Unrecorded reasoning"}
-        </span>
+        <span className="tag">{run.reasoning} reasoning</span>
       </div>
       <div className="detail-stats">
         <div>

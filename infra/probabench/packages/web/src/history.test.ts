@@ -1,23 +1,19 @@
 import { describe, expect, it } from "@effect/vitest";
-import { PersistedResults, type Run } from "@probabench/domain";
+import { Run } from "@probabench/domain";
 import * as Schema from "effect/Schema";
 import { modelColors } from "./chart-data";
 import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "./history";
 
-const legacy = Schema.decodeUnknownSync(PersistedResults)({
-  schemaVersion: 1,
-  runs: [
-    {
-      model: "model.a",
-      trialsPerStep: 2,
-      stepPercent: 50,
-      startedAt: "2026-06-26T00:00:00.000Z",
-      points: [{ x: 0.5, outcomes: [0, 1] }],
-    },
-  ],
-}).runs[0];
-if (!legacy) throw new Error("Missing fixture");
-const old: Run = { ...legacy, id: "old" };
+const old = Schema.decodeUnknownSync(Run)({
+  id: "old",
+  model: "model.a",
+  modelSlug: "vendor/model-a",
+  reasoning: "off",
+  trialsPerStep: 2,
+  stepPercent: 50,
+  startedAt: "2026-06-26T00:00:00.000Z",
+  points: [{ x: 0.5, outcomes: [0, 1] }],
+});
 const latest: Run = { ...old, id: "new", startedAt: "2026-10-22T00:00:00.000Z" };
 const other: Run = { ...old, id: "other", model: "__proto__" };
 

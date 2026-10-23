@@ -55,7 +55,9 @@ describe("summarizeRun", () => {
   const makeRun = (points: readonly { x: number; outcomes: readonly Trial[] }[]) =>
     Schema.decodeUnknownSync(Run)({
       id: "execution-1",
-      model: "model",
+      model: "vendor/model",
+      modelSlug: "vendor/model",
+      reasoning: "off",
       trialsPerStep: 4,
       stepPercent: 50,
       startedAt: "2026-06-26T00:00:00.000Z",

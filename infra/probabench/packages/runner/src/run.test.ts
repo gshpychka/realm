@@ -19,6 +19,8 @@ const target = (id: string): BenchTarget => ({ id, slug: id });
 const cannedRun = (model: string): Run => ({
   id: randomUUID(),
   model,
+  modelSlug: model,
+  reasoning: "off",
   trialsPerStep: 2,
   stepPercent: 100,
   startedAt: "2026-06-26T00:00:00.000Z",

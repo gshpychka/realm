@@ -10,6 +10,8 @@ const run = (
 ): Run => ({
   id,
   model,
+  modelSlug: model,
+  reasoning: "off",
   startedAt,
   trialsPerStep: outcomes.length,
   stepPercent: 50,

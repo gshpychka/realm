@@ -63,7 +63,7 @@ function HistoryTooltip(
             {number(run.trialsPerStep)} samples / target · {run.stepPercent}% step
           </p>
           <p className="muted">
-            {run.reasoning ?? "Unrecorded"} reasoning · run {run.id.slice(-8)}
+            {run.reasoning} reasoning · run {run.id.slice(-8)}
           </p>
         </div>
       ))}
