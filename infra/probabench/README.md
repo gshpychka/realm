@@ -87,7 +87,7 @@ as link-sanitizer does, so SSO profiles resolve from the infra shell's
 
 | Package | Contents |
 | --- | --- |
-| `packages/domain` | Results schema and metrics, run-plan vocabulary, the progress-line format |
+| `packages/domain` | Results schema and metrics, run-plan vocabulary, the runner's flags and progress lines |
 | `packages/runner` | The OpenRouter CLI |
 | `packages/web` | The notebook, and `dev-bridge/`, the Vite plugin that runs the CLI |
 | `packages/stack` | The Alchemy stack |
