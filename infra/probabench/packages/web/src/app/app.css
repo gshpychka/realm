@@ -1,3 +1,4 @@
+/* App */
 .site-header,
 .notebook main {
   width: min(100% - 2 * var(--page-gutter), var(--page-width) - 2 * var(--page-gutter));
@@ -30,6 +31,56 @@
   @media (max-width: 650px) {
     padding-top: 20px;
   }
+}
+.loading-line {
+  display: block;
+  width: 58px;
+  height: 2px;
+  margin: 0 auto;
+  background: var(--accent);
+  animation: pulse 1.6s infinite;
+}
+.state-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  font: italic 22px / 1 var(--serif);
+  color: var(--accent);
+}
+.notebook-loading,
+.notebook-error {
+  text-align: center;
+  padding: 90px 20px;
+  min-height: 370px;
+}
+.notebook-loading p {
+  font: 400 var(--title-md) / 1.4 var(--serif);
+  margin-top: 20px;
+}
+.loading-detail {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.notebook-error h2 {
+  font: 400 var(--title-lg) / 1.3 var(--serif);
+  margin-top: 12px;
+
+  @media (max-width: 650px) {
+    font-size: var(--title-md);
+  }
+}
+.notebook-error > p {
+  line-height: 1.8;
+  color: var(--muted);
+  margin: 16px auto 24px;
+  max-width: 430px;
 }
 
 /* SiteHeader */
@@ -267,6 +318,7 @@
     display: none;
   }
 }
+
 /* EmptyNotebook */
 .empty-notebook {
   margin-top: 32px;
@@ -308,56 +360,4 @@
     flex-direction: column;
     gap: 15px;
   }
-}
-
-/* App: loading and failure */
-.loading-line {
-  display: block;
-  width: 58px;
-  height: 2px;
-  margin: 0 auto;
-  background: var(--accent);
-  animation: pulse 1.6s infinite;
-}
-.state-symbol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin: 0 auto 22px;
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  font: italic 22px / 1 var(--serif);
-  color: var(--accent);
-}
-.notebook-loading,
-.notebook-error {
-  text-align: center;
-  padding: 90px 20px;
-  min-height: 370px;
-}
-.notebook-loading p {
-  font: 400 var(--title-md) / 1.4 var(--serif);
-  margin-top: 20px;
-}
-.loading-detail {
-  display: block;
-  margin-top: 10px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.notebook-error h2 {
-  font: 400 var(--title-lg) / 1.3 var(--serif);
-  margin-top: 12px;
-
-  @media (max-width: 650px) {
-    font-size: var(--title-md);
-  }
-}
-.notebook-error > p {
-  line-height: 1.8;
-  color: var(--muted);
-  margin: 16px auto 24px;
-  max-width: 430px;
 }
