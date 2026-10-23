@@ -1,17 +1,8 @@
-import { type Run, summarizeRun } from "@probabench/domain";
+import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
 import { lazy, useId, useMemo } from "react";
 import { type NotebookView, toggleHidden, type UpdateView } from "../app/notebook-view";
 import { ChartBoundary } from "../common/chart-frame";
-import {
-  calibrationErrorText,
-  count,
-  date,
-  modelName,
-  samplingText,
-  shortId,
-  time,
-  timestamp,
-} from "../common/format";
+import { count, date, modelName, samplingText, shortId, time, timestamp } from "../common/format";
 import { Measurements } from "../common/Measurements";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { modelSelections, withComparison } from "../common/run-history";

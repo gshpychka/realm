@@ -21,10 +21,6 @@ export const percent = (value: number | null, digits = 1): string =>
     ? "—"
     : `${(value * 100).toLocaleString("en-US", { maximumFractionDigits: digits })}%`;
 
-/** A calibration error, given as a fraction, in percentage points. */
-export const calibrationErrorText = (value: number | null, empty = "—"): string =>
-  value === null ? empty : `${(value * 100).toFixed(1)} pp`;
-
 export const date = (iso: string): string => DATE.format(new Date(iso));
 
 export const time = (iso: string): string => TIME.format(new Date(iso));

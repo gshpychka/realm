@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Probability } from "../plan/sampling";
-import { measurePoint, summarizeRun } from "./metrics";
+import { calibrationErrorText, measurePoint, summarizeRun } from "./metrics";
 import type { Outcome } from "./schema";
 import { makeRun } from "./testing";
 
@@ -81,5 +81,12 @@ describe("summarizeRun", () => {
       validity: 0,
       coveredPoints: 0,
     });
+  });
+});
+
+describe("calibrationErrorText", () => {
+  it("writes a fraction in percentage points, or the given text when there is none", () => {
+    expect(calibrationErrorText(0.1234)).toBe("12.3 pp");
+    expect(calibrationErrorText(null, "n/a")).toBe("n/a");
   });
 });

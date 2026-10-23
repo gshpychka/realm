@@ -1,6 +1,6 @@
-import { type Run, summarizeRun } from "@probabench/domain";
+import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
 import type { BenchRequest } from "../bridge/protocol";
-import { calibrationErrorText, count, date, modelName, percent, time } from "../common/format";
+import { count, date, modelName, percent, time } from "../common/format";
 import { rerunRequest } from "../setup/run-settings";
 
 export function RunDetail({

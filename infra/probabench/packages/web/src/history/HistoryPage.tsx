@@ -1,17 +1,9 @@
-import { type Run, summarizeRun } from "@probabench/domain";
+import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
 import { lazy, useMemo, useRef } from "react";
 import { type NotebookView, tabId, toggleHidden, type UpdateView } from "../app/notebook-view";
 import type { BenchRequest } from "../bridge/protocol";
 import { ChartBoundary } from "../common/chart-frame";
-import {
-  calibrationErrorText,
-  count,
-  date,
-  modelName,
-  percent,
-  samplingText,
-  time,
-} from "../common/format";
+import { count, date, modelName, percent, samplingText, time } from "../common/format";
 import { Measurements } from "../common/Measurements";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { inspectedRun, runsByDay, visibleHistory, withComparison } from "../common/run-history";

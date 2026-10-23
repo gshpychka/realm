@@ -2,7 +2,7 @@
 // before any paid request; each target's run is then appended as soon as it
 // completes, so a later failure keeps every completed run.
 import type * as HttpClient from "@effect/platform/HttpClient";
-import { type Run, summarizeRun } from "@probabench/domain";
+import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import type { BenchPlan } from "../plan/plan";
@@ -16,11 +16,9 @@ import { ResultsStore, type ResultsStoreError } from "../store/results-store";
 
 const describeCompletedRun = (run: Run, out: string): string => {
   const { valid, total, meanCalibrationError } = summarizeRun(run);
-  const error =
-    meanCalibrationError === null ? "n/a" : `${(meanCalibrationError * 100).toFixed(1)} pp`;
   return (
     `[${run.model}] run ${run.id} complete: ${valid}/${total} valid, ` +
-    `mean calibration error ${error} → saved to ${out}`
+    `mean calibration error ${calibrationErrorText(meanCalibrationError, "n/a")} → saved to ${out}`
   );
 };
 

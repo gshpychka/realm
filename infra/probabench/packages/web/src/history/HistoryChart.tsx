@@ -1,4 +1,4 @@
-import type { Run } from "@probabench/domain";
+import { calibrationErrorText, type Run } from "@probabench/domain";
 import { useId, useMemo, useState } from "react";
 import {
   CartesianGrid,
@@ -11,14 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { CHART, PlotEmpty } from "../common/chart-frame";
-import {
-  calibrationErrorText,
-  modelName,
-  percent,
-  samplingText,
-  shortId,
-  timestamp,
-} from "../common/format";
+import { modelName, percent, samplingText, shortId, timestamp } from "../common/format";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { buildHistoryChartModel, type HistoryPoint } from "./history-chart-data";
 

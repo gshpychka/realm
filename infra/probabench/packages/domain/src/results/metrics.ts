@@ -79,3 +79,7 @@ export const summarizeRun = (run: Run): RunSummary => {
     totalPoints: run.points.length,
   };
 };
+
+/** A calibration error, given as a fraction, in percentage points; `empty` when there is none. */
+export const calibrationErrorText = (value: number | null, empty = "—"): string =>
+  value === null ? empty : `${(value * 100).toFixed(1)} pp`;
