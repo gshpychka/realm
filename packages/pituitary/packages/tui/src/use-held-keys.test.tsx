@@ -23,9 +23,10 @@ test("keys held behind an app action reach the input that now owns focus", async
     const [popup, setPopup] = useState(false);
     useHeldKeys(
       editor,
-      (key) => {
+      async (key) => {
         if (key.ctrl && key.name === "l") {
           key.preventDefault();
+          await new Promise((resolve) => setTimeout(resolve, 30));
           flushSync(() => setPopup(true));
         }
       },
