@@ -65,7 +65,7 @@ const options = {
   maxTokens: integerFlag("max-tokens", PositiveInt, "a positive integer").pipe(
     Options.withDefault(DEFAULTS.maxTokens),
     Options.withDescription(
-      `Output ceiling for reasoning models (default: ${DEFAULTS.maxTokens}).`,
+      `Output ceiling when reasoning is on (default: ${DEFAULTS.maxTokens}).`,
     ),
   ),
   concurrency: integerFlag("concurrency", PositiveInt, "a positive integer").pipe(
