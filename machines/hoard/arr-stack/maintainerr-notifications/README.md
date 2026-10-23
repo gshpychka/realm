@@ -1,6 +1,6 @@
 # Maintainerr notification compatibility patch
 
-The existing host module deploys Maintainerr with Nix OCI containers. The locked
+The host module deploys Maintainerr with Nix OCI containers. The locked
 nixpkgs tree has no Maintainerr NixOS service module. Upstream 3.8.0 accepts
 runtime environment variables for hosting (TZ, UI_PORT, UI_HOSTNAME, BASE_PATH,
 DATA_DIR, etc.), not a complete declarative rules/notifications settings file.
@@ -18,18 +18,16 @@ References:
 
 Native event selection cannot distinguish successful-cleanup membership removal
 from a genuine cancellation. Disabling MEDIA_REMOVED_FROM_COLLECTION globally
-would lose cancellation/rescue notices. Checking the maintained upstream source
-also did not reveal a configurable cleanup-reason filter. A broad application
-upgrade is deliberately outside this notification-only fix.
+would lose cancellation/rescue notices. The pinned source has no configurable
+cleanup-reason filter.
 
 - Successful cleanup calls removeFromCollection with notifyRemoval=false.
 - Manual edits and media-server sync removals/adds retain default true.
-- Rule-owned sync (rule-executor.service.js handleCollection) had two emitters for
-  one change: the collection service (identifier `collection`) and the executor's
+- Rule-owned sync (rule-executor.service.js handleCollection) has two emitters for
+  one change in the pinned source: the collection service (identifier `collection`) and the executor's
   verified delta (identifier `rulegroup`). The notification dispatcher resolves
-  both to the same rule group and notifiers, so every rule add and rule removal /
-  viewing rescue was sent twice, identically. Upstream main source (checked
-  2026-10-16, latest release v3.30.1) still has both emitters. The executor is now the single owner: it passes
+  both to the same rule group and notifiers. The patched executor is the single
+  owner: it passes
   notifyAdded=false / notifyRemoval=false on all four add/remove entry points
   (resolved-link and ordinary), and reports each step's database-verified delta
   immediately after that step. So a removal failure or abort later in the same run
@@ -57,28 +55,19 @@ API success and config/binding readback are checked; repeated runs converge.
 Newly created/reactivated rule groups require running reconciliation again (or a
 normal service restart); this small hook does not continuously manage rule state.
 
-Credentials are reused at runtime from existing private Maintainerr state. None
-are embedded in the Nix store, source or logs. If more settings are later managed,
-use explicit non-secret desired JSON and SOPS runtime secret files, native API
-upserts keyed by stable ID/name, and preservation of unmanaged resources. Do not
-install a seed/replace SQLite database: it would destroy operational state.
-A question about declarative configuration does not authorize migrating all rules.
+Credentials are read at runtime from private Maintainerr state. None are embedded
+in the Nix store, source or logs. The reconciler uses non-secret desired JSON and
+native API upserts keyed by name, preserving unmanaged resources. It does not
+replace the SQLite database.
 
 ## Rollback / deployment
 
-Because this host has a read-only NixOS /etc unit tree, activation uses a native
-**runtime-only systemd override generated from the evaluated Nix unit**, restarting
-only Maintainerr. No whole-host switch and no Gateway restart. The declarative
-source belongs to the canonical realm checkout; apply it in the next ordinary
-NixOS switch for reboot persistence. Until then the live override disappears on
-reboot. The generated unit has an explicit local Nix GC root until that switch.
-Remove the named runtime drop-in after the ordinary switch to avoid overriding
-future unit generations; never use systemctl revert (it may remove other edits).
+The [NixOS declaration](../maintainerr.nix) owns the image pin, patch preparation,
+read-only mounts, and notifier reconciliation. Deploy through hoard's normal
+NixOS activation workflow. The service prepares and verifies the patch before
+starting the container, then reconciles the owned notifier after startup.
 
-Protected beforeimages and exact deployed unit identifiers are recorded in the
-private operational repair report, not in the public repo. To roll back before
-the full switch, remove only the named runtime drop-in, reload systemd and restart
-only Maintainerr, then remove only the owned failure notifier via its native
-DELETE API. Restore the Radarr notifier name via
-its saved notification API object if desired. Do **not** restore the whole DB to
-undo a notification change: newer history and media state must be preserved.
+Rollback uses the corresponding NixOS configuration. The notifier is a separate
+database record: remove only the owned failure notifier through Maintainerr's
+native API if it is no longer wanted. Preserve notification history, rules, and
+media state.

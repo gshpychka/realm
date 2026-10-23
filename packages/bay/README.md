@@ -228,6 +228,4 @@ needs KVM with nested virtualization. The [design](docs/design.md),
 boundaries. [default.nix](default.nix) packages the Go module;
 [image.nix](image.nix) evaluates [guest.nix](guest.nix) separately from the host.
 
-The former [Bay repository](https://github.com/gshpychka/bay) is retired. Source,
-packages, modules, and issues belong in Realm. Its import began at
-[`2c0ae33`](https://github.com/gshpychka/bay/commit/2c0ae338b3324e081331b42cdfb9345f05f2d02b).
+Bay source, packages, modules, and issues are maintained in Realm.

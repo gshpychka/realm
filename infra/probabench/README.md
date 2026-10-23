@@ -99,10 +99,6 @@ quota. `probabench.<domain>` is a Workers custom domain: Cloudflare creates its
 DNS record and certificate. The infra shell exports the domain from
 `modules/common/values.nix` as `DOMAIN_NAME`.
 
-If the S3/CloudFront version of this stack was ever deployed, run
-`bun run destroy` from a revision that still has it before the first deploy:
-Alchemy refuses to plan state whose resource types the stack no longer provides.
-
 `patches/` carries
 [alchemy-run/distilled#650](https://github.com/alchemy-run/distilled/pull/650),
 as link-sanitizer does, so the S3 state store resolves SSO profiles from the
@@ -131,5 +127,4 @@ noDescendingSpecificity is off for these stylesheets: classes style their own
 children (`.x > span`), which the rule reports as conflicts between unrelated
 elements.
 
-Imported from the standalone probabench repository at `3694e6a`; that
-repository and its flake are retired.
+ProbaBench source, packages, deployment, and issues are maintained in Realm.
