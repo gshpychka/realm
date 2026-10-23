@@ -1,8 +1,10 @@
 .site-header,
-.notebook main,
-.site-footer {
+.notebook main {
   width: min(100% - 2 * var(--page-gutter), var(--page-width) - 2 * var(--page-gutter));
   margin-inline: auto;
+}
+.notebook main {
+  padding-bottom: 48px;
 }
 .skip-link {
   position: fixed;
@@ -437,7 +439,7 @@ button.connection {
   }
 }
 
-/* App: loading, failure and footer */
+/* App: loading and failure */
 .notebook-loading,
 .notebook-error {
   text-align: center;
@@ -468,47 +470,4 @@ button.connection {
   color: var(--muted);
   margin: 16px auto 24px;
   max-width: 430px;
-}
-.site-footer {
-  margin-top: 48px;
-  padding: 24px 0 28px;
-  border-top: 1px solid var(--line);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 24px;
-  color: var(--muted);
-  font-size: 12px;
-
-  @media (max-width: 650px) {
-    margin-top: 36px;
-    padding: 23px 0;
-    align-items: start;
-    gap: 18px;
-  }
-}
-.footer-brand {
-  color: var(--text-3);
-
-  @media (max-width: 650px) {
-    max-width: 200px;
-    font-size: 11px;
-    line-height: 1.8;
-  }
-}
-.footer-brand > span {
-  color: var(--border-strong);
-  padding: 0 8px;
-
-  @media (max-width: 650px) {
-    padding: 0 4px;
-  }
-}
-.site-footer > .text-button {
-  font-size: 12px;
-
-  @media (max-width: 650px) {
-    white-space: nowrap;
-    font-size: 11px;
-  }
 }

@@ -82,21 +82,6 @@ export function App() {
           {panel()}
         </div>
       </main>
-      <footer className="site-footer">
-        <span className="footer-brand">
-          probabench <span> / </span> OpenRouter sampling benchmarks
-        </span>
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => {
-            update({ tab: "method" });
-            document.getElementById(PANEL_ID)?.scrollIntoView();
-          }}
-        >
-          About the method <span aria-hidden="true">↗</span>
-        </button>
-      </footer>
       {openSetup ? (
         <RunSetup
           open={setupOpen}
