@@ -21,6 +21,7 @@ import (
 
 // fakeService is an api.Service that answers from fixed data and records the calls it receives.
 type fakeService struct {
+	api.Operations
 	mu sync.Mutex
 	// err fails every call, except the methods that errs names.
 	err      error

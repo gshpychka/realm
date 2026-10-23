@@ -85,6 +85,8 @@ type Instances interface {
 	Restore(ctx context.Context, name, snapshot string) error
 	// Exec runs argv in the instance's guest as root; a non-zero exit is an error.
 	Exec(ctx context.Context, name string, argv []string, stdin io.Reader, stdout io.Writer) error
+	// Connect runs the fixed operator helper independently of the terminal program.
+	Connect(ctx context.Context, name, sessionID string, argv []string, stdin io.Reader, stdout io.Writer) error
 	// Caller returns the name and session ID of the running instance whose vsock context ID is cid.
 	Caller(ctx context.Context, cid uint32) (name, sessionID string, err error)
 	// AttachCommand is the host command that runs argv in the instance attached to the caller's terminal.

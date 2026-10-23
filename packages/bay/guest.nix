@@ -13,6 +13,7 @@ let
   bay-session = pkgs.writeShellApplication {
     name = "bay-session";
     runtimeInputs = with pkgs; [
+      bay.guestTools
       coreutils
       git
       gnutar
@@ -22,6 +23,7 @@ let
       util-linux
     ];
     runtimeEnv = {
+      BAY_GUEST = lib.getExe bay.guestTools;
       SESSION_USER = user;
       SESSION_HOME = home;
       WORK = work;

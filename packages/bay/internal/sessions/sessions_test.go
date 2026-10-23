@@ -1112,3 +1112,22 @@ func TestAutomaticSnapshotsAvoidNameCollisions(t *testing.T) {
 		t.Fatalf("second automatic snapshot = %q, %v; first was %q", second, err, first)
 	}
 }
+
+func (f *fakeInstances) Connect(ctx context.Context, name, sessionID string, argv []string, stdin io.Reader, stdout io.Writer) error {
+	if err := f.Exec(ctx, name, argv, nil, io.Discard); err != nil {
+		return err
+	}
+	stopped := make(chan struct{})
+	defer close(stopped)
+	go func() {
+		select {
+		case <-ctx.Done():
+			if r, ok := stdin.(io.Closer); ok {
+				r.Close()
+			}
+		case <-stopped:
+		}
+	}()
+	_, err := io.Copy(stdout, stdin)
+	return err
+}

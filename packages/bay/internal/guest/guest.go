@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -37,6 +38,11 @@ func (g Guest) Launch(ctx context.Context, argv []string, monitor bool) error {
 		mode = "monitor"
 	}
 	return g.run(ctx, nil, nil, append([]string{"launch", mode, "--"}, argv...)...)
+}
+
+// Operator reaches only Bay's fixed transfer/command helper, never an arbitrary root executable.
+func (g Guest) Operator(ctx context.Context, id string, generation uint64, operation, key string, stdin io.Reader, stdout io.Writer) error {
+	return g.run(ctx, stdin, stdout, "operator", "--record", id, "--generation", strconv.FormatUint(generation, 10), operation, key)
 }
 
 // Running reports whether the session's program is running.

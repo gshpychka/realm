@@ -197,6 +197,7 @@ inputs.nixpkgs.lib.nixos.runTest {
     in
     ''
       import json
+      import hashlib
       import shlex
       import time
       from datetime import timedelta
@@ -222,6 +223,25 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       def history(session):
           return guest(session, "cat /home/dev/.counter/log").strip().splitlines()
+
+      def operation(session, method, path, body=None, upload=None):
+          command = ["curl", "-fsS", "--unix-socket", "/run/bay/bay.sock", "-X", method,
+                     "-H", f"Bay-Session-ID: {session['id']}", "-H", f"Bay-Session-Generation: {session['generation']}"]
+          if body is not None:
+              command += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+          if upload is not None:
+              command += ["--data-binary", "@" + upload]
+          command += ["http://bay/v1/sessions/" + session["name"] + path]
+          return host.succeed("su - alice -c " + shlex.quote(shlex.join(command)))
+
+      def job_result(session, job):
+          deadline = time.monotonic() + 30
+          while True:
+              result = json.loads(operation(session, "GET", "/jobs/" + job))
+              if result["status"] != "running":
+                  return result
+              assert time.monotonic() < deadline, result
+              time.sleep(0.1)
 
       # the counter rises by one a second for as long as its program runs
       def counting(session):
@@ -254,6 +274,47 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       with subtest("saving history writes nothing when no history path exists"):
           assert guest("one", "bay-session save-history -- .counter/none | wc -c").strip() == "0"
+
+      with subtest("operator transfers and detached commands preserve immutable bytes, exact identity and user privileges"):
+          session = json.loads(bay("show one --json"))
+          data = "private local input\n"
+          host.succeed("printf 'private local input\\n' > /tmp/bay-input")
+          digest = hashlib.sha256(data.encode()).hexdigest()
+          blob = json.loads(operation(session, "PUT", "/blobs/" + digest, upload="/tmp/bay-input"))
+          assert blob["sha256"] == digest and blob["size"] == len(data)
+          script = "id -u; cat " + shlex.quote(blob["path"]) + "; printf once >> executions; printf original > transfer-result"
+          request = {"argv": ["/bin/sh", "-c", script], "cwd": ".", "inputDigest": digest,
+                     "machineRevision": session["machineRevision"], "timeoutMs": 5000, "maxOutputBytes": 1024}
+          operation(session, "POST", "/jobs/materialize", request)
+          job = job_result(session, "materialize")
+          assert job["status"] == "succeeded" and job["exitCode"] == 0, job
+          assert job["recordId"] == session["id"] and job["generation"] == session["generation"], job
+          assert job["inputDigest"] == digest and job["machineRevision"] == session["machineRevision"], job
+          uid = guest("one", "id -u dev").strip()
+          assert uid != "0" and job["stdout"] == uid + "\n" + data, job
+          assert json.loads(operation(session, "POST", "/jobs/materialize", request))["status"] == "succeeded"
+          assert guest("one", "cat /work/executions") == "once"
+          capture = json.loads(operation(session, "POST", "/captures/result", {"path": "transfer-result", "maxBytes": 1024}))
+          guest("one", "runuser -u dev -- sh -c " + shlex.quote("printf later > /work/transfer-result"))
+          assert operation(session, "GET", "/captures/result") == "original"
+          assert json.loads(operation(session, "POST", "/captures/result", {"path": "transfer-result", "maxBytes": 1024})) == capture
+          assert capture["sha256"] == hashlib.sha256(b"original").hexdigest()
+          guest_fails("one", "runuser -u dev -- sh -c " + shlex.quote("printf corrupt > " + shlex.quote(blob["path"])))
+          guest_fails("one", f"runuser -u dev -- cat /var/lib/bay/operator/{session['id']}/{session['generation']}/jobs/materialize/state.json")
+          expired = dict(session, generation=session["generation"] + 1)
+          command = ["curl", "-sS", "--unix-socket", "/run/bay/bay.sock", "-o", "/dev/null", "-w", "%{http_code}",
+                     "-H", f"Bay-Session-ID: {expired['id']}", "-H", f"Bay-Session-Generation: {expired['generation']}",
+                     "http://bay/v1/sessions/one/jobs/materialize"]
+          assert host.succeed("su - alice -c " + shlex.quote(shlex.join(command))) == "409"
+          timeout = dict(request, argv=["/bin/sh", "-c", "sleep 30"], timeoutMs=100)
+          operation(session, "POST", "/jobs/timeout", timeout)
+          assert job_result(session, "timeout")["status"] == "timed_out"
+          detached = dict(request, argv=["/bin/sh", "-c", "setsid sh -c 'echo $$ > detached.pid; sleep 60' >/dev/null 2>&1 & while ! test -s detached.pid; do sleep 0.01; done; cat detached.pid"])
+          operation(session, "POST", "/jobs/detached", detached)
+          detached_result = job_result(session, "detached")
+          assert detached_result["status"] == "succeeded", detached_result
+          detached_pid = int(detached_result["stdout"].strip())
+          guest("one", f"bash -c '! pgrep -s {detached_pid} >/dev/null'")
 
       with subtest("declared machines keep immutable bases and pinned sessions across catalog changes"):
           bay("start pinned counter")
