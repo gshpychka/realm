@@ -31,7 +31,9 @@ function NotebookLoading() {
 function NotebookError({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
   return (
     <section className="notebook-error" role="alert">
-      <span className="state-symbol">!</span>
+      <span className="state-symbol" aria-hidden="true">
+        !
+      </span>
       <h2>The notebook couldn’t be read.</h2>
       <p>Results could not be fetched or did not pass validation. Try loading them again.</p>
       <button type="button" className="button secondary" disabled={retrying} onClick={onRetry}>

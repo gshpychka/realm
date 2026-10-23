@@ -82,7 +82,7 @@ export function CalibrationPage({
                     aria-pressed={active}
                     onClick={() => update({ hidden: toggleHidden(view.hidden, model) }, "replace")}
                   >
-                    <span className="model-check" style={{ color }}>
+                    <span className="model-check" style={{ color }} aria-hidden="true">
                       {active ? "✓" : ""}
                     </span>
                     <span className="model-label">
