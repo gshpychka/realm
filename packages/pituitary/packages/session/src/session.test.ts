@@ -137,10 +137,23 @@ describe("reduce", () => {
       { type: "agent_start" },
       { type: "message_start", message: { role: "assistant", content: [] } },
       { type: "tool_execution_start", toolCallId: "late", toolName: "read", args: { path: "x" } },
+      {
+        type: "message_update",
+        assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, id: "late", toolName: "read" },
+      },
+      {
+        type: "message_update",
+        assistantMessageEvent: { type: "toolcall_delta", contentIndex: 0, delta: '{"path":"new' },
+      },
     ] as SessionEvent[]);
     const assistant = view.entries.at(-1);
     if (assistant?.kind !== "assistant") throw new Error("expected an assistant entry");
-    expect(assistant.tools[0]).toMatchObject({ id: "late", name: "read", state: "running" });
+    expect(assistant.tools[0]).toMatchObject({
+      id: "late",
+      name: "read",
+      state: "running",
+      args: { path: "new" },
+    });
   });
 
   test("reports the retry phase with when the next attempt starts, and recovers", () => {
@@ -175,7 +188,8 @@ describe("reduce", () => {
       { type: "auto_retry_end", success: false, attempt: 3, finalError: "overloaded" },
     ] as SessionEvent[]);
     expect(view.entries.at(-1)).toMatchObject({ kind: "notice", level: "error", text: "overloaded" });
-    expect(view.running).toBe(false);
+    expect(view.running).toBe(true);
+    expect(reduce(view, { type: "agent_settled" }).running).toBe(false);
     expect(view.entries.filter((entry) => entry.kind === "notice" && entry.level === "error")).toHaveLength(
       1,
     );
@@ -741,4 +755,49 @@ test("a live snapshot preserves the retry countdown without inventing a partial 
     retry: { attempt: 2, maxAttempts: 3, at: 5000, error: "overloaded" },
     turn: null,
   });
+});
+
+test("snapshot partial tool output is retained for active and interrupted calls", () => {
+  const messages = [stored.assistant({ toolCall: { id: "current", name: "bash", args: {} } })];
+  for (const active of [true, false]) {
+    const view = restore(messages, undefined, {
+      sequence: 5,
+      state: { ...fakeSessionState, isStreaming: active },
+      messages,
+      pendingToolCalls: active ? ["current"] : [],
+      pendingTools: [{ callId: "current", name: "bash", output: "halfway", details: { line: 3 } }],
+    });
+    const entry = view.entries[0];
+    expect(entry?.kind === "assistant" && entry.tools[0]).toMatchObject({
+      state: active ? "running" : "error",
+      output: "halfway",
+      details: { line: 3 },
+    });
+  }
+});
+
+test("interleaved tool arguments follow their content block until authoritative completion", () => {
+  let view = reduce(emptySession, { type: "message_start", message: stored.assistant({}) });
+  const delta = (assistantMessageEvent: Record<string, unknown>) => {
+    view = reduce(view, { type: "message_update", usage: {}, assistantMessageEvent } as SessionEvent);
+  };
+  delta({ type: "toolcall_start", id: "a", toolName: "read", contentIndex: 0 });
+  delta({ type: "toolcall_start", id: "b", toolName: "read", contentIndex: 1 });
+  delta({ type: "toolcall_delta", delta: '{"path":"a', contentIndex: 0 });
+  delta({ type: "toolcall_delta", delta: '{"path":"b', contentIndex: 1 });
+  const entry = view.entries[0];
+  expect(entry?.kind === "assistant" && entry.tools.map((tool) => tool.args)).toEqual([
+    { path: "a" },
+    { path: "b" },
+  ]);
+  delta({
+    type: "toolcall_end",
+    contentIndex: 0,
+    toolCall: { id: "a", name: "read", arguments: { path: "authoritative" } },
+  });
+  const finished = view.entries[0];
+  const tool = finished?.kind === "assistant" ? finished.tools[0] : null;
+  expect(tool?.args).toEqual({ path: "authoritative" });
+  expect(tool).not.toHaveProperty("streaming");
+  expect(tool).not.toHaveProperty("contentIndex");
 });
