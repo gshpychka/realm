@@ -47,6 +47,10 @@ session. Close that screen with `ctrl+d` to return to Pituitary. Authentication,
 credential persistence, and token refresh remain upstream Pi responsibilities.
 Provider API keys work through Pi's normal configuration too.
 
+Over SSH, use the login screen's copy shortcut (`ctrl+x`) for the full URL. tmux
+must allow application clipboard writes: `set -s set-clipboard on` (Realm configures
+this). For manual selection in Ghostty, hold `shift` while dragging, then use `cmd+c`.
+
 Standard extension dialogs, notifications, status text, widgets, commands, and prompt
 completions appear in Pituitary. Extensions that render custom stock-terminal
 components need Pi's interactive screen; that rendering API is outside Pi RPC.
