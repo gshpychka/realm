@@ -170,9 +170,8 @@ export function App({
     );
   }, [keymap]);
 
-  const command = useCallback(
-    (name: string, args = "") =>
-      void runCommand(name, args, {
+  const command = (name: string, args = "") => {
+      const work = runCommand(name, args, {
         link,
         session,
         pick: setPicker,
@@ -192,9 +191,9 @@ export function App({
         reloadCommands: reread,
         limits: () => bridge?.limits() ?? null,
         screen: () => frameRows(renderer.currentRenderBuffer),
-      }),
-    [link, session, renderer, onQuit, onHandoff, onRestart, hotkeys, state?.sessionFile, bridge, reread],
-  );
+      });
+      holdCommand(work);
+  };
 
   const toBottom = () => {
     const box = scroll.current;
@@ -362,9 +361,10 @@ export function App({
   };
 
   /** An open dialog takes every key; ctrl+c or the interrupt key cancels it. */
-  const dialogKey = (action: Action | null): boolean => {
+  const dialogKey = (key: KeyEvent, action: Action | null): boolean => {
     if (!dialog) return false;
     if (action === "app.clear" || action === "app.interrupt") {
+      key.preventDefault();
       answer(dialog.id, { type: "extension_ui_response", id: dialog.id, cancelled: true });
     }
     return true;
@@ -417,7 +417,7 @@ export function App({
     const standing = offers.take();
     const text = editor.current?.text() ?? "";
     const action = actionFor(keymap, key);
-    if (dialogKey(action) || customKey(key, action) || choosing) return;
+    if (dialogKey(key, action) || customKey(key, action) || choosing) return;
     if (browsing) {
       browseKey(key, action, text, standing);
       return;
@@ -429,7 +429,7 @@ export function App({
     if (draftKey(key, action, text, standing)) key.preventDefault();
   };
 
-  useHeldKeys(editor, onKey, !away);
+  const holdCommand = useHeldKeys(editor, onKey, !away, dialog ?? custom ?? null);
 
   usePaste((event) => {
     if (!custom || !bridge) return;

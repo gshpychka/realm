@@ -15,9 +15,6 @@ import type { EditorProps } from "./editor.tsx";
 import { draftMark, EditorFrame, type Mark } from "./editor-frame.tsx";
 import { type Cursor, cursorOf, heightOf, NvimScreen } from "./nvim-screen.tsx";
 
-/** Rows the draft grows to before it scrolls: the height of the screen nvim draws it on. */
-const MAX_ROWS = 8;
-
 /** Whether keys go into the text as typed: insert mode and its variants. */
 function inserting(mode: string): boolean {
   return mode.startsWith("i");
@@ -46,6 +43,7 @@ function tagOf(mode: Mode): Mark | null {
 
 export interface NvimEditorProps extends EditorProps {
   engine: DraftEngine;
+  maxRows: number;
 }
 
 /** The draft as an embedded nvim edits and draws it: one row, growing as it fills. */
@@ -60,6 +58,7 @@ export function NvimEditor({
   confirm,
   onChange,
   onEscapes,
+  maxRows,
 }: NvimEditorProps) {
   const area = useRef<BoxRenderable | null>(null);
   const [draft, setDraft] = useState<Draft>(engine.draft);
@@ -82,6 +81,10 @@ export function NvimEditor({
   useEffect(() => engine.onFrame((next) => flushSync(() => setFrame(next))), [engine]);
 
   useEffect(() => {
+    if (area.current) engine.resize(area.current.width, maxRows);
+  }, [engine, maxRows]);
+
+  useEffect(() => {
     engine.placeholder(steering ? "queue a steering message" : "ask pi · !cmd runs a shell command");
   }, [engine, steering]);
 
@@ -97,7 +100,6 @@ export function NvimEditor({
     pending: () => engine.pending,
     busy: () => engine.busy,
     settle: () => engine.settle(),
-    press: (key) => onKeyDown(key),
     take: () => engine.take(),
   }));
 
@@ -121,7 +123,7 @@ export function NvimEditor({
       engine.take().then(onSubmit, () => {});
       return;
     }
-    if (key.name === "return" && key.shift && inserting(mode)) {
+    if ((key.name === "return" || key.name === "kpenter") && key.shift && inserting(mode)) {
       key.preventDefault();
       engine.input("<CR>");
       return;
@@ -153,7 +155,7 @@ export function NvimEditor({
     state.shown = true;
   }
 
-  const rows = heightOf(frame);
+  const rows = Math.min(maxRows, heightOf(frame));
   const bash = textOf(draft).startsWith("!");
   const mark = (frame && tagOf(frame.mode)) ?? draftMark(bash, steering);
   return (
@@ -169,7 +171,7 @@ export function NvimEditor({
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         onSizeChange={function (this: BoxRenderable) {
-          engine.resize(this.width, MAX_ROWS);
+          engine.resize(this.width, maxRows);
         }}
         renderAfter={drawCursor}
       >
