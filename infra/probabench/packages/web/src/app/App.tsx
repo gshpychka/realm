@@ -78,7 +78,7 @@ export function App() {
       <main>
         <Hero runs={runs} />
         <NotebookTabs runCount={runs.length} view={view} update={update} />
-        <div id={PANEL_ID} tabIndex={-1}>
+        <div id={PANEL_ID} className="notebook-panel" tabIndex={-1}>
           {panel()}
         </div>
       </main>

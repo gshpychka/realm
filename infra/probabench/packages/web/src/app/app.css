@@ -18,7 +18,7 @@
 .skip-link:focus {
   transform: none;
 }
-#notebook-content {
+.notebook-panel {
   min-height: 320px;
   border-radius: var(--radius-sm);
   scroll-margin-top: 24px;
