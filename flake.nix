@@ -257,6 +257,28 @@
               pkgs = nixpkgs.legacyPackages.${system};
               piExtensionTypes = pkgs.callPackage ./packages/pi-extension-types.nix { };
               bun2nix = inputs.bun2nix.packages.${system}.default;
+              # runs a Bun project's `bun run check` offline against its bun.nix
+              bunCheck =
+                {
+                  src,
+                  nativeBuildInputs ? [ ],
+                }:
+                pkgs.stdenvNoCC.mkDerivation {
+                  name = "check-${baseNameOf src}";
+                  inherit src;
+                  bunDeps = bun2nix.fetchBunDeps {
+                    bunNix = src + "/bun.nix";
+                    # the hook drops patchedDependencies before bun install, so the cache carries the patches
+                    overrides = bun2nix.patchedDependenciesToOverrides {
+                      patchedDependencies =
+                        lib.mapAttrs (_: patch: src + "/${patch}")
+                          (lib.importJSON (src + "/package.json")).patchedDependencies;
+                    };
+                  };
+                  nativeBuildInputs = [ bun2nix.hook ] ++ nativeBuildInputs;
+                  buildPhase = "bun run check";
+                  installPhase = "touch $out";
+                };
             in
             {
               pituitary-home-manager = import ./tests/pituitary-home-manager.nix {
@@ -267,7 +289,7 @@
                 touch $out
               '';
               deadnix = pkgs.runCommand "check-deadnix" { nativeBuildInputs = [ pkgs.deadnix ]; } ''
-                deadnix --fail --exclude ${self}/infra/link-sanitizer/bun.nix ${self}/infra/probabench/bun.nix -- ${self}
+                deadnix --fail --exclude ${self}/infra/*/bun.nix -- ${self}
                 touch $out
               '';
               # whole-tree format check; copy out of the read-only store so
@@ -298,24 +320,12 @@
                     tsc -p src/tsconfig.json
                     touch $out
                   '';
-              link-sanitizer = pkgs.stdenvNoCC.mkDerivation {
-                name = "check-link-sanitizer";
-                src = "${self}/infra/link-sanitizer";
-                bunDeps = bun2nix.fetchBunDeps {
-                  bunNix = ./infra/link-sanitizer/bun.nix;
-                  # the hook drops patchedDependencies before bun install, so the cache carries the patches
-                  overrides = bun2nix.patchedDependenciesToOverrides {
-                    patchedDependencies = lib.mapAttrs (
-                      _: patch: ./infra/link-sanitizer + "/${patch}"
-                    ) (lib.importJSON ./infra/link-sanitizer/package.json).patchedDependencies;
-                  };
-                };
-                nativeBuildInputs = [ bun2nix.hook ];
-                buildPhase = "bun run check";
-                installPhase = "touch $out";
-              };
-              probabench = import ./infra/probabench/check.nix {
-                inherit pkgs bun2nix;
+              link-sanitizer = bunCheck { src = ./infra/link-sanitizer; };
+              probabench = bunCheck {
+                src = ./infra/probabench;
+                # run the vite, vitest and tsc bins (#!/usr/bin/env node) on Node, as the
+                # infra shell does; without it bun stands in for node and the Vite build differs
+                nativeBuildInputs = [ pkgs.nodejs ];
               };
               # the Voice PE component's ESP-free logic, built for the host
               voice-pe = pkgs.runCommandCC "check-voice-pe" { buildInputs = [ pkgs.gtest ]; } ''
