@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import * as Command from "@effect/cli/Command";
 import * as HelpDoc from "@effect/cli/HelpDoc";
 import * as Span from "@effect/cli/HelpDoc/Span";
@@ -20,7 +21,13 @@ import { InvalidOptions, positiveInteger, probabilityStep } from "./options";
 import { type BenchTarget, describeAliases, modelLabel, selectTargets } from "./registry";
 import { executePlan } from "./run";
 
-export const DEFAULT_OUT = "packages/web/public/data/results.json";
+/**
+ * The web app's published history, which Vite serves at /data/results.json. Resolved
+ * from this file rather than the working directory.
+ */
+export const DEFAULT_OUT = fileURLToPath(
+  new URL("../../web/public/data/results.json", import.meta.url),
+);
 export const NON_TTY_MESSAGE =
   "Refusing to run without confirmation: stdin is not a TTY. Re-run with --yes to proceed non-interactively.";
 export const MISSING_MODEL_MESSAGE =
@@ -179,7 +186,7 @@ const reasoningOption = Options.choice("reasoning", ReasoningMode.literals).pipe
 );
 const outOption = Options.text("out").pipe(
   Options.withDefault(DEFAULT_OUT),
-  Options.withDescription(`Results path (default: ${DEFAULT_OUT}).`),
+  Options.withDescription("History file (default: the web app's public/data/results.json)."),
   Options.mapTryCatch((out) => {
     if (!out.trim()) throw new InvalidOptions({ message: "out must be a nonempty file path." });
     return out;

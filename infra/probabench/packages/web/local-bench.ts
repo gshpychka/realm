@@ -149,8 +149,6 @@ export function createBenchController(options: ControllerOptions) {
           "--concurrency",
           String(settings.concurrency),
           ...(settings.reasoning === undefined ? [] : ["--reasoning", settings.reasoning]),
-          "--out",
-          "packages/web/public/data/results.json",
           "--yes",
         ],
         apiKey,

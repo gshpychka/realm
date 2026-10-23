@@ -70,7 +70,7 @@ Bun loads `.env.local` automatically. You can also export
 | `--concurrency` | `10` | Maximum simultaneous requests within a probability step |
 | `--reasoning` | alias config, otherwise off | `off`, `low`, `medium`, `high`, `xhigh` |
 | `--max-tokens` | `4096` | Output token ceiling for reasoning targets |
-| `--out` | `packages/web/public/data/results.json` | History file relative to the current directory |
+| `--out` | `packages/web/public/data/results.json` | History file; the default resolves from the runner, independent of the current directory |
 | `--yes`, `-y` | off | Confirm execution without prompting |
 | `--dry-run` | off | Validate and print the plan without provider calls |
 
@@ -123,8 +123,9 @@ a temporary file and atomically renames it. Invalid existing history fails
 before paid requests. A short filesystem lock serializes saves across the local
 page and independent CLI processes, so simultaneous completed runs retain both
 entries. A writer waits up to five seconds for a busy history file. If a process
-is forcibly killed while saving, its `<results-path>.lock` may remain: verify no
-writer is active, then remove that abandoned lock before retrying. Cancellation
+is forcibly killed while saving, its `<results-path>.lock` and a `.probabench-*`
+temporary directory beside it may remain: verify no writer is active, then
+remove them before retrying or building. Cancellation
 or failure keeps completed sweeps; the current incomplete sweep is not saved.
 
 The committed history starts empty. No fabricated measurements are published.

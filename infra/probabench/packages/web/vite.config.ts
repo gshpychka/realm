@@ -3,8 +3,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { localBenchPlugin } from "./local-bench";
 
-// React + Tailwind v4 single-page app. The runner writes results to
-// public/data/results.json, served at /data/results.json and fetched at runtime.
+// React + Tailwind v4 single-page app; the local runner bridge exists only in dev.
 //
 // The package scripts load this file with `--configLoader runner`: the dev bridge
 // imports @probabench/domain, which is TypeScript source with extensionless
