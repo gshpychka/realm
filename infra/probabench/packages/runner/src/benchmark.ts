@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import type * as LanguageModel from "@effect/ai/LanguageModel";
-import { counts, type Point, Probability, type Run } from "@probabench/domain";
+import { measurePoint, type Point, Probability, type Run } from "@probabench/domain";
 import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -37,10 +37,10 @@ export const describePointProgress = ({
   completedPoints,
   totalPoints,
 }: PointProgress): string => {
-  const tally = counts(point.outcomes);
+  const { ones, zeros, invalid } = measurePoint(point);
   return (
     `[${model}] point ${completedPoints}/${totalPoints} x=${Math.round(point.x * 100)}% → ` +
-    `ones=${tally.ones} zeros=${tally.zeros} invalid=${tally.invalid}`
+    `ones=${ones} zeros=${zeros} invalid=${invalid}`
   );
 };
 

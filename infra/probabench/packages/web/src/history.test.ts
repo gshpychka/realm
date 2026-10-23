@@ -1,25 +1,21 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Run } from "@probabench/domain";
-import * as Schema from "effect/Schema";
+import { makeRun } from "@probabench/domain/testing";
 import { modelColors } from "./chart-data";
 import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "./history";
 
-const old = Schema.decodeUnknownSync(Run)({
-  id: "old",
-  model: "model.a",
-  modelSlug: "vendor/model-a",
-  reasoning: "off",
-  trialsPerStep: 2,
-  stepPercent: 50,
-  startedAt: "2026-06-26T00:00:00.000Z",
-  points: [{ x: 0.5, outcomes: [0, 1] }],
-});
-const latest: Run = { ...old, id: "new", startedAt: "2026-10-22T00:00:00.000Z" };
-const other: Run = { ...old, id: "other", model: "__proto__" };
+const old = makeRun({ id: "old", model: "model.a" });
+const latest = makeRun({ id: "new", model: "model.a", startedAt: "2026-10-22T00:00:00.000Z" });
+const other = makeRun({ id: "other", model: "__proto__" });
 
 describe("History selection", () => {
   it("filters the archive consistently by model, metadata and visibility", () => {
-    const noted = { ...latest, modelSlug: "vendor/specific-model", reasoning: "low" };
+    const noted = makeRun({
+      id: "new",
+      model: "model.a",
+      modelSlug: "vendor/specific-model",
+      reasoning: "low",
+      startedAt: latest.startedAt,
+    });
     const runs = [old, noted, other];
     expect(visibleHistory(runs, "  SPECIFIC  ", []).map((run) => run.id)).toEqual(["new"]);
     expect(visibleHistory(runs, "low", []).map((run) => run.id)).toEqual(["new"]);

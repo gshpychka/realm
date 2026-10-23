@@ -227,7 +227,7 @@ export function Workspace({
                   {date(run.startedAt)} · {time(run.startedAt)} UTC
                 </span>
                 <span className="measurement-gap">
-                  {gap(summarizeRun(run).calibrationError)}
+                  {gap(summarizeRun(run).meanCalibrationError)}
                   <small>mean gap</small>
                 </span>
                 <span className="expand-sign" aria-hidden="true">

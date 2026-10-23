@@ -1,6 +1,6 @@
 import * as LanguageModel from "@effect/ai/LanguageModel";
 import { describe, expect, it } from "@effect/vitest";
-import { Probability, type Trial } from "@probabench/domain";
+import { type Outcome, Probability } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -17,7 +17,7 @@ const unusedModel = Layer.effect(
 );
 
 /** A BitSampler whose every sample returns the same canned bit, ignoring x and the model. */
-const fakeSampler = (bit: Trial) =>
+const fakeSampler = (bit: Outcome) =>
   Layer.succeed(BitSampler, BitSampler.make({ sampleBit: () => Effect.succeed(bit) }));
 
 describe("Benchmark.run sweep", () => {
@@ -33,7 +33,7 @@ describe("Benchmark.run sweep", () => {
         concurrency: 2,
       });
 
-      const outcomes: ReadonlyArray<Trial> = [1, 1, 1, 1];
+      const outcomes: ReadonlyArray<Outcome> = [1, 1, 1, 1];
       expect(run.points).toEqual([0, 0.5, 1].map((x) => ({ x: Probability.make(x), outcomes })));
 
       expect(run.model).toBe("anthropic/claude-haiku-4.5");

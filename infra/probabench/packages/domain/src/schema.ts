@@ -1,54 +1,56 @@
-// The shared results contract. This package stays independent of platform, AI and UI code.
+// The persisted results contract.
 import * as Schema from "effect/Schema";
 
 export const SCHEMA_VERSION = 2;
 
-const PositiveInteger = Schema.Number.pipe(
-  Schema.filter((value) => Number.isSafeInteger(value) && value > 0, {
-    message: () => "Expected a positive safe integer",
-  }),
-);
-const NonBlankString = Schema.String.pipe(Schema.filter((value) => value.trim().length > 0));
-
 /** A target probability as a fraction in [0, 1]. */
-export const Probability = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.between(0, 1),
-  Schema.brand("Probability"),
-);
+export const Probability = Schema.Number.pipe(Schema.between(0, 1), Schema.brand("Probability"));
 export type Probability = typeof Probability.Type;
 
-/** One sample: a bit, or the raw text of an unparseable reply. */
-export const Trial = Schema.Union(
+/** One trial's outcome: a bit, or the raw text of an unparseable reply. */
+export const Outcome = Schema.Union(
   Schema.Literal(0, 1),
   Schema.Struct({ invalidText: Schema.String }),
 );
-export type Trial = typeof Trial.Type;
+export type Outcome = typeof Outcome.Type;
 
-/** Every sample taken at one target probability. */
+/** Every outcome sampled at one target probability. */
 export const Point = Schema.Struct({
   x: Probability,
-  outcomes: Schema.Array(Trial),
+  outcomes: Schema.Array(Outcome),
 });
 export type Point = typeof Point.Type;
 
-/** One immutable sweep. `id` identifies this execution; repeated model labels preserve history. */
-export const Run = Schema.Struct({
-  id: NonBlankString,
-  model: NonBlankString,
-  modelSlug: NonBlankString,
-  reasoning: NonBlankString,
-  trialsPerStep: PositiveInteger,
-  stepPercent: PositiveInteger.pipe(Schema.lessThanOrEqualTo(100)),
-  startedAt: Schema.String.pipe(
-    Schema.filter(
-      (value) => {
-        const timestamp = Date.parse(value);
-        return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
-      },
-      { message: () => "Expected an ISO UTC timestamp as emitted by Date.toISOString()" },
-    ),
+/**
+ * Canonical Date.toISOString() form, so string order is chronological: the web
+ * history sorts runs with localeCompare.
+ */
+const IsoTimestamp = Schema.String.pipe(
+  Schema.filter(
+    (value) => {
+      const milliseconds = Date.parse(value);
+      return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
+    },
+    { message: () => "Expected an ISO UTC timestamp as emitted by Date.toISOString()" },
   ),
+);
+
+/** One immutable sweep of one model series. */
+export const Run = Schema.Struct({
+  /** Identifies this execution; a series keeps every earlier run. */
+  id: Schema.NonEmptyTrimmedString,
+  /**
+   * Series key that groups runs: modelSlug, plus ` [reasoning=<mode>]` unless reasoning
+   * is off. Written by the runner's modelLabel; display-only, never sent to the API.
+   */
+  model: Schema.NonEmptyTrimmedString,
+  /** OpenRouter model ID sent to the API. */
+  modelSlug: Schema.NonEmptyTrimmedString,
+  /** Reasoning mode used for every sample. */
+  reasoning: Schema.NonEmptyTrimmedString,
+  trialsPerStep: Schema.Int.pipe(Schema.positive()),
+  stepPercent: Schema.Int.pipe(Schema.between(1, 100)),
+  startedAt: IsoTimestamp,
   points: Schema.Array(Point).pipe(Schema.minItems(1)),
 }).pipe(
   Schema.filter((run) => run.points.every((point) => point.outcomes.length === run.trialsPerStep), {
@@ -70,9 +72,7 @@ export const Results = Schema.Struct({
 }).pipe(
   Schema.filter(
     (results) => new Set(results.runs.map((run) => run.id)).size === results.runs.length,
-    {
-      message: () => "Run ids must be unique within results",
-    },
+    { message: () => "Run ids must be unique within results" },
   ),
 );
 export type Results = typeof Results.Type;

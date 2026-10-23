@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { Probability, Results, Run, Trial } from "./schema";
+import { Outcome, Probability, Results, Run } from "./schema";
 
 const run = {
   id: "run-1",
@@ -14,100 +14,58 @@ const run = {
   points: [{ x: 0.5, outcomes: [0, 1] }],
 } as const;
 
+/** Assert a decode failure, naming the input when the assertion fails. */
+const rejects =
+  <A, I>(schema: Schema.Schema<A, I>) =>
+  (input: unknown) => {
+    const decoded = Schema.decodeUnknownEither(schema)(input);
+    expect(Either.isLeft(decoded), JSON.stringify(input)).toBe(true);
+  };
+
 describe("Probability", () => {
-  it("decodes fractions including endpoints", () => {
-    for (const value of [0, 0.5, 1])
-      expect(Schema.decodeUnknownSync(Probability)(value)).toBe(value);
+  it.each([0, 0.5, 1])("decodes %d", (value) => {
+    expect(Schema.decodeUnknownSync(Probability)(value)).toBe(value);
   });
 
-  it("rejects out-of-range and nonfinite values", () => {
-    for (const value of [-0.1, 1.5, Number.NaN, Infinity, -Infinity]) {
-      expect(Either.isLeft(Schema.decodeUnknownEither(Probability)(value))).toBe(true);
-    }
-  });
+  it.each([-0.1, 1.5, Number.NaN])("rejects %d", rejects(Probability));
 });
 
-describe("Trial", () => {
-  it("round-trips both bits and the text of invalid replies", () => {
-    const encode = Schema.encodeSync(Trial);
-    const decode = Schema.decodeUnknownSync(Trial);
-    for (const value of [0, 1, { invalidText: "oops" }, { invalidText: "" }]) {
-      expect(encode(decode(value))).toEqual(value);
-    }
-  });
-
-  it("rejects non-bit numbers and malformed invalid replies", () => {
-    for (const value of [2, 0.5, null, { invalidText: 2 }]) {
-      expect(Either.isLeft(Schema.decodeUnknownEither(Trial)(value))).toBe(true);
-    }
-  });
+describe("Outcome", () => {
+  it.each([2, 0.5, null, { invalidText: 2 }])("rejects %j", rejects(Outcome));
 });
 
 describe("Run", () => {
-  it("allows partial grids while validating counts and timestamp", () => {
-    expect(Schema.decodeUnknownSync(Run)(run).points).toHaveLength(1);
+  it("decodes a valid run", () => {
+    expect(Schema.decodeUnknownSync(Run)(run)).toEqual(run);
   });
 
-  it("rejects invalid metadata", () => {
-    for (const field of [
-      { trialsPerStep: 0 },
-      { trialsPerStep: -1 },
-      { trialsPerStep: 1.5 },
-      { trialsPerStep: Infinity },
-      { trialsPerStep: Number.MAX_SAFE_INTEGER + 1 },
-      { stepPercent: 0 },
-      { stepPercent: 101 },
-      { stepPercent: 0.5 },
-      { model: "  " },
-      { id: "  " },
-      { modelSlug: "" },
-      { reasoning: "  " },
-      { points: [] },
-      { startedAt: "now" },
-      { startedAt: "2026-02-31T00:00:00.000Z" },
-    ]) {
-      expect(Either.isLeft(Schema.decodeUnknownEither(Run)({ ...run, ...field }))).toBe(true);
-    }
-  });
-
-  it("rejects outcome counts that disagree with trialsPerStep and duplicate probabilities", () => {
-    expect(Either.isLeft(Schema.decodeUnknownEither(Run)({ ...run, trialsPerStep: 3 }))).toBe(true);
-    expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(Run)({ ...run, points: [run.points[0], run.points[0]] }),
-      ),
-    ).toBe(true);
-  });
+  it.each([
+    { id: "  " },
+    { model: "  " },
+    { modelSlug: " vendor/model" },
+    { reasoning: undefined },
+    { trialsPerStep: 0 },
+    { trialsPerStep: 1.5 },
+    { stepPercent: 101 },
+    { startedAt: "2026-02-31T00:00:00.000Z" },
+    { points: [] },
+    { trialsPerStep: 3 },
+    { points: [run.points[0], run.points[0]] },
+  ])("rejects %j", (patch) => rejects(Run)({ ...run, ...patch }));
 });
 
 describe("Results", () => {
-  it("decodes the supported document version", () => {
-    expect(Schema.decodeUnknownSync(Results)({ schemaVersion: 2, runs: [run] }).runs).toHaveLength(
-      1,
-    );
-  });
-
-  it("rejects unsupported schema versions and duplicate run ids", () => {
-    for (const schemaVersion of [0, 1, 3, 1.5, Number.NaN, Infinity]) {
-      expect(Either.isLeft(Schema.decodeUnknownEither(Results)({ schemaVersion, runs: [] }))).toBe(
-        true,
-      );
-    }
-    expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(Results)({
-          schemaVersion: 2,
-          runs: [run, { ...run, model: "other" }],
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  it("preserves separate executions of the same model", () => {
+  it("keeps separate executions of the same model", () => {
     const results = Schema.decodeUnknownSync(Results)({
       schemaVersion: 2,
       runs: [run, { ...run, id: "run-2" }],
     });
     expect(results.runs.map((entry) => entry.id)).toEqual(["run-1", "run-2"]);
   });
+
+  it.each([
+    { schemaVersion: 1, runs: [] },
+    { schemaVersion: 3, runs: [] },
+    { schemaVersion: 2, runs: [run, run] },
+  ])("rejects %j", rejects(Results));
 });

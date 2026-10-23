@@ -1,10 +1,9 @@
 // Pure shaping of measured bit frequencies into chart rows and accessible table data.
 import {
-  calibrationError,
-  counts,
-  observedRate,
+  measurePoint,
+  type PointMeasurement,
   type Results,
-  rateInterval,
+  summarizeRun,
 } from "@probabench/domain";
 
 export const MODEL_COLORS = [
@@ -55,16 +54,6 @@ export interface Series {
   readonly total: number;
 }
 
-export interface SeriesMeta {
-  readonly ones: number;
-  readonly invalid: number;
-  readonly valid: number;
-  readonly total: number;
-  readonly observed: number | null;
-  readonly error: number | null;
-  readonly interval: readonly [number, number] | null;
-}
-
 export type ChartRow = { readonly x: number; readonly reference: number } & Record<
   string,
   number | null | readonly [number, number]
@@ -75,7 +64,7 @@ export interface ChartModel {
   readonly rows: ReadonlyArray<ChartRow>;
   /** Each line uses its own sampled grid; another model's extra targets cannot create false gaps. */
   readonly seriesRows: ReadonlyMap<string, ReadonlyArray<ChartRow>>;
-  readonly meta: ReadonlyMap<number, ReadonlyMap<string, SeriesMeta>>;
+  readonly meta: ReadonlyMap<number, ReadonlyMap<string, PointMeasurement>>;
 }
 
 /** Opaque series keys prevent model ids such as "x", "reference" or "a.b" colliding with chart paths. */
@@ -85,15 +74,14 @@ export const buildChartModel = (
 ): ChartModel => {
   const palette = colors ?? modelColors(results.runs);
   const series = results.runs.map((run, index): Series => {
-    const total = run.points.reduce((sum, point) => sum + point.outcomes.length, 0);
-    const invalid = run.points.reduce((sum, point) => sum + counts(point.outcomes).invalid, 0);
+    const { valid, total } = summarizeRun(run);
     return {
       id: run.id,
       key: `series_${index}`,
       label: run.model,
       color: palette.get(run.model) ?? MODEL_COLORS[0],
       startedAt: run.startedAt,
-      valid: total - invalid,
+      valid,
       total,
     };
   });
@@ -108,31 +96,24 @@ export const buildChartModel = (
       ...results.runs.flatMap((run) => run.points.map((point) => point.x as number)),
     ]),
   ].sort((a, b) => a - b);
-  const meta = new Map<number, ReadonlyMap<string, SeriesMeta>>();
+  const meta = new Map<number, ReadonlyMap<string, PointMeasurement>>();
   const rows = xs.map((x): ChartRow => {
     const row: ChartRow = { x, [REFERENCE_KEY]: x };
-    const metaAtX = new Map<string, SeriesMeta>();
+    const metaAtX = new Map<string, PointMeasurement>();
     for (const [index, item] of series.entries()) {
       const point = pointsByRun[index]?.get(x);
-      row[item.key] = point ? observedRate(point.outcomes) : null;
-      if (point) {
-        const { invalid, ones, zeros } = counts(point.outcomes);
-        const observed = observedRate(point.outcomes);
-        const interval = rateInterval(point.outcomes);
-        row[`${item.key}_interval`] =
-          observed !== null && interval !== null
-            ? [observed - interval[0], interval[1] - observed]
-            : null;
-        metaAtX.set(item.key, {
-          ones,
-          invalid,
-          valid: ones + zeros,
-          total: point.outcomes.length,
-          observed,
-          error: calibrationError(point.outcomes, x),
-          interval,
-        });
+      if (!point) {
+        row[item.key] = null;
+        continue;
       }
+      const measured = measurePoint(point);
+      const { observed, interval } = measured;
+      row[item.key] = observed;
+      row[`${item.key}_interval`] =
+        observed !== null && interval !== null
+          ? [observed - interval[0], interval[1] - observed]
+          : null;
+      metaAtX.set(item.key, measured);
     }
     meta.set(x, metaAtX);
     return row;

@@ -1,40 +1,26 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Results } from "@probabench/domain";
-import * as Schema from "effect/Schema";
+import { type Results, SCHEMA_VERSION } from "@probabench/domain";
+import { makeRun } from "@probabench/domain/testing";
 import { buildChartModel, MODEL_COLORS, modelColors, modelDash, REFERENCE_KEY } from "./chart-data";
 
-const fixture = Schema.decodeUnknownSync(Results)({
-  schemaVersion: 2,
-  runs: [
-    {
-      id: "haiku",
-      model: "claude-haiku-4.5",
-      modelSlug: "anthropic/claude-haiku-4.5",
-      reasoning: "off",
-      trialsPerStep: 2,
-      stepPercent: 50,
-      startedAt: "2026-06-26T00:00:00.000Z",
-      points: [
-        { x: 0, outcomes: [0, 0] },
-        { x: 0.5, outcomes: [1, { invalidText: "x" }] },
-        { x: 1, outcomes: [{ invalidText: "nope" }, { invalidText: "x" }] },
-      ],
-    },
-    {
-      id: "sonnet",
-      model: "claude-sonnet-4.5-high",
-      modelSlug: "anthropic/claude-sonnet-4.5",
-      reasoning: "high",
-      trialsPerStep: 2,
-      stepPercent: 50,
-      startedAt: "2026-06-26T00:00:00.000Z",
-      points: [
-        { x: 0, outcomes: [1, 0] },
-        { x: 1, outcomes: [1, 1] },
-      ],
-    },
+const resultsOf = (runs: Results["runs"]): Results => ({ schemaVersion: SCHEMA_VERSION, runs });
+const haiku = makeRun({
+  model: "claude-haiku-4.5",
+  stepPercent: 50,
+  points: [
+    { x: 0, outcomes: [0, 0] },
+    { x: 0.5, outcomes: [1, { invalidText: "x" }] },
+    { x: 1, outcomes: [{ invalidText: "nope" }, { invalidText: "x" }] },
   ],
 });
+const sonnet = makeRun({
+  model: "claude-sonnet-4.5-high",
+  points: [
+    { x: 0, outcomes: [1, 0] },
+    { x: 1, outcomes: [1, 1] },
+  ],
+});
+const fixture = resultsOf([haiku, sonnet]);
 
 describe("model colours", () => {
   const runs = Array.from({ length: MODEL_COLORS.length + 1 }, (_, index) => ({
@@ -112,14 +98,9 @@ describe("buildChartModel", () => {
   });
 
   it("avoids model ids colliding with structural keys, object prototypes, and Recharts dotted paths", () => {
-    const results = Schema.decodeUnknownSync(Results)({
-      schemaVersion: 2,
-      runs: ["x", "reference", "__proto__", "a.b"].map((model) => ({
-        ...fixture.runs[0],
-        id: model,
-        model,
-      })),
-    });
+    const results = resultsOf(
+      ["x", "reference", "__proto__", "a.b"].map((model) => ({ ...haiku, id: model, model })),
+    );
     const shaped = buildChartModel(results);
     expect(shaped.rows[1]?.x).toBe(0.5);
     expect(shaped.rows[1]?.reference).toBe(0.5);
@@ -133,8 +114,7 @@ describe("buildChartModel", () => {
   });
 
   it("keeps a complete diagonal reference for a sparse or empty document", () => {
-    const results = Schema.decodeUnknownSync(Results)({ schemaVersion: 2, runs: [] });
-    expect(buildChartModel(results).rows).toEqual([
+    expect(buildChartModel(resultsOf([])).rows).toEqual([
       { x: 0, reference: 0 },
       { x: 1, reference: 1 },
     ]);
@@ -148,12 +128,7 @@ describe("buildChartModel", () => {
   });
 
   it("sorts a run's points independently and does not invent samples at reference endpoints", () => {
-    const results = Schema.decodeUnknownSync(Results)({
-      schemaVersion: 2,
-      runs: [
-        { ...fixture.runs[0], points: [fixture.runs[0]?.points[1], fixture.runs[0]?.points[0]] },
-      ],
-    });
+    const results = resultsOf([{ ...haiku, points: haiku.points.slice(0, 2).reverse() }]);
     const shaped = buildChartModel(results);
     expect(shaped.rows.map((row) => row.x)).toEqual([0, 0.5, 1]);
     expect(shaped.seriesRows.get("series_0")?.map((row) => row.x)).toEqual([0, 0.5]);

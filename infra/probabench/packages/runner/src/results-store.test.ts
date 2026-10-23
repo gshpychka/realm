@@ -1,24 +1,13 @@
-import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import * as PlatformError from "@effect/platform/Error";
 import * as FileSystem from "@effect/platform/FileSystem";
 import { describe, expect, it } from "@effect/vitest";
-import { Probability, type Results, type Run } from "@probabench/domain";
+import { type Results, type Run, SCHEMA_VERSION } from "@probabench/domain";
+import { makeRun } from "@probabench/domain/testing";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { ResultsStore, SCHEMA_VERSION } from "./results-store";
+import { ResultsStore } from "./results-store";
 import { withResultsStore } from "./test-fixtures";
-
-const makeRun = (model: string, startedAt = "2026-06-26T00:00:00.000Z"): Run => ({
-  id: randomUUID(),
-  model,
-  modelSlug: model,
-  reasoning: "off",
-  trialsPerStep: 2,
-  stepPercent: 100,
-  startedAt,
-  points: [{ x: Probability.make(0.5), outcomes: [1, 0] }],
-});
 
 describe("ResultsStore", () => {
   it.effect("loads an empty Results from a missing path", () =>
@@ -38,7 +27,10 @@ describe("ResultsStore", () => {
       Effect.gen(function* () {
         const store = yield* ResultsStore;
         const fs = yield* FileSystem.FileSystem;
-        const results: Results = { schemaVersion: SCHEMA_VERSION, runs: [makeRun("haiku")] };
+        const results: Results = {
+          schemaVersion: SCHEMA_VERSION,
+          runs: [makeRun({ model: "haiku" })],
+        };
         yield* store.save(path, results);
         expect(yield* store.load(path)).toEqual(results);
         expect(yield* fs.readDirectory(dirname(path))).toEqual(["results.json"]);
@@ -50,16 +42,16 @@ describe("ResultsStore", () => {
     withResultsStore((path) =>
       Effect.gen(function* () {
         const store = yield* ResultsStore;
-        const sibling = makeRun("sonnet");
-        const original = makeRun("haiku");
+        const sibling = makeRun({ model: "sonnet" });
+        const original = makeRun({ model: "haiku" });
         yield* store.save(path, {
           schemaVersion: SCHEMA_VERSION,
           runs: [original, sibling],
         });
-        const replacement = makeRun("haiku", "2026-06-26T02:00:00.000Z");
+        const replacement = makeRun({ model: "haiku", startedAt: "2026-06-26T02:00:00.000Z" });
         const appended = yield* store.append(path, replacement);
         expect(appended.runs).toEqual([original, sibling, replacement]);
-        const added = makeRun("mini");
+        const added = makeRun({ model: "mini" });
         yield* store.append(path, added);
         expect((yield* store.load(path)).runs).toEqual([original, sibling, replacement, added]);
       }),
@@ -72,7 +64,7 @@ describe("ResultsStore", () => {
         const store = yield* ResultsStore;
         yield* Effect.forEach(
           Array.from({ length: 10 }, (_, i) => i),
-          (i) => store.append(path, makeRun(`model-${i}`)),
+          (i) => store.append(path, makeRun({ model: `model-${i}` })),
           {
             concurrency: "unbounded",
           },
@@ -91,7 +83,10 @@ describe("ResultsStore", () => {
         Effect.gen(function* () {
           const originalStore = yield* ResultsStore;
           const fs = yield* FileSystem.FileSystem;
-          const original: Results = { schemaVersion: SCHEMA_VERSION, runs: [makeRun("original")] };
+          const original: Results = {
+            schemaVersion: SCHEMA_VERSION,
+            runs: [makeRun({ model: "original" })],
+          };
           yield* originalStore.save(path, original);
           const failingFs = Layer.succeed(FileSystem.FileSystem, {
             ...fs,
@@ -106,7 +101,10 @@ describe("ResultsStore", () => {
           });
           const failure = yield* Effect.flip(
             Effect.flatMap(ResultsStore, (store) =>
-              store.save(path, { schemaVersion: SCHEMA_VERSION, runs: [makeRun("new")] }),
+              store.save(path, {
+                schemaVersion: SCHEMA_VERSION,
+                runs: [makeRun({ model: "new" })],
+              }),
             ).pipe(Effect.provide(ResultsStore.Default.pipe(Layer.provide(failingFs)))),
           );
           expect(failure._tag).toBe("ResultsStoreError");
@@ -122,7 +120,7 @@ describe("ResultsStore", () => {
         const fs = yield* FileSystem.FileSystem;
         const store = yield* ResultsStore;
         yield* fs.writeFileString(path, "{broken");
-        expect((yield* Effect.flip(store.append(path, makeRun("haiku"))))._tag).toBe(
+        expect((yield* Effect.flip(store.append(path, makeRun({ model: "haiku" }))))._tag).toBe(
           "ResultsStoreError",
         );
         expect(yield* fs.readFileString(path)).toBe("{broken");
@@ -147,7 +145,7 @@ it.effect("rejects duplicate execution ids while preserving the previous documen
   withResultsStore((path) =>
     Effect.gen(function* () {
       const store = yield* ResultsStore;
-      const run = makeRun("model");
+      const run = makeRun({ model: "model" });
       yield* store.append(path, run);
       expect((yield* Effect.flip(store.append(path, run)))._tag).toBe("ResultsStoreError");
       expect((yield* store.load(path)).runs).toEqual([run]);
@@ -166,14 +164,14 @@ it.effect(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const originalStore = yield* ResultsStore;
-        const original = makeRun("shared-model");
+        const original = makeRun({ model: "shared-model" });
         yield* originalStore.append(path, original);
         const slowedFs = Layer.succeed(FileSystem.FileSystem, {
           ...fs,
           rename: (from, to) => Effect.sleep("50 millis").pipe(Effect.andThen(fs.rename(from, to))),
         });
-        const first = makeRun("shared-model");
-        const second = makeRun("shared-model");
+        const first = makeRun({ model: "shared-model" });
+        const second = makeRun({ model: "shared-model" });
         const independentAppend = (run: Run) =>
           Effect.flatMap(ResultsStore, (store) => store.append(path, run)).pipe(
             Effect.provide(ResultsStore.Default.pipe(Layer.provide(slowedFs))),
@@ -196,7 +194,7 @@ it.effect("removes its lock and staging files when a writer is interrupted", () 
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const originalStore = yield* ResultsStore;
-      const original = makeRun("original");
+      const original = makeRun({ model: "original" });
       yield* originalStore.append(path, original);
       const reachedRename = yield* Deferred.make<void>();
       const stalledFs = Layer.succeed(FileSystem.FileSystem, {
@@ -204,9 +202,9 @@ it.effect("removes its lock and staging files when a writer is interrupted", () 
         rename: () => Deferred.succeed(reachedRename, undefined).pipe(Effect.andThen(Effect.never)),
       });
       const fiber = yield* Effect.fork(
-        Effect.flatMap(ResultsStore, (store) => store.append(path, makeRun("interrupted"))).pipe(
-          Effect.provide(ResultsStore.Default.pipe(Layer.provide(stalledFs))),
-        ),
+        Effect.flatMap(ResultsStore, (store) =>
+          store.append(path, makeRun({ model: "interrupted" })),
+        ).pipe(Effect.provide(ResultsStore.Default.pipe(Layer.provide(stalledFs)))),
       );
       yield* Deferred.await(reachedRename);
       yield* Fiber.interrupt(fiber);

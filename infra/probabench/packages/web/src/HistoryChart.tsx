@@ -52,7 +52,7 @@ function HistoryTooltip(
             <strong>{run.model}</strong>
           </p>
           <div className="tooltip-value">
-            {gap(summary.calibrationError)}
+            {gap(summary.meanCalibrationError)}
             <span>mean calibration gap</span>
           </div>
           <p className="muted">

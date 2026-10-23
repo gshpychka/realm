@@ -1,9 +1,7 @@
 import {
-  counts,
-  observedRate,
+  measurePoint,
   ResultsJson,
   type Run,
-  rateInterval,
   SCHEMA_VERSION,
   summarizeRun,
 } from "@probabench/domain";
@@ -36,9 +34,7 @@ export function Measurements({ run }: { run: Run }) {
           {[...run.points]
             .sort((a, b) => a.x - b.x)
             .map((point) => {
-              const tally = counts(point.outcomes);
-              const interval = rateInterval(point.outcomes);
-              const observed = observedRate(point.outcomes);
+              const { observed, interval, ones, valid, invalid, total } = measurePoint(point);
               return (
                 <tr key={point.x}>
                   <th scope="row">{percent(point.x, 0)}</th>
@@ -49,10 +45,10 @@ export function Measurements({ run }: { run: Run }) {
                     {interval ? `${percent(interval[0], 0)}–${percent(interval[1], 0)}` : "—"}
                   </td>
                   <td>
-                    {number(tally.ones)} / {number(tally.ones + tally.zeros)}
+                    {number(ones)} / {number(valid)}
                   </td>
                   <td>
-                    {number(tally.invalid)} / {number(point.outcomes.length)}
+                    {number(invalid)} / {number(total)}
                   </td>
                 </tr>
               );
@@ -106,7 +102,7 @@ export function RunDetail({
       <div className="detail-stats">
         <div>
           <span>Mean calibration gap</span>
-          <strong>{gap(summary.calibrationError)}</strong>
+          <strong>{gap(summary.meanCalibrationError)}</strong>
         </div>
         <div>
           <span>Valid replies</span>

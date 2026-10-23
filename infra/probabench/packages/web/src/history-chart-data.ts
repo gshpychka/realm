@@ -23,7 +23,7 @@ export const buildHistoryChartModel = (
       const summary = summarizeRun(run);
       return {
         timestamp: Date.parse(run.startedAt),
-        score: summary.calibrationError,
+        score: summary.meanCalibrationError,
         run,
         summary,
       };

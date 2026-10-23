@@ -1,9 +1,8 @@
-import { randomUUID } from "node:crypto";
 import * as AiError from "@effect/ai/AiError";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as FileSystem from "@effect/platform/FileSystem";
 import { describe, expect, it } from "@effect/vitest";
-import { Probability, type Run } from "@probabench/domain";
+import { makeRun } from "@probabench/domain/testing";
 import * as Cause from "effect/Cause";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
@@ -16,16 +15,6 @@ import { executePlan, type SweepOptions, sweepAll } from "./run";
 import { chatEndpoint, withResultsStore } from "./test-fixtures";
 
 const target = (id: string): BenchTarget => ({ id, slug: id });
-const cannedRun = (model: string): Run => ({
-  id: randomUUID(),
-  model,
-  modelSlug: model,
-  reasoning: "off",
-  trialsPerStep: 2,
-  stepPercent: 100,
-  startedAt: "2026-06-26T00:00:00.000Z",
-  points: [{ x: Probability.make(0.5), outcomes: [1, 0] }],
-});
 const SWEEP_OPTIONS: SweepOptions = {
   trialsPerStep: 1,
   stepPercent: 100,
@@ -43,12 +32,12 @@ describe("sweepAll", () => {
   it.effect("appends independent repeated model runs and preserves siblings", () =>
     withResultsStore((path) =>
       Effect.gen(function* () {
-        const original = cannedRun("haiku");
-        const sibling = cannedRun("mini");
+        const original = makeRun({ model: "haiku" });
+        const sibling = makeRun({ model: "mini" });
         yield* sweepAll([target("haiku"), target("mini")], path, (t) =>
           Effect.succeed(t.id === "haiku" ? original : sibling),
         );
-        const repeated = cannedRun("haiku");
+        const repeated = makeRun({ model: "haiku" });
         yield* sweepAll([target("haiku")], path, () => Effect.succeed(repeated));
         const store = yield* ResultsStore;
         expect((yield* store.load(path)).runs).toEqual([original, sibling, repeated]);
@@ -64,7 +53,7 @@ describe("sweepAll", () => {
         });
         const error = yield* Effect.flip(
           sweepAll([target("first"), target("second")], path, (t) =>
-            t.id === "first" ? Effect.succeed(cannedRun(t.id)) : Effect.fail(failure),
+            t.id === "first" ? Effect.succeed(makeRun({ model: t.id })) : Effect.fail(failure),
           ),
         );
         expect(error).toBe(failure);
@@ -84,7 +73,7 @@ describe("sweepAll", () => {
           sweepAll([target("haiku")], path, (t) =>
             Effect.sync(() => {
               calls++;
-              return cannedRun(t.id);
+              return makeRun({ model: t.id });
             }),
           ),
         );
@@ -141,7 +130,7 @@ describe("OpenRouter execution preflight", () => {
           sweepAll([target("model")], `${path}/results.json`, (t) =>
             Effect.sync(() => {
               calls++;
-              return cannedRun(t.id);
+              return makeRun({ model: t.id });
             }),
           ),
         );

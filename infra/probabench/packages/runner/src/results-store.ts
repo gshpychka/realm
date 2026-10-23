@@ -13,9 +13,6 @@ import type { ParseError } from "effect/ParseResult";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
-/** The contract version stamped on documents this store creates. */
-export { SCHEMA_VERSION };
-
 /** A read, write, or decode failure against the results file. */
 export class ResultsStoreError extends Data.TaggedError("ResultsStoreError")<{
   readonly cause: PlatformError | ParseError;

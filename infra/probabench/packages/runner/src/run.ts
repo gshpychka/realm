@@ -1,6 +1,6 @@
 import type * as LanguageModel from "@effect/ai/LanguageModel";
 import type * as HttpClient from "@effect/platform/HttpClient";
-import { counts, type Run } from "@probabench/domain";
+import { type Run, summarizeRun } from "@probabench/domain";
 import type * as ConfigError from "effect/ConfigError";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -51,21 +51,13 @@ export const sweepTarget = <RClient>(
     Effect.provide(Layer.merge(retryingBitSampler, modelLayer)),
   );
 
-export const summarizeRun = (run: Run, out: string): string => {
-  const total = run.points.reduce(
-    (acc, point) => {
-      const tally = counts(point.outcomes);
-      return {
-        ones: acc.ones + tally.ones,
-        zeros: acc.zeros + tally.zeros,
-        invalid: acc.invalid + tally.invalid,
-      };
-    },
-    { ones: 0, zeros: 0, invalid: 0 },
-  );
+export const describeCompletedRun = (run: Run, out: string): string => {
+  const { valid, total, meanCalibrationError } = summarizeRun(run);
+  const gap =
+    meanCalibrationError === null ? "n/a" : `${(meanCalibrationError * 100).toFixed(1)} pp`;
   return (
-    `[${run.model}] run ${run.id} complete: ${run.points.length} points, ` +
-    `${total.ones} ones / ${total.zeros} zeros / ${total.invalid} invalid → saved to ${out}`
+    `[${run.model}] run ${run.id} complete: ${valid}/${total} valid, ` +
+    `mean calibration gap ${gap} → saved to ${out}`
   );
 };
 
@@ -85,7 +77,7 @@ export const sweepAll = <R, E>(
           yield* Console.log(`[${target.id}] starting sweep`);
           const run = yield* sweep(target);
           yield* store.append(out, run);
-          yield* Console.log(summarizeRun(run, out));
+          yield* Console.log(describeCompletedRun(run, out));
         }),
       { discard: true },
     );

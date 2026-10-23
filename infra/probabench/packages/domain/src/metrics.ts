@@ -1,98 +1,97 @@
-// Pure calibration metrics over the shared Trial contract.
-// Pure domain: no node/platform/AI/React imports.
-import type { Run, Trial } from "./schema";
+// Calibration metrics over the results contract.
+import type { Outcome, Point, Run } from "./schema";
 
-/** The fraction of valid replies that are 1, or null when no valid replies were sampled. */
-export const observedRate = (outcomes: ReadonlyArray<Trial>): number | null => {
-  const { ones, zeros } = counts(outcomes);
-  const valid = ones + zeros;
-  return valid === 0 ? null : ones / valid;
-};
+/** Two-sided 95% standard-normal quantile. */
+const Z_95 = 1.959963984540054;
 
-/** Absolute empirical calibration error. Sampling noise remains even for a calibrated model. */
-export const calibrationError = (outcomes: ReadonlyArray<Trial>, x: number): number | null => {
-  const observed = observedRate(outcomes);
-  return observed === null ? null : Math.abs(observed - x);
-};
-
-/** 95% Wilson score interval for the 1-rate, assuming independent, identically distributed valid samples. */
-export const rateInterval = (outcomes: ReadonlyArray<Trial>): readonly [number, number] | null => {
-  const { ones, zeros } = counts(outcomes);
-  const n = ones + zeros;
-  if (n === 0) return null;
-  const p = ones / n;
-  const z2 = 1.959963984540054 ** 2;
-  const scale = 1 + z2 / n;
-  const center = (p + z2 / (2 * n)) / scale;
-  const halfWidth = Math.sqrt((z2 * p * (1 - p)) / n + z2 ** 2 / (4 * n ** 2)) / scale;
-  return [Math.max(0, center - halfWidth), Math.min(1, center + halfWidth)];
-};
-
-/** Tally of how the trials resolved. */
-export interface Counts {
+/** How a point's outcomes resolved. */
+export interface Tally {
   readonly ones: number;
   readonly zeros: number;
   readonly invalid: number;
 }
 
-/** Counts of 1-bits, 0-bits, and invalid replies in an outcomes array. */
-export const counts = (outcomes: ReadonlyArray<Trial>): Counts => {
+const tally = (outcomes: ReadonlyArray<Outcome>): Tally => {
   let ones = 0;
   let zeros = 0;
   let invalid = 0;
-  for (const trial of outcomes) {
-    if (trial === 1) ones++;
-    else if (trial === 0) zeros++;
+  for (const outcome of outcomes) {
+    if (outcome === 1) ones++;
+    else if (outcome === 0) zeros++;
     else invalid++;
   }
   return { ones, zeros, invalid };
 };
 
-export interface RunSummary {
-  /** Mean absolute calibration error across recorded points with at least one valid reply, as a fraction. */
-  readonly calibrationError: number | null;
+/** 95% Wilson score interval for `ones` successes in `valid` > 0 independent samples. */
+const wilson95 = (ones: number, valid: number): readonly [number, number] => {
+  const p = ones / valid;
+  const z2 = Z_95 ** 2;
+  const scale = 1 + z2 / valid;
+  const center = (p + z2 / (2 * valid)) / scale;
+  const halfWidth = Math.sqrt((z2 * p * (1 - p)) / valid + z2 ** 2 / (4 * valid ** 2)) / scale;
+  return [Math.max(0, center - halfWidth), Math.min(1, center + halfWidth)];
+};
+
+/**
+ * What was measured at one target. Invalid outcomes are counted but excluded from
+ * the rate, so the rate fields are null when no outcome is valid.
+ */
+export interface PointMeasurement extends Tally {
   readonly valid: number;
-  readonly invalid: number;
   readonly total: number;
-  /** Fraction of sampled replies that are valid bits. */
+  /** Fraction of valid outcomes that are 1. */
+  readonly observed: number | null;
+  readonly interval: readonly [number, number] | null;
+  /** Absolute calibration error; sampling noise keeps it above 0 even for a calibrated model. */
+  readonly error: number | null;
+}
+
+export const measurePoint = ({ x, outcomes }: Point): PointMeasurement => {
+  const counted = tally(outcomes);
+  const valid = counted.ones + counted.zeros;
+  const measured = { ...counted, valid, total: outcomes.length };
+  if (valid === 0) return { ...measured, observed: null, interval: null, error: null };
+  const observed = counted.ones / valid;
+  return {
+    ...measured,
+    observed,
+    interval: wilson95(counted.ones, valid),
+    error: Math.abs(observed - x),
+  };
+};
+
+export interface RunSummary {
+  /** Mean absolute calibration error over the points with a valid outcome, as a fraction. */
+  readonly meanCalibrationError: number | null;
+  readonly valid: number;
+  readonly total: number;
+  /** Fraction of outcomes that are valid bits. */
   readonly validity: number;
+  /** Points with at least one valid outcome. */
   readonly coveredPoints: number;
   readonly totalPoints: number;
-  /** Fraction of recorded target points with valid replies; this does not measure planned-grid completeness. */
-  readonly coverage: number;
 }
 
 /**
- * Summarize a sweep without hiding failures. Each covered probability point has
- * equal weight, so higher validity at one target cannot dominate the calibration
- * score. All-invalid targets are omitted from error and reflected in coverage.
- * Finite-sample noise remains; compare runs together with coverage and validity.
+ * Summarize a sweep without hiding failures. Each covered point has equal weight,
+ * so higher validity at one target cannot dominate the score. All-invalid points
+ * are left out of the error and show up in coveredPoints instead. Finite-sample
+ * noise remains; compare runs together with coverage and validity.
  */
 export const summarizeRun = (run: Run): RunSummary => {
-  let valid = 0;
-  let invalid = 0;
-  let coveredPoints = 0;
-  let totalError = 0;
-  for (const point of run.points) {
-    const tally = counts(point.outcomes);
-    const validAtPoint = tally.ones + tally.zeros;
-    valid += validAtPoint;
-    invalid += tally.invalid;
-    if (validAtPoint > 0) {
-      coveredPoints++;
-      totalError += Math.abs(tally.ones / validAtPoint - point.x);
-    }
-  }
-  const total = valid + invalid;
-  const totalPoints = run.points.length;
+  const measured = run.points.map(measurePoint);
+  const errors = measured.flatMap((point) => (point.error === null ? [] : [point.error]));
+  const valid = measured.reduce((sum, point) => sum + point.valid, 0);
+  const total = measured.reduce((sum, point) => sum + point.total, 0);
   return {
-    calibrationError: coveredPoints === 0 ? null : totalError / coveredPoints,
+    meanCalibrationError:
+      errors.length === 0 ? null : errors.reduce((sum, error) => sum + error, 0) / errors.length,
     valid,
-    invalid,
     total,
-    validity: total === 0 ? 0 : valid / total,
-    coveredPoints,
-    totalPoints,
-    coverage: totalPoints === 0 ? 0 : coveredPoints / totalPoints,
+    // A decoded Run has at least one point with trialsPerStep ≥ 1 outcomes, so total ≥ 1.
+    validity: valid / total,
+    coveredPoints: errors.length,
+    totalPoints: run.points.length,
   };
 };

@@ -190,7 +190,7 @@ export function History({
                             </span>
                           </span>
                           <span className="history-row-metric">
-                            <strong>{gap(summary.calibrationError)}</strong>
+                            <strong>{gap(summary.meanCalibrationError)}</strong>
                             <span>{percent(summary.validity, 0)} valid</span>
                           </span>
                           <span className="row-arrow" aria-hidden="true">

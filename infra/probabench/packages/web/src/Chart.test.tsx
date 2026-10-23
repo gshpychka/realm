@@ -1,19 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Run } from "@probabench/domain";
-import * as Schema from "effect/Schema";
+import { makeRun } from "@probabench/domain/testing";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Measurements, RunDetail } from "./RunDetail";
 
-const run = Schema.decodeUnknownSync(Run)({
-  id: "run-1",
+const run = makeRun({
   model: "model.<script>",
-  modelSlug: "vendor/model",
-  reasoning: "off",
-  trialsPerStep: 2,
-  stepPercent: 50,
-  startedAt: "2026-06-26T00:00:00.000Z",
   points: [
-    { x: 0.5, outcomes: [1, { invalidText: "nope" }] },
+    { x: 0, outcomes: [1, { invalidText: "nope" }] },
     { x: 1, outcomes: [{ invalidText: "x" }, { invalidText: "y" }] },
   ],
 });
