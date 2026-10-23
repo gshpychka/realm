@@ -1850,7 +1850,7 @@ export class Orchestrator {
             `Immutable writable input: ${owned.attempt.inputArtifactId}. Work in /work/workspace. Submit artifact:true to retain code.`,
           ]
         : []),
-      ...owned.run.repos.map((repo) => `Exact read-only context: ${repo}`),
+      ...owned.run.repos.map((repo) => `Additional repository (writable checkout): ${repo}`),
       ...owned.task.dependencies.map(
         (item) =>
           `Dependency ${item.taskId} revision ${item.revision}: report ${item.reportId}, artifact ${item.artifactId}`,
@@ -1865,7 +1865,7 @@ export class Orchestrator {
     const descriptions = {
       delegate: "Delegate a bounded task to a declared agent.",
       inspect: "Inspect current task and result identities.",
-      message: "Send attributable context to another task or the operator.",
+      message: "Send attributable context to another task. Use ask for an operator answer.",
       ask: "Ask the operator a question and end this turn until an answer arrives.",
       submit: "Submit an immutable report; set artifact:true to retain code. This ends the turn.",
       yield: "End this turn while waiting for relevant results or messages.",
