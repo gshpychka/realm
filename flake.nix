@@ -326,32 +326,34 @@
         in
         lib.recursiveUpdate (lib.recursiveUpdate nixosChecks lintChecks) {
           aarch64-darwin.eve = self.darwinConfigurations.eve.config.system.build.toplevel;
-          x86_64-linux = {
-            inherit (projectPackages.x86_64-linux) bay flare;
-            pituitary-agents = import ./tests/pituitary-agents.nix {
+          x86_64-linux =
+            let
               pkgs = nixpkgs.legacyPackages.x86_64-linux;
-            };
-            pituitary-catalog = import ./tests/pituitary-catalog.nix {
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
-            };
-            bay-vm = import ./tests/bay.nix {
-              inherit inputs;
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
-            };
-            bay-shellcheck =
-              let
-                pkgs = nixpkgs.legacyPackages.x86_64-linux;
-              in
-              pkgs.runCommand "check-bay-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
-                shellcheck --shell=bash ${./packages/bay/bay-session.sh}
+              hoard = self.nixosConfigurations.hoard.config.system.build;
+            in
+            {
+              inherit (projectPackages.x86_64-linux) bay flare;
+              pituitary-agents = import ./tests/pituitary-agents.nix { inherit pkgs; };
+              pituitary-catalog = import ./tests/pituitary-catalog.nix { inherit pkgs; };
+              bay-vm = import ./tests/bay.nix { inherit inputs pkgs; };
+              bay-shellcheck =
+                pkgs.runCommand "check-bay-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; }
+                  ''
+                    shellcheck --shell=bash ${./packages/bay/bay-session.sh}
+                    touch $out
+                  '';
+              voice-broker = pkgs.callPackage ./packages/voice-broker { };
+              nixos-control = hoard.nixosControl;
+              arr-sync = hoard.arrSync;
+              tautulli = hoard.tautulliConfig;
+              kodi = pkgs.runCommand "check-kodi" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+                cd ${self}
+                python3 -m unittest discover -s tests -p 'test_kodi_*.py'
                 touch $out
               '';
-            iso = self.nixosConfigurations.iso.config.system.build.isoImage;
-            nixos-switch = import ./tests/nixos-switch.nix {
-              inherit inputs;
-              pkgs = nixpkgs.legacyPackages.x86_64-linux;
+              iso = self.nixosConfigurations.iso.config.system.build.isoImage;
+              nixos-switch = import ./tests/nixos-switch.nix { inherit inputs pkgs; };
             };
-          };
         };
 
       # `nix fmt` — treefmt drives the per-language formatters (see treefmt.toml)

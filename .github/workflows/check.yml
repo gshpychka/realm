@@ -11,14 +11,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  flake-check:
+  fleet:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
       # Fleet-wide eval: all systems, no machine builds.
       - run: nix flake check --all-systems --no-build
-      # --no-build skips the check derivations, so run the source checks explicitly.
+
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
       - name: Check source
         run: >-
           nix build --no-link -L
@@ -27,14 +32,17 @@ jobs:
           .#checks.x86_64-linux.treefmt
           .#checks.x86_64-linux.biome
           .#checks.x86_64-linux.ruff
-          .#checks.x86_64-linux.pi-extensions
-          .#checks.x86_64-linux.link-sanitizer
-          .#checks.x86_64-linux.voice-pe
-      - name: Build packages and module checks
+
+  bay:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      # Building Bay runs every Go package's tests, including Flare's.
+      - name: Check Bay
         run: >-
           nix build --no-link -L
-          .#pituitary .#bay .#flare
-          .#checks.x86_64-linux.pituitary-home-manager
+          .#bay .#flare
           .#checks.x86_64-linux.bay-shellcheck
 
   pituitary:
@@ -42,7 +50,70 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
+      - name: Build Pituitary and check its modules
+        run: >-
+          nix build --no-link -L
+          .#pituitary
+          .#checks.x86_64-linux.pituitary-home-manager
+          .#checks.x86_64-linux.pituitary-agents
+          .#checks.x86_64-linux.pituitary-catalog
       - name: Check Pituitary
         run: >-
           nix develop .#pituitary --command bash -c
           'cd packages/pituitary && bun install --frozen-lockfile && just typecheck lint unit e2e'
+
+  pi-extensions:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.pi-extensions
+
+  link-sanitizer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.link-sanitizer
+
+  voice-pe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.voice-pe
+
+  voice-broker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.voice-broker
+
+  nixos-control:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.nixos-control
+
+  arr-sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.arr-sync
+
+  tautulli:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.tautulli
+
+  kodi:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix build --no-link -L .#checks.x86_64-linux.kodi

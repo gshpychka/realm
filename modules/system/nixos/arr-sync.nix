@@ -457,6 +457,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    system.build.arrSync = engine;
     environment.systemPackages = [ preview ];
 
     assertions = lib.mapAttrsToList (tname: t: {
