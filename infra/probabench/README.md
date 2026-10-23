@@ -1,168 +1,104 @@
 # ProbaBench
 
 Can language models sample the probabilities they are given? ProbaBench asks for
-`1` with probability `p`, repeats that request across a probability sweep, and
-plots the observed frequency. Every completed sweep is kept in its history.
-OpenRouter is the only provider.
+`1` with probability `x`, repeats that request across a probability sweep, and
+plots the observed frequency. Every completed run is kept in its history.
+OpenRouter is the only provider. The notebook's Method tab explains the
+calibration error, the 95% Wilson intervals and their caveats.
 
-## Start here
+## Run locally
 
 From the Realm root:
 
 ```sh
 nix develop .#infra
 cd infra/probabench
+sops ../../secrets/infra/probabench.env  # once: OPENROUTER_API_KEY=<OpenRouter API key>
 bun install --frozen-lockfile
-cp .env.example .env.local
-# Set OPENROUTER_API_KEY in .env.local.
 bun run dev
 ```
 
-Open the local URL, select **New benchmark**, choose an OpenRouter model and a
-sampling preset, then start. The page shows progress, supports cancellation,
-and refreshes the charts after completion. Adding or changing the key in
-`.env.local` takes effect without restarting the server.
+`bun run dev` serves the notebook from Vite on 127.0.0.1 with the key decrypted
+through `sops exec-env`. Its dev bridge lets the page start a benchmark: it
+accepts same-origin requests only, runs one benchmark at a time by spawning the
+CLI, and limits a browser run to one model, 10,000 samples per target, 100,000
+samples in total and 50 concurrent requests (5 by default).
+`bun run dev:alchemy` runs the same Vite server under Alchemy's dev runtime,
+with local state; it needs Docker for Alchemy's AWS emulator.
 
-The local runner listens on loopback, accepts same-origin requests only, and
-runs one benchmark at a time. API keys stay in the server environment; the page
-never asks for one. Provider requests incur charges. The form shows sample and
-maximum retry budgets before starting; monetary cost depends on the model and
-its actual token usage.
+## CLI
 
-Quick uses 50 samples, Standard 550, and Thorough 2,100. Custom trial counts,
-probability steps, concurrency and reasoning are available. Browser runs allow
-up to 100,000 samples and 50 concurrent requests. The CLI supports larger runs.
-Presets keep the setup short; custom budgets and advanced settings open only
-when needed. During a run, progress comes first and the full runner output is
-available separately. Closing the dialog keeps the benchmark running; reopen
-**View progress** to check it or cancel. **View results** opens refreshed history.
-
-## Run from the terminal
+The infra shell's `probabench` runs the CLI from any directory with the key
+decrypted:
 
 ```sh
-# Guided model and sampling setup in an interactive terminal.
-bun run bench
-
-# List the convenience aliases; any OpenRouter vendor/model ID also works.
-bun run bench --list
-
-# Inspect a plan without credentials or any model requests.
-bun run bench --model anthropic/claude-haiku-4.5 --trials 10 --step 25 --dry-run
-
-# Run a small sweep; omit --yes to review an interactive confirmation.
-bun run bench --model anthropic/claude-haiku-4.5 --trials 10 --step 25 --yes
-
-# Compare models and enable reasoning explicitly when the model supports it.
-bun run bench --model anthropic/claude-sonnet-4.5,google/gemini-2.5-flash --trials 100 --yes
-bun run bench --model openai/gpt-5-mini --reasoning low --trials 20 --yes
+probabench          # guided setup in an interactive terminal
+probabench --list   # model aliases; any OpenRouter model ID works too
+probabench --model claude-haiku-4.5 --trials 10 --step 25 --dry-run
+probabench --model anthropic/claude-haiku-4.5,google/gemini-2.5-flash --trials 100 --yes
+probabench --model openai/gpt-5-mini --reasoning low --trials 20 --yes
+probabench --help   # every option and its default
 ```
 
-Bun loads `.env.local` automatically. You can also export
-`OPENROUTER_API_KEY` in your environment. A noninteractive command needs both
-`--model` and `--yes` (or `--dry-run`).
+It prints the plan, with its sample count and worst-case provider attempts, and
+asks before running unless `--yes` is given; without a terminal it refuses.
+`--dry-run` stops after the plan. The aliases are in
+`packages/domain/src/plan/models.ts`; `--reasoning` overrides an alias's mode,
+and a model ID defaults to off.
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `--model`, `-m` | guided setup | OpenRouter IDs or aliases, comma-separated; `all` expands every alias |
-| `--list` | off | Show available convenience aliases |
-| `--trials` | `100` | Samples at each probability |
-| `--step` | `10` | Probability step in percent, 1–100; always includes both endpoints |
-| `--concurrency` | `10` | Maximum simultaneous requests within a probability step |
-| `--reasoning` | alias config, otherwise off | `off`, `low`, `medium`, `high`, `xhigh` |
-| `--max-tokens` | `4096` | Output token ceiling for reasoning targets |
-| `--out` | `packages/web/public/data/results.json` | History file; the default resolves from the runner, independent of the current directory |
-| `--yes`, `-y` | off | Confirm execution without prompting |
-| `--dry-run` | off | Validate and print the plan without provider calls |
+Samples use the provider's default temperature, top_p and top_k. An attempt
+times out after two minutes; timeouts, transport failures, 408, 429 and 5xx
+responses retry up to five times, honoring `Retry-After` for up to a minute, and
+any other failure aborts the benchmark.
 
-Model IDs and reasoning support depend on OpenRouter. The small alias list in
-[`models.ts`](packages/domain/src/plan/models.ts) is optional; no code change is
-needed to use another OpenRouter model. Explicit reasoning overrides the alias
-configuration. Distinct reasoning modes remain distinct chart series.
+## History
 
-Each sample uses a fresh system/user prompt. `temperature`, `top_p`, and `top_k`
-retain provider defaults. Only trimmed `0` or `1` is valid; other responses are
-recorded as invalid text. Attempts time out after two minutes. Transport
-failures, rate limits and server errors retry at most five times, honoring
-`Retry-After`; permanent failures abort.
+`packages/web/public/data/results.json` is the history and its only copy. The
+CLI appends to it, also when the dev bridge starts it, and the notebook reads
+it. Each model's run is appended as soon as it completes, so an aborted or
+cancelled benchmark keeps the runs it finished and loses only the one in progress.
+Commit the file after each benchmark: `bun run deploy` publishes the working-tree
+copy, committed or not.
 
-## Explore results
+Saves hold `results.json.lock`. A writer that finds it waits five seconds, then
+fails and names it. If a killed process left it behind, possibly with a
+`.probabench-*` temporary directory, and no benchmark is running, delete both.
 
-The Gruvbox dark dashboard has a calibration plot, model filters, a benchmark
-history graph, and a run inspector. Select a history point or a recorded run to
-inspect its calibration curve and measurements. History tracks mean absolute
-calibration error in percentage points; lower measured error is better, subject
-to sample noise. Runs with no valid measurements have no score.
-
-The calibration diagonal is the expected frequency: a 30% target should produce
-about 30% ones. Error bars are pointwise 95% Wilson intervals assuming independent
-valid samples. Invalid replies are excluded from observed frequencies and shown
-separately; review both validity and point coverage before comparing scores.
-Scores average absolute error equally across points with valid replies.
-Different grids, trial counts, reasoning settings, and missing measurements can
-change scores. Small samples can make even calibrated models appear inaccurate.
-
-Model filters apply to both the history graph and its list. Search matches model
-IDs, reasoning and run IDs. The selected run always belongs to the visible set.
-Keyboard users can select graph points with Enter or Space, or use the list.
-Model colors stay stable as runs append; additional line patterns distinguish
-models when the palette repeats. Calibration curves retain their own target
-grids when comparing runs with different sampling steps.
-
-**Copy view link** saves the view, selected snapshots, filters and uncertainty
-display in the address. A copied comparison keeps its exact runs even when newer
-measurements are added. Browser Back and Forward restore the view. In the run
-inspector, **Run again** fills in the recorded model, grid and reasoning for
-review before starting; concurrency defaults to five because it is not recorded
-in historical results. **Download JSON** exports that run with its raw outcomes
-as a validated version 2 results document.
-
-History is append-only. Each completed sweep has a unique execution ID, model,
-reasoning mode, timestamp, settings and raw outcomes. Rerunning a model keeps
-its earlier sweeps. Every save validates history, flushes
-a temporary file and atomically renames it. Invalid existing history fails
-before paid requests. A short filesystem lock serializes saves across the local
-page and independent CLI processes, so simultaneous completed runs retain both
-entries. A writer waits up to five seconds for a busy history file. If a process
-is forcibly killed while saving, its `<results-path>.lock` and a `.probabench-*`
-temporary directory beside it may remain: verify no writer is active, then
-remove them before retrying or building. Cancellation
-or failure keeps completed sweeps; the current incomplete sweep is not saved.
-
-The committed history starts empty. No fabricated measurements are published.
-
-## Publish with Alchemy
+## Deploy
 
 ```sh
 bun run plan
-bun run deploy
+bun run deploy   # bun run destroy removes the prod stage, not the bootstrap bucket
 ```
 
-The stack publishes the Vite build and current history to private S3 behind
-HTTPS CloudFront, using AWS-backed state and a fixed `prod` stage. It waits for
-CDN invalidation. HTML and history revalidate; hashed assets are immutable.
-
-The published page is a results explorer with a copyable benchmark command.
-The local execution API exists only in the development server. Run experiments
-locally, then deploy to publish the updated history. See
-[`infra/README.md`](infra/README.md) for AWS configuration and teardown.
+`packages/stack/alchemy.run.ts` builds `packages/web` with the working-tree
+history and serves it from a private S3 bucket behind CloudFront, so the hosted
+site changes only on deploy. It uses the Alchemy profile and the account's
+assets bucket from [link-sanitizer's one-time steps](../link-sanitizer/README.md#deploy).
+`patches/` carries
+[alchemy-run/distilled#650](https://github.com/alchemy-run/distilled/pull/650),
+as link-sanitizer does, so SSO profiles resolve from the infra shell's
+`AWS_CONFIG_FILE`.
 
 ## Development
 
-The Bun workspace contains `packages/domain` (validated contracts and metrics),
-`packages/runner` (OpenRouter CLI), `packages/web` (dashboard and local development
-bridge), and `infra` (Alchemy). Application code uses Effect 3; the isolated
-Alchemy 2 workspace uses Effect 4, matching Link Sanitizer.
+| Package | Contents |
+| --- | --- |
+| `packages/domain` | Results schema and metrics, run-plan vocabulary, the progress-line format |
+| `packages/runner` | The OpenRouter CLI |
+| `packages/web` | The notebook, and `dev-bridge/`, the Vite plugin that runs the CLI |
+| `packages/stack` | The Alchemy stack |
+
+The application packages use Effect 3; the stack uses Effect 4, as
+link-sanitizer does.
 
 ```sh
-bun run check      # types, offline tests, production build
-bun run lint       # Realm Biome checks
-bun run format
+bun run check   # types, tests and the production build; no test calls OpenRouter
 ```
 
-`bun install` regenerates `bun.nix` through the pinned infra-shell bun2nix.
-Commit `bun.lock` and `bun.nix` together after dependency changes. Realm CI runs
-`nix build .#checks.x86_64-linux.probabench`, which installs locked dependencies
-and runs the checks in the Nix sandbox. No test needs live provider credentials.
+`nix build .#checks.x86_64-linux.probabench` runs the same check offline from
+`bun.nix`, which `bun install` regenerates; commit it with `bun.lock`. `nix fmt`
+formats with Realm's Biome config, and `nix flake check` lints with it.
 
-ProbaBench was imported into Realm from `~/projects/personal/probabench` at
-`3694e6a`; the previous standalone flake and pnpm tooling are retired.
+Imported from the standalone probabench repository at `3694e6a`; that
+repository and its flake are retired.

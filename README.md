@@ -58,7 +58,7 @@ service is a host decision in `machines/`. `lib.bayGuestImage` builds a standalo
 Bay guest image. The former standalone Bay and Pituitary repositories are retired.
 
 [ProbaBench](infra/probabench) benchmarks how accurately language models follow
-requested sampling probabilities. Its runner, results chart and AWS Alchemy
+requested sampling probabilities. Its CLI, results notebook and AWS Alchemy
 deployment live under `infra/probabench`; use `nix develop .#infra` to work on it.
 
 ## Usage

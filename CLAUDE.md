@@ -49,5 +49,6 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
 ## Notes
 - Pituitary and Bay are maintained here; do not restore their former flake inputs. Public modules are `modules/home-manager/pituitary.nix`, `modules/system/nixos/pituitary.nix`, and `modules/system/nixos/bay.nix`.
 - Use `nix develop .#pituitary` and `cd packages/pituitary && just loop` for its complete development loop. Bay's `nix build .#bay` runs its Go tests; `.#checks.x86_64-linux.bay-vm` exercises nested VMs and needs KVM.
+- ProbaBench (`infra/probabench`) is worked on in `nix develop .#infra`: `bun run check` there runs its types, tests and production build, which `.#checks.x86_64-linux.probabench` repeats offline. After dependency changes, `bun install` regenerates `bun.nix`; commit it with `bun.lock`.
 - Nix only sees files that are tracked by git - run `git add` after creating new files before checking config
 - At a major configuration milestone, evaluate with `nix flake check --all-systems --no-build`; build the relevant packages and checks together.
