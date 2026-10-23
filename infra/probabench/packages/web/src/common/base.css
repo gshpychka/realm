@@ -4,7 +4,7 @@
  *
  * Breakpoints, nested in the rules they change:
  *   1100px  narrower side columns
- *    900px  one column (history/HistoryPage.tsx STACKED_LAYOUT mirrors it)
+ *    900px  one column (../history/HistoryPage.tsx STACKED_LAYOUT mirrors it)
  *    650px  phone layout; form fields grow to 16px, below which iOS Safari
  *           zooms into a focused field
  *    350px  the smallest phones
