@@ -94,13 +94,21 @@ describe("createBenchController", () => {
     expect(() => controller.start(request)).toThrow("already running");
   });
 
-  it("reports a cancelled run as cancelled even though the runner exits 0", async () => {
+  it("reports a run its cancel interrupted as cancelled", async () => {
     const { child, controller } = withFake();
     controller.start(request);
     expect(controller.cancel().job?.status).toBe("running");
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
-    await exit(child, 0);
+    await exit(child, 130);
     expect(controller.status().job?.status).toBe("cancelled");
+  });
+
+  it("reports a run that completes despite a late cancel as completed", async () => {
+    const { child, controller } = withFake();
+    controller.start(request);
+    controller.cancel();
+    await exit(child, 0);
+    expect(controller.status().job?.status).toBe("completed");
   });
 
   describe("after a cancel", () => {
@@ -125,7 +133,7 @@ describe("createBenchController", () => {
       const { child, controller } = withFake();
       controller.start(request);
       controller.cancel();
-      await exit(child, 0);
+      await exit(child, 130);
       vi.advanceTimersByTime(3_000);
       expect(child.kill.mock.calls).toEqual([["SIGTERM"]]);
     });

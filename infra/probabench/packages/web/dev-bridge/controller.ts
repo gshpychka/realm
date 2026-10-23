@@ -83,12 +83,13 @@ export function createBenchController({
       child.once("close", (code) => {
         clearTimeout(killTimer);
         runner = null;
-        // runMain exits 0 when SIGTERM interrupts it, so a requested stop outranks the exit code.
+        // A run that saved before a late cancel landed exits 0 and is completed. A stop that
+        // cut it short exits 130 on SIGTERM, or with no code after SIGKILL.
         update((current) =>
-          stopping
-            ? { status: "cancelled" }
-            : code === 0
-              ? { status: "completed" }
+          code === 0
+            ? { status: "completed" }
+            : stopping
+              ? { status: "cancelled" }
               : {
                   status: "failed",
                   error:
