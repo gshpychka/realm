@@ -82,6 +82,11 @@ test("team conversations, attention and retained results stay readable in compac
     assert.match(result, /Code retained/);
     assert.match(result, /Independent checks: passed/);
     assert.match(result, /types · passed/);
+    assert.doesNotMatch(result, /i integrate/);
+    await pastGrace();
+    await app.terminal.type("i");
+    await app.terminal.waitIdle();
+    assert.match(await app.terminal.text(), /Independent checks: passed/);
     assert.doesNotMatch(result, /ctrl\+k tasks/);
     await pastGrace();
     await app.terminal.keyboard.press("Escape");
@@ -101,6 +106,78 @@ test("team conversations, attention and retained results stay readable in compac
     assert.match(await app.capture("team-reload-parent"), /Observing/);
   } finally {
     await app?.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("failed verification keeps its diagnostic visible in the result", async () => {
+  const home = mkdtempSync("/tmp/pituitary-failed-check-ui-");
+  const app = await boot({
+    entry: join(REPO, "packages/tui/src/managed.fixture.tsx"),
+    cols: 100,
+    rows: 28,
+    ready: "waiting for builder",
+    env: {
+      HOME: home,
+      PITUITARY_UI_STATE: join(home, "frontend.json"),
+      PITUITARY_FIXTURE_FAILED_CHECK: "1",
+      PITUITARY_STILL: "1",
+      PITUITARY_GH: "",
+    },
+  });
+  try {
+    await app.terminal.write("\x0b");
+    await app.terminal.waitText("tasks · choose");
+    await pastGrace();
+    await app.terminal.type("reviewer");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Archived");
+    await app.terminal.write("/");
+    await app.terminal.waitText("archived conversation");
+    await pastGrace();
+    await app.terminal.type("result");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Missing exported member: keyboardShortcut");
+    const screen = await app.capture("team-failed-check-output");
+    assert.match(screen, /output truncated/);
+    assert.doesNotMatch(screen, /i integrate/);
+  } finally {
+    await app.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a failed Back keeps its history entry available for a retry", async () => {
+  const home = mkdtempSync("/tmp/pituitary-back-ui-");
+  const app = await boot({
+    entry: join(REPO, "packages/tui/src/managed.fixture.tsx"),
+    cols: 100,
+    rows: 28,
+    ready: "waiting for builder",
+    env: {
+      HOME: home,
+      PITUITARY_UI_STATE: join(home, "frontend.json"),
+      PITUITARY_FIXTURE_FAIL_BACK: "1",
+      PITUITARY_STILL: "1",
+      PITUITARY_GH: "",
+    },
+  });
+  try {
+    await app.terminal.write("\x0b");
+    await app.terminal.waitText("tasks · choose");
+    await pastGrace();
+    await app.terminal.type("builder");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Observing");
+    await app.terminal.write("\x1b[1;3D");
+    await app.terminal.waitText("The previous input lease is unavailable");
+    const failed = await app.capture("team-back-failed");
+    assert.match(failed, /‹ back/);
+    await app.terminal.write("\x1b[1;3D");
+    await waitMatch(app.terminal, /command-menu · coordinator/);
+    assert.doesNotMatch(await app.capture("team-back-retried"), /Observing/);
+  } finally {
+    await app.close();
     rmSync(home, { recursive: true, force: true });
   }
 });

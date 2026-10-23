@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
+import { Bay } from "./bay.ts";
+import { BayExecutionEnv } from "./bay-environment.ts";
 import { bayWorkspaceFixture } from "./bay-workspace.fixture.ts";
 import type { AgentDefinition } from "./catalog.ts";
 import { rootAttempt, waitRun } from "./runtime.fixture.ts";
@@ -27,6 +30,44 @@ function role(name: string, tools: AgentDefinition["manifest"]["tools"]): AgentD
     machineRevision: (name === "writer" ? "a" : "b").repeat(64),
   };
 }
+
+test("the workspace fixture reports cancellation and keeps the environment usable", async () => {
+  const root = await mkdtemp("/tmp/pituitary-fixture-cancel-"),
+    writer = role("writer", ["bash"]),
+    bay = await bayWorkspaceFixture(root, { writer });
+  const session = await new Bay(bay.catalog.baySocket).start("one", writer, []),
+    env = new BayExecutionEnv(
+      {
+        kind: "bay",
+        socket: bay.catalog.baySocket,
+        sessionName: session.name,
+        recordId: session.id,
+        generation: session.generation,
+        agent: writer,
+        repos: [],
+      },
+      ".",
+    );
+  try {
+    const abort = new AbortController(),
+      command = env.exec(
+        "printf ready; sleep 30",
+        {
+          onOutput: () => abort.abort(),
+        },
+        withAbortSignal(abort.signal, BACKGROUND_CONTEXT),
+      );
+    expect(await command).toMatchObject({ ok: false, error: { code: "aborted" } });
+    expect(await env.exec("printf available", undefined, BACKGROUND_CONTEXT)).toMatchObject({
+      ok: true,
+      value: { exitCode: 0 },
+    });
+  } finally {
+    await env.close();
+    await bay.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}, 10_000);
 
 test("a native model writes through Bay, retains code, verifies in a fresh machine and applies explicitly across restart", async () => {
   const root = await mkdtemp("/tmp/pituitary-native-code-"),
@@ -80,9 +121,15 @@ test("a native model writes through Bay, retains code, verifies in a fresh machi
     fauxAssistantMessage(fauxToolCall("write", { path: "result.txt", content: "retained change\n" }), {
       stopReason: "toolUse",
     }),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "cat result.txt", timeout: 5 }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", {
+        command: "cat /work/workspace/result.txt; printf guest > /tmp/result.txt; cat /tmp/result.txt",
+        timeout: 5,
+      }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage(
       fauxToolCall("submit", { summary: "Retained the requested code change.", artifact: true }),
       { stopReason: "toolUse" },
@@ -117,6 +164,7 @@ test("a native model writes through Bay, retains code, verifies in a fresh machi
     const sourceSession = rootAttempt(submitted).execution!.sessionName,
       sourceGuest = bay.guests.get(sourceSession)!;
     expect(await readFile(join(sourceGuest.work, "workspace/result.txt"), "utf8")).toBe("retained change\n");
+    expect(await readFile(join(sourceGuest.temporary, "result.txt"), "utf8")).toBe("guest");
     await host.close();
     host = await startRuntime(options);
     expect(faux.state.callCount).toBe(3);
@@ -223,6 +271,10 @@ test("stop reconciles and suspends a verifier allocated before its launch respon
     const stopped = await runtime.inspect(run.id),
       verification = stopped.verifications[0]!;
     expect(verification.status).toBe("cancelled");
+    expect(stopped.tasks.find((task) => task.id === stopped.run.rootTaskId)).toMatchObject({
+      status: "cancelled",
+      verificationId: null,
+    });
     expect(verification.execution).toEqual({
       sessionName: guest.session.name,
       recordId: guest.session.id,
@@ -496,3 +548,109 @@ test("withdrawing a child report revokes an exporting ancestor while preserving 
     await rm(root, { recursive: true, force: true });
   }
 }, 60_000);
+
+for (const outcome of ["conflict", "verification failure"] as const)
+  test(`a yielded coordinator wakes after child ${outcome}`, async () => {
+    const root = await mkdtemp("/tmp/pituitary-native-parent-notice-"),
+      cwd = join(root, "source"),
+      stateDirectory = join(root, "state");
+    await git(root, ["init", "-q", cwd]);
+    await git(cwd, ["config", "user.name", "Operator"]);
+    await git(cwd, ["config", "user.email", "operator@localhost"]);
+    await writeFile(join(cwd, "shared.txt"), "original\n");
+    await git(cwd, ["add", "."]);
+    await git(cwd, ["commit", "-qm", "Original"]);
+    const coordinator = role("coordinator", []),
+      writer = role("writer", ["write"]),
+      verifier = role("verifier", []);
+    coordinator.manifest.delegatesTo = ["writer"];
+    coordinator.manifest.limits = { maxChildren: 2, maxDepth: 1 };
+    if (outcome === "verification failure")
+      writer.verification = {
+        agent: "verifier",
+        checks: { unit: { command: ["sh", "-c", "true"], timeoutMs: 10_000 } },
+      };
+    let sawFirstReport!: () => void;
+    const firstReport = new Promise<void>((resolve) => (sawFirstReport = resolve));
+    const bay = await bayWorkspaceFixture(
+      root,
+      { coordinator, writer, verifier },
+      {
+        beforeStart: async (session) => {
+          if (session.machine === "verifier") {
+            await firstReport;
+            throw new Error("Verifier machine unavailable");
+          }
+        },
+      },
+    );
+    const faux = fauxProvider(),
+      models = createModels();
+    models.setProvider(faux.provider);
+    faux.setResponses(
+      Array.from({ length: 40 }, () => async (transcript) => {
+        const first = JSON.stringify(transcript.messages.find((message) => message.role === "user")),
+          last = transcript.messages.at(-1);
+        if (first.includes("Child A") || first.includes("Child B"))
+          return fauxAssistantMessage(
+            last?.role === "toolResult" && last.toolName === "write"
+              ? fauxToolCall("submit", { summary: "Child code result.", artifact: true })
+              : fauxToolCall("write", {
+                  path: "shared.txt",
+                  content: first.includes("Child A") ? "first\n" : "second\n",
+                }),
+            { stopReason: "toolUse" },
+          );
+        const delegated = transcript.messages.flatMap((message) =>
+          message.role === "assistant"
+            ? message.content.filter((part) => part.type === "toolCall" && part.name === "delegate")
+            : [],
+        ).length;
+        if (delegated < (outcome === "conflict" ? 2 : 1))
+          return fauxAssistantMessage(
+            fauxToolCall("delegate", { agent: "writer", objective: delegated ? "Child B" : "Child A" }),
+            { stopReason: "toolUse" },
+          );
+        const notice = last?.role === "user" ? JSON.stringify(last.content) : "";
+        if (notice.includes("submitted unverified report")) sawFirstReport();
+        if (
+          (notice.includes("Integration ") && notice.includes("conflicted")) ||
+          (notice.includes("Independent verification ") && notice.includes("failed"))
+        )
+          return fauxAssistantMessage(fauxToolCall("ask", { question: "Resolve the child result?" }), {
+            stopReason: "toolUse",
+          });
+        return fauxAssistantMessage(fauxToolCall("yield", { reason: "Awaiting child outcome" }), {
+          stopReason: "toolUse",
+        });
+      }),
+    );
+    const host = await startRuntime({ stateDirectory, catalog: bay.catalog, models });
+    try {
+      const runtime = new Runtime({ stateDirectory, autoStart: false }),
+        run = await runtime.start({
+          cwd,
+          agent: "coordinator",
+          prompt: "Coordinate child code.",
+          workspace: {},
+        });
+      const detail = await waitRun(
+        runtime,
+        run.id,
+        (detail) => detail.questions.some((question) => question.taskId === detail.run.rootTaskId),
+        30_000,
+      );
+      if (outcome === "conflict") {
+        expect(detail.integrations.some((integration) => integration.status === "conflicted")).toBe(true);
+        expect(detail.tasks.some((task) => task.status === "conflicted")).toBe(true);
+      } else {
+        expect(detail.verifications[0]?.status).toBe("failed");
+        expect(detail.verifications[0]?.error).toContain("Verifier machine unavailable");
+      }
+    } finally {
+      sawFirstReport();
+      await host.close();
+      await bay.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);

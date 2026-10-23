@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
+import { once } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Duplex } from "node:stream";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { BayExecutionEnv } from "./bay-environment.ts";
 import type { BayExecution } from "./model.ts";
 
-async function fixture() {
+async function fixture(options: { closeError?: boolean; writeError?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), "bay-environment-")),
     socket = join(root, "bay.sock");
   const files = new Map<string, Buffer>(),
@@ -16,7 +18,9 @@ async function fixture() {
     connections = 0,
     closed = 0;
   const received: Array<Record<string, unknown>> = [];
+  let end = () => {};
   const server = createServer((request, response) => {
+    end = () => response.end();
     connections++;
     expect(request.url).toBe("/v1/sessions/one/environment");
     expect(request.headers["bay-session-id"]).toBe("record");
@@ -50,6 +54,10 @@ async function fixture() {
             break;
           }
           case "writeChunk": {
+            if (options.writeError) {
+              send(r.id, undefined, { code: "unknown", message: "write failed" });
+              break;
+            }
             const h = handles.get(r.handle)!;
             h.bytes = Buffer.concat([h.bytes, Buffer.from(r.data, "base64")]);
             files.set(h.path, h.bytes);
@@ -84,7 +92,11 @@ async function fixture() {
           }
           case "close":
             handles.delete(r.handle);
-            send(r.id);
+            send(
+              r.id,
+              undefined,
+              options.closeError ? { code: "unknown", message: "close failed" } : undefined,
+            );
             break;
           case "rename":
             files.set(r.to, files.get(r.path)!);
@@ -167,6 +179,7 @@ async function fixture() {
     files,
     handles,
     received,
+    end: () => end(),
     connections: () => connections,
     closed: () => closed,
     close: async () => {
@@ -254,12 +267,52 @@ test("Bay shell cancellation addresses one command and leaves its environment us
     const abort = new AbortController();
     const waiting = f.env.exec("wait", undefined, withAbortSignal(abort.signal, BACKGROUND_CONTEXT));
     while (!f.received.some((r) => r.op === "exec")) await new Promise((resolve) => setTimeout(resolve, 1));
+    expect(await f.env.exec("x".repeat(1024 * 1024), undefined, BACKGROUND_CONTEXT)).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("request exceeded its byte limit") },
+    });
+    expect(await f.env.exists("untouched", BACKGROUND_CONTEXT)).toEqual({ ok: true, value: false });
     abort.abort();
     expect(await waiting).toMatchObject({ ok: false, error: { code: "aborted" } });
     expect(f.received.filter((r) => r.op === "cancel")).toHaveLength(1);
     expect(await f.env.exists("untouched", BACKGROUND_CONTEXT)).toEqual({ ok: true, value: false });
     await f.env.close();
     expect(await f.env.exists("untouched", BACKGROUND_CONTEXT)).toMatchObject({ ok: false });
+  } finally {
+    await f.close();
+  }
+});
+
+test("Bay writes propagate close errors while preserving an earlier write error", async () => {
+  for (const writeError of [false, true]) {
+    const f = await fixture({ closeError: true, writeError });
+    try {
+      expect(await f.env.writeFile("notes", "text", BACKGROUND_CONTEXT)).toMatchObject({
+        ok: false,
+        error: { message: writeError ? "write failed" : "close failed" },
+      });
+      expect(f.handles.size).toBe(0);
+    } finally {
+      await f.close();
+    }
+  }
+});
+
+test("Bay cleanup accepts EOF received while queued writes are flushing", async () => {
+  const f = await fixture();
+  try {
+    await f.env.exists("notes", BACKGROUND_CONTEXT);
+    const internal = f.env as unknown as { stream: Duplex; writeQueue: Promise<void> };
+    let release!: () => void;
+    internal.writeQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const closing = f.env.close();
+    const ended = once(internal.stream, "end");
+    f.end();
+    await ended;
+    release();
+    await closing;
   } finally {
     await f.close();
   }

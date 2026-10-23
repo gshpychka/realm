@@ -44,7 +44,7 @@ export function taskState(detail: RunDetail, task: TeamTask): string {
   );
   if (question) return "needs your answer";
   const attempt = detail.attempts.find((attempt) => attempt.id === task.currentAttemptId);
-  if (attempt?.error) return plain(attempt.error);
+  if (attempt?.error) return plain(attempt.error).split("\n")[0] ?? "failed";
   if (task.status === "waiting") {
     const names = task.waitFor.map((id) => detail.tasks.find((task) => task.id === id)?.role ?? "task");
     return names.length ? `waiting for ${names.join(", ")}` : "waiting for a message";
@@ -323,8 +323,11 @@ export function TaskResult({
   const integration = detail.integrations.find((item) => item.id === task?.integrationId);
   const verification = detail.verifications.find((item) => item.id === task?.verificationId);
   const canApply = task ? readyToApply(detail, task) : false;
+  const canIntegrate = Boolean(
+    artifact && task?.status !== "accepted" && !["pending", "integrated"].includes(integration?.status ?? ""),
+  );
   useKeyboard((key) => {
-    if (!ready) return;
+    if (!ready || key.ctrl || key.meta || key.shift) return;
     if (key.name === "escape") {
       key.preventDefault();
       close();
@@ -338,7 +341,7 @@ export function TaskResult({
       return;
     }
     if (!task) return;
-    if (key.name === "i" && artifact) {
+    if (key.name === "i" && canIntegrate) {
       key.preventDefault();
       integrate(task);
     } else if (key.name === "r") {
@@ -379,7 +382,7 @@ export function TaskResult({
         {integration ? (
           <text fg={integration.status === "conflicted" ? theme.error : theme.dim}>
             Integration: {integration.status}
-            {integration.conflicts.length ? ` · ${integration.conflicts.join(", ")}` : ""}
+            {integration.conflicts.length ? ` · ${integration.conflicts.map(plain).join(", ")}` : ""}
             {integration.error ? ` · ${plain(integration.error)}` : ""}
           </text>
         ) : null}
@@ -389,9 +392,15 @@ export function TaskResult({
               Independent checks: {verification.status} · tree {verification.tree.slice(0, 12)}
             </text>
             {verification.checks.map((check) => (
-              <text key={check.name} fg={check.status === "passed" ? theme.ok : theme.error}>
-                {check.status === "passed" ? "✓" : "!"} {check.name} · {check.status}
-              </text>
+              <box key={check.name} flexDirection="column" flexShrink={0}>
+                <text fg={check.status === "passed" ? theme.ok : theme.error}>
+                  {check.status === "passed" ? "✓" : "!"} {plain(check.name)} · {check.status}
+                </text>
+                {check.status !== "passed" && check.output ? (
+                  <text fg={theme.dim}>{plain(check.output)}</text>
+                ) : null}
+                {check.truncated ? <text fg={theme.dim}>… output truncated</text> : null}
+              </box>
             ))}
             {verification.error ? <text fg={theme.error}>{plain(verification.error)}</text> : null}
           </box>
@@ -409,7 +418,7 @@ export function TaskResult({
         ) : null}
       </scrollbox>
       <text fg={theme.dim}>
-        {artifact ? "i integrate · " : ""}
+        {canIntegrate ? "i integrate · " : ""}
         {canApply ? "a apply · " : ""}r retry · e revise · {report ? "c copy · " : ""}esc back
       </text>
     </box>

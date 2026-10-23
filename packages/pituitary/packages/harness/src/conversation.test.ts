@@ -41,7 +41,10 @@ test("native committed events and atomic snapshots agree through tools and dupli
           parameters: Type.Object({ value: Type.String() }),
           description: "Echo the input",
           replay: "safe",
-          execute: async (args) => ({ output: [{ type: "text", text: args.value }] }),
+          execute: async (args) => ({
+            output: [{ type: "text", text: args.value }],
+            details: { fullOutputPath: "/tmp/full-output", diff: "retained diff" },
+          }),
         }),
       ],
     }),
@@ -90,6 +93,19 @@ test("native committed events and atomic snapshots agree through tools and dupli
     }
     const snapshot = await bridge.snapshot();
     expect(JSON.stringify(snapshot.messages)).toContain("Retained tool output");
+    expect(
+      snapshot.messages.find(
+        (message) =>
+          message && typeof message === "object" && "role" in message && message.role === "toolResult",
+      ),
+    ).toMatchObject({
+      details: { fullOutputPath: "/tmp/full-output", diff: "retained diff" },
+    });
+    expect(
+      records.find((record) => record.type === "event" && record.event.type === "tool_execution_end"),
+    ).toMatchObject({
+      event: { result: { details: { fullOutputPath: "/tmp/full-output", diff: "retained diff" } } },
+    });
     expect(JSON.stringify(rendered.entries)).toContain("The work is complete.");
     expect(JSON.stringify(rendered.entries)).toContain("Retained tool output");
     const calls = faux.state.callCount;
@@ -312,6 +328,77 @@ test("an archived partial survives a different completed assistant with the same
     await archive?.close();
     await active.close();
     await conversation.abort(context);
+    await harness.close(context);
+  }
+});
+
+test("cycling selects the only available model unless it is already selected", async () => {
+  const faux = fauxProvider();
+  const models = createModels();
+  models.setProvider(faux.provider);
+  const harness = await Harness.open(new MemoryStorage(), { models, registry: createRegistry() }, context);
+  const conversation = await harness.root(context, { agent: {} });
+  const bridge = await openConversation({
+    harness,
+    conversation,
+    models,
+    identity: { ...identity, local: true, role: undefined },
+    control: true,
+    onRecord: () => {},
+  });
+  try {
+    expect(await bridge.call({ type: "cycle_model" })).toMatchObject({
+      model: { provider: "faux", id: "faux-1" },
+    });
+    expect(await bridge.call({ type: "cycle_model" })).toBeNull();
+    await conversation.configure({ model: { provider: "missing", modelId: "removed" } }, context);
+    expect(await bridge.call({ type: "cycle_model" })).toMatchObject({
+      model: { provider: "faux", id: "faux-1" },
+    });
+  } finally {
+    await bridge.close();
+    await harness.close(context);
+  }
+});
+
+test("closing during snapshot acquisition releases the newly acquired watcher", async () => {
+  const models = createModels();
+  const storage = new MemoryStorage();
+  const harness = await Harness.open(storage, { models, registry: createRegistry() }, context);
+  const conversation = await harness.root(context, { agent: {} });
+  const bridge = await openConversation({
+    harness,
+    conversation,
+    models,
+    identity,
+    control: true,
+    onRecord: () => {},
+  });
+  await bridge.snapshot();
+  const scan = storage.scanTasks.bind(storage);
+  let acquired!: () => void, release!: () => void;
+  const acquiring = new Promise<void>((resolve) => {
+    acquired = resolve;
+  });
+  const paused = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  storage.scanTasks = async (...args) => {
+    if (args[0].kind === "pi.generation" && args[0].status === "completing") {
+      acquired();
+      await paused;
+    }
+    return scan(...args);
+  };
+  try {
+    const refreshing = bridge.snapshot();
+    await acquiring;
+    await bridge.close();
+    release();
+    await expect(refreshing).rejects.toThrow("attachment closed");
+  } finally {
+    release();
+    await bridge.close();
     await harness.close(context);
   }
 });

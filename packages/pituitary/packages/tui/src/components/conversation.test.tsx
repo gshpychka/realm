@@ -205,3 +205,50 @@ test("loading earlier history moves back one page while keeping the reading posi
     app.renderer.destroy();
   }
 });
+
+test("a history prepend with unchanged geometry cannot anchor a later resize", async () => {
+  const entries: Entry[] = Array.from({ length: 100 }, (_, index) => ({
+    kind: "assistant",
+    id: `work-${index}`,
+    text: "",
+    thinking: "consider it",
+    tools: [],
+    done: true,
+  }));
+  const scroll = createRef<ScrollBoxRenderable>();
+  let more = () => {};
+  let expand = () => {};
+  function Example() {
+    const [window, setWindow] = useState(50);
+    const [expanded, setExpanded] = useState(false);
+    more = () => setWindow(60);
+    expand = () => setExpanded(true);
+    return (
+      <Conversation
+        entries={entries}
+        running={false}
+        display={{ expanded, thinking: true, escapes: "esc" }}
+        window={window}
+        browsing={false}
+        onLeave={() => {}}
+        ref={scroll}
+      />
+    );
+  }
+  const app = await createTestRenderer({ width: 60, height: 14 });
+  const root = createRoot(app.renderer);
+  try {
+    flushSync(() => root.render(<Example />));
+    await app.renderOnce();
+    flushSync(more);
+    await app.renderOnce();
+    flushSync(expand);
+    await app.renderOnce();
+    const box = scroll.current;
+    if (!box) throw new Error("missing scrollbox");
+    expect(box.scrollTop).toBe(Math.max(0, box.scrollHeight - box.height));
+  } finally {
+    flushSync(() => root.unmount());
+    app.renderer.destroy();
+  }
+});
