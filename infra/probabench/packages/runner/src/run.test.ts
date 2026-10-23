@@ -14,7 +14,7 @@ import { ResultsStore } from "./results-store";
 import { executePlan, type SweepOptions, sweepAll } from "./run";
 import { chatEndpoint, withResultsStore } from "./test-fixtures";
 
-const target = (id: string): BenchTarget => ({ id, slug: id });
+const target = (id: string): BenchTarget => ({ id, slug: id, reasoning: "off" });
 const SWEEP_OPTIONS: SweepOptions = {
   trialsPerStep: 1,
   stepPercent: 100,
@@ -107,16 +107,6 @@ describe("OpenRouter execution preflight", () => {
             execute(path, [target("model")], { ...SWEEP_OPTIONS, stepPercent: 0 }),
           ))._tag,
         ).toBe("InvalidOptions");
-      }),
-    ),
-  );
-  it.effect("rejects an invalid later target budget before credentials", () =>
-    withResultsStore((path) =>
-      Effect.gen(function* () {
-        const error = yield* Effect.flip(
-          execute(path, [target("first"), { ...target("bad"), reasoning: { maxTokens: 4096 } }]),
-        );
-        expect(error._tag).toBe("InvalidOptions");
       }),
     ),
   );

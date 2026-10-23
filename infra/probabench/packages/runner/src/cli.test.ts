@@ -2,6 +2,7 @@ import * as Command from "@effect/cli/Command";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as NodeContext from "@effect/platform-node/NodeContext";
 import { describe, expect, it } from "@effect/vitest";
+import { MODEL_ALIASES } from "@probabench/domain";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -17,7 +18,6 @@ import {
   TRIAL_PRESETS,
   xStepCount,
 } from "./cli";
-import { MODEL_ALIASES } from "./registry";
 import { ResultsStore } from "./results-store";
 
 const runCommand = (args: readonly string[]) =>

@@ -17,11 +17,12 @@ const SAMPLING_AND_FOOTGUN_KNOBS = ["temperature", "top_p", "top_k", "reasoning_
 const noReasoning: BenchTarget = {
   id: "m",
   slug: "anthropic/claude-haiku-4.5",
+  reasoning: "off",
 };
 const effortTarget: BenchTarget = {
   id: "m-high",
   slug: "anthropic/claude-sonnet-4.5",
-  reasoning: { effort: "high" },
+  reasoning: "high",
 };
 
 describe("toOpenRouterConfig", () => {
@@ -44,14 +45,6 @@ describe("toOpenRouterConfig", () => {
         expect(config[knob]).toBeUndefined();
       }
     }
-  });
-
-  it("supports explicit token budgets and default reasoning", () => {
-    const maxTokensTarget: BenchTarget = { ...noReasoning, reasoning: { maxTokens: 1024 } };
-    const enabledTarget: BenchTarget = { ...noReasoning, reasoning: { enabled: true } };
-    expect(toOpenRouterConfig(maxTokensTarget, 4096).reasoning).toEqual({ max_tokens: 1024 });
-    expect(toOpenRouterConfig(enabledTarget, 4096).reasoning).toEqual({ enabled: true });
-    expect(() => toOpenRouterConfig(maxTokensTarget, 1024)).toThrow("leave room");
   });
 });
 
@@ -99,8 +92,6 @@ describe("openrouterModelLayer", () => {
   for (const [target, expectedReasoning] of [
     [noReasoning, { enabled: false }],
     [effortTarget, { effort: "high" }],
-    [{ ...noReasoning, reasoning: { maxTokens: 1024 } }, { max_tokens: 1024 }],
-    [{ ...noReasoning, reasoning: { enabled: true } }, { enabled: true }],
   ] as const) {
     it.effect(
       `preserves ${JSON.stringify(expectedReasoning)} on the wire without sampling overrides`,

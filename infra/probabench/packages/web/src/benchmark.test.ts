@@ -39,10 +39,14 @@ const settings = { model: "vendor/model", trials: 50, step: 10, concurrency: 5 }
 describe("setup request boundaries", () => {
   it("matches local API model and numeric limits before a user can submit", () => {
     expect(validateBenchmarkOptions(settings)).toBeNull();
-    expect(validateBenchmarkOptions({ ...settings, model: "a".repeat(200) })).toBeNull();
+    expect(
+      validateBenchmarkOptions({ ...settings, model: `vendor/${"a".repeat(193)}` }),
+    ).toBeNull();
     for (const invalid of [
-      { model: "a".repeat(201) },
+      { model: `vendor/${"a".repeat(194)}` },
       { model: "all" },
+      { model: "future-model" },
+      { model: "vendor/model+variant" },
       { model: "vendor/model with spaces" },
       { trials: 0 },
       { trials: 10001 },
@@ -51,7 +55,6 @@ describe("setup request boundaries", () => {
       { step: 2.5 },
       { concurrency: 0 },
       { concurrency: 51 },
-      { reasoning: "unsupported" },
     ])
       expect(validateBenchmarkOptions({ ...settings, ...invalid })).toBeTruthy();
     expect(validateBenchmarkOptions({ ...settings, model: "gpt-5-mini-low" })).toBeNull();

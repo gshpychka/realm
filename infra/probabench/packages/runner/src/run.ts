@@ -7,14 +7,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { Benchmark } from "./benchmark";
 import { BitSampler, type LlmError } from "./bit-sampler";
-import {
-  openrouterApiKey,
-  openrouterClientLayer,
-  openrouterModelLayer,
-  toOpenRouterConfig,
-} from "./openrouter";
+import { openrouterApiKey, openrouterClientLayer, openrouterModelLayer } from "./openrouter";
 import { InvalidOptions, positiveInteger, validateSamplingOptions } from "./options";
-import { type BenchTarget, reasoningLabel } from "./registry";
+import type { BenchTarget } from "./registry";
 import { ResultsStore, type ResultsStoreError } from "./results-store";
 import { withProviderRetry } from "./retry";
 
@@ -42,7 +37,7 @@ export const sweepTarget = <RClient>(
       benchmark.run({
         model: target.id,
         modelSlug: target.slug,
-        reasoning: reasoningLabel(target.reasoning),
+        reasoning: target.reasoning,
         trialsPerStep: options.trialsPerStep,
         stepPercent: options.stepPercent,
         concurrency: options.concurrency,
@@ -106,7 +101,6 @@ export const executePlan = (
             });
           }
           ids.add(target.id);
-          toOpenRouterConfig(target, options.maxTokens);
         }
       },
       catch: (error) =>

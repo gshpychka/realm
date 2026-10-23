@@ -7,6 +7,11 @@ export const SCHEMA_VERSION = 2;
 export const Probability = Schema.Number.pipe(Schema.between(0, 1), Schema.brand("Probability"));
 export type Probability = typeof Probability.Type;
 
+/** Reasoning a run requests from OpenRouter; "off" disables it. */
+export const ReasoningMode = Schema.Literal("off", "low", "medium", "high", "xhigh");
+export type ReasoningMode = typeof ReasoningMode.Type;
+export type ReasoningEffort = Exclude<ReasoningMode, "off">;
+
 /** One trial's outcome: a bit, or the raw text of an unparseable reply. */
 export const Outcome = Schema.Union(
   Schema.Literal(0, 1),
@@ -47,7 +52,7 @@ export const Run = Schema.Struct({
   /** OpenRouter model ID sent to the API. */
   modelSlug: Schema.NonEmptyTrimmedString,
   /** Reasoning mode used for every sample. */
-  reasoning: Schema.NonEmptyTrimmedString,
+  reasoning: ReasoningMode,
   trialsPerStep: Schema.Int.pipe(Schema.positive()),
   stepPercent: Schema.Int.pipe(Schema.between(1, 100)),
   startedAt: IsoTimestamp,

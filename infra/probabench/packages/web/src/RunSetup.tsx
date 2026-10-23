@@ -1,3 +1,5 @@
+import { MODEL_ALIASES, REASONING_LABELS, ReasoningMode } from "@probabench/domain";
+import * as Schema from "effect/Schema";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   type BenchmarkDraft,
@@ -7,7 +9,6 @@ import {
   MAX_BROWSER_SAMPLES,
   MAX_MODEL_LENGTH,
   PRESETS,
-  STARTER_MODELS,
   sampleBudget,
   validateBenchmarkOptions,
 } from "./benchmark";
@@ -162,11 +163,11 @@ export function RunSetup({
   const dialog = useRef<HTMLDialogElement>(null);
   const commandField = useRef<HTMLTextAreaElement>(null);
   const consumedDraft = useRef(draft?.key);
-  const [model, setModel] = useState(draft?.model ?? STARTER_MODELS[0]);
+  const [model, setModel] = useState(draft?.model ?? MODEL_ALIASES[0].alias);
   const [trials, setTrials] = useState(draft?.trials ?? 50);
   const [step, setStep] = useState(draft?.step ?? 10);
   const [concurrency, setConcurrency] = useState(draft?.concurrency ?? 5);
-  const [reasoning, setReasoning] = useState(draft?.reasoning ?? "");
+  const [reasoning, setReasoning] = useState<ReasoningMode | "">(draft?.reasoning ?? "");
   const [custom, setCustom] = useState(
     draft !== undefined &&
       !PRESETS.some((preset) => preset.trials === draft.trials && preset.step === draft.step),
@@ -345,15 +346,26 @@ export function RunSetup({
                 disabled={bridge.pending}
               />
               <datalist id="starter-models">
-                {[...new Set([...STARTER_MODELS, ...modelSuggestions])]
-                  .filter((slug) => slug.length <= MAX_MODEL_LENGTH)
+                {MODEL_ALIASES.map((alias) => (
+                  <option
+                    key={alias.alias}
+                    value={alias.alias}
+                    label={
+                      alias.reasoning ? `${alias.slug} · ${alias.reasoning} reasoning` : alias.slug
+                    }
+                  />
+                ))}
+                {[...new Set(modelSuggestions)]
+                  .filter(
+                    (slug) =>
+                      slug.length <= MAX_MODEL_LENGTH &&
+                      !MODEL_ALIASES.some((alias) => alias.alias === slug),
+                  )
                   .map((slug) => (
                     <option key={slug} value={slug} />
                   ))}
               </datalist>
-              <p className="helper">
-                Use any OpenRouter model ID. The GPT-5 mini starter includes low reasoning.
-              </p>
+              <p className="helper">Use any OpenRouter model ID.</p>
               <fieldset className="preset-fieldset">
                 <legend className="field-label">Sampling depth</legend>
                 <div className="preset-grid">
@@ -450,15 +462,18 @@ export function RunSetup({
                     <select
                       id="benchmark-reasoning"
                       value={reasoning}
-                      onChange={(event) => setReasoning(event.target.value)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setReasoning(Schema.is(ReasoningMode)(value) ? value : "");
+                      }}
                       disabled={bridge.pending}
                     >
                       <option value="">Use runner preset</option>
-                      <option value="off">Off</option>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="xhigh">Extra high</option>
+                      {ReasoningMode.literals.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {REASONING_LABELS[mode]}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 </div>

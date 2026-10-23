@@ -11,18 +11,16 @@ import type * as HttpClient from "@effect/platform/HttpClient";
 import * as Config from "effect/Config";
 import type * as ConfigError from "effect/ConfigError";
 import type * as Layer from "effect/Layer";
-import { positiveInteger } from "./options";
 import type { BenchTarget } from "./registry";
 
 /** Token ceiling for a no-reasoning target: room for a single bit and nothing more. */
 const NO_REASONING_MAX_TOKENS = 8;
 
-// The adapter's generated types lag OpenRouter's unified reasoning API. The
-// client sends config as JSON without encoding it, so extending the config here
-// preserves the documented enabled/max_tokens fields on the actual wire.
+// The adapter's generated reasoning type only knows effort and summary. The
+// client sends config as JSON without encoding it, so extending the type here
+// still puts OpenRouter's documented `enabled` flag on the wire.
 type Reasoning = NonNullable<OpenRouterLanguageModel.Config.Service["reasoning"]> & {
   readonly enabled?: boolean;
-  readonly max_tokens?: number;
 };
 
 type ModelConfig = Omit<OpenRouterLanguageModel.Config.Service, "model" | "reasoning"> & {
@@ -30,26 +28,10 @@ type ModelConfig = Omit<OpenRouterLanguageModel.Config.Service, "model" | "reaso
 };
 
 /** Native sampling defaults, explicit reasoning mode, and a bounded output budget. */
-export const toOpenRouterConfig = (target: BenchTarget, maxTokens: number): ModelConfig => {
-  positiveInteger(maxTokens, "max-tokens");
-  const { reasoning } = target;
-  if (reasoning === undefined) {
-    return { max_tokens: NO_REASONING_MAX_TOKENS, reasoning: { enabled: false } };
-  }
-  if ("effort" in reasoning) {
-    return { max_tokens: maxTokens, reasoning: { effort: reasoning.effort } };
-  }
-  if ("maxTokens" in reasoning) {
-    positiveInteger(reasoning.maxTokens, "reasoning maxTokens");
-    if (reasoning.maxTokens >= maxTokens) {
-      throw new Error(
-        `Target "${target.id}" reasoning budget must leave room for visible output below max-tokens.`,
-      );
-    }
-    return { max_tokens: maxTokens, reasoning: { max_tokens: reasoning.maxTokens } };
-  }
-  return { max_tokens: maxTokens, reasoning: { enabled: true } };
-};
+export const toOpenRouterConfig = ({ reasoning }: BenchTarget, maxTokens: number): ModelConfig =>
+  reasoning === "off"
+    ? { max_tokens: NO_REASONING_MAX_TOKENS, reasoning: { enabled: false } }
+    : { max_tokens: maxTokens, reasoning: { effort: reasoning } };
 
 /** The shared OpenRouter client, built once from `OPENROUTER_API_KEY` (redacted). */
 export const openrouterApiKey = Config.redacted(

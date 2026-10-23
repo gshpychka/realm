@@ -1,9 +1,11 @@
+import { isModelToken, type ReasoningMode } from "@probabench/domain";
+
 export interface BenchmarkOptions {
   readonly model: string;
   readonly trials: number;
   readonly step: number;
   readonly concurrency: number;
-  readonly reasoning?: string;
+  readonly reasoning?: ReasoningMode;
 }
 
 export interface BenchmarkDraft extends BenchmarkOptions {
@@ -16,8 +18,8 @@ export const MAX_BROWSER_SAMPLES = 100_000;
 /** Match the local bridge's limits before offering a run or copied command. */
 export const validateBenchmarkOptions = (options: BenchmarkOptions): string | null => {
   const model = options.model.trim();
-  if (model === "all" || !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,199}$/.test(model)) {
-    return `Choose one OpenRouter model slug or alias, up to ${MAX_MODEL_LENGTH} characters.`;
+  if (model.length > MAX_MODEL_LENGTH || !isModelToken(model)) {
+    return "Choose one model alias or OpenRouter vendor/model ID.";
   }
   if (!Number.isSafeInteger(options.trials) || options.trials < 1 || options.trials > 10_000) {
     return "Samples per target must be an integer from 1 to 10,000.";
@@ -32,12 +34,6 @@ export const validateBenchmarkOptions = (options: BenchmarkOptions): string | nu
   ) {
     return "Concurrent requests must be an integer from 1 to 50.";
   }
-  if (
-    options.reasoning !== undefined &&
-    !["off", "low", "medium", "high", "xhigh"].includes(options.reasoning)
-  ) {
-    return "Choose a supported reasoning mode.";
-  }
   return null;
 };
 
@@ -45,13 +41,6 @@ export const PRESETS = [
   { id: "quick", label: "Quick check", description: "Find the shape", trials: 10, step: 25 },
   { id: "standard", label: "Standard", description: "A closer look", trials: 50, step: 10 },
   { id: "thorough", label: "Thorough", description: "More evidence", trials: 100, step: 5 },
-] as const;
-
-// These are existing benchmark starter slugs, not a ranking of model quality.
-export const STARTER_MODELS = [
-  "anthropic/claude-haiku-4.5",
-  "gpt-5-mini-low",
-  "google/gemini-2.5-flash",
 ] as const;
 
 /** Includes both endpoints, including the final 100% target for non-divisor steps. */

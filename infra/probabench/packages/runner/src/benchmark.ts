@@ -6,7 +6,13 @@
 
 import { randomUUID } from "node:crypto";
 import type * as LanguageModel from "@effect/ai/LanguageModel";
-import { measurePoint, type Point, Probability, type Run } from "@probabench/domain";
+import {
+  measurePoint,
+  type Point,
+  Probability,
+  type ReasoningMode,
+  type Run,
+} from "@probabench/domain";
 import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -17,7 +23,7 @@ import { type InvalidOptions, probabilityPercentages, validateSamplingOptions } 
 export interface BenchmarkConfig {
   readonly model: string;
   readonly modelSlug: string;
-  readonly reasoning: string;
+  readonly reasoning: ReasoningMode;
   readonly trialsPerStep: number;
   readonly stepPercent: number;
   readonly concurrency: number;

@@ -13,6 +13,8 @@ describe("local benchmark request boundaries", () => {
   it.each([
     null,
     { ...settings, model: "all" },
+    { ...settings, model: "future-model" },
+    { ...settings, model: "vendor/model+variant" },
     { ...settings, model: "--help" },
     { ...settings, model: "model; touch /tmp/oops" },
     { ...settings, model: "a,b" },

@@ -97,14 +97,13 @@ export function App() {
     setSetup(true);
   };
   const repeatRun = (run: Run) => {
-    const reasoning = run.reasoning;
     setDraft({
       key: crypto.randomUUID(),
       model: run.modelSlug,
       trials: run.trialsPerStep,
       step: run.stepPercent,
       concurrency: 5,
-      ...(["off", "low", "medium", "high", "xhigh"].includes(reasoning) ? { reasoning } : {}),
+      reasoning: run.reasoning,
     });
     openSetup();
   };

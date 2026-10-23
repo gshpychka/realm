@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { isModelToken, ReasoningMode } from "@probabench/domain";
+import * as Schema from "effect/Schema";
 import { loadEnv, type Plugin } from "vite";
 
 interface BenchRequest {
@@ -11,7 +13,7 @@ interface BenchRequest {
   readonly trials: number;
   readonly step: number;
   readonly concurrency: number;
-  readonly reasoning?: string;
+  readonly reasoning?: ReasoningMode;
 }
 
 export interface Job {
@@ -31,9 +33,9 @@ class RequestError extends Error {
   }
 }
 
+const MAX_MODEL_LENGTH = 200;
 const MAX_SAMPLES = 100_000;
 const MAX_LOG = 64_000;
-const REASONING = ["off", "low", "medium", "high", "xhigh"];
 
 /** Suppress unfinished terminal escapes before normalizing a streamed log. */
 function completeTerminalText(raw: string): string {
@@ -69,8 +71,8 @@ export function parseBenchRequest(value: unknown): BenchRequest {
   const request = value as Record<string, unknown>;
   const model = typeof request.model === "string" ? request.model.trim() : "";
   // Plain aliases and OpenRouter slugs only. Never interpolate any value into a shell.
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/+-]{0,199}$/.test(model) || model === "all") {
-    throw new RequestError(400, "Choose one model alias or OpenRouter model ID.");
+  if (model.length > MAX_MODEL_LENGTH || !isModelToken(model)) {
+    throw new RequestError(400, "Choose one model alias or OpenRouter vendor/model ID.");
   }
   const integer = (name: string, max: number): number => {
     const number = request[name];
@@ -83,10 +85,7 @@ export function parseBenchRequest(value: unknown): BenchRequest {
   const step = integer("step", 100);
   const concurrency = integer("concurrency", 50);
   const reasoning = request.reasoning;
-  if (
-    reasoning !== undefined &&
-    (typeof reasoning !== "string" || !REASONING.includes(reasoning))
-  ) {
+  if (reasoning !== undefined && !Schema.is(ReasoningMode)(reasoning)) {
     throw new RequestError(400, "Choose a valid reasoning setting.");
   }
   if (trials * (Math.ceil(100 / step) + 1) > MAX_SAMPLES) {
@@ -100,7 +99,7 @@ export function parseBenchRequest(value: unknown): BenchRequest {
     trials,
     step,
     concurrency,
-    ...(typeof reasoning === "string" ? { reasoning } : {}),
+    ...(reasoning === undefined ? {} : { reasoning }),
   };
 }
 

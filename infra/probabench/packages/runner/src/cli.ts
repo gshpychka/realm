@@ -3,6 +3,7 @@ import * as HelpDoc from "@effect/cli/HelpDoc";
 import * as Span from "@effect/cli/HelpDoc/Span";
 import * as Options from "@effect/cli/Options";
 import * as Prompt from "@effect/cli/Prompt";
+import { MODEL_ALIASES, REASONING_LABELS, ReasoningMode } from "@probabench/domain";
 import * as Console from "effect/Console";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -13,15 +14,7 @@ import {
   probabilityPercentages,
   probabilityStep,
 } from "./options";
-import {
-  type BenchTarget,
-  describeAliases,
-  MODEL_ALIASES,
-  modelLabel,
-  type ReasoningMode,
-  reasoningLabel,
-  selectTargets,
-} from "./registry";
+import { type BenchTarget, describeAliases, modelLabel, selectTargets } from "./registry";
 import { MAX_RETRIES } from "./retry";
 import { executePlan } from "./run";
 
@@ -62,9 +55,7 @@ export const describePlan = (plan: BenchPlan): string =>
   [
     ...(plan.unknown.length === 0 ? [] : [`Unknown models: ${plan.unknown.join(", ")}`]),
     `Targets (${plan.targets.length}):`,
-    ...plan.targets.map(
-      (target) => `  ${target.id} · reasoning ${reasoningLabel(target.reasoning)}`,
-    ),
+    ...plan.targets.map((target) => `  ${target.id} · reasoning ${target.reasoning}`),
     `Projected samples: ${plan.projectedCalls}`,
     `Provider attempts with retries: up to ${plan.projectedCalls * (MAX_RETRIES + 1)}`,
   ].join("\n");
@@ -128,7 +119,7 @@ export const promptRunSetup = Effect.gen(function* () {
     message: "Choose a model",
     choices: [
       ...MODEL_ALIASES.map((model) => ({
-        title: `${model.alias} · ${modelLabel(model.slug, "reasoning" in model ? model.reasoning : undefined)}`,
+        title: `${model.alias} · ${modelLabel(model.slug, model.reasoning ?? "off")}`,
         value: model.alias,
       })),
       { title: "Enter another OpenRouter model", value: "custom" },
@@ -172,13 +163,10 @@ export const promptRunSetup = Effect.gen(function* () {
     selected === "custom"
       ? yield* Prompt.select({
           message: "Reasoning mode",
-          choices: [
-            { title: "Disabled", value: "off" },
-            { title: "Low", value: "low" },
-            { title: "Medium", value: "medium" },
-            { title: "High", value: "high" },
-            { title: "Extra high", value: "xhigh" },
-          ] as const,
+          choices: ReasoningMode.literals.map((value) => ({
+            title: REASONING_LABELS[value],
+            value,
+          })),
         })
       : undefined;
   return { models, trialsPerStep, stepPercent, reasoning };
@@ -191,13 +179,7 @@ const modelOption = Options.text("model").pipe(
     'Comma-separated OpenRouter vendor/model slugs or aliases; "all" selects every alias.',
   ),
 );
-const reasoningOption = Options.choice("reasoning", [
-  "off",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-] as const).pipe(
+const reasoningOption = Options.choice("reasoning", ReasoningMode.literals).pipe(
   Options.optional,
   Options.withDescription(
     "Override reasoning mode (slugs default to off; aliases retain their named mode).",
