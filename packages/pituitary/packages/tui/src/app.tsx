@@ -21,6 +21,7 @@ import { editExternally } from "./external-editor.ts";
 import { firelight } from "./firelight.ts";
 import { usePullRequest } from "./github/use-pull-request.ts";
 import { type Action, actionFor, type Keymap, loadKeymap } from "./keymap.ts";
+import { KeymapProvider, keyHint } from "./keymap-context.tsx";
 import { modelTitle } from "./model-names.ts";
 import { remains } from "./remains.ts";
 import { theme } from "./theme.ts";
@@ -113,10 +114,16 @@ export function App({
   const [window, setWindow] = useState(WINDOW);
   // The draft starts in insert mode, where the first escape is the draft's own.
   const [escapes, setEscapes] = useState("esc esc");
+  const interruptHint = keymap["app.interrupt"]
+    .map((binding) => (/^(esc|escape)$/i.test(binding) ? escapes : binding))
+    .join(" / ");
   const custom = useCustomViews(bridge).at(-1);
   const limits = useLimits(bridge);
   const stage = useMemo(() => new MascotStage(TRAVELS ? undefined : ["corner"]), []);
-  const display = useMemo<Display>(() => ({ expanded, thinking, escapes }), [expanded, thinking, escapes]);
+  const display = useMemo<Display>(
+    () => ({ expanded, thinking, escapes: interruptHint }),
+    [expanded, thinking, interruptHint],
+  );
   const tasks = useMemo(() => latestTasks(view.entries), [view.entries]);
   const widgets = useMemo(() => besideTodo(extensionUi.widgets, tasks), [extensionUi.widgets, tasks]);
   const popupRows = Math.max(2, screenRows - RESERVED_ROWS);
@@ -274,7 +281,7 @@ export function App({
       const now = Date.now();
       if (text) editor.current?.set("");
       else if (now - lastInterrupt.current < QUIT_WINDOW_MS) onQuit();
-      else flash("ctrl+c again to quit", QUIT_WINDOW_MS);
+      else flash(`${keyHint(keymap, "app.clear")} again to quit`, QUIT_WINDOW_MS);
       lastInterrupt.current = now;
       return true;
     },
@@ -431,65 +438,67 @@ export function App({
 
   const shownHint = browsing ? BROWSE_HINT : hint;
   return (
-    <MascotProvider value={stage}>
-      <box flexDirection="column" width="100%" height="100%" backgroundColor={theme.bg}>
-        <Conversation
-          ref={scroll}
-          entries={view.entries}
-          running={view.running}
-          display={display}
-          window={window}
-          browsing={browsing}
-          onLeave={() => setBrowsing(false)}
-        />
-        <TodoPanel tasks={tasks} />
-        <Working view={view} hint={shownHint} closed={closed} escapes={escapes} />
-        <Queue queue={view.queue} dequeue={keymap["app.message.dequeue"][0]} />
-        <Widgets widgets={widgets} placement="aboveEditor" />
-        <Popups
-          dialogs={extensionUi.dialogs}
-          custom={custom}
-          picker={picker}
-          checklist={checklist}
-          completion={
-            completions.completion && !away
-              ? { items: completions.completion.items, index: completions.index }
-              : null
-          }
-          rows={popupRows}
-          onAnswer={answer}
-          onClosePicker={() => setPicker(null)}
-          onCloseChecklist={() => setChecklist(null)}
-        />
-        <Editor
-          ref={editor}
-          onSubmit={submit}
-          steering={view.running}
-          focused={!away}
-          seed={extensionUi.editor}
-          note={statusUp(view, closed) ? null : shownHint}
-          confirm={offers.asking}
-          onNotice={(text) => session.notify("warning", text)}
-          onEscapes={(count) => setEscapes(count === 1 ? "esc" : "esc esc")}
-          onChange={(text, cursor) => {
-            completions.follow(text, cursor);
-            offers.edited(text);
-            recall.edited(text);
-          }}
-        />
-        <Widgets widgets={widgets} placement="belowEditor" />
-        <Footer
-          state={state}
-          stats={stats}
-          statuses={extensionUi.statuses}
-          turnStatuses={extensionUi.turnStatuses}
-          cwd={cwd}
-          branch={branch}
-          pull={pull}
-          limits={limits}
-        />
-        <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />
-      </box>
-    </MascotProvider>
+    <KeymapProvider value={keymap}>
+      <MascotProvider value={stage}>
+        <box flexDirection="column" width="100%" height="100%" backgroundColor={theme.bg}>
+          <Conversation
+            ref={scroll}
+            entries={view.entries}
+            running={view.running}
+            display={display}
+            window={window}
+            browsing={browsing}
+            onLeave={() => setBrowsing(false)}
+          />
+          <TodoPanel tasks={tasks} />
+          <Working view={view} hint={shownHint} closed={closed} escapes={interruptHint} />
+          <Queue queue={view.queue} dequeue={keymap["app.message.dequeue"][0]} />
+          <Widgets widgets={widgets} placement="aboveEditor" />
+          <Popups
+            dialogs={extensionUi.dialogs}
+            custom={custom}
+            picker={picker}
+            checklist={checklist}
+            completion={
+              completions.completion && !away
+                ? { items: completions.completion.items, index: completions.index }
+                : null
+            }
+            rows={popupRows}
+            onAnswer={answer}
+            onClosePicker={() => setPicker(null)}
+            onCloseChecklist={() => setChecklist(null)}
+          />
+          <Editor
+            ref={editor}
+            onSubmit={submit}
+            steering={view.running}
+            focused={!away}
+            seed={extensionUi.editor}
+            note={statusUp(view, closed) ? null : shownHint}
+            confirm={offers.asking}
+            onNotice={(text) => session.notify("warning", text)}
+            onEscapes={(count) => setEscapes(count === 1 ? "esc" : "esc esc")}
+            onChange={(text, cursor) => {
+              completions.follow(text, cursor);
+              offers.edited(text);
+              recall.edited(text);
+            }}
+          />
+          <Widgets widgets={widgets} placement="belowEditor" />
+          <Footer
+            state={state}
+            stats={stats}
+            statuses={extensionUi.statuses}
+            turnStatuses={extensionUi.turnStatuses}
+            cwd={cwd}
+            branch={branch}
+            pull={pull}
+            limits={limits}
+          />
+          <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />
+        </box>
+      </MascotProvider>
+    </KeymapProvider>
   );
 }

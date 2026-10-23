@@ -22,7 +22,7 @@ export function workingLine(view: SessionView, now: number, escapes: string, col
   const figures = [
     `${seconds}s`,
     // An open dialog takes the interrupt key for its own cancel.
-    activity.kind === "operator" ? null : `${escapes} interrupts`,
+    activity.kind === "operator" || !escapes ? null : `${escapes} interrupts`,
     tokens > 0 ? `${glyphs.tokens} ${count(tokens)}` : null,
   ].filter((part) => part !== null);
   const said = doing(activity);
