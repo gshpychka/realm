@@ -80,12 +80,13 @@ isolation, image, warm base, server, and messaging gateway. Allow the initial im
 and warm base to finish preparing:
 
 ```sh
-systemctl status bay-base bay-server bay-gateway
+systemctl status bay-base bay-server bay-gateway-operator.socket
 bay list
 ```
 
 `bay list` should succeed even before any sessions exist. For startup diagnostics,
-use `journalctl -u bay-base -u bay-server -u bay-gateway`.
+use `journalctl -u bay-base -u bay-server -u bay-gateway`. The messaging gateway is
+socket-activated; its service can remain inactive until the first message.
 
 The defaults allocate a 200 GiB loop-backed pool. Sessions get 4 vCPUs, 8 GiB memory,
 and a 50 GiB disk; saved memory and snapshots need storage too. Adjust `storage` and
