@@ -236,8 +236,9 @@ export class Bay {
     try {
       await this.call("POST", name, "/suspend", { id, generation });
     } catch (error) {
-      if (!(error instanceof BayError) || error.status !== 409) throw error;
-      // Another cleanup may finish between GET and the atomic fenced POST.
+      if (this.signal?.aborted) throw error;
+      if (error instanceof BayError && error.status < 500 && error.status !== 409) throw error;
+      // Cleanup can finish concurrently or commit before its response is lost.
       // Only this exact, now-suspended execution satisfies the desired state.
       const observed = await this.get(name);
       exact(observed);
