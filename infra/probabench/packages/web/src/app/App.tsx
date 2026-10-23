@@ -1,5 +1,6 @@
 import { Result, useRxRefresh, useRxValue } from "@effect-rx/rx-react";
 import type { Run } from "@probabench/domain";
+import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
 import { useBridge } from "../bridge/use-bridge";
 import { CalibrationPage } from "../calibration/CalibrationPage";
@@ -27,13 +28,13 @@ function NotebookLoading() {
   );
 }
 
-function NotebookError({ onRetry }: { onRetry: () => void }) {
+function NotebookError({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
   return (
     <section className="notebook-error" role="alert">
       <span className="state-symbol">!</span>
       <h2>The notebook couldn’t be read.</h2>
       <p>Results could not be fetched or did not pass validation. Try loading them again.</p>
-      <button type="button" className="button secondary" onClick={onRetry}>
+      <button type="button" className="button secondary" disabled={retrying} onClick={onRetry}>
         Try again <span aria-hidden="true">↻</span>
       </button>
     </section>
@@ -53,15 +54,21 @@ export function App() {
   }, [finishedJobId, refresh]);
   const [view, update] = useNotebookView();
   const [setupOpen, setSetupOpen] = useState(false);
-  const runs = Result.isSuccess(result) ? result.value.runs : NO_RUNS;
+  // Result.value falls back to the last success, so a failed refresh keeps the runs on screen.
+  const results = Option.getOrUndefined(Result.value(result));
+  const runs = results?.runs ?? NO_RUNS;
   const styles = useMemo(() => modelStyles(runs), [runs]);
 
   // The published site is read-only: only the dev server can run benchmarks.
   const openSetup = bridge.connection.kind === "published" ? undefined : () => setSetupOpen(true);
   const panel = () => {
     if (view.tab === "method") return <MethodPage />;
-    if (Result.isInitial(result)) return <NotebookLoading />;
-    if (Result.isFailure(result)) return <NotebookError onRetry={refresh} />;
+    if (results === undefined)
+      return Result.isFailure(result) ? (
+        <NotebookError retrying={result.waiting} onRetry={refresh} />
+      ) : (
+        <NotebookLoading />
+      );
     if (runs.length === 0)
       return <EmptyNotebook onNew={openSetup} onMethod={() => update({ tab: "method" })} />;
     if (view.tab === "history")
