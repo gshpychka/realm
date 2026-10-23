@@ -101,8 +101,9 @@ func (m *Mirrors) lock(ctx context.Context, mir mirror) (unlock func(), err erro
 	}
 }
 
-// Resolve returns the repo at the commit ref names on the remote now, with Branch set when ref names a branch; a ref
-// that names no branch, tag or commit is a fault.Invalid.
+// Resolve fetches the remote's branches and tags, then resolves ref with Branch
+// set for a branch. Commit IDs may also name cached history retained for sessions.
+// A ref that names no branch, tag or cached commit is a fault.Invalid.
 func (m *Mirrors) Resolve(ctx context.Context, ref sessions.RepoRef) (records.Repo, error) {
 	mir, err := m.locate(ref.Owner, ref.Name)
 	if err != nil {
@@ -143,6 +144,9 @@ func (m *Mirrors) resolve(ctx context.Context, mir mirror, ref string) (records.
 			continue
 		}
 		if err != nil {
+			return records.Repo{}, err
+		}
+		if err := mir.retain(ctx, commit); err != nil {
 			return records.Repo{}, err
 		}
 		return records.Repo{Owner: mir.owner, Name: mir.name, Branch: l.branch, Commit: commit}, nil
@@ -194,6 +198,9 @@ func (m *Mirrors) archive(ctx context.Context, mir mirror, commit string, w io.W
 		return fmt.Errorf("%w: the remote does not have commit %s", fault.Conflict, commit)
 	}
 	if err != nil {
+		return err
+	}
+	if err := mir.retain(ctx, commit); err != nil {
 		return err
 	}
 	if err := writeTar(ctx, w, mir.dir); err != nil {

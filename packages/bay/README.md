@@ -29,6 +29,8 @@ Realm's [NixOS module](../../modules/system/nixos/bay.nix) sets up the host: Inc
 
 The operator runs `bay` on the host; `bay help` lists the commands. Inside a session, `flare` notifies the operator and sends and reads messages; `flare -h` lists its commands.
 
+Repository mirrors retain session commits as a shared cache. Branch and tag names follow the remote; explicit commit IDs may also select cached history. Sessions receiving the same repository receive its cached history, including retained commits. Removing a remote branch or rewriting history does not purge these local copies.
+
 ## Development
 
 Run these commands from Realm's root:
