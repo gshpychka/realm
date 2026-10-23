@@ -1,5 +1,4 @@
-import type { ConversationClient } from "@realm/dura/client";
-import type { Runtime } from "@realm/dura/client";
+import type { ConversationClient, Runtime } from "@realm/dura/client";
 import type { RunDetail } from "@realm/dura/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { App } from "./app.tsx";

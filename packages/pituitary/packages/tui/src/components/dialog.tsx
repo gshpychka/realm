@@ -90,7 +90,13 @@ function Body({
     case "input":
       return (
         <box flexDirection="column">
-          <input focused={ready} placeholder={dialog.placeholder} onSubmit={(value) => onAnswer({ type: "dialog_response", id, value })} />
+          <input
+            focused={ready}
+            placeholder={dialog.placeholder}
+            onSubmit={(value) => {
+              if (typeof value === "string") onAnswer({ type: "dialog_response", id, value });
+            }}
+          />
           <Hint text="enter send" />
         </box>
       );

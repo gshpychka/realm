@@ -5,14 +5,17 @@
   bun,
 }:
 let
-  production = path: lib.fileset.fileFilter (
-    file: !(lib.any (suffix: lib.hasSuffix suffix file.name) [
-      ".test.ts"
-      ".test.tsx"
-      ".fixture.ts"
-      ".fixture.tsx"
-    ])
-  ) path;
+  production =
+    path:
+    lib.fileset.fileFilter (
+      file:
+      !(lib.any (suffix: lib.hasSuffix suffix file.name) [
+        ".test.ts"
+        ".test.tsx"
+        ".fixture.ts"
+        ".fixture.tsx"
+      ])
+    ) path;
   source = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -49,7 +52,7 @@ let
     '';
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = lib.fakeHash;
+    outputHash = "sha256-iOs/cltwW0ny1An512PpCz9SUq4FUCcqmd7MOrw5u8w=";
   };
 in
 stdenvNoCC.mkDerivation {

@@ -7,8 +7,8 @@ import { join, resolve } from "node:path";
 import { plain } from "@pituitary/session";
 import { ensureLocalRuntime } from "./bootstrap.ts";
 import { loadCatalog } from "./catalog.ts";
-import type { ReviseTaskInput, Run } from "./model.ts";
 import { Runtime, runtimeSocket } from "./client.ts";
+import type { ReviseTaskInput, Run } from "./model.ts";
 
 const VERBS = [
   "run",

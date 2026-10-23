@@ -201,7 +201,13 @@ export function App({
         readonly ? ARCHIVE_COMMANDS.has(command.name) : command.name !== "model" || canChooseModel,
       ),
       ...(!readonly && onHandoff ? PI_COMMANDS : []),
-      ...(!readonly ? extensionCommands.filter((command) => !BUILTINS.some((own) => own.name === command.name) && !PI_COMMANDS.some((own) => own.name === command.name)) : []),
+      ...(!readonly
+        ? extensionCommands.filter(
+            (command) =>
+              !BUILTINS.some((own) => own.name === command.name) &&
+              !PI_COMMANDS.some((own) => own.name === command.name),
+          )
+        : []),
       ...(team
         ? TEAM_COMMANDS.filter((command) => onReload || command.name !== "reload-ui").map((command) => ({
             ...command,
@@ -415,7 +421,13 @@ export function App({
     if (!text.trim()) return;
     const managedCommand = /^\/([a-z-]+)(?:\s|$)/.exec(text.trim())?.[1];
     if (onHandoff && managedCommand && PI_COMMANDS.some((command) => command.name === managedCommand)) {
-      command(managedCommand, text.trim().slice(managedCommand.length + 1).trim());
+      command(
+        managedCommand,
+        text
+          .trim()
+          .slice(managedCommand.length + 1)
+          .trim(),
+      );
       return;
     }
     if (team && managedCommand && TEAM_COMMANDS.some((command) => command.name === managedCommand)) {
@@ -489,9 +501,21 @@ export function App({
 
   /** What each bound action does. */
   const actions = {
-    "app.session.new": () => { if (!onHandoff) return false; command("new"); return true; },
-    "app.session.resume": () => { if (!onHandoff) return false; command("resume"); return true; },
-    "app.session.fork": () => { if (!onHandoff) return false; command("fork"); return true; },
+    "app.session.new": () => {
+      if (!onHandoff) return false;
+      command("new");
+      return true;
+    },
+    "app.session.resume": () => {
+      if (!onHandoff) return false;
+      command("resume");
+      return true;
+    },
+    "app.session.fork": () => {
+      if (!onHandoff) return false;
+      command("fork");
+      return true;
+    },
     "app.team.tasks": () => {
       if (!team) return false;
       showTasks();
@@ -821,7 +845,11 @@ export function App({
             }}
           >
             <PiWidgets widgets={piUI.widgets} placement="belowEditor" />
-            {piUI.statuses.length ? <text fg={theme.dim} truncate wrapMode="none">{piUI.statuses.join(" · ")}</text> : null}
+            {piUI.statuses.length ? (
+              <text fg={theme.dim} truncate wrapMode="none">
+                {piUI.statuses.join(" · ")}
+              </text>
+            ) : null}
             <Footer
               state={state}
               stats={stats}

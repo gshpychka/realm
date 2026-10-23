@@ -52,9 +52,7 @@ export function usePiUI(
             ...current,
             {
               request,
-              ...("timeout" in request && request.timeout
-                ? { deadline: Date.now() + request.timeout }
-                : {}),
+              ...("timeout" in request && request.timeout ? { deadline: Date.now() + request.timeout } : {}),
             },
           ]);
       }
@@ -64,25 +62,33 @@ export function usePiUI(
   useEffect(() => {
     const deadlines = questions.flatMap((question) => question.deadline ?? []);
     if (!deadlines.length) return;
-    const timer = setTimeout(() => {
-      const expired = questions.filter((question) => question.deadline && question.deadline <= Date.now());
-      for (const { request } of expired)
-        port?.respond({ type: "extension_ui_response", id: request.id, cancelled: true });
-      setQuestions((current) => current.filter((question) => !expired.includes(question)));
-    }, Math.max(0, Math.min(...deadlines) - Date.now()));
+    const timer = setTimeout(
+      () => {
+        const expired = questions.filter((question) => question.deadline && question.deadline <= Date.now());
+        for (const { request } of expired)
+          port?.respond({ type: "extension_ui_response", id: request.id, cancelled: true });
+        setQuestions((current) => current.filter((question) => !expired.includes(question)));
+      },
+      Math.max(0, Math.min(...deadlines) - Date.now()),
+    );
     return () => clearTimeout(timer);
   }, [port, questions]);
 
-  const dialogs: DialogRequest[] = questions.map(({ request }) => {
+  const dialogs: DialogRequest[] = questions.map(({ request }): DialogRequest => {
     const base = { type: "dialog" as const, id: request.id, title: plain(request.title) };
     switch (request.method) {
       case "select":
         return { ...base, method: "select", options: request.options.map(plain) };
       case "confirm":
-        return { ...base, title: `${base.title}\n${plain(request.message)}`, method: "select", options: ["Yes", "No"] };
+        return {
+          ...base,
+          title: `${base.title}\n${plain(request.message)}`,
+          method: "select",
+          options: ["Yes", "No"],
+        };
       case "input":
         return { ...base, method: "input", placeholder: plain(request.placeholder ?? "") };
-      case "editor":
+      default:
         return { ...base, method: "editor", prefill: plain(request.prefill ?? "") };
     }
   });
@@ -97,15 +103,23 @@ export function usePiUI(
           : {
               type: "extension_ui_response",
               id: question.id,
-              value: question.method === "select"
-                ? (question.options.find((option) => plain(option) === response.value) ?? response.value ?? "")
-                : (response.value ?? ""),
+              value:
+                question.method === "select"
+                  ? (question.options.find((option) => plain(option) === response.value) ??
+                    response.value ??
+                    "")
+                  : (response.value ?? ""),
             },
     );
     setQuestions((current) => current.filter(({ request }) => request.id !== question.id));
     return true;
   };
-  return { dialogs, answer, statuses: Object.values(statuses).filter(Boolean), widgets: Object.values(widgets) };
+  return {
+    dialogs,
+    answer,
+    statuses: Object.values(statuses).filter(Boolean),
+    widgets: Object.values(widgets),
+  };
 }
 
 export function PiWidgets({ widgets, placement }: { widgets: Widget[]; placement: Widget["placement"] }) {

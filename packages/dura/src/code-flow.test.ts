@@ -7,9 +7,9 @@ import { Bay } from "./bay.ts";
 import { BayExecutionEnv } from "./bay-environment.ts";
 import { bayWorkspaceFixture } from "./bay-workspace.fixture.ts";
 import type { AgentDefinition } from "./catalog.ts";
+import { Runtime } from "./client.ts";
 import { type BayExecution, DEFAULT_RUN_LIMITS, type ExecutionContext, type Run } from "./model.ts";
 import { rootAttempt, waitRun } from "./runtime.fixture.ts";
-import { Runtime } from "./client.ts";
 import { startRuntime } from "./supervisor.ts";
 import { git, Workspaces } from "./workspaces.ts";
 
