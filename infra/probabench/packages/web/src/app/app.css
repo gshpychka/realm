@@ -132,109 +132,7 @@ button.connection {
   color: var(--accent);
 }
 
-/* Hero */
-.hero {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 64px;
-  padding: 50px 0 68px;
-  align-items: center;
-
-  @media (max-width: 1100px) {
-    gap: 40px;
-  }
-  @media (max-width: 650px) {
-    display: block;
-    padding-top: 42px;
-    padding-bottom: 48px;
-  }
-}
-.hero-copy {
-  container-type: inline-size;
-}
-.hero-copy > .eyebrow {
-  color: var(--text-3);
-
-  @media (max-width: 650px) {
-    letter-spacing: 1.5px;
-  }
-}
-/* Sized to its column: 1.4fr of two above 650px, the full width below. */
-.hero h1 {
-  font: 400 clamp(38px, 8cqi, 60px) / 1.08 var(--serif);
-  letter-spacing: -1.5px;
-  margin-top: 20px;
-}
-.hero h1 em {
-  font-weight: 400;
-  color: var(--accent);
-}
-.hero-copy > p:last-child {
-  font-size: 15px;
-  line-height: 1.8;
-  color: var(--text-3);
-  margin-top: 25px;
-
-  @media (max-width: 650px) {
-    font-size: 14px;
-    line-height: 1.9;
-    margin-top: 22px;
-  }
-}
-.hero-note {
-  border-left: 1px solid var(--border);
-  padding-left: 44px;
-  max-width: 340px;
-  justify-self: end;
-  margin-top: 18px;
-
-  @media (max-width: 1100px) {
-    padding-left: 30px;
-  }
-  @media (max-width: 900px) {
-    max-width: 260px;
-  }
-  @media (max-width: 650px) {
-    display: none;
-  }
-}
-.hero-formula {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-  font: 46px / 1 var(--serif);
-  margin-bottom: 30px;
-  color: var(--text-2);
-
-  @media (max-width: 900px) {
-    font-size: 36px;
-  }
-}
-.hero-formula .formula-equals {
-  font-size: 25px;
-  color: var(--muted);
-}
-.hero-formula var {
-  color: var(--accent);
-  font-size: 58px;
-
-  @media (max-width: 900px) {
-    font-size: 48px;
-  }
-}
-.hero-note-text p {
-  font-size: 14px;
-  line-height: 1.8;
-  margin-top: 10px;
-  color: var(--text-2);
-  max-width: 250px;
-}
-.hero-note-link {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 18px;
-}
+/* Masthead */
 .masthead {
   display: flex;
   align-items: baseline;
@@ -393,23 +291,9 @@ button.connection {
     padding: 30px 20px;
   }
 }
-.empty-sketch {
-  margin: 0 auto 20px;
-  width: 130px;
-  color: var(--accent);
-
-  @media (max-width: 650px) {
-    width: 110px;
-  }
-}
-/* No inline baseline gap under the sketch. */
-.empty-sketch svg {
-  display: block;
-}
 .empty-notebook h2 {
   font: 400 42px / 1.12 var(--serif);
   letter-spacing: -0.8px;
-  margin-top: 15px;
 
   @media (max-width: 650px) {
     font-size: var(--title-lg);

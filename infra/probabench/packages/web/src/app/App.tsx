@@ -9,7 +9,7 @@ import { HistoryPage } from "../history/HistoryPage";
 import { MethodPage } from "../method/MethodPage";
 import { RunSetup } from "../setup/RunSetup";
 import { EmptyNotebook } from "./EmptyNotebook";
-import { Hero } from "./Hero";
+import { Masthead } from "./Masthead";
 import { NotebookTabs } from "./NotebookTabs";
 import { PANEL_ID, useNotebookView } from "./notebook-view";
 import { SiteHeader } from "./SiteHeader";
@@ -76,7 +76,7 @@ export function App() {
       </a>
       <SiteHeader connection={bridge.connection} onOpenSetup={openSetup} />
       <main>
-        <Hero runs={runs} />
+        <Masthead runs={runs} />
         <NotebookTabs runCount={runs.length} view={view} update={update} />
         <div id={PANEL_ID} className="notebook-panel" tabIndex={-1}>
           {panel()}
