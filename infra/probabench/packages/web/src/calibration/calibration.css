@@ -26,10 +26,6 @@
   font-size: 12px;
   white-space: nowrap;
   background: transparent;
-
-  @media (max-width: 650px) {
-    padding: 8px;
-  }
 }
 .interval-toggle > span {
   font-size: 14px;
@@ -113,11 +109,6 @@
 .model-item {
   border-bottom: 1px solid var(--line);
   padding: 17px 0;
-
-  @media (max-width: 650px) {
-    padding-top: 16px;
-    padding-bottom: 16px;
-  }
 }
 .model-toggle {
   display: flex;
@@ -199,10 +190,7 @@
   line-height: 1.8;
   color: var(--muted);
   margin-top: 18px;
-
-  @media (max-width: 900px) {
-    max-width: 390px;
-  }
+  max-width: 390px;
 }
 
 /* Measurements */

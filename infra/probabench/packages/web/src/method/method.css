@@ -46,9 +46,6 @@
   @media (max-width: 900px) {
     padding: 22px;
   }
-  @media (max-width: 650px) {
-    padding: 25px;
-  }
 }
 .method-steps > article + article {
   border-left: 1px solid var(--line);

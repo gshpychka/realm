@@ -132,9 +132,6 @@
     display: block;
     padding: 24px 0 18px;
   }
-  @media (max-width: 650px) {
-    padding: 22px 0 18px;
-  }
 }
 .masthead h1 {
   font: 400 var(--title-md) / 1.08 var(--serif);

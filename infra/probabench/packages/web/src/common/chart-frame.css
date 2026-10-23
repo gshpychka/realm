@@ -19,10 +19,6 @@
 .chart-heading h3 {
   font-size: 16px;
   font-weight: 600;
-
-  @media (max-width: 650px) {
-    font-size: 15px;
-  }
 }
 .chart-heading p {
   font-size: 12px;
@@ -76,7 +72,7 @@
 /* Both charts' tooltips */
 .chart-tooltip {
   padding: 16px;
-  background: color-mix(in srgb, var(--bg) 98%, transparent);
+  background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   width: 288px;
