@@ -137,9 +137,11 @@ export function validateCommand(value: unknown): Command {
   if (options.timeout !== undefined) positiveInteger(options.timeout, "--timeout");
   if (
     options.delay !== undefined &&
-    (!/^\d+$/.test(options.delay) || !Number.isSafeInteger(Number(options.delay)))
+    (!/^\d+$/.test(options.delay) ||
+      !Number.isSafeInteger(Number(options.delay)) ||
+      Number(options.delay) > 2_147_483_647)
   ) {
-    throw new Error("--delay must be a nonnegative integer");
+    throw new Error("--delay must be a nonnegative integer at most 2147483647");
   }
   if (options.settle !== undefined && !["true", "false"].includes(options.settle))
     throw new Error("--settle must be true or false");
