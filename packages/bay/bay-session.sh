@@ -7,7 +7,9 @@ usage: bay-session ready
        bay-session launch quiet|monitor -- [COMMAND...]
        bay-session program
        bay-session attach
+       bay-session operator --record ID --generation GENERATION OPERATION KEY
        bay-session stop
+       bay-session snapshot-ready
        bay-session save-history -- PATH...
        bay-session restore-history
        bay-session deliver-repo OWNER/NAME COMMIT REMOTE [BRANCH]
@@ -82,6 +84,12 @@ attach)
   exec env TERM="${TERM:-xterm-256color}" tmux attach -t main
   ;;
 
+
+operator)
+  # This fixed helper owns root-protected receipts and immutable bytes. Its requested commands drop to SESSION_USER.
+  exec "$BAY_GUEST" --user "$SESSION_USER" --home "$SESSION_HOME" --work "$WORK" "$@"
+  ;;
+
 stop)
   # each pane's process leads a session of its own, which holds the program and everything it started;
   # kill-server returns before they have exited
@@ -90,6 +98,14 @@ stop)
   if [ -n "$sessions" ]; then
     timeout 10 "$BASH" -c 'while pgrep -s "$@" >/dev/null; do sleep 0.1; done' _ "$sessions" ||
       pkill -KILL -s "$sessions" || true
+  fi
+  ;;
+
+snapshot-ready)
+  jobs=$(systemctl list-units --plain --no-legend --state=activating,active,deactivating 'bay-job-*')
+  if [ -n "$jobs" ]; then
+    echo "detached jobs are still running; wait for them before taking a snapshot" >&2
+    exit 1
   fi
   ;;
 

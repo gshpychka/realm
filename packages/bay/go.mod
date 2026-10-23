@@ -4,6 +4,7 @@ go 1.26.7
 
 require (
 	github.com/google/jsonschema-go v0.4.3
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/lxc/incus/v7 v7.5.1
 	github.com/mdlayher/vsock v1.3.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -29,7 +30,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
-	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/kr/fs v0.1.0 // indirect

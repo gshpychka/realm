@@ -1112,3 +1112,37 @@ func TestAutomaticSnapshotsAvoidNameCollisions(t *testing.T) {
 		t.Fatalf("second automatic snapshot = %q, %v; first was %q", second, err, first)
 	}
 }
+
+func (f *fakeInstances) Connect(ctx context.Context, name, sessionID string, argv []string, stdin io.Reader, stdout io.Writer) error {
+	if err := f.Exec(ctx, name, argv, nil, io.Discard); err != nil {
+		return err
+	}
+	stopped := make(chan struct{})
+	defer close(stopped)
+	go func() {
+		select {
+		case <-ctx.Done():
+			if r, ok := stdin.(io.Closer); ok {
+				r.Close()
+			}
+		case <-stopped:
+		}
+	}()
+	_, err := io.Copy(stdout, stdin)
+	return err
+}
+
+func TestSnapshotWaitsForDetachedJobs(t *testing.T) {
+	svc, instances, _ := newService(t, 2)
+	mustStart(t, svc, "one", StartSpec{})
+	instances.failOn = "snapshot-ready"
+	_, err := svc.Snap(context.Background(), "one", "while-busy")
+	wantKind(t, err, fault.Conflict)
+	if instances.snapshotCalls != 0 {
+		t.Fatal("busy detached jobs reached the snapshot operation")
+	}
+	instances.failOn = ""
+	if _, err := svc.Snap(context.Background(), "one", "after-jobs"); err != nil {
+		t.Fatal(err)
+	}
+}

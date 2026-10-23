@@ -79,7 +79,6 @@ inputs.nixpkgs.lib.nixos.runTest {
           subprocess.run(["systemctl", "restart", "bay-server.service"], check=True)
         '';
 
-
         services.bay = {
           enable = true;
           operator = "alice";
@@ -197,6 +196,8 @@ inputs.nixpkgs.lib.nixos.runTest {
     in
     ''
       import json
+      import hashlib
+      import re
       import shlex
       import time
       from datetime import timedelta
@@ -222,6 +223,25 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       def history(session):
           return guest(session, "cat /home/dev/.counter/log").strip().splitlines()
+
+      def operation(session, method, path, body=None, upload=None):
+          command = ["curl", "-fsS", "--unix-socket", "/run/bay/bay.sock", "-X", method,
+                     "-H", f"Bay-Session-ID: {session['id']}", "-H", f"Bay-Session-Generation: {session['generation']}"]
+          if body is not None:
+              command += ["-H", "Content-Type: application/json", "--data-binary", json.dumps(body)]
+          if upload is not None:
+              command += ["--data-binary", "@" + upload]
+          command += ["http://bay/v1/sessions/" + session["name"] + path]
+          return host.succeed("su - alice -c " + shlex.quote(shlex.join(command)))
+
+      def job_result(session, job):
+          deadline = time.monotonic() + 30
+          while True:
+              result = json.loads(operation(session, "GET", "/jobs/" + job))
+              if result["status"] != "running":
+                  return result
+              assert time.monotonic() < deadline, result
+              time.sleep(0.1)
 
       # the counter rises by one a second for as long as its program runs
       def counting(session):
@@ -254,6 +274,49 @@ inputs.nixpkgs.lib.nixos.runTest {
 
       with subtest("saving history writes nothing when no history path exists"):
           assert guest("one", "bay-session save-history -- .counter/none | wc -c").strip() == "0"
+
+      with subtest("operator transfers and detached commands preserve immutable bytes, exact identity and user privileges"):
+          session = json.loads(bay("show one --json"))
+          data = "private local input\n"
+          host.succeed("printf 'private local input\\n' > /tmp/bay-input")
+          digest = hashlib.sha256(data.encode()).hexdigest()
+          blob = json.loads(operation(session, "PUT", "/blobs/" + digest, upload="/tmp/bay-input"))
+          assert blob["sha256"] == digest and blob["size"] == len(data)
+          script = "id -u; cat " + shlex.quote(blob["path"]) + "; printf once >> executions; printf original > transfer-result"
+          request = {"argv": ["/bin/sh", "-c", script], "cwd": ".", "inputDigest": digest,
+                     "machineRevision": session["machineRevision"], "timeoutMs": 5000, "maxOutputBytes": 1024}
+          operation(session, "POST", "/jobs/materialize", request)
+          job = job_result(session, "materialize")
+          assert job["status"] == "succeeded" and job["exitCode"] == 0, job
+          assert job["recordId"] == session["id"] and job["generation"] == session["generation"], job
+          assert job["inputDigest"] == digest and job["machineRevision"] == session["machineRevision"], job
+          uid = guest("one", "id -u dev").strip()
+          assert uid != "0" and job["stdout"] == uid + "\n" + data, job
+          assert json.loads(operation(session, "POST", "/jobs/materialize", request))["status"] == "succeeded"
+          assert guest("one", "cat /work/executions") == "once"
+          capture = json.loads(operation(session, "POST", "/captures/result", {"path": "transfer-result", "maxBytes": 1024}))
+          guest("one", "runuser -u dev -- sh -c " + shlex.quote("printf later > /work/transfer-result"))
+          assert operation(session, "GET", "/captures/result") == "original"
+          assert json.loads(operation(session, "POST", "/captures/result", {"path": "transfer-result", "maxBytes": 1024})) == capture
+          assert capture["sha256"] == hashlib.sha256(b"original").hexdigest()
+          guest_fails("one", "runuser -u dev -- sh -c " + shlex.quote("printf corrupt > " + shlex.quote(blob["path"])))
+          receipt = f"/var/lib/bay/operator/{session['id']}/{session['generation']}/jobs/materialize/state.json"
+          guest("one", f"${pkgs.coreutils}/bin/cat {receipt} 2>&1")
+          assert "Permission denied" in guest_fails("one", f"runuser -u dev -- ${pkgs.coreutils}/bin/cat {receipt} 2>&1")
+          expired = dict(session, generation=session["generation"] + 1)
+          command = ["curl", "-sS", "--unix-socket", "/run/bay/bay.sock", "-o", "/dev/null", "-w", "%{http_code}",
+                     "-H", f"Bay-Session-ID: {expired['id']}", "-H", f"Bay-Session-Generation: {expired['generation']}",
+                     "http://bay/v1/sessions/one/jobs/materialize"]
+          assert host.succeed("su - alice -c " + shlex.quote(shlex.join(command))) == "409"
+          timeout = dict(request, argv=["/bin/sh", "-c", "sleep 30"], timeoutMs=100)
+          operation(session, "POST", "/jobs/timeout", timeout)
+          assert job_result(session, "timeout")["status"] == "timed_out"
+          detached = dict(request, argv=["/bin/sh", "-c", "setsid sh -c 'echo $$ > detached.pid; sleep 60' >/dev/null 2>&1 & while ! test -s detached.pid; do sleep 0.01; done; cat detached.pid"])
+          operation(session, "POST", "/jobs/detached", detached)
+          detached_result = job_result(session, "detached")
+          assert detached_result["status"] == "succeeded", detached_result
+          detached_pid = int(detached_result["stdout"].strip())
+          guest("one", f"bash -c '${pkgs.procps}/bin/pgrep -s {detached_pid} >/dev/null; test $? = 1'")
 
       with subtest("declared machines keep immutable bases and pinned sessions across catalog changes"):
           bay("start pinned counter")
@@ -308,7 +371,7 @@ inputs.nixpkgs.lib.nixos.runTest {
           guest("one", "tmux split-window -d -t main")
           assert guest("one", "bay-session program").strip() == "running"
           pane = guest("one", "tmux display-message -p -t main.1 '#{pane_pid}'").strip()
-          retry(lambda _: "dev" in guest("one", f"ps -o user= --ppid {pane}").split(), timeout=timedelta(seconds=10))
+          retry(lambda _: "dev" in guest("one", f"${pkgs.procps}/bin/ps -o user= --ppid {pane}").split(), timeout=timedelta(seconds=10))
 
       with subtest("a second session starts, and the cap refuses a third"):
           bay("start two counter")
@@ -440,7 +503,7 @@ inputs.nixpkgs.lib.nixos.runTest {
           assert counting("one")
           assert history("one") == [*after_end, "hangup", "start resume"]
           # a program that exits on its own leaves its pane behind, and resuming starts it again
-          guest("one", "pkill -HUP -f 'counter resume'")
+          guest("one", "${pkgs.procps}/bin/pkill -HUP -f 'counter resume'")
           retry(lambda _: guest("one", "bay-session program").strip() == "stopped", timeout=timedelta(seconds=30))
           bay("resume one")
           retry(lambda _: history("one")[-1] == "start resume", timeout=timedelta(seconds=60))
@@ -452,6 +515,7 @@ inputs.nixpkgs.lib.nixos.runTest {
           bay_fails("show two")
           host.fail("incus info --project bay two")
           host.fail("test -e /var/lib/bay/sessions/two")
-          host.fail("zfs list -H -o name | grep -E '/(bay_)?two(\\.block)?$'")
+          volumes = host.succeed("zfs list -H -o name").splitlines()
+          assert not any(re.search(r"/(bay_)?two(\.block)?$", volume) for volume in volumes), volumes
     '';
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -39,6 +40,11 @@ func (g Guest) Launch(ctx context.Context, argv []string, monitor bool) error {
 	return g.run(ctx, nil, nil, append([]string{"launch", mode, "--"}, argv...)...)
 }
 
+// Operator reaches only Bay's fixed transfer/command helper, never an arbitrary root executable.
+func (g Guest) Operator(ctx context.Context, id string, generation uint64, operation, key string, stdin io.Reader, stdout io.Writer) error {
+	return g.run(ctx, stdin, stdout, "operator", "--record", id, "--generation", strconv.FormatUint(generation, 10), operation, key)
+}
+
 // Running reports whether the session's program is running.
 func (g Guest) Running(ctx context.Context) (bool, error) {
 	var out bytes.Buffer
@@ -58,6 +64,11 @@ func (g Guest) Running(ctx context.Context) (bool, error) {
 // Stop ends the program and its tmux server, and returns once the program's processes have exited.
 func (g Guest) Stop(ctx context.Context) error {
 	return g.run(ctx, nil, nil, "stop")
+}
+
+// SnapshotReady rejects a stateful snapshot while a detached operator job could be replayed by restoring it.
+func (g Guest) SnapshotReady(ctx context.Context) error {
+	return g.run(ctx, nil, nil, "snapshot-ready")
 }
 
 // SaveHistory writes to w a tar archive of those of the given paths, relative to the program's home, that exist; the
