@@ -223,9 +223,8 @@
     gap: 10px;
   }
 }
-.measurements-panel > header h3 {
+.measurements-panel > header > h3 {
   font: 400 var(--title-sm) / 1.2 var(--serif);
-  margin-top: 7px;
   letter-spacing: -0.4px;
 
   @media (max-width: 650px) {

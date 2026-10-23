@@ -114,9 +114,7 @@ export function CalibrationPage({
       </div>
       <section className="measurements-panel">
         <header>
-          <div>
-            <h3>Measurements</h3>
-          </div>
+          <h3>Measurements</h3>
           <span className="tag">
             {shown.length} selected {shown.length === 1 ? "run" : "runs"}
           </span>
