@@ -48,4 +48,3 @@ again; a different payload conflicts. An interrupted dispatch or runner reports
 its uncertain outcome rather than retrying a command silently. Root-owned
 receipts protect these application operations from the session user. The
 connection-scoped environment itself keeps no durable tasks or agent state.
-
