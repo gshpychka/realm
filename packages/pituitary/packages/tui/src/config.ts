@@ -1,9 +1,16 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-/** Include isolated state so the hint works again from the operator's parent shell. */
-export function attachCommand(name: string, stateDirectory?: string, taskId?: string): string {
-  return `pituitary attach ${shellWord(name)}${stateDirectory ? ` --state ${shellWord(stateDirectory)}` : ""}${taskId ? ` --task ${shellWord(taskId)}` : ""}`;
+/** Preserve the runtime connection when reconnecting from the operator's shell. */
+export function attachCommand(
+  name: string,
+  {
+    stateDirectory,
+    taskId,
+    socketPath,
+  }: { stateDirectory?: string; taskId?: string; socketPath?: string } = {},
+): string {
+  return `pituitary attach ${shellWord(name)}${stateDirectory ? ` --state ${shellWord(stateDirectory)}` : ""}${taskId ? ` --task ${shellWord(taskId)}` : ""}${socketPath ? ` --socket ${shellWord(socketPath)}` : ""}`;
 }
 
 function shellWord(value: string): string {
