@@ -84,7 +84,6 @@ attach)
   exec env TERM="${TERM:-xterm-256color}" tmux attach -t main
   ;;
 
-
 operator)
   # This fixed helper owns root-protected receipts and immutable bytes. Its requested commands drop to SESSION_USER.
   exec "$BAY_GUEST" --user "$SESSION_USER" --home "$SESSION_HOME" --work "$WORK" "$@"
