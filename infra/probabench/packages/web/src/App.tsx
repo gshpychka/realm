@@ -100,8 +100,8 @@ export function App() {
     setDraft({
       key: crypto.randomUUID(),
       model: run.modelSlug,
-      trials: run.trialsPerStep,
-      step: run.stepPercent,
+      trialsPerStep: run.trialsPerStep,
+      stepPercent: run.stepPercent,
       concurrency: 5,
       reasoning: run.reasoning,
     });

@@ -1,3 +1,4 @@
+import { planBudget } from "@probabench/domain";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 
@@ -25,12 +26,6 @@ export const probabilityStep = (value: number): number => {
   return value;
 };
 
-/** Always include both endpoints, including when the step does not divide 100. */
-export const probabilityPercentages = (step: number): readonly number[] => {
-  probabilityStep(step);
-  return [...Array.from({ length: Math.ceil(100 / step) }, (_, index) => index * step), 100];
-};
-
 export const validateSamplingOptions = (
   options: SamplingOptions,
 ): Effect.Effect<void, InvalidOptions> =>
@@ -39,10 +34,7 @@ export const validateSamplingOptions = (
       positiveInteger(options.trialsPerStep, "trials");
       probabilityStep(options.stepPercent);
       positiveInteger(options.concurrency, "concurrency");
-      positiveInteger(
-        options.trialsPerStep * probabilityPercentages(options.stepPercent).length,
-        "sample count",
-      );
+      positiveInteger(planBudget(options).samples, "sample count");
     },
     catch: (error) =>
       error instanceof InvalidOptions ? error : new InvalidOptions({ message: String(error) }),

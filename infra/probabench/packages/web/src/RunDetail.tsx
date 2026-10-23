@@ -31,28 +31,24 @@ export function Measurements({ run }: { run: Run }) {
           </tr>
         </thead>
         <tbody>
-          {[...run.points]
-            .sort((a, b) => a.x - b.x)
-            .map((point) => {
-              const { observed, interval, ones, valid, invalid, total } = measurePoint(point);
-              return (
-                <tr key={point.x}>
-                  <th scope="row">{percent(point.x, 0)}</th>
-                  <td className="table-observed">
-                    {observed === null ? "No valid replies" : percent(observed)}
-                  </td>
-                  <td>
-                    {interval ? `${percent(interval[0], 0)}–${percent(interval[1], 0)}` : "—"}
-                  </td>
-                  <td>
-                    {number(ones)} / {number(valid)}
-                  </td>
-                  <td>
-                    {number(invalid)} / {number(total)}
-                  </td>
-                </tr>
-              );
-            })}
+          {run.points.map((point) => {
+            const { observed, interval, ones, valid, invalid, total } = measurePoint(point);
+            return (
+              <tr key={point.x}>
+                <th scope="row">{percent(point.x, 0)}</th>
+                <td className="table-observed">
+                  {observed === null ? "No valid replies" : percent(observed)}
+                </td>
+                <td>{interval ? `${percent(interval[0], 0)}–${percent(interval[1], 0)}` : "—"}</td>
+                <td>
+                  {number(ones)} / {number(valid)}
+                </td>
+                <td>
+                  {number(invalid)} / {number(total)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </section>
@@ -83,8 +79,8 @@ export function RunDetail({
   const canRerun =
     validateBenchmarkOptions({
       model: run.modelSlug,
-      trials: run.trialsPerStep,
-      step: run.stepPercent,
+      trialsPerStep: run.trialsPerStep,
+      stepPercent: run.stepPercent,
       concurrency: 5,
     }) === null;
   return (

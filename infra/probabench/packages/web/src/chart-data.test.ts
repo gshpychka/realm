@@ -113,7 +113,7 @@ describe("buildChartModel", () => {
     ]);
   });
 
-  it("keeps a complete diagonal reference for a sparse or empty document", () => {
+  it("keeps a complete diagonal reference for an empty notebook", () => {
     expect(buildChartModel(resultsOf([])).rows).toEqual([
       { x: 0, reference: 0 },
       { x: 1, reference: 1 },
@@ -125,12 +125,5 @@ describe("buildChartModel", () => {
     expect(model.seriesRows.get("series_1")?.map((row) => row.x)).toEqual([0, 1]);
     // A sampled all-invalid point is retained, so it still creates a real gap.
     expect(model.seriesRows.get("series_0")?.at(-1)?.series_0).toBeNull();
-  });
-
-  it("sorts a run's points independently and does not invent samples at reference endpoints", () => {
-    const results = resultsOf([{ ...haiku, points: haiku.points.slice(0, 2).reverse() }]);
-    const shaped = buildChartModel(results);
-    expect(shaped.rows.map((row) => row.x)).toEqual([0, 0.5, 1]);
-    expect(shaped.seriesRows.get("series_0")?.map((row) => row.x)).toEqual([0, 0.5]);
   });
 });

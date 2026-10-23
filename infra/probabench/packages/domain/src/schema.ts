@@ -12,6 +12,21 @@ export const ReasoningMode = Schema.Literal("off", "low", "medium", "high", "xhi
 export type ReasoningMode = typeof ReasoningMode.Type;
 export type ReasoningEffort = Exclude<ReasoningMode, "off">;
 
+/** Samples drawn at each target probability. */
+export const TrialsPerStep = Schema.Int.pipe(Schema.positive());
+
+/** Distance between neighbouring target probabilities, in whole percent. */
+export const StepPercent = Schema.Int.pipe(Schema.between(1, 100));
+
+/**
+ * Target probabilities {0, step, 2·step, …, 100}% as fractions. Both endpoints are
+ * always included, even when the step does not divide 100.
+ */
+export const probabilityGrid = (stepPercent: number): ReadonlyArray<Probability> =>
+  [...Array.from({ length: Math.ceil(100 / stepPercent) }, (_, i) => i * stepPercent), 100].map(
+    (percent) => Probability.make(percent / 100),
+  );
+
 /** One trial's outcome: a bit, or the raw text of an unparseable reply. */
 export const Outcome = Schema.Union(
   Schema.Literal(0, 1),
@@ -40,7 +55,7 @@ const IsoTimestamp = Schema.String.pipe(
   ),
 );
 
-/** One immutable sweep of one model series. */
+/** One immutable sweep of one model series over its full probability grid. */
 export const Run = Schema.Struct({
   /** Identifies this execution; a series keeps every earlier run. */
   id: Schema.NonEmptyTrimmedString,
@@ -53,17 +68,25 @@ export const Run = Schema.Struct({
   modelSlug: Schema.NonEmptyTrimmedString,
   /** Reasoning mode used for every sample. */
   reasoning: ReasoningMode,
-  trialsPerStep: Schema.Int.pipe(Schema.positive()),
-  stepPercent: Schema.Int.pipe(Schema.between(1, 100)),
+  trialsPerStep: TrialsPerStep,
+  stepPercent: StepPercent,
   startedAt: IsoTimestamp,
-  points: Schema.Array(Point).pipe(Schema.minItems(1)),
+  points: Schema.Array(Point),
 }).pipe(
   Schema.filter((run) => run.points.every((point) => point.outcomes.length === run.trialsPerStep), {
     message: () => "Every point must contain trialsPerStep outcomes",
   }),
-  Schema.filter((run) => new Set(run.points.map((point) => point.x)).size === run.points.length, {
-    message: () => "Target probabilities must be unique within a run",
-  }),
+  // Exact equality holds: the runner builds every x with probabilityGrid, and JSON
+  // round-trips doubles exactly.
+  Schema.filter(
+    (run) => {
+      const grid = probabilityGrid(run.stepPercent);
+      return (
+        run.points.length === grid.length && run.points.every((point, i) => point.x === grid[i])
+      );
+    },
+    { message: () => "Points must be the stepPercent grid from 0 to 1, in order" },
+  ),
 );
 export type Run = typeof Run.Type;
 

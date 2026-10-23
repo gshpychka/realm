@@ -1,4 +1,12 @@
-import { MODEL_ALIASES, REASONING_LABELS, ReasoningMode } from "@probabench/domain";
+import {
+  MODEL_ALIASES,
+  planBudget,
+  REASONING_LABELS,
+  ReasoningMode,
+  SAMPLING_PRESETS,
+  StepPercent,
+  TrialsPerStep,
+} from "@probabench/domain";
 import * as Schema from "effect/Schema";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
@@ -8,8 +16,7 @@ import {
   jobPointProgress,
   MAX_BROWSER_SAMPLES,
   MAX_MODEL_LENGTH,
-  PRESETS,
-  sampleBudget,
+  PRESET_DESCRIPTIONS,
   validateBenchmarkOptions,
 } from "./benchmark";
 import { number, time } from "./format";
@@ -164,22 +171,29 @@ export function RunSetup({
   const commandField = useRef<HTMLTextAreaElement>(null);
   const consumedDraft = useRef(draft?.key);
   const [model, setModel] = useState(draft?.model ?? MODEL_ALIASES[0].alias);
-  const [trials, setTrials] = useState(draft?.trials ?? 50);
-  const [step, setStep] = useState(draft?.step ?? 10);
+  const [trialsPerStep, setTrialsPerStep] = useState(draft?.trialsPerStep ?? 50);
+  const [stepPercent, setStepPercent] = useState(draft?.stepPercent ?? 10);
   const [concurrency, setConcurrency] = useState(draft?.concurrency ?? 5);
   const [reasoning, setReasoning] = useState<ReasoningMode | "">(draft?.reasoning ?? "");
   const [custom, setCustom] = useState(
     draft !== undefined &&
-      !PRESETS.some((preset) => preset.trials === draft.trials && preset.step === draft.step),
+      !SAMPLING_PRESETS.some(
+        (preset) =>
+          preset.trialsPerStep === draft.trialsPerStep && preset.stepPercent === draft.stepPercent,
+      ),
   );
   const [showJob, setShowJob] = useState(draft === undefined);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
-  const budget = sampleBudget(trials, step);
+  // The custom inputs can hold 0 or NaN while the user types.
+  const budget =
+    Schema.is(TrialsPerStep)(trialsPerStep) && Schema.is(StepPercent)(stepPercent)
+      ? planBudget({ trialsPerStep, stepPercent })
+      : { points: 0, samples: 0, attempts: 0 };
   const options = {
     model: model.trim(),
-    trials,
-    step,
+    trialsPerStep,
+    stepPercent,
     concurrency,
     ...(reasoning ? { reasoning } : {}),
   };
@@ -190,8 +204,8 @@ export function RunSetup({
   const overBudget = !published && budget.samples > MAX_BROWSER_SAMPLES;
   const job = bridge.status?.job;
   const showingJob = job && (job.status === "running" || showJob);
-  const selectedPreset = PRESETS.find(
-    (preset) => preset.trials === trials && preset.step === step,
+  const selectedPreset = SAMPLING_PRESETS.find(
+    (preset) => preset.trialsPerStep === trialsPerStep && preset.stepPercent === stepPercent,
   )?.id;
   const canSubmit = !bridge.pending && !validationError && !overBudget && (published || localReady);
 
@@ -204,12 +218,15 @@ export function RunSetup({
     if (!draft || consumedDraft.current === draft.key) return;
     consumedDraft.current = draft.key;
     setModel(draft.model);
-    setTrials(draft.trials);
-    setStep(draft.step);
+    setTrialsPerStep(draft.trialsPerStep);
+    setStepPercent(draft.stepPercent);
     setConcurrency(draft.concurrency);
     setReasoning(draft.reasoning ?? "");
     setCustom(
-      !PRESETS.some((preset) => preset.trials === draft.trials && preset.step === draft.step),
+      !SAMPLING_PRESETS.some(
+        (preset) =>
+          preset.trialsPerStep === draft.trialsPerStep && preset.stepPercent === draft.stepPercent,
+      ),
     );
     setShowJob(false);
   }, [draft]);
@@ -369,7 +386,7 @@ export function RunSetup({
               <fieldset className="preset-fieldset">
                 <legend className="field-label">Sampling depth</legend>
                 <div className="preset-grid">
-                  {PRESETS.map((preset) => (
+                  {SAMPLING_PRESETS.map((preset) => (
                     <button
                       key={preset.id}
                       type="button"
@@ -377,16 +394,14 @@ export function RunSetup({
                       className={`preset ${selectedPreset === preset.id ? "selected" : ""}`}
                       disabled={bridge.pending}
                       onClick={() => {
-                        setTrials(preset.trials);
-                        setStep(preset.step);
+                        setTrialsPerStep(preset.trialsPerStep);
+                        setStepPercent(preset.stepPercent);
                         setCustom(false);
                       }}
                     >
                       <strong>{preset.label}</strong>
-                      <span>{preset.description}</span>
-                      <small>
-                        {number(sampleBudget(preset.trials, preset.step).samples)} samples
-                      </small>
+                      <span>{PRESET_DESCRIPTIONS[preset.id]}</span>
+                      <small>{number(planBudget(preset).samples)} samples</small>
                     </button>
                   ))}
                 </div>
@@ -416,8 +431,8 @@ export function RunSetup({
                       min={1}
                       max={10000}
                       step={1}
-                      value={trials}
-                      onChange={(event) => setTrials(Number(event.target.value))}
+                      value={trialsPerStep}
+                      onChange={(event) => setTrialsPerStep(Number(event.target.value))}
                       required
                       disabled={bridge.pending}
                     />
@@ -430,8 +445,8 @@ export function RunSetup({
                       min={1}
                       max={100}
                       step={1}
-                      value={step}
-                      onChange={(event) => setStep(Number(event.target.value))}
+                      value={stepPercent}
+                      onChange={(event) => setStepPercent(Number(event.target.value))}
                       required
                       disabled={bridge.pending}
                     />
@@ -489,7 +504,7 @@ export function RunSetup({
                 </div>
                 <span className="budget-times">=</span>
                 <p>
-                  {number(budget.targets)} targets × {number(trials)} samples
+                  {number(budget.points)} targets × {number(trialsPerStep)} samples
                   <br />
                   <span>Up to {number(budget.attempts)} attempts with retries.</span>
                 </p>

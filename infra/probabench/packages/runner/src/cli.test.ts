@@ -15,8 +15,6 @@ import {
   MISSING_MODEL_MESSAGE,
   NON_TTY_MESSAGE,
   resolvePlan,
-  TRIAL_PRESETS,
-  xStepCount,
 } from "./cli";
 import { ResultsStore } from "./results-store";
 
@@ -35,37 +33,19 @@ const runCommand = (args: readonly string[]) =>
   );
 
 describe("plan resolution", () => {
-  it("counts both endpoints including nondivisor steps", () => {
-    expect(xStepCount(10)).toBe(11);
-    expect(xStepCount(30)).toBe(5);
-    expect(xStepCount(100)).toBe(2);
-  });
   it("expands aliases and projects provider attempts separately from samples", () => {
     const plan = resolvePlan(["all"], 5, 50);
     expect(plan.targets).toHaveLength(MODEL_ALIASES.length);
-    expect(plan.projectedCalls).toBe(MODEL_ALIASES.length * 15);
-    expect(describePlan(plan)).toContain(`Projected samples: ${plan.projectedCalls}`);
+    expect(plan.budget.samples).toBe(MODEL_ALIASES.length * 15);
+    expect(describePlan(plan)).toContain(`Projected samples: ${plan.budget.samples}`);
     expect(describePlan(plan)).toContain(
-      `Provider attempts with retries: up to ${plan.projectedCalls * 6}`,
+      `Provider attempts with retries: up to ${plan.budget.attempts}`,
     );
   });
   it("resolves arbitrary models and an explicit reasoning override", () => {
     const plan = resolvePlan(["vendor/new-model"], 2, 30, "high");
     expect(plan.targets[0]?.id).toBe("vendor/new-model [reasoning=high]");
-    expect(plan.projectedCalls).toBe(10);
-  });
-  it("matches the page's guided quick, standard, thorough and custom presets", () => {
-    expect(TRIAL_PRESETS.map((preset) => preset.value)).toEqual([
-      { trialsPerStep: 10, stepPercent: 25 },
-      { trialsPerStep: 50, stepPercent: 10 },
-      { trialsPerStep: 100, stepPercent: 5 },
-      { trialsPerStep: 0, stepPercent: 0 },
-    ]);
-    expect(
-      TRIAL_PRESETS.slice(0, 3).map(
-        (preset) => preset.value.trialsPerStep * xStepCount(preset.value.stepPercent),
-      ),
-    ).toEqual([50, 550, 2100]);
+    expect(plan.budget.samples).toBe(10);
   });
 });
 

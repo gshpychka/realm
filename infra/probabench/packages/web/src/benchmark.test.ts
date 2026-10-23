@@ -1,19 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
-import { benchmarkCommand, parseJob, sampleBudget, shellQuote } from "./benchmark";
+import { benchmarkCommand, parseJob, shellQuote } from "./benchmark";
 
 describe("Benchmark setup", () => {
-  it("includes both endpoints in non-divisor grids and counts retry attempts", () => {
-    expect(sampleBudget(10, 30)).toEqual({ targets: 5, samples: 50, attempts: 300 });
-    expect(sampleBudget(50, 10)).toEqual({ targets: 11, samples: 550, attempts: 3300 });
-    expect(sampleBudget(0, 10)).toEqual({ targets: 0, samples: 0, attempts: 0 });
-    expect(sampleBudget(2, 0)).toEqual({ targets: 0, samples: 0, attempts: 0 });
-  });
   it("quotes model and reasoning arguments so copied commands cannot execute their contents", () => {
     expect(shellQuote("a'b")).toBe("'a'\\''b'");
     const command = benchmarkCommand({
       model: "a'$(touch bad)",
-      trials: 10,
-      step: 25,
+      trialsPerStep: 10,
+      stepPercent: 25,
       concurrency: 5,
     });
     expect(command).toContain("--model 'a'\\''$(touch bad)'");
@@ -34,7 +28,7 @@ describe("Benchmark setup", () => {
 
 import { jobPointProgress, validateBenchmarkOptions } from "./benchmark";
 
-const settings = { model: "vendor/model", trials: 50, step: 10, concurrency: 5 };
+const settings = { model: "vendor/model", trialsPerStep: 50, stepPercent: 10, concurrency: 5 };
 
 describe("setup request boundaries", () => {
   it("matches local API model and numeric limits before a user can submit", () => {
@@ -48,24 +42,16 @@ describe("setup request boundaries", () => {
       { model: "future-model" },
       { model: "vendor/model+variant" },
       { model: "vendor/model with spaces" },
-      { trials: 0 },
-      { trials: 10001 },
-      { step: 0 },
-      { step: 101 },
-      { step: 2.5 },
+      { trialsPerStep: 0 },
+      { trialsPerStep: 10001 },
+      { stepPercent: 0 },
+      { stepPercent: 101 },
+      { stepPercent: 2.5 },
       { concurrency: 0 },
       { concurrency: 51 },
     ])
       expect(validateBenchmarkOptions({ ...settings, ...invalid })).toBeTruthy();
     expect(validateBenchmarkOptions({ ...settings, model: "gpt-5-mini-low" })).toBeNull();
-  });
-
-  it("does not present unsafe-integer sample projections", () => {
-    expect(sampleBudget(Number.MAX_SAFE_INTEGER, 1)).toEqual({
-      targets: 0,
-      samples: 0,
-      attempts: 0,
-    });
   });
 
   it("summarizes live probability progress without inventing progress before the first point", () => {

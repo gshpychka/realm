@@ -4,7 +4,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { createBenchController, isLocalRequest, parseBenchRequest } from "./local-bench";
 
-const settings = { model: "openai/example:free", trials: 10, step: 25, concurrency: 5 };
+const settings = {
+  model: "openai/example:free",
+  trialsPerStep: 10,
+  stepPercent: 25,
+  concurrency: 5,
+};
 
 describe("local benchmark request boundaries", () => {
   it("accepts a model slug and preserves the default reasoning choice", () => {
@@ -18,12 +23,12 @@ describe("local benchmark request boundaries", () => {
     { ...settings, model: "--help" },
     { ...settings, model: "model; touch /tmp/oops" },
     { ...settings, model: "a,b" },
-    { ...settings, trials: 0 },
-    { ...settings, trials: 1.5 },
-    { ...settings, step: 101 },
+    { ...settings, trialsPerStep: 0 },
+    { ...settings, trialsPerStep: 1.5 },
+    { ...settings, stepPercent: 101 },
     { ...settings, concurrency: 51 },
     { ...settings, reasoning: "secret" },
-    { ...settings, trials: 10_000, step: 1 },
+    { ...settings, trialsPerStep: 10_000, stepPercent: 1 },
   ])("rejects invalid or excessive plans before launch: %j", (value) => {
     expect(() => parseBenchRequest(value)).toThrow();
   });

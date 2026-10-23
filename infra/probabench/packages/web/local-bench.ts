@@ -4,14 +4,14 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { isModelToken, ReasoningMode } from "@probabench/domain";
+import { isModelToken, planBudget, ReasoningMode } from "@probabench/domain";
 import * as Schema from "effect/Schema";
 import { loadEnv, type Plugin } from "vite";
 
 interface BenchRequest {
   readonly model: string;
-  readonly trials: number;
-  readonly step: number;
+  readonly trialsPerStep: number;
+  readonly stepPercent: number;
   readonly concurrency: number;
   readonly reasoning?: ReasoningMode;
 }
@@ -81,14 +81,14 @@ export function parseBenchRequest(value: unknown): BenchRequest {
     }
     return number;
   };
-  const trials = integer("trials", 10_000);
-  const step = integer("step", 100);
+  const trialsPerStep = integer("trialsPerStep", 10_000);
+  const stepPercent = integer("stepPercent", 100);
   const concurrency = integer("concurrency", 50);
   const reasoning = request.reasoning;
   if (reasoning !== undefined && !Schema.is(ReasoningMode)(reasoning)) {
     throw new RequestError(400, "Choose a valid reasoning setting.");
   }
-  if (trials * (Math.ceil(100 / step) + 1) > MAX_SAMPLES) {
+  if (planBudget({ trialsPerStep, stepPercent }).samples > MAX_SAMPLES) {
     throw new RequestError(
       400,
       `A browser run supports up to ${MAX_SAMPLES.toLocaleString("en")} samples. Use the CLI for larger experiments.`,
@@ -96,8 +96,8 @@ export function parseBenchRequest(value: unknown): BenchRequest {
   }
   return {
     model,
-    trials,
-    step,
+    trialsPerStep,
+    stepPercent,
     concurrency,
     ...(reasoning === undefined ? {} : { reasoning }),
   };
@@ -143,9 +143,9 @@ export function createBenchController(options: ControllerOptions) {
           "--model",
           settings.model,
           "--trials",
-          String(settings.trials),
+          String(settings.trialsPerStep),
           "--step",
-          String(settings.step),
+          String(settings.stepPercent),
           "--concurrency",
           String(settings.concurrency),
           ...(settings.reasoning === undefined ? [] : ["--reasoning", settings.reasoning]),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { Outcome, Probability, Results, Run } from "./schema";
+import { Outcome, Probability, probabilityGrid, Results, Run } from "./schema";
 
 const run = {
   id: "run-1",
@@ -11,7 +11,11 @@ const run = {
   trialsPerStep: 2,
   stepPercent: 50,
   startedAt: "2026-06-26T00:00:00.000Z",
-  points: [{ x: 0.5, outcomes: [0, 1] }],
+  points: [
+    { x: 0, outcomes: [0, 0] },
+    { x: 0.5, outcomes: [0, 1] },
+    { x: 1, outcomes: [1, 1] },
+  ],
 } as const;
 
 /** Assert a decode failure, naming the input when the assertion fails. */
@@ -28,6 +32,16 @@ describe("Probability", () => {
   });
 
   it.each([-0.1, 1.5, Number.NaN])("rejects %d", rejects(Probability));
+});
+
+describe("probabilityGrid", () => {
+  it.each([
+    { step: 30, grid: [0, 0.3, 0.6, 0.9, 1] },
+    { step: 50, grid: [0, 0.5, 1] },
+    { step: 100, grid: [0, 1] },
+  ])("includes both endpoints for a $step% step", ({ step, grid }) => {
+    expect(probabilityGrid(step)).toEqual(grid);
+  });
 });
 
 describe("Outcome", () => {
@@ -48,9 +62,11 @@ describe("Run", () => {
     { trialsPerStep: 1.5 },
     { stepPercent: 101 },
     { startedAt: "2026-02-31T00:00:00.000Z" },
-    { points: [] },
     { trialsPerStep: 3 },
-    { points: [run.points[0], run.points[0]] },
+    { points: [] },
+    { points: run.points.slice(0, 2) },
+    { points: [run.points[0], { x: 0.4, outcomes: [0, 1] }, run.points[2]] },
+    { points: [...run.points].reverse() },
   ])("rejects %j", (patch) => rejects(Run)({ ...run, ...patch }));
 });
 

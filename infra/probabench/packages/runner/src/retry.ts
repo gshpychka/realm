@@ -3,14 +3,12 @@
 // exponential backoff; auth/not-found (401/403/404) and other non-transport
 // failures abort the run, as does exhausting the retry budget.
 import type * as AiError from "@effect/ai/AiError";
+import { MAX_RETRIES } from "@probabench/domain";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import type { LlmError } from "./bit-sampler";
-
-/** How many retries follow the first attempt before a retryable failure aborts the run. */
-export const MAX_RETRIES = 5;
 
 /** HTTP statuses worth retrying: rate limiting (429), overload (529), and any 5xx. */
 export const isRetryableStatus = (status: number): boolean =>

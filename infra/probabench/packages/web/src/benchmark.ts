@@ -1,9 +1,9 @@
-import { isModelToken, type ReasoningMode } from "@probabench/domain";
+import { isModelToken, type ReasoningMode, type SamplingPreset } from "@probabench/domain";
 
 export interface BenchmarkOptions {
   readonly model: string;
-  readonly trials: number;
-  readonly step: number;
+  readonly trialsPerStep: number;
+  readonly stepPercent: number;
   readonly concurrency: number;
   readonly reasoning?: ReasoningMode;
 }
@@ -21,54 +21,30 @@ export const validateBenchmarkOptions = (options: BenchmarkOptions): string | nu
   if (model.length > MAX_MODEL_LENGTH || !isModelToken(model)) {
     return "Choose one model alias or OpenRouter vendor/model ID.";
   }
-  if (!Number.isSafeInteger(options.trials) || options.trials < 1 || options.trials > 10_000) {
+  const { trialsPerStep, stepPercent, concurrency } = options;
+  if (!Number.isSafeInteger(trialsPerStep) || trialsPerStep < 1 || trialsPerStep > 10_000) {
     return "Samples per target must be an integer from 1 to 10,000.";
   }
-  if (!Number.isSafeInteger(options.step) || options.step < 1 || options.step > 100) {
+  if (!Number.isSafeInteger(stepPercent) || stepPercent < 1 || stepPercent > 100) {
     return "Target step must be an integer from 1 to 100 percent.";
   }
-  if (
-    !Number.isSafeInteger(options.concurrency) ||
-    options.concurrency < 1 ||
-    options.concurrency > 50
-  ) {
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 50) {
     return "Concurrent requests must be an integer from 1 to 50.";
   }
   return null;
 };
 
-export const PRESETS = [
-  { id: "quick", label: "Quick check", description: "Find the shape", trials: 10, step: 25 },
-  { id: "standard", label: "Standard", description: "A closer look", trials: 50, step: 10 },
-  { id: "thorough", label: "Thorough", description: "More evidence", trials: 100, step: 5 },
-] as const;
-
-/** Includes both endpoints, including the final 100% target for non-divisor steps. */
-export const sampleBudget = (
-  trials: number,
-  step: number,
-): { targets: number; samples: number; attempts: number } => {
-  if (
-    !Number.isSafeInteger(trials) ||
-    trials < 1 ||
-    !Number.isSafeInteger(step) ||
-    step < 1 ||
-    step > 100
-  ) {
-    return { targets: 0, samples: 0, attempts: 0 };
-  }
-  const targets = Math.ceil(100 / step) + 1;
-  const samples = targets * trials;
-  if (!Number.isSafeInteger(samples * 6)) return { targets: 0, samples: 0, attempts: 0 };
-  // The runner allows five retries after the first attempt (MAX_RETRIES = 5).
-  return { targets, samples, attempts: samples * 6 };
+export const PRESET_DESCRIPTIONS: Readonly<Record<SamplingPreset["id"], string>> = {
+  quick: "Find the shape",
+  standard: "A closer look",
+  thorough: "More evidence",
 };
 
 /** Quote every user-controlled argument, including apostrophes, for POSIX shells. */
 export const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
 export const benchmarkCommand = (options: BenchmarkOptions): string =>
-  `bun run bench --model ${shellQuote(options.model.trim())} --trials ${options.trials} --step ${options.step} --concurrency ${options.concurrency}${options.reasoning ? ` --reasoning ${shellQuote(options.reasoning)}` : ""}`;
+  `bun run bench --model ${shellQuote(options.model.trim())} --trials ${options.trialsPerStep} --step ${options.stepPercent} --concurrency ${options.concurrency}${options.reasoning ? ` --reasoning ${shellQuote(options.reasoning)}` : ""}`;
 
 export interface Job {
   readonly id: string;

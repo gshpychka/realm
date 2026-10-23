@@ -9,7 +9,7 @@ import type * as LanguageModel from "@effect/ai/LanguageModel";
 import {
   measurePoint,
   type Point,
-  Probability,
+  probabilityGrid,
   type ReasoningMode,
   type Run,
 } from "@probabench/domain";
@@ -17,7 +17,7 @@ import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { BitSampler, type LlmError } from "./bit-sampler";
-import { type InvalidOptions, probabilityPercentages, validateSamplingOptions } from "./options";
+import { type InvalidOptions, validateSamplingOptions } from "./options";
 
 /** A single target sweep request: the Run's series id and the grid/concurrency shape. */
 export interface BenchmarkConfig {
@@ -48,11 +48,6 @@ export const describePointProgress = ({
     `[${model}] point ${completedPoints}/${totalPoints} x=${Math.round(point.x * 100)}% → ` +
     `ones=${ones} zeros=${zeros} invalid=${invalid}`
   );
-};
-
-/** The probability grid {0, step, …, 100}% as fractions in [0, 1]. */
-const probabilityGrid = (stepPercent: number): ReadonlyArray<Probability> => {
-  return probabilityPercentages(stepPercent).map((percent) => Probability.make(percent / 100));
 };
 
 /**

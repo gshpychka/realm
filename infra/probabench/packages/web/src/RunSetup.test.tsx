@@ -78,8 +78,8 @@ describe("benchmark setup workflow", () => {
     const html = render(bridge("local", job("completed")), {
       key: "rerun-one",
       model: "vendor/model",
-      trials: 17,
-      step: 30,
+      trialsPerStep: 17,
+      stepPercent: 30,
       concurrency: 3,
       reasoning: "low",
     });

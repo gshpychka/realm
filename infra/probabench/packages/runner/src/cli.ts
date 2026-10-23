@@ -3,24 +3,24 @@ import * as HelpDoc from "@effect/cli/HelpDoc";
 import * as Span from "@effect/cli/HelpDoc/Span";
 import * as Options from "@effect/cli/Options";
 import * as Prompt from "@effect/cli/Prompt";
-import { MODEL_ALIASES, REASONING_LABELS, ReasoningMode } from "@probabench/domain";
+import {
+  MODEL_ALIASES,
+  type PlanBudget,
+  planBudget,
+  REASONING_LABELS,
+  ReasoningMode,
+  SAMPLING_PRESETS,
+  type SamplingPreset,
+} from "@probabench/domain";
 import * as Console from "effect/Console";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import {
-  InvalidOptions,
-  positiveInteger,
-  probabilityPercentages,
-  probabilityStep,
-} from "./options";
+import { InvalidOptions, positiveInteger, probabilityStep } from "./options";
 import { type BenchTarget, describeAliases, modelLabel, selectTargets } from "./registry";
-import { MAX_RETRIES } from "./retry";
 import { executePlan } from "./run";
 
 export const DEFAULT_OUT = "packages/web/public/data/results.json";
-export const xStepCount = (stepPercent: number): number =>
-  probabilityPercentages(stepPercent).length;
 export const NON_TTY_MESSAGE =
   "Refusing to run without confirmation: stdin is not a TTY. Re-run with --yes to proceed non-interactively.";
 export const MISSING_MODEL_MESSAGE =
@@ -33,7 +33,7 @@ export class NonInteractiveError extends Data.TaggedError("NonInteractiveError")
 export interface BenchPlan {
   readonly targets: readonly BenchTarget[];
   readonly unknown: readonly string[];
-  readonly projectedCalls: number;
+  readonly budget: PlanBudget;
 }
 
 /** Pure resolution shared by guided setup, explicit CLI runs, and local integrations. */
@@ -44,11 +44,11 @@ export const resolvePlan = (
   reasoning?: ReasoningMode,
 ): BenchPlan => {
   positiveInteger(trialsPerStep, "trials");
+  probabilityStep(stepPercent);
   const { targets, unknown } = selectTargets(modelTokens, reasoning);
-  const projectedCalls = targets.length * trialsPerStep * xStepCount(stepPercent);
-  if (targets.length > 0)
-    positiveInteger(projectedCalls * (MAX_RETRIES + 1), "maximum provider attempt count");
-  return { targets, unknown, projectedCalls };
+  const budget = planBudget({ trialsPerStep, stepPercent }, targets.length);
+  if (targets.length > 0) positiveInteger(budget.attempts, "maximum provider attempt count");
+  return { targets, unknown, budget };
 };
 
 export const describePlan = (plan: BenchPlan): string =>
@@ -56,8 +56,8 @@ export const describePlan = (plan: BenchPlan): string =>
     ...(plan.unknown.length === 0 ? [] : [`Unknown models: ${plan.unknown.join(", ")}`]),
     `Targets (${plan.targets.length}):`,
     ...plan.targets.map((target) => `  ${target.id} · reasoning ${target.reasoning}`),
-    `Projected samples: ${plan.projectedCalls}`,
-    `Provider attempts with retries: up to ${plan.projectedCalls * (MAX_RETRIES + 1)}`,
+    `Projected samples: ${plan.budget.samples}`,
+    `Provider attempts with retries: up to ${plan.budget.attempts}`,
   ].join("\n");
 
 export const confirmationGate = (
@@ -97,21 +97,16 @@ const integerOption = (name: string, defaultValue: number) =>
     ),
   );
 
-export const TRIAL_PRESETS = [
-  {
-    title: "Quick — 10 trials × 5 points (25% step): 50 samples per model",
-    value: { trialsPerStep: 10, stepPercent: 25 },
-  },
-  {
-    title: "Standard — 50 trials × 11 points (10% step): 550 samples per model",
-    value: { trialsPerStep: 50, stepPercent: 10 },
-  },
-  {
-    title: "Thorough — 100 trials × 21 points (5% step): 2,100 samples per model",
-    value: { trialsPerStep: 100, stepPercent: 5 },
-  },
-  { title: "Custom trial count and probability step", value: { trialsPerStep: 0, stepPercent: 0 } },
-] as const;
+export const TRIAL_PRESETS: ReadonlyArray<Prompt.Prompt.SelectChoice<SamplingPreset | "custom">> = [
+  ...SAMPLING_PRESETS.map((preset) => {
+    const { points, samples } = planBudget(preset);
+    return {
+      title: `${preset.label} — ${preset.trialsPerStep} trials × ${points} points (${preset.stepPercent}% step): ${samples.toLocaleString("en")} samples per model`,
+      value: preset,
+    };
+  }),
+  { title: "Custom trial count and probability step", value: "custom" },
+];
 
 /** No network access: choose aliases or enter any OpenRouter vendor/model slug. */
 export const promptRunSetup = Effect.gen(function* () {
@@ -140,25 +135,22 @@ export const promptRunSetup = Effect.gen(function* () {
           }),
         )
       : [selected];
-  const preset = yield* Prompt.select<{
-    readonly trialsPerStep: number;
-    readonly stepPercent: number;
-  }>({
-    message: "Benchmark size",
-    choices: TRIAL_PRESETS,
-  });
-  const trialsPerStep =
-    preset.trialsPerStep === 0
-      ? yield* Prompt.integer({
-          message: "Samples at each probability",
-          min: 1,
-          max: Number.MAX_SAFE_INTEGER,
-        })
-      : preset.trialsPerStep;
-  const stepPercent =
-    preset.stepPercent === 0
-      ? yield* Prompt.integer({ message: "Probability step (percent)", min: 1, max: 100 })
-      : preset.stepPercent;
+  const preset = yield* Prompt.select({ message: "Benchmark size", choices: TRIAL_PRESETS });
+  const { trialsPerStep, stepPercent } =
+    preset === "custom"
+      ? {
+          trialsPerStep: yield* Prompt.integer({
+            message: "Samples at each probability",
+            min: 1,
+            max: Number.MAX_SAFE_INTEGER,
+          }),
+          stepPercent: yield* Prompt.integer({
+            message: "Probability step (percent)",
+            min: 1,
+            max: 100,
+          }),
+        }
+      : preset;
   const reasoning =
     selected === "custom"
       ? yield* Prompt.select({

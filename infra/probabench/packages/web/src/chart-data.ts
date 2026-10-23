@@ -88,7 +88,7 @@ export const buildChartModel = (
   const pointsByRun = results.runs.map(
     (run) => new Map(run.points.map((point) => [point.x as number, point])),
   );
-  // Endpoints keep the identity reference visible even for a partial/empty sweep.
+  // Endpoints keep the identity reference visible for an empty notebook.
   const xs = [
     ...new Set([
       0,
