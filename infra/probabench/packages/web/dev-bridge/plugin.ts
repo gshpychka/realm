@@ -75,7 +75,8 @@ export function devBridgePlugin(): Plugin {
       // server.config.root is packages/web; the Bun workspace root holds the runner entry.
       const workspace = resolve(server.config.root, "../..");
       const controller = createBenchController({
-        // `bun run dev` starts Vite under sops exec-env with secrets/infra/probabench.env.
+        // `bun run dev` and `dev:alchemy` start Vite under sops exec-env with
+        // secrets/infra/probabench.env.
         apiKey: process.env.OPENROUTER_API_KEY ?? "",
         launch: (args) =>
           spawn("bun", [RUNNER_ENTRY, ...args], {
