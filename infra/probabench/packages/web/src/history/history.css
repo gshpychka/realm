@@ -1,23 +1,19 @@
+/* The sr-only heading is absolutely positioned, so it takes no row. */
+.history-page {
+  display: grid;
+  gap: 22px;
+}
 .history-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 16px;
-  border-bottom: 1px solid var(--line);
-
-  @media (max-width: 650px) {
-    padding: 14px 17px;
-  }
 }
 .history-toolbar > .mono {
   font-size: 12px;
   white-space: nowrap;
 }
 /* The chart card */
-.history-graph-card {
-  margin-bottom: 22px;
-}
 .history-graph-legend {
   display: flex;
   flex-wrap: wrap;

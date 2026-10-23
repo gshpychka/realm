@@ -105,7 +105,7 @@ export function HistoryPage({
   const visible = useMemo(() => visibleHistory(runs, view.hidden), [runs, view.hidden]);
   const inspected = inspectedRun(visible, view.runId);
   return (
-    <section>
+    <section className="history-page">
       <h2 className="sr-only">Run history</h2>
       <div className="history-toolbar">
         <span className="mono muted">
@@ -121,7 +121,7 @@ export function HistoryPage({
           </button>
         ) : null}
       </div>
-      <section className="card chart-card history-graph-card" aria-label="Benchmark history graph">
+      <section className="card chart-card" aria-label="Benchmark history graph">
         <header className="chart-heading">
           <div>
             <h3>Calibration, over time</h3>
