@@ -89,8 +89,8 @@ export function HistoryChart({
       aria-label="Calibration error over time"
       aria-describedby={descriptionId}
     >
-      <ResponsiveContainer width="100%" height={300} minWidth={0}>
-        <LineChart margin={{ top: 22, right: 26, bottom: 30, left: 8 }} accessibilityLayer>
+      <ResponsiveContainer height={300}>
+        <LineChart margin={{ top: 22, right: 26, bottom: 30, left: 8 }}>
           <CartesianGrid {...CHART.grid} />
           <XAxis
             dataKey="timestamp"
@@ -127,6 +127,7 @@ export function HistoryChart({
             }}
           />
           <Tooltip
+            // Keep null entries: a run with no valid replies must still open its tooltip.
             filterNull={false}
             cursor={CHART.cursor}
             content={({ active, label }) => (
@@ -138,15 +139,12 @@ export function HistoryChart({
               key={model}
               data={line}
               dataKey="calibrationError"
-              name={model}
               stroke={style.color}
               strokeDasharray={style.dash}
               strokeWidth={2}
               dot={{ r: 4, strokeWidth: 2, fill: CHART.surface }}
               activeDot={false}
-              connectNulls={false}
               isAnimationActive={false}
-              type="linear"
             />
           ))}
         </LineChart>

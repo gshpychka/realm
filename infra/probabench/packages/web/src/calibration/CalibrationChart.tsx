@@ -102,8 +102,8 @@ export function CalibrationChart({
       aria-label="Observed fraction of ones versus target probability"
       aria-describedby={descriptionId}
     >
-      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-        <LineChart margin={{ top: 24, right: 24, bottom: 30, left: 8 }} accessibilityLayer>
+      <ResponsiveContainer>
+        <LineChart margin={{ top: 24, right: 24, bottom: 30, left: 8 }}>
           <CartesianGrid {...CHART.grid} />
           <XAxis
             dataKey="x"
@@ -133,6 +133,7 @@ export function CalibrationChart({
             tickMargin={10}
           />
           <Tooltip
+            // Keep null entries: a target with no valid replies must still open its tooltip.
             filterNull={false}
             cursor={CHART.cursor}
             content={({ active, label }) => (
@@ -148,22 +149,18 @@ export function CalibrationChart({
             dot={false}
             activeDot={false}
             isAnimationActive={false}
-            type="linear"
           />
           {series.map(({ run, style, points }) => (
             <Line
               key={run.id}
               data={points}
               dataKey="observed"
-              name={modelName(run.model)}
               stroke={style.color}
               strokeDasharray={style.dash}
               strokeWidth={2.5}
               dot={{ r: 3, strokeWidth: 2, fill: CHART.surface }}
               activeDot={{ r: 5, fill: style.color, stroke: CHART.surface, strokeWidth: 3 }}
-              connectNulls={false}
               isAnimationActive={false}
-              type="linear"
             >
               {intervals ? (
                 <ErrorBar
