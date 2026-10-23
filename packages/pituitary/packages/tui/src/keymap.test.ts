@@ -85,3 +85,13 @@ describe("loadKeymap", () => {
     expect(loadKeymap(agent, own)["app.exit"]).toEqual(["ctrl+q"]);
   });
 });
+
+test("own-file collision ownership wins over earlier-file property order", () => {
+  const directory = mkdtempSync(join(tmpdir(), "pituitary-layered-keymap-"));
+  const own = join(directory, "own.json");
+  writeFileSync(join(directory, "keybindings.json"), JSON.stringify({ "app.interrupt": "escape", "app.clear": "ctrl+k" }));
+  writeFileSync(own, JSON.stringify({ "app.interrupt": "ctrl+k" }));
+  const bindings = loadKeymap(directory, own);
+  expect(actionFor(bindings, { name: "k", ctrl: true })).toBe("app.interrupt");
+  expect(bindings["app.clear"]).toEqual([]);
+});
