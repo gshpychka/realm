@@ -24,6 +24,7 @@ var statuses = map[error]int{
 
 type failure struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 }
 
 // Write responds with status and v encoded as JSON.
@@ -39,7 +40,7 @@ func Fail(w http.ResponseWriter, err error) {
 	if !ok {
 		status = http.StatusInternalServerError
 	}
-	Write(w, status, failure{Error: err.Error()})
+	Write(w, status, failure{Error: err.Error(), Code: fault.Code(err)})
 }
 
 // Read decodes one JSON object into v, rejecting unknown fields, trailing values
@@ -53,7 +54,8 @@ func Read(r *http.Request, v any) error {
 	if len(data) > maxRequest {
 		return fmt.Errorf("%w: request body exceeds %d bytes", fault.Invalid, maxRequest)
 	}
-	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return fmt.Errorf("%w: request body must be a JSON object", fault.Invalid)
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -71,11 +73,16 @@ func Read(r *http.Request, v any) error {
 type statusError struct {
 	status  int
 	message string
+	code    string
 }
 
-func (e *statusError) Error() string { return e.message }
+func (e *statusError) Error() string     { return e.message }
+func (e *statusError) FaultCode() string { return e.code }
 
 func (e *statusError) Unwrap() error {
+	if e.status == http.StatusConflict && e.code == fault.CapacityExhaustedCode {
+		return fault.Capacity
+	}
 	for kind, status := range statuses {
 		if status == e.status {
 			return kind
@@ -133,14 +140,20 @@ func (c Client) Do(ctx context.Context, method, path string, in, out any) error 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		var f failure
-		if err := json.NewDecoder(resp.Body).Decode(&f); err != nil || f.Error == "" {
-			f.Error = resp.Status
-		}
-		return &statusError{status: resp.StatusCode, message: f.Error}
+		return ResponseError(resp)
 	}
 	if out == nil {
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// ResponseError decodes an unsuccessful response, retaining its fault kind.
+func ResponseError(resp *http.Response) error {
+	var f failure
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&f); err != nil || f.Error == "" {
+		f.Error = resp.Status
+		f.Code = ""
+	}
+	return &statusError{status: resp.StatusCode, message: f.Error, code: f.Code}
 }

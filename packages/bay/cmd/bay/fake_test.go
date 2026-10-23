@@ -15,6 +15,7 @@ import (
 
 	"github.com/gshpychka/realm/packages/bay/internal/api"
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
+	"github.com/gshpychka/realm/packages/bay/internal/identity"
 	"github.com/gshpychka/realm/packages/bay/internal/messages"
 )
 
@@ -28,11 +29,12 @@ type fakeService struct {
 	attach   api.Attach
 	snapped  api.Snapped
 
-	calls     []string
-	gotStart  api.Start
-	gotResume api.Resume
-	gotSnap   api.Snap
-	gotEnd    api.End
+	calls      []string
+	gotStart   api.Start
+	gotSuspend api.Suspend
+	gotResume  api.Resume
+	gotSnap    api.Snap
+	gotEnd     api.End
 }
 
 // enter records call and holds the lock until the returned function runs.
@@ -76,8 +78,9 @@ func (f *fakeService) Start(_ context.Context, name string, s api.Start) (api.Se
 	return api.Session{Name: name, State: api.Running}, nil
 }
 
-func (f *fakeService) Suspend(_ context.Context, name string) error {
+func (f *fakeService) Suspend(_ context.Context, name string, s api.Suspend) error {
 	defer f.enter("Suspend " + name)()
+	f.gotSuspend = s
 	return f.failure("Suspend")
 }
 
@@ -99,7 +102,7 @@ func (f *fakeService) End(_ context.Context, name string, e api.End) error {
 	return f.failure("End")
 }
 
-func (f *fakeService) Remove(_ context.Context, name string) error {
+func (f *fakeService) Remove(_ context.Context, name string, expected ...identity.Precondition) error {
 	defer f.enter("Remove " + name)()
 	return f.failure("Remove")
 }

@@ -25,12 +25,13 @@ func TestLoadConfig(t *testing.T) {
 	config, err := loadConfig(writeConfig(t, `{
 		"incusSocket": "/var/lib/incus/unix.socket",
 		"project": "bay",
-		"base": "base",
 		"records": "/var/lib/bay/sessions",
 		"mirrors": "/var/lib/bay/mirrors",
 		"mirrorRefresh": "90m",
 		"gatewaySocket": "/run/bay-gateway/operator.sock",
 		"maxRunning": 8,
+ "maxMemory":64,
+ "machines":{"default":{"base":"bay-base-a","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","resources":{"cpus":1,"memory":8,"disk":50}}},
 		"programs": {
 			"claude": {"command": ["claude"], "resume": ["claude", "--continue"], "history": [".claude/projects"], "monitor": false}
 		}
@@ -39,7 +40,7 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	claude := config.Programs["claude"]
-	if config.Project != "bay" || config.Base != "base" || config.MaxRunning != 8 || config.MirrorRefresh.Duration != 90*time.Minute ||
+	if config.Project != "bay" || config.MaxRunning != 8 || config.MirrorRefresh.Duration != 90*time.Minute ||
 		!slices.Equal(claude.Command, []string{"claude"}) || !slices.Equal(claude.Resume, []string{"claude", "--continue"}) ||
 		!slices.Equal(claude.History, []string{".claude/projects"}) || claude.Monitor {
 		t.Fatalf("loadConfig returned %+v", config)
@@ -63,6 +64,19 @@ func TestLoadConfigRejects(t *testing.T) {
 	}
 	if _, err := loadConfig(filepath.Join(t.TempDir(), "missing.json")); err == nil {
 		t.Error("loadConfig of a missing file succeeded")
+	}
+}
+
+func TestBaseConfigDoesNotRequireServeOnlyFields(t *testing.T) {
+	config, err := loadConfig(writeConfig(t, `{
+		"incusSocket":"/var/lib/incus/unix.socket", "project":"bay",
+		"machines":{"default":{"base":"bay-base-a","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","resources":{"cpus":1,"memory":8,"disk":50}}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateServeConfig(config); err == nil {
+		t.Fatal("server accepted a base-only configuration")
 	}
 }
 
@@ -112,18 +126,5 @@ func TestShutdownWaitsForRequestsInFlight(t *testing.T) {
 	}
 	if got := <-answered; got != "done" {
 		t.Fatalf("the request in flight got %q, want its answer", got)
-	}
-}
-
-func TestBaseConfigDoesNotRequireServeOnlyFields(t *testing.T) {
-	config, err := loadConfig(writeConfig(t, `{
-		"incusSocket":"/var/lib/incus/unix.socket", "project":"bay",
-		"base":"bay-base"
-	}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := validateServeConfig(config); err == nil {
-		t.Fatal("server accepted a base-only configuration")
 	}
 }

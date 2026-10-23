@@ -20,7 +20,9 @@ const (
 )
 
 type WhoamiOutput struct {
-	Name string `json:"name"`
+	Name       string `json:"name"`
+	ID         string `json:"id"`
+	Generation uint64 `json:"generation"`
 }
 
 type SendInput struct {

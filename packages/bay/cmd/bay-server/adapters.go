@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gshpychka/realm/packages/bay/internal/api"
+	"github.com/gshpychka/realm/packages/bay/internal/fault"
 	"github.com/gshpychka/realm/packages/bay/internal/identity"
 	"github.com/gshpychka/realm/packages/bay/internal/records"
 	"github.com/gshpychka/realm/packages/bay/internal/sessions"
@@ -34,31 +35,32 @@ func (o operatorAPI) Get(ctx context.Context, name string) (api.Session, error) 
 func (o operatorAPI) Start(ctx context.Context, name string, start api.Start) (api.Session, error) {
 	refs, err := parseRepos(start.Repos)
 	if err != nil {
-		return api.Session{}, err
+		// Repository syntax is rejected before the session service or persistence is reached.
+		return api.Session{}, fault.WithCode(err, fault.LaunchRejectedCode)
 	}
-	s, err := o.svc.Start(ctx, name, sessions.StartSpec{Program: start.Program, Command: start.Command, Repos: refs})
+	s, err := o.svc.Start(ctx, name, sessions.StartSpec{Program: start.Program, Command: start.Command, Repos: refs, MachineRevision: start.MachineRevision, Expected: identity.Precondition{ID: start.ID, Generation: start.Generation}})
 	return toAPI(s), err
 }
 
-func (o operatorAPI) Suspend(ctx context.Context, name string) error {
-	return o.svc.Suspend(ctx, name)
+func (o operatorAPI) Suspend(ctx context.Context, name string, r api.Suspend) error {
+	return o.svc.Suspend(ctx, name, identity.Precondition{ID: r.ID, Generation: r.Generation})
 }
 
 func (o operatorAPI) Resume(ctx context.Context, name string, r api.Resume) error {
-	return o.svc.Resume(ctx, name, r.Snapshot, r.Discard)
+	return o.svc.Resume(ctx, name, r.Snapshot, r.Discard, identity.Precondition{ID: r.ID, Generation: r.Generation})
 }
 
 func (o operatorAPI) Snap(ctx context.Context, name string, s api.Snap) (api.Snapped, error) {
-	snapshot, err := o.svc.Snap(ctx, name, s.Snapshot)
+	snapshot, err := o.svc.Snap(ctx, name, s.Snapshot, identity.Precondition{ID: s.ID, Generation: s.Generation})
 	return api.Snapped{Snapshot: snapshot}, err
 }
 
 func (o operatorAPI) End(ctx context.Context, name string, e api.End) error {
-	return o.svc.End(ctx, name, e.Snapshots)
+	return o.svc.End(ctx, name, e.Snapshots, identity.Precondition{ID: e.ID, Generation: e.Generation})
 }
 
-func (o operatorAPI) Remove(ctx context.Context, name string) error {
-	return o.svc.Remove(ctx, name)
+func (o operatorAPI) Remove(ctx context.Context, name string, expected ...identity.Precondition) error {
+	return o.svc.Remove(ctx, name, expected...)
 }
 
 func (o operatorAPI) Attach(ctx context.Context, name string) (api.Attach, error) {
@@ -80,15 +82,21 @@ func parseRepos(specs []string) ([]sessions.RepoRef, error) {
 
 func toAPI(s sessions.Session) api.Session {
 	out := api.Session{
-		Name:      s.Name,
-		State:     api.State(s.State),
-		Program:   s.Program.Definition,
-		Command:   s.Program.Command,
-		Created:   s.Created,
-		Snapshots: s.Snapshots,
+		ID:         s.ID,
+		Generation: s.Generation,
+		Name:       s.Name,
+		State:      api.State(s.State),
+		Program:    s.Program.Definition,
+		Command:    s.Program.Command,
+		Created:    s.Created,
+		Snapshots:  s.Snapshots,
 	}
 	for _, r := range s.Repos {
 		out.Repos = append(out.Repos, toAPIRepo(r))
+	}
+	if s.Machine != nil {
+		out.Machine = s.Machine.Name
+		out.MachineRevision = s.Machine.Revision
 	}
 	return out
 }
@@ -113,5 +121,5 @@ func (r resolver) Session(ctx context.Context, name string) (identity.Session, e
 }
 
 func toIdentity(rec records.Record) identity.Session {
-	return identity.Session{ID: rec.ID, Name: rec.Name}
+	return identity.Session{ID: rec.ID, Name: rec.Name, Generation: rec.Generation}
 }

@@ -15,8 +15,28 @@ import (
 // Session identifies a session by its ID and its name.
 type Session struct {
 	// ID stays the same across the session's starts and differs for any later session reusing the name.
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Generation uint64 `json:"generation"`
+}
+
+// Precondition binds an operation to a record and, optionally, its current execution authority.
+type Precondition struct {
+	ID         string  `json:"id,omitempty"`
+	Generation *uint64 `json:"generation,omitempty"`
+}
+
+func (p Precondition) Check(s Session) error {
+	if p.Generation != nil && p.ID == "" {
+		return fmt.Errorf("%w: an execution generation requires a session ID", fault.Invalid)
+	}
+	if p.ID != "" && p.ID != s.ID {
+		return fmt.Errorf("%w: session %s has a different ID", fault.Conflict, s.Name)
+	}
+	if p.Generation != nil && *p.Generation != s.Generation {
+		return fmt.Errorf("%w: session %s has a different execution generation", fault.Conflict, s.Name)
+	}
+	return nil
 }
 
 // Resolver answers identity questions; a session it does not know is a fault.NotFound.
