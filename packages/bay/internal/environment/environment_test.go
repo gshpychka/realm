@@ -1,6 +1,7 @@
 package environment
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -18,6 +19,36 @@ type testConnection struct {
 	encoder *json.Encoder
 	decoder *json.Decoder
 	next    uint64
+}
+
+type failedOutput struct{ accepted int }
+
+func (w *failedOutput) Write(p []byte) (int, error) {
+	if w.accepted == 0 {
+		return 0, io.ErrClosedPipe
+	}
+	w.accepted--
+	return len(p), nil
+}
+
+func TestFailedOutputDeliveryRemovesTheSpool(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip(err)
+	}
+	for name, accepted := range map[string]int{"stream": 0, "final response": 1} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("TMPDIR", root)
+			c := &connection{writer: json.NewEncoder(&failedOutput{accepted}), commandGroup: func() (*os.File, func() error, error) { return nil, func() error { return nil }, nil }}
+			argv, _ := json.Marshal([]string{shell, "-c", "printf captured"})
+			c.run(context.Background(), request{ID: 1, Path: root, Command: argv, Spill: &spillOptions{AfterBytes: 1, AfterLines: 100}})
+			entries, err := os.ReadDir(root)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("failed output delivery retained its spool: %v %v", entries, err)
+			}
+		})
+	}
 }
 
 func openTest(t *testing.T) *testConnection {

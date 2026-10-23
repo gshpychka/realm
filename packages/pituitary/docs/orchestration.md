@@ -197,14 +197,17 @@ not require a GitHub push.
 
 Input capture reads tracked working files, including staged additions and unstaged
 changes, plus explicitly selected untracked files. Ignored untracked material is
-excluded. Capture preserves the operator's branch, index, and files. It creates a
+excluded; selections are literal paths, and filenames must be valid UTF-8. Capture
+preserves the operator's branch, index, and files. It creates a
 private synthetic Git commit representing the exact input tree, and records the
-operator's HEAD and index digest as apply preconditions.
+operator's HEAD and index digest as apply preconditions. Artifacts contain working-tree
+bytes: materialization, export, and apply do not repeat Git attribute conversions.
 
 Every writer gets a separate checkout from its immutable input. Export runs after its
 model turn settles and creates a constrained Git bundle against that input. The host
-bounds the transfer, validates the bundle and tree in its private object store with
-hooks and filters disabled, retains content-addressed bytes durably, and only then
+bounds the transfer, validates the bundle and tree in a disposable repository with
+hooks and filters disabled, imports only validated results into its retained store,
+retains content-addressed bytes durably, and only then
 acknowledges the result. Suspension cannot substitute for artifact retention.
 
 One integration workflow serializes contributions. A merge names its expected base
