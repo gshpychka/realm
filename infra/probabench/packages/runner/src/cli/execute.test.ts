@@ -5,8 +5,7 @@ import * as Effect from "effect/Effect";
 import type { BenchPlan } from "../plan/plan";
 import type { ModelSeries } from "../plan/series";
 import { chatEndpoint } from "../sampling/testing";
-import { ResultsStore } from "../store/results-store";
-import { withResultsStore } from "../store/testing";
+import { readResults, withHistoryFile } from "../store/testing";
 import { executePlan } from "./execute";
 
 const seriesFor = (slug: string): ModelSeries => ({ id: slug, slug, reasoning: "off" });
@@ -25,12 +24,12 @@ const withKey = (key?: string) =>
 
 describe("executePlan", () => {
   it.effect("appends a run per series through the real adapter, keeping earlier runs", () =>
-    withResultsStore((path) => {
+    withHistoryFile((path) => {
       const endpoint = chatEndpoint();
       return Effect.gen(function* () {
         yield* executePlan(planFor(path, "vendor/a", "vendor/b"));
         yield* executePlan(planFor(path, "vendor/a"));
-        const { runs } = yield* Effect.flatMap(ResultsStore, (store) => store.load(path));
+        const { runs } = yield* readResults(path);
         expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a", "vendor/b", "vendor/a"]);
         expect(new Set(runs.map((run) => run.id)).size).toBe(3);
         expect(endpoint.requests).toHaveLength(6);
@@ -39,19 +38,19 @@ describe("executePlan", () => {
   );
 
   it.effect("keeps completed runs when a later series fails", () =>
-    withResultsStore((path) => {
+    withHistoryFile((path) => {
       const endpoint = chatEndpoint({ unauthorized: ["vendor/b"] });
       return Effect.gen(function* () {
         const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a", "vendor/b")));
         expect(error._tag).toBe("HttpResponseError");
-        const { runs } = yield* Effect.flatMap(ResultsStore, (store) => store.load(path));
+        const { runs } = yield* readResults(path);
         expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a"]);
       }).pipe(Effect.provide(endpoint.layer), withKey("sk-test"));
     }),
   );
 
   it.effect("fails on a missing key before any provider request", () =>
-    withResultsStore((path) => {
+    withHistoryFile((path) => {
       const endpoint = chatEndpoint();
       return Effect.gen(function* () {
         const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a")));
@@ -63,7 +62,7 @@ describe("executePlan", () => {
   );
 
   it.effect("rejects corrupt history before any provider request", () =>
-    withResultsStore((path) => {
+    withHistoryFile((path) => {
       const endpoint = chatEndpoint();
       return Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;

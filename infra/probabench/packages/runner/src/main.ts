@@ -10,15 +10,12 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { benchCommand } from "./cli/command";
-import { ResultsStore } from "./store/results-store";
 
 /**
- * Node's FileSystem, Path and Terminal for the CLI and the store, and an HTTP client
- * for OpenRouter. Listing aliases and dry runs never read the key.
+ * Node's FileSystem, Path and Terminal for the CLI and the history file, and an HTTP
+ * client for OpenRouter. Listing aliases and dry runs never read the key.
  */
-const MainLive = Layer.mergeAll(ResultsStore.Default, NodeHttpClient.layer).pipe(
-  Layer.provideMerge(NodeContext.layer),
-);
+const MainLive = Layer.merge(NodeContext.layer, NodeHttpClient.layer);
 
 NodeRuntime.runMain(
   Command.run(benchCommand, { name: "probabench", version: "0.0.0" })(process.argv).pipe(

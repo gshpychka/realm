@@ -3,15 +3,22 @@
 import { join } from "node:path";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import { Results } from "@probabench/domain";
 import * as Effect from "effect/Effect";
-import { ResultsStore } from "./results-store";
+import * as Schema from "effect/Schema";
 
-/** A ResultsStore over a fresh temporary directory, so writes exercise the real filesystem. */
-export const withResultsStore = <A, E, R>(
-  use: (path: string) => Effect.Effect<A, E, R | ResultsStore | FileSystem.FileSystem>,
+/** A history path in a fresh temporary directory, so writes exercise the real filesystem. */
+export const withHistoryFile = <A, E, R>(
+  use: (path: string) => Effect.Effect<A, E, R | FileSystem.FileSystem>,
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const directory = yield* fs.makeTempDirectoryScoped({ prefix: "probabench-test-" });
-    return yield* use(join(directory, "results.json")).pipe(Effect.provide(ResultsStore.Default));
+    return yield* use(join(directory, "results.json"));
   }).pipe(Effect.scoped, Effect.provide(NodeFileSystem.layer));
+
+/** The decoded history at `path`, for assertions. */
+export const readResults = (path: string) =>
+  Effect.flatMap(FileSystem.FileSystem, (fs) => fs.readFileString(path)).pipe(
+    Effect.flatMap(Schema.decode(Schema.parseJson(Results))),
+  );

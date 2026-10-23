@@ -6,158 +6,136 @@ import { makeRun } from "@probabench/domain/testing";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import { ResultsStore } from "./results-store";
-import { withResultsStore } from "./testing";
+import { appendRun, prepareHistory } from "./results-store";
+import { readResults, withHistoryFile } from "./testing";
 
-/** A second, independent store whose filesystem differs in `overrides`, like another process. */
-const otherStore = (fs: FileSystem.FileSystem, overrides: Partial<FileSystem.FileSystem>) =>
-  ResultsStore.Default.pipe(
-    Layer.provide(Layer.succeed(FileSystem.FileSystem, { ...fs, ...overrides })),
-  );
+/** Runs an effect against `fs` with `overrides` swapped in, such as a failing rename. */
+const withFileSystem = (fs: FileSystem.FileSystem, overrides: Partial<FileSystem.FileSystem>) =>
+  Effect.provideService(FileSystem.FileSystem, { ...fs, ...overrides });
 
-describe("ResultsStore", () => {
-  it.effect("reads a missing file as empty history", () =>
-    withResultsStore((path) =>
-      Effect.gen(function* () {
-        const store = yield* ResultsStore;
-        expect(yield* store.load(path)).toEqual({ runs: [] });
-      }),
-    ),
-  );
-
+describe("appendRun", () => {
   it.effect(
     "appends after every earlier run, repeated models included, without staging leftovers",
     () =>
-      withResultsStore((path) =>
+      withHistoryFile((path) =>
         Effect.gen(function* () {
-          const store = yield* ResultsStore;
           const fs = yield* FileSystem.FileSystem;
           const runs = [
             makeRun({ modelSlug: "vendor/haiku" }),
             makeRun({ modelSlug: "vendor/sonnet" }),
             makeRun({ modelSlug: "vendor/haiku" }),
           ];
-          yield* Effect.forEach(runs, (run) => store.append(path, run), { discard: true });
-          expect((yield* store.load(path)).runs).toEqual(runs);
+          yield* Effect.forEach(runs, (run) => appendRun(path, run), { discard: true });
+          expect((yield* readResults(path)).runs).toEqual(runs);
           expect(yield* fs.readDirectory(dirname(path))).toEqual(["results.json"]);
         }),
       ),
   );
 
   it.effect("rejects a duplicate run id and keeps the document", () =>
-    withResultsStore((path) =>
+    withHistoryFile((path) =>
       Effect.gen(function* () {
-        const store = yield* ResultsStore;
         const run = makeRun();
-        yield* store.append(path, run);
-        expect((yield* Effect.flip(store.append(path, run)))._tag).toBe("ParseError");
-        expect((yield* store.load(path)).runs).toEqual([run]);
+        yield* appendRun(path, run);
+        expect((yield* Effect.flip(appendRun(path, run)))._tag).toBe("ParseError");
+        expect((yield* readResults(path)).runs).toEqual([run]);
       }),
     ),
   );
 
   it.effect("reports corrupt JSON and leaves it intact", () =>
-    withResultsStore((path) =>
+    withHistoryFile((path) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const store = yield* ResultsStore;
         yield* fs.writeFileString(path, "{broken");
-        expect((yield* Effect.flip(store.append(path, makeRun())))._tag).toBe("ParseError");
+        expect((yield* Effect.flip(appendRun(path, makeRun())))._tag).toBe("ParseError");
         expect(yield* fs.readFileString(path)).toBe("{broken");
       }),
     ),
   );
 
-  it.effect("refuses a history with a field the next save would drop", () =>
-    withResultsStore((path) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const store = yield* ResultsStore;
-        const contents = JSON.stringify({ runs: [{ ...makeRun(), note: "hand-added" }] });
-        yield* fs.writeFileString(path, contents);
-        expect((yield* Effect.flip(store.prepare(path)))._tag).toBe("ParseError");
-        expect(yield* fs.readFileString(path)).toBe(contents);
-      }),
-    ),
-  );
-
   it.effect("keeps the previous document and removes staging files when the rename fails", () =>
-    withResultsStore((path) =>
+    withHistoryFile((path) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const store = yield* ResultsStore;
         const original = makeRun();
-        yield* store.append(path, original);
+        yield* appendRun(path, original);
         const failure = yield* Effect.flip(
-          Effect.flatMap(ResultsStore, (failing) => failing.append(path, makeRun())).pipe(
-            Effect.provide(
-              otherStore(fs, {
-                rename: () =>
-                  Effect.fail(
-                    new PlatformError.SystemError({
-                      module: "FileSystem",
-                      method: "rename",
-                      reason: "PermissionDenied",
-                    }),
-                  ),
-              }),
-            ),
+          appendRun(path, makeRun()).pipe(
+            withFileSystem(fs, {
+              rename: () =>
+                Effect.fail(
+                  new PlatformError.SystemError({
+                    module: "FileSystem",
+                    method: "rename",
+                    reason: "PermissionDenied",
+                  }),
+                ),
+            }),
           ),
         );
         expect(failure._tag).toBe("SystemError");
-        expect((yield* store.load(path)).runs).toEqual([original]);
+        expect((yield* readResults(path)).runs).toEqual([original]);
         expect(yield* fs.readDirectory(dirname(path))).toEqual(["results.json"]);
       }),
     ),
   );
 
-  it.effect("prepares a missing output without creating a document or staging files", () =>
-    withResultsStore((path) =>
+  it.effect("removes its staging files when a writer is interrupted", () =>
+    withHistoryFile((path) =>
       Effect.gen(function* () {
-        const store = yield* ResultsStore;
         const fs = yield* FileSystem.FileSystem;
-        yield* store.prepare(path);
+        const original = makeRun();
+        yield* appendRun(path, original);
+        const reachedRename = yield* Deferred.make<void>();
+        const fiber = yield* Effect.fork(
+          appendRun(path, makeRun()).pipe(
+            withFileSystem(fs, {
+              rename: () =>
+                Deferred.succeed(reachedRename, undefined).pipe(Effect.andThen(Effect.never)),
+            }),
+          ),
+        );
+        yield* Deferred.await(reachedRename);
+        yield* Fiber.interrupt(fiber);
+        expect((yield* readResults(path)).runs).toEqual([original]);
+        expect(yield* fs.readDirectory(dirname(path))).toEqual(["results.json"]);
+      }),
+    ),
+  );
+});
+
+describe("prepareHistory", () => {
+  it.effect("prepares a missing history without creating a document or staging files", () =>
+    withHistoryFile((path) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        yield* prepareHistory(path);
         expect(yield* fs.exists(path)).toBe(false);
         expect(yield* fs.readDirectory(dirname(path))).toEqual([]);
       }),
     ),
   );
 
-  it.effect("fails to prepare an output whose directory cannot be created", () =>
-    withResultsStore((path) =>
+  it.effect("refuses a history with a field the next save would drop", () =>
+    withHistoryFile((path) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const store = yield* ResultsStore;
-        yield* fs.writeFileString(path, "a file, not a directory");
-        const error = yield* Effect.flip(store.prepare(`${path}/results.json`));
-        expect(error._tag).toBe("SystemError");
+        const contents = JSON.stringify({ runs: [{ ...makeRun(), note: "hand-added" }] });
+        yield* fs.writeFileString(path, contents);
+        expect((yield* Effect.flip(prepareHistory(path)))._tag).toBe("ParseError");
+        expect(yield* fs.readFileString(path)).toBe(contents);
       }),
     ),
   );
 
-  it.effect("removes its staging files when a writer is interrupted", () =>
-    withResultsStore((path) =>
+  it.effect("fails on a history whose directory cannot be created", () =>
+    withHistoryFile((path) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const store = yield* ResultsStore;
-        const original = makeRun();
-        yield* store.append(path, original);
-        const reachedRename = yield* Deferred.make<void>();
-        const fiber = yield* Effect.fork(
-          Effect.flatMap(ResultsStore, (stalled) => stalled.append(path, makeRun())).pipe(
-            Effect.provide(
-              otherStore(fs, {
-                rename: () =>
-                  Deferred.succeed(reachedRename, undefined).pipe(Effect.andThen(Effect.never)),
-              }),
-            ),
-          ),
-        );
-        yield* Deferred.await(reachedRename);
-        yield* Fiber.interrupt(fiber);
-        expect((yield* store.load(path)).runs).toEqual([original]);
-        expect(yield* fs.readDirectory(dirname(path))).toEqual(["results.json"]);
+        yield* fs.writeFileString(path, "a file, not a directory");
+        const error = yield* Effect.flip(prepareHistory(`${path}/results.json`));
+        expect(error._tag).toBe("SystemError");
       }),
     ),
   );

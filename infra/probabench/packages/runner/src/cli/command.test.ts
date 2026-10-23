@@ -9,7 +9,6 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { MISSING_MODEL_MESSAGE } from "../plan/plan";
-import { ResultsStore } from "../store/results-store";
 import { benchCommand, HISTORY_PATH, NON_TTY_MESSAGE } from "./command";
 
 // Vitest's stdin is not a TTY, so these cover the non-interactive path.
@@ -19,11 +18,7 @@ const runCommand = (args: readonly string[]) =>
     "probabench",
     ...args,
   ]).pipe(
-    Effect.provide(
-      Layer.mergeAll(ResultsStore.Default, FetchHttpClient.layer).pipe(
-        Layer.provideMerge(NodeContext.layer),
-      ),
-    ),
+    Effect.provide(Layer.merge(NodeContext.layer, FetchHttpClient.layer)),
     Effect.withConfigProvider(ConfigProvider.fromMap(new Map())),
   );
 
