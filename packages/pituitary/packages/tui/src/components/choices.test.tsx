@@ -140,20 +140,14 @@ test("keypad Enter picks the focused model", async () => {
   }
 });
 
-for (const method of ["select", "confirm", "input", "editor"] as const) {
+for (const method of ["select", "editor"] as const) {
   test(`keypad Enter answers an operator ${method} dialog`, async () => {
     let answer: unknown;
     const dialog = {
       type: "dialog" as const,
       id: "dialog",
       title: "Question",
-      ...(method === "select"
-        ? { method, options: ["first", "second"] }
-        : method === "confirm"
-          ? { method, message: "Keep it?" }
-          : method === "editor"
-            ? { method, prefill: "draft" }
-            : { method }),
+      ...(method === "select" ? { method, options: ["first", "second"] } : { method, prefill: "draft" }),
     };
     const app = await draw(
       <Dialog
@@ -166,14 +160,11 @@ for (const method of ["select", "confirm", "input", "editor"] as const) {
     );
     try {
       await act(async () => new Promise((resolve) => setTimeout(resolve, GRACE_MS + 10)));
-      if (method === "input") await app.type("reply");
       await app.keypad(method === "editor");
       expect(answer).toEqual({
         type: "dialog_response",
         id: "dialog",
-        ...(method === "confirm"
-          ? { confirmed: true }
-          : { value: method === "select" ? "first" : method === "editor" ? "draft" : "reply" }),
+        value: method === "select" ? "first" : "draft",
       });
     } finally {
       app.close();

@@ -76,6 +76,13 @@ test("development driver forwards entry environment and handles fragmented input
     const keyed = cli(["key", "space", "x"], name);
     assert.equal(keyed.status, 0, keyed.stderr);
     assert.match(keyed.stdout, /--literal x/);
+    const waiting = request(name, { op: "wait", args: ["Ready"], options: { timeout: "2000" } });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const [, observed] = await Promise.all([
+      request(name, { op: "type", args: ["Ready"], options: {} }),
+      waiting,
+    ]);
+    assert.match(observed, /Ready/);
   } finally {
     const stopped = cli(["stop"], name);
     assert.equal(stopped.status, 0, stopped.stderr);

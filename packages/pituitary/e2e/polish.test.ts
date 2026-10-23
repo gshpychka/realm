@@ -78,6 +78,8 @@ test("custom work and interrupt hints match dispatch, and unbound hints disappea
         assert.match(welcome, /ctrl\+x.*interrupt/);
         await app.terminal.submit("write a lot");
         await app.terminal.waitText("line 1 of the long answer");
+        await app.terminal.type("/");
+        await app.terminal.waitText("/compact [instructions]");
         await app.terminal.write("\x18");
         await app.terminal.waitText("aborted");
         await app.capture("keybindings-custom-interrupt");
