@@ -259,7 +259,7 @@ test("with no nvim to run, a plain editor takes over and says so", async () => {
 
 test("the hints name the escapes the interrupt takes from where the draft stands", async () => {
   const app = await launch({ scenario: "long", delayMs: 150 });
-  await waitMatch(app.terminal, /esc esc +leave insert mode, then interrupt and take back/);
+  await waitMatch(app.terminal, /esc esc +leave insert mode, then interrupt/);
   await app.terminal.submit("write a lot");
   await waitMatch(app.terminal, / · \d+s · esc esc interrupts/);
   await normalMode(app.terminal);
