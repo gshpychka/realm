@@ -159,6 +159,9 @@ export async function openConversation(options: OpenConversationOptions): Promis
       pendingToolCalls: identity.archived
         ? []
         : snapshot.tools.filter((tool) => tool.status !== "done").map((tool) => tool.callId),
+      pendingTools: snapshot.tools
+        .filter((tool) => tool.status !== "done")
+        .map(({ callId, name, output, details }) => ({ callId, name, output, details })),
       queue: identity.archived ? { steering: [], followUp: [] } : queue,
     };
   };
@@ -224,6 +227,16 @@ export async function openConversation(options: OpenConversationOptions): Promis
         }
         return;
       case "message_end":
+        for (const message of event.entry.model ?? []) {
+          if (message.role !== "assistant") continue;
+          for (const [contentIndex, block] of message.content.entries())
+            if (block.type === "toolCall")
+              publish({
+                type: "message_update",
+                usage: message.usage,
+                assistantMessageEvent: { type: "toolcall_end", contentIndex, toolCall: block },
+              });
+        }
         for (const message of shown(event.entry)) {
           if (message && typeof message === "object" && "role" in message && message.role !== "assistant")
             publish({ type: "message_start", message });
@@ -238,7 +251,7 @@ export async function openConversation(options: OpenConversationOptions): Promis
             publish({ type: "session_info_changed" });
             return;
           }
-          if (change.type === "toolcall_delta" && change.path.length) {
+          if (change.type === "toolcall_delta") {
             publish({ type: "session_info_changed" });
             return;
           }

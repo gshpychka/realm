@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { encodeJsonLine, JsonLineDecoder } from "./jsonl.ts";
 import { agentRun, assistantTurn, stored, toolRun, userTurn } from "./session.fixture.ts";
-import { emptySession, reduceAll, restore } from "./session.ts";
+import { emptySession, reduce, reduceAll, restore } from "./session.ts";
 
 // Budgets sit well above what a quiet machine measures, so they catch a regression in
 // complexity without failing on a busy one.
@@ -64,4 +64,29 @@ test("a run of 200 tool calls folds quickly", () => {
   expect(view.entries.flatMap((entry) => (entry.kind === "assistant" ? entry.tools : [])).length).toBe(200);
   console.log(`fold 200 tool calls: ${ms.toFixed(1)}ms`);
   expect(ms).toBeLessThan(100);
+});
+
+test("large streamed tool payloads keep argument previews bounded", () => {
+  const args = { path: "large.txt", content: "x".repeat(512 * 1024) };
+  const json = JSON.stringify(args);
+  let view = reduce(emptySession, { type: "message_start", message: stored.assistant({}) });
+  const delta = (assistantMessageEvent: Record<string, unknown>) => {
+    view = reduce(view, {
+      type: "message_update",
+      usage: {},
+      assistantMessageEvent,
+    } as import("./protocol.ts").SessionEvent);
+  };
+  delta({ type: "toolcall_start", id: "large", toolName: "write", contentIndex: 0 });
+  const ms = timed(() => {
+    for (let at = 0; at < json.length; at += 64)
+      delta({ type: "toolcall_delta", contentIndex: 0, delta: json.slice(at, at + 64) });
+  });
+  const entry = view.entries[0];
+  expect(entry?.kind === "assistant" && entry.tools[0]?.streaming?.length).toBeLessThanOrEqual(8193);
+  delta({ type: "toolcall_end", toolCall: { id: "large", name: "write", arguments: args } });
+  const completed = view.entries[0];
+  expect(completed?.kind === "assistant" && completed.tools[0]?.args).toEqual(args);
+  console.log(`stream 512KiB tool arguments: ${ms.toFixed(1)}ms`);
+  expect(ms).toBeLessThan(250);
 });
