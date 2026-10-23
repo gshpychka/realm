@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { TuiTest } from "@microsoft/tui-test";
@@ -8,9 +16,7 @@ import { survivors } from "./processes.ts";
 export { survivors };
 
 export const REPO = join(import.meta.dirname, "..", "..");
-const TUI_ENTRY = join(REPO, "packages/tui/src/main.tsx");
-const FAKE_AGENT = join(REPO, "packages/fake-pi/src/main.ts");
-const PI = join(REPO, "node_modules/.bin/pi");
+const TUI_ENTRY = join(REPO, "packages/tui/src/app.fixture.tsx");
 const FAKE_GH = join(REPO, "e2e/fixtures/gh");
 const SCREENS = join(REPO, "artifacts", "screens");
 
@@ -36,7 +42,7 @@ const SCRATCH = process.platform === "darwin" ? "/tmp" : tmpdir();
  * What describes the terminal the tests are run from, which OpenTUI reads to judge what its
  * terminal can draw. The UI runs in tui-test's terminal, which TERM and COLORTERM describe.
  */
-const OPERATOR_TERMINAL = [
+export const OPERATOR_TERMINAL = [
   "TERM_PROGRAM",
   "TERM_PROGRAM_VERSION",
   "TERM_FEATURES",
@@ -54,8 +60,6 @@ const OPERATOR_TERMINAL = [
   "KITTY_PID",
   "ITERM_SESSION_ID",
   "WEZTERM_PANE",
-  "ALACRITTY_SOCKET",
-  "ALACRITTY_LOG",
   "GHOSTTY_RESOURCES_DIR",
   "GHOSTTY_BIN_DIR",
   "GHOSTTY_SHELL_FEATURES",
@@ -80,7 +84,9 @@ function recorded(command: string[], file: string): string[] {
 /** The UI process running with `home` as its HOME. */
 export function uiPid(home: string): number {
   const ui = survivors(home).find(
-    (line) => line.includes("packages/tui/src/main.tsx") && !line.includes(" script "),
+    (line) =>
+      (line.includes("packages/tui/src/main.tsx") || line.includes("packages/tui/src/app.fixture.tsx")) &&
+      !line.includes(" script "),
   );
   if (!ui) throw new Error(`no UI process runs with HOME=${home}`);
   return Number(ui.split(" ")[0]);
@@ -178,6 +184,8 @@ export interface BootOptions {
   /** Text on the first frame, which marks the UI as up. */
   ready: string;
   env?: Record<string, string>;
+  /** Run through a separate tmux server; env.TERM describes the outer test terminal. */
+  tmux?: boolean;
   cols?: number;
   rows?: number;
   /**
@@ -209,22 +217,42 @@ export async function boot(options: BootOptions): Promise<Harness> {
     cwd = REPO,
     ready,
     env = {},
+    tmux: throughTmux = false,
     cols = COLS,
     rows = ROWS,
     settle = true,
     record,
   } = options;
   const terminal = TuiTest.ephemeral("tui", { timeouts: { text: 15_000, idle: 15_000, ready: 30_000 } });
-  const command = ["env", ...OPERATOR_TERMINAL.flatMap((name) => ["-u", name]), "bun", entry, ...argv];
+  const multiplex = throughTmux ? isolatedTmux() : undefined;
+  const command = [
+    "env",
+    ...OPERATOR_TERMINAL.flatMap((name) => ["-u", name]),
+    ...(multiplex?.command ?? []),
+    "bun",
+    entry,
+    ...argv,
+  ];
   const [program = "env", ...args] = record ? recorded(command, record) : command;
-  await terminal.run(program, args, {
-    cols,
-    rows,
-    cwd,
-    env: { TERM: "xterm-256color", COLORTERM: "truecolor", SHELL: "/bin/sh", ...env },
-  });
-  await terminal.waitText(ready);
-  if (settle) await terminal.waitIdle();
+  try {
+    await terminal.run(program, args, {
+      cols,
+      rows,
+      cwd,
+      env: {
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor",
+        SHELL: "/bin/sh",
+        ...env,
+      },
+    });
+    await terminal.waitText(ready);
+    if (settle) await terminal.waitIdle();
+  } catch (error) {
+    await terminal.closeQuiet();
+    multiplex?.close();
+    throw error;
+  }
 
   const capture = async (name: string) => {
     const screen = await terminal.text();
@@ -248,18 +276,36 @@ export async function boot(options: BootOptions): Promise<Harness> {
       return screens;
     },
     close: async () => {
-      await terminal.closeQuiet();
+      try {
+        await terminal.closeQuiet();
+      } finally {
+        multiplex?.close();
+      }
+    },
+  };
+}
+
+/** A separate server using Realm's terminal settings, never the operator's tmux server. */
+function isolatedTmux() {
+  const scratch = mkdtempSync(join(SCRATCH, "pituitary-tmux-"));
+  const socket = join(scratch, "socket");
+  const config = join(scratch, "tmux.conf");
+  writeFileSync(
+    config,
+    `source-file ${quote(join(REPO, "../../modules/home-manager/tmux/tmux.conf"))}\n` +
+      'set -g default-terminal "tmux-256color"\nset -g status off\n',
+  );
+  return {
+    command: ["tmux", "-S", socket, "-f", config, "new-session", "-s", "ui"],
+    close() {
+      spawnSync("tmux", ["-S", socket, "kill-server"], { stdio: "ignore" });
+      rmSync(scratch, { recursive: true, force: true });
     },
   };
 }
 
 export interface LaunchOptions {
-  /**
-   * Arguments for the real pi, which the UI then drives in place of the scripted agent.
-   * Nothing reaches a model provider unless the arguments send a prompt to one.
-   */
-  pi?: string[];
-  /** Scripted agent reply set, from packages/fake-pi/scenarios. */
+  /** Native Faux provider fixture: hello, long, tool, thinking, or sprawl. */
   scenario?: string;
   /** Milliseconds between scripted events, for observing intermediate states. */
   delayMs?: number;
@@ -267,6 +313,8 @@ export interface LaunchOptions {
   rows?: number;
   /** Extra environment for the UI process. */
   env?: Record<string, string>;
+  /** Run through a separate tmux server; env.TERM describes the outer test terminal. */
+  tmux?: boolean;
   /** Arguments for the UI itself, as `pituitary` would be given them. */
   argv?: string[];
   /**
@@ -304,7 +352,7 @@ export interface Launched extends Harness {
 }
 
 /**
- * Runs the UI against the scripted agent, or against real pi when `pi` is given.
+ * Runs the UI against an actual native Harness and upstream Faux model.
  *
  * HOME, the session directory, and the working directory point into a throwaway tree, so
  * a run reads and writes none of the operator's pi state and sees none of the checkout it
@@ -312,12 +360,12 @@ export interface Launched extends Harness {
  */
 export async function launch(options: LaunchOptions = {}): Promise<Launched> {
   const {
-    pi,
     scenario = "hello",
     delayMs = 0,
     cols = COLS,
     rows = ROWS,
     env = {},
+    tmux,
     prepare,
     argv = [],
     settle = true,
@@ -326,8 +374,6 @@ export async function launch(options: LaunchOptions = {}): Promise<Launched> {
   } = options;
   // The UI and pi see their working directory with symlinks resolved.
   const home = realpathSync(mkdtempSync(join(SCRATCH, "pituitary-e2e-")));
-  mkdirSync(join(home, ".pi", "agent"), { recursive: true });
-  writeFileSync(join(home, ".pi", "agent", "settings.json"), "{}");
   const sessions = join(home, "sessions");
   mkdirSync(sessions, { recursive: true });
   mkdirSync(join(home, "run"), { mode: 0o700 });
@@ -343,6 +389,7 @@ export async function launch(options: LaunchOptions = {}): Promise<Launched> {
     // The footer draws the working directory on the first frame, so it marks the app as
     // up regardless of how long the machine takes to start bun under parallel test load.
     ready: basename(PROJECT),
+    tmux,
     cols,
     rows,
     settle,
@@ -358,12 +405,9 @@ export async function launch(options: LaunchOptions = {}): Promise<Launched> {
       PITUITARY_GH: FAKE_GH,
       FAKE_GH_STATE: "none",
       FAKE_GH_LOG: join(home, "gh.log"),
-      PI_AGENT_CMD: pi ? PI : "bun",
-      PI_AGENT_ARGS: pi ? pi.join(" ") : FAKE_AGENT,
       PITUITARY_LOG: join(home, "tui.log"),
-      PI_CODING_AGENT_SESSION_DIR: sessions,
-      FAKE_PI_SCENARIO: scenario,
-      FAKE_PI_DELAY_MS: String(delayMs),
+      PITUITARY_FIXTURE_SCENARIO: scenario,
+      PITUITARY_FIXTURE_DELAY: String(delayMs),
       ...env,
     },
   });

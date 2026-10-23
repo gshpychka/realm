@@ -1,55 +1,31 @@
 import { type MouseEvent, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import type { Limits, RpcSessionState, SessionStats } from "@pituitary/rpc";
-import { useEffect, useState } from "react";
+import type { SessionState, SessionStats } from "@pituitary/session";
+import { useState } from "react";
 import { FIREBOX, type FooterStyle, footerStyle } from "../footer-style.ts";
 import type { PullRequest, PullState } from "../github/pull-request.ts";
 import { type Glyph, glyphs } from "../glyphs.ts";
-import {
-  currentWindows,
-  extraShown,
-  extraTone,
-  extraUsed,
-  type LimitTone,
-  percent as percentOf,
-  RESET_SHOWN,
-  untilShort,
-  windowShort,
-  windowTone,
-  worst,
-} from "../limits.ts";
 import { modelName } from "../model-names.ts";
 import { tilde } from "../place.ts";
 import { type ProviderMark, providerMark } from "../provider.ts";
-import { type Badge, badges, type Tone } from "../status.ts";
 import { ellipsize, headCells, tailCells } from "../text-width.ts";
 import { Link } from "./link.tsx";
 import { MascotSlot } from "./mascot.tsx";
 
 export interface FooterProps {
-  state: RpcSessionState | null;
+  state: SessionState | null;
   stats: SessionStats | null;
-  /** Extension statuses by key. */
-  statuses: Readonly<Record<string, string>>;
-  /** Extension statuses by key as the current turn began. */
-  turnStatuses: Readonly<Record<string, string>>;
   cwd: string;
+  /** The remote agent whose filesystem contains cwd. */
+  location?: string;
   branch: string | null;
   /** The pull request opened from the branch, when GitHub has one. */
   pull?: PullRequest | null;
-  /** The subscription's usage limits from the latest reply, absent until one reports them. */
-  limits?: Limits | null;
 }
 
 /** Context use at which the percentage warns, then alarms, as pi's own footer does. */
 const WARN_PERCENT = 70;
 const ALARM_PERCENT = 90;
-
-/** Use past which the limits and cost open on their own. */
-const OPEN_AT = 0.8;
-
-/** Characters of an unknown status kept beside its icon. */
-const DETAIL_CHARS = 24;
 
 /** Columns of the directory kept before anything else gives way. */
 const PATH_KEPT = 12;
@@ -63,18 +39,6 @@ const PULL_GLYPH: Record<PullState, Glyph> = {
   merged: "pullMerged",
   closed: "pullClosed",
 };
-
-/** How often the footer re-reads the clock, for limit windows that reset and times until they do. */
-const CLOCK_MS = 30_000;
-
-function useClock(): number {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), CLOCK_MS);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
 
 /** A run of text in one style. */
 export interface Seg {
@@ -133,48 +97,11 @@ function clipStart(segs: readonly Seg[], columns: number): Seg[] {
   return sliceSegments(segs, text.length - tailCells(text, columns).length, text.length);
 }
 
-function contextTone(percent: number): LimitTone {
+type BudgetTone = "calm" | "warn" | "alarm";
+function contextTone(percent: number): BudgetTone {
   if (percent > ALARM_PERCENT) return "alarm";
   if (percent > WARN_PERCENT) return "warn";
   return "calm";
-}
-
-/** A limit window as the footer draws it. */
-interface LimitPart {
-  name: string;
-  percent: string;
-  tone: LimitTone;
-  /** When the window starts afresh, once it is far enough along to matter. */
-  reset: string | null;
-}
-
-function limitParts(limits: Limits | null | undefined, now: number) {
-  if (!limits) return { windows: [] as LimitPart[], extra: null, tone: "calm" as LimitTone, over: false };
-  const current = currentWindows(limits, now);
-  const top = current.reduce<(typeof current)[number] | undefined>(
-    (best, window) => (best && (best.utilization ?? 0) >= (window.utilization ?? 0) ? best : window),
-    undefined,
-  );
-  const windows = current.map((window) => {
-    const used = window.utilization ?? 0;
-    // Only the window nearest its limit says when it resets, and only once it is near.
-    const reset = window === top && used >= RESET_SHOWN && window.resetsAt !== null;
-    return {
-      name: windowShort(window.id),
-      percent: percentOf(used),
-      tone: windowTone(window, limits),
-      reset: reset && window.resetsAt !== null ? untilShort(window.resetsAt, now) : null,
-    };
-  });
-  const spent = extraUsed(limits);
-  const extra = extraShown(limits)
-    ? { percent: spent === null ? null : percentOf(spent), tone: extraTone(limits) }
-    : null;
-  const over =
-    current.some((window) => (window.utilization ?? 0) > OPEN_AT) ||
-    Boolean(extra && spent !== null && spent > OPEN_AT);
-  const tone = worst([...windows.map((window) => window.tone), extra?.tone ?? "calm"]);
-  return { windows, extra, tone, over };
 }
 
 /** What the footer knows, in the words and figures it draws. */
@@ -183,36 +110,26 @@ export interface Parts {
   branch: string | null;
   pull: PullRequest | null;
   name: string | null;
-  badges: Badge[];
   model: { mark: ProviderMark; name: string } | null;
   thinking: string | null;
   percent: number | null;
   cost: string | null;
-  limits: ReturnType<typeof limitParts>;
 }
 
-export function footerParts(
-  { state, stats, statuses, turnStatuses, cwd, branch, pull, limits }: FooterProps,
-  now: number,
-): Parts {
+export function footerParts({ state, stats, cwd, location, branch, pull }: FooterProps): Parts {
   const thinking = state?.thinkingLevel && state.thinkingLevel !== "off" ? state.thinkingLevel : null;
   const percent = stats?.contextUsage?.percent ?? null;
   return {
-    path: tilde(cwd),
+    path: location ? `${location}:${cwd}` : tilde(cwd),
     branch: branch || null,
     pull: branch && pull ? pull : null,
     name: state?.sessionName || null,
-    badges: badges(statuses, turnStatuses).map((entry) => ({
-      ...entry,
-      detail: entry.detail === null ? null : ellipsize(entry.detail, DETAIL_CHARS),
-    })),
     model: state?.model
       ? { mark: providerMark(state.model.provider), name: modelName(state.model.id) }
       : null,
     thinking,
     percent: percent === null ? null : Math.round(percent),
     cost: stats ? `$${stats.cost.toFixed(2)}` : null,
-    limits: limitParts(limits, now),
   };
 }
 
@@ -311,41 +228,18 @@ function pullTone(style: FooterStyle, state: PullState): string {
   return { open: signal.good, draft: signal.info, merged: signal.merged, closed: signal.alarm }[state];
 }
 
-/** The statuses on the bar: a healthy one as a quiet icon, any other as its icon and words in its tone. */
-function statusRuns(p: Parts, style: FooterStyle, words: boolean, count = p.badges.length): Seg[] {
-  const { signal } = style.palette;
-  const colour: Record<Tone, string> = {
-    ok: signal.quiet,
-    off: signal.quiet,
-    busy: signal.busy,
-    alarm: signal.alarm,
-    info: signal.info,
-  };
-  const shown = p.badges.slice(0, count).map((entry) => ({
-    text:
-      entry.tone !== "ok" && words && entry.detail
-        ? `${glyphs[entry.glyph]} ${entry.detail}`
-        : glyphs[entry.glyph],
-    fg: colour[entry.tone],
-  }));
-  const cut = count < p.badges.length ? [{ text: "…", fg: signal.quiet }] : [];
-  return [...shown, ...cut].flatMap((seg, index) => (index === 0 ? [seg] : [{ text: " " }, seg]));
-}
-
 interface BudgetOptions {
   thinking: boolean;
   /** Whether the operator opened the card. */
   open: boolean;
   /** Whether a hearth follows the model band. */
   hearth: boolean;
-  /** Whether the nearest window says when it resets; it does by default. */
-  resets?: boolean;
   /** Characters the model's name is cut to, 0 leaving the mark alone; whole by default. */
   nameRoom?: number;
 }
 
 /** A figure in the inner band, marked once it is past 70% or 90%. */
-function figure(style: FooterStyle, text: string, tone: LimitTone, rest: string): Seg {
+function figure(style: FooterStyle, text: string, tone: BudgetTone, rest: string): Seg {
   if (tone === "calm") return { text, fg: rest };
   const hot = style.palette.hot[tone];
   return { text, fg: hot.fg, ...(hot.bg ? { bg: hot.bg } : {}), bold: hot.bold };
@@ -355,36 +249,14 @@ function figure(style: FooterStyle, text: string, tone: LimitTone, rest: string)
  * The context percentage and the card, with the limits and cost behind it, then the model and
  * its thinking level, and the separator into the hearth.
  */
-function budget(
-  p: Parts,
-  style: FooterStyle,
-  { thinking, open, hearth, resets = true, nameRoom }: BudgetOptions,
-): Seg[] {
+function budget(p: Parts, style: FooterStyle, { thinking, open, hearth, nameRoom }: BudgetOptions): Seg[] {
   const c = style.palette;
-  const { limits } = p;
-  const shown = open || limits.over;
-  const card: Seg = limits.over
-    ? figure(style, glyphs.card, limits.tone, c.innerText)
-    : open
-      ? { text: glyphs.card, fg: c.innerText, bold: true }
-      : figure(style, glyphs.card, limits.tone, c.innerDim);
-  const hasCard = p.cost !== null || limits.windows.length > 0 || limits.extra !== null;
   const onCard: (Seg[] | null)[] = [
-    hasCard ? [card, ...(shown && p.cost ? [{ text: ` ${p.cost}`, fg: c.innerText }] : [])] : null,
-    ...(shown
-      ? limits.windows.map((window) => [
-          { text: `${window.name} `, fg: c.innerDim },
-          figure(style, window.percent, window.tone, c.innerText),
-          ...(resets && window.reset ? [{ text: ` ↻ ${window.reset}`, fg: c.innerDim }] : []),
-        ])
-      : []),
-    shown && limits.extra
-      ? limits.extra.percent === null
-        ? [figure(style, "extra", limits.extra.tone, c.innerDim)]
-        : [
-            { text: "extra ", fg: c.innerDim },
-            figure(style, limits.extra.percent, limits.extra.tone, c.innerText),
-          ]
+    p.cost
+      ? [
+          { text: glyphs.card, fg: open ? c.innerText : c.innerDim, ...(open ? { bold: true } : {}) },
+          ...(open ? [{ text: ` ${p.cost}`, fg: c.innerText }] : []),
+        ]
       : null,
   ];
   const groups: (Seg[] | null)[] = [
@@ -451,26 +323,17 @@ function hearths(widest: number): number[] {
  */
 export function footerRows(p: Parts, columns: number, style: FooterStyle, open: boolean): Row[] {
   const widest = style.hearth;
-  const statuses = statusRuns(p, style, true);
   for (const [name, thinking] of [
     [true, true],
     [false, true],
     [false, false],
   ] as const) {
     const right = budget(p, style, { thinking, open, hearth: true });
-    const trail = statuses.length > 0 ? 1 + span(statuses) : 0;
-    const left = fitPlace(
-      p,
-      style,
-      columns - span(right) - widest - 1 - trail,
-      { name, pull: true },
-      PATH_KEPT,
-    );
-    const leading = left && [...left, ...(statuses.length > 0 ? [{ text: " " }, ...statuses] : [])];
-    if (leading && span([...leading, ...right]) + widest + 1 <= columns) {
+    const left = fitPlace(p, style, columns - span(right) - widest - 1, { name, pull: true }, PATH_KEPT);
+    if (left && span([...left, ...right]) + widest + 1 <= columns) {
       return [
         {
-          left: leading,
+          left,
           right,
           hearth: widest,
         },
@@ -485,21 +348,14 @@ export function footerRows(p: Parts, columns: number, style: FooterStyle, open: 
  * status icons, then the icons from the end, then the rest of the directory, then the pull request.
  */
 function top(p: Parts, style: FooterStyle, columns: number): Row {
-  const all = p.badges.length;
-  const lean = { name: false, words: false, keep: PATH_KEPT, pull: true };
-  const tries = [
-    { ...lean, name: true, words: true, count: all },
-    { ...lean, words: true, count: all },
-    { ...lean, count: all },
-    ...p.badges.map((_, index) => ({ ...lean, count: all - 1 - index })),
-    { ...lean, count: 0, keep: 1 },
-    { ...lean, count: 0, keep: 1, pull: false },
-  ];
-  for (const { name, words, count, keep, pull } of tries) {
-    const statuses = statusRuns(p, style, words, count);
-    const right = statuses.length > 0 ? [...statuses, { text: " " }] : [];
-    const left = fitPlace(p, style, columns - span(right) - (right.length > 0 ? 1 : 0), { name, pull }, keep);
-    if (left) return { left, right, hearth: 0 };
+  for (const options of [
+    { name: true, pull: true, keep: PATH_KEPT },
+    { name: false, pull: true, keep: PATH_KEPT },
+    { name: false, pull: true, keep: 1 },
+    { name: false, pull: false, keep: 1 },
+  ]) {
+    const left = fitPlace(p, style, columns, options, options.keep);
+    if (left) return { left, right: [], hearth: 0 };
   }
   return {
     left: clipEnd(place(p, style, { path: "…", name: false, pull: false }), columns),
@@ -514,15 +370,15 @@ function top(p: Parts, style: FooterStyle, columns: number): Row {
  */
 function bottom(p: Parts, style: FooterStyle, columns: number, open: boolean): Row {
   const tries = [
-    { hearth: style.hearth, thinking: true, resets: true },
-    ...[...hearths(style.hearth), 0].map((hearth) => ({ hearth, thinking: false, resets: true })),
-    { hearth: 0, thinking: false, resets: false },
+    { hearth: style.hearth, thinking: true },
+    ...[...hearths(style.hearth), 0].map((hearth) => ({ hearth, thinking: false })),
+    { hearth: 0, thinking: false },
   ];
-  for (const { hearth, thinking, resets } of tries) {
-    const right = budget(p, style, { thinking, open, hearth: hearth > 0, resets });
+  for (const { hearth, thinking } of tries) {
+    const right = budget(p, style, { thinking, open, hearth: hearth > 0 });
     if (span(right) + hearth <= columns) return { left: [], right, hearth };
   }
-  const lean = { thinking: false, open, hearth: false, resets: false };
+  const lean = { thinking: false, open, hearth: false };
   const bare = budget(p, style, { ...lean, nameRoom: 0 });
   // The name takes a space before it, and keeps a character before its ellipsis.
   const room = columns - span(bare) - 1;
@@ -536,14 +392,12 @@ const STYLE = footerStyle();
  * Where the session is, what answers it, how full its context is, and what it has cost, in bands
  * from the screen's edges inward, ending in the fire's hearth.
  *
- * The card holds the usage limits and the cost: a click anywhere on it opens and closes it, and it
- * opens on its own once a limit or extra usage is past 80%.
+ * The card shows the native usage ledger's cost when opened.
  */
 export function Footer(props: FooterProps) {
   const { width: columns } = useTerminalDimensions();
-  const now = useClock();
   const [open, setOpen] = useState(false);
-  const rows = footerRows(footerParts(props, now), columns, STYLE, open);
+  const rows = footerRows(footerParts(props), columns, STYLE, open);
   const toggle = (event: MouseEvent) => {
     if (event.button !== 0) return;
     event.preventDefault();

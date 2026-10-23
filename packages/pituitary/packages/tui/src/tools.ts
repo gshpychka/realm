@@ -1,4 +1,4 @@
-import type { Entry, ToolView } from "@pituitary/rpc";
+import type { Entry, ToolView } from "@pituitary/session";
 import { detailsOf, type Task } from "./details.ts";
 import type { Glyph } from "./glyphs.ts";
 import { counted } from "./plural.ts";

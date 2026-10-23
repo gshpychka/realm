@@ -10,7 +10,7 @@ export interface Command {
 }
 
 const OPTIONS: Record<string, readonly string[]> = {
-  start: ["env", "scenario", "delay", "cols", "rows", "entry", "ready", "settle", "pi"],
+  start: ["env", "scenario", "delay", "cols", "rows", "entry", "ready", "settle", "tmux"],
   type: [],
   submit: [],
   key: [],
@@ -22,7 +22,7 @@ const OPTIONS: Record<string, readonly string[]> = {
   stop: [],
   help: [],
 };
-const SWITCHES = new Set(["style"]);
+const SWITCHES = new Set(["style", "tmux"]);
 
 export function driverSocket(
   name = process.env.TUI_SESSION ?? "default",
@@ -56,7 +56,7 @@ export const HELP = `Usage: just tui <command> [arguments]
 
 start [--scenario tool] [--delay 40] [--cols 100 --rows 28]
       [--env 'KEY=value;KEY2=value']
-      [--entry path --ready text] [--settle false] [--pi command]
+      [--entry path --ready text] [--settle false] [--tmux]
 submit [text]        send text, or the current draft
 type text            type into the editor
 key esc down enter   press named keys (also ctrl+letter, alt+character)

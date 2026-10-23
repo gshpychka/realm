@@ -80,7 +80,7 @@ test("an Enter held for the draft cannot answer a newly opened operator dialog",
   let open = () => {};
   let answer: unknown;
   const dialog = {
-    type: "extension_ui_request" as const,
+    type: "dialog" as const,
     id: "question",
     method: "select" as const,
     title: "Where should focus return?",
@@ -121,7 +121,7 @@ test("an Enter held for the draft cannot answer a newly opened operator dialog",
     }
     expect(answer).toBeUndefined();
     app.renderer.keyInput.emit("keypress", new KeyEvent(enter));
-    expect(answer).toEqual({ type: "extension_ui_response", id: "question", value: "Trigger" });
+    expect(answer).toEqual({ type: "dialog_response", id: "question", value: "Trigger" });
   } finally {
     flushSync(() => root.unmount());
     app.renderer.destroy();

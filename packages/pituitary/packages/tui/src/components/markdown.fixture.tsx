@@ -31,7 +31,7 @@ function Preview() {
       <box flexGrow={1} flexDirection="column">
         <Markdown content={content} />
       </box>
-      <Footer statuses={{}} turnStatuses={{}} state={null} stats={null} cwd="/資料/é/🇺🇦a🇺🇦" branch={null} />
+      <Footer state={null} stats={null} cwd="/資料/é/🇺🇦a🇺🇦" branch={null} />
     </box>
   );
 }

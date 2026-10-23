@@ -206,6 +206,7 @@ function open(options: Record<string, string>): Promise<Harness> {
       ready: options.ready ?? "",
       settle,
       env: options.env ? environment(options.env) : undefined,
+      tmux: options.tmux !== undefined,
       ...size,
     });
   }
@@ -214,7 +215,8 @@ function open(options: Record<string, string>): Promise<Harness> {
     scenario: options.scenario,
     delayMs: options.delay ? Number(options.delay) : undefined,
     env: options.env ? environment(options.env) : undefined,
-    pi: options.pi?.split(/\s+/).filter(Boolean),
+    settle: options.settle !== "false",
+    tmux: options.tmux !== undefined,
   });
 }
 

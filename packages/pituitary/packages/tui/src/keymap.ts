@@ -4,6 +4,11 @@ import { join } from "node:path";
 
 /** What a key can do, named as pi names its keybinding actions. */
 export const ACTIONS = {
+  "app.team.tasks": ["ctrl+k"],
+  "app.team.back": ["alt+left"],
+  "app.team.attention": ["ctrl+q"],
+  "app.team.join": ["alt+i"],
+  "app.ui.reload": ["ctrl+r"],
   "app.interrupt": ["escape"],
   "app.clear": ["ctrl+c"],
   "app.exit": ["ctrl+d"],
@@ -19,9 +24,6 @@ export const ACTIONS = {
   "app.suspend": ["ctrl+z"],
   "app.model.select": ["ctrl+l"],
   "app.model.cycleForward": ["ctrl+p"],
-  "app.session.new": [],
-  "app.session.resume": [],
-  "app.session.fork": [],
 } as const satisfies Record<string, readonly string[]>;
 
 export type Action = keyof typeof ACTIONS;
@@ -116,16 +118,9 @@ export function ownKeybindingsFile(): string {
   );
 }
 
-/** The operator's keymap: pi's `keybindings.json`, then pituitary's own file over it. */
-export function loadKeymap(
-  agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
-  own = ownKeybindingsFile(),
-): Keymap {
-  const local = readBindings(own);
-  const inherited = Object.fromEntries(
-    Object.entries(readBindings(join(agentDir, "keybindings.json"))).filter(([action]) => !Object.hasOwn(local, action)),
-  );
-  return keymap({ ...inherited, ...local });
+/** The operator's terminal bindings. */
+export function loadKeymap(own = ownKeybindingsFile()): Keymap {
+  return keymap(readBindings(own));
 }
 
 /** A keybindings file's action map; empty when the file is absent or malformed. */

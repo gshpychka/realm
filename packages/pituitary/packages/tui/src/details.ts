@@ -1,4 +1,4 @@
-import type { ToolView } from "@pituitary/rpc";
+import type { ToolView } from "@pituitary/session";
 /** A task on the agent's todo list, as the `todo` tool reports it. */
 export interface Task {
   id: string | number;

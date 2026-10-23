@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ToolView } from "@pituitary/rpc";
+import type { ToolView } from "@pituitary/session";
 import { detailsOf, fullOutputOf } from "./details.ts";
 
 const call = (name: string, details: unknown): ToolView => ({

@@ -12,8 +12,8 @@ describe("development CLI arguments", () => {
 
   test("boolean switches never consume following words", () => {
     expect(() => parseCommand(["screen", "--style", "unexpected"])).toThrow("takes no arguments");
-    expect(parseCommand(["start", "--cols=40"])).toMatchObject({
-      options: { cols: "40" },
+    expect(parseCommand(["start", "--tmux", "--cols=40"])).toMatchObject({
+      options: { tmux: "", cols: "40" },
     });
   });
 

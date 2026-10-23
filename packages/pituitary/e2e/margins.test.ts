@@ -25,23 +25,6 @@ test("a wrapped reply stays in its body's column beside its mark", async () => {
   }
 });
 
-test("a wrapped shell command and its output stay clear of the command mark", async () => {
-  const app = await launch({ ...NARROW, scenario: "shell" });
-  try {
-    await app.terminal.submit(`!${WORDS}`);
-    await app.terminal.waitText("ran:");
-    const screen = await app.capture("margins-shell");
-    const lines = screen.split("\n");
-    const row = lines.findIndex((line) => line.includes("$ Amber"));
-    assert.match(lines[row] ?? "", /^ \$ Amber/, screen);
-    assert.match(lines[row + 1] ?? "", /^ {3}hazel ivy juniper$/, screen);
-    assert.match(lines[row + 2] ?? "", /^ {3}ran: Amber/, screen);
-    assert.match(lines[row + 3] ?? "", /^ {3}ginkgo hazel ivy juniper$/, screen);
-  } finally {
-    await app.close();
-  }
-});
-
 test("a long reply remains visible after narrowing the terminal", async () => {
   const app = await launch({ ...NARROW, scenario: "long" });
   try {

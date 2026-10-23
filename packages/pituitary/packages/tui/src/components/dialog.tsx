@@ -1,14 +1,27 @@
-import type { InputRenderable, TextareaRenderable } from "@opentui/core";
-import { useKeyboard } from "@opentui/react";
-import type { DialogRequest, RpcExtensionUIResponse } from "@pituitary/rpc";
+import type { TextareaRenderable } from "@opentui/core";
+import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
+import { useKeyHint } from "../keymap-context.tsx";
+import { wrappedRows } from "../text-width.ts";
 import { theme } from "../theme.ts";
+
+/** A terminal-owned team question or revision, independent of conversation transport. */
+export type DialogRequest = { type: "dialog"; id: string; title: string } & (
+  | { method: "select"; options: string[] }
+  | { method: "editor"; prefill?: string }
+);
+export interface DialogResponse {
+  type: "dialog_response";
+  id: string;
+  value?: string;
+  cancelled?: boolean;
+}
 
 export interface DialogProps {
   dialog: DialogRequest;
   /** Dialogs waiting behind this one. */
   behind: number;
-  onAnswer(response: RpcExtensionUIResponse): void;
+  onAnswer(response: DialogResponse): void;
   /** Rows the dialog's list or text area may take, so it fits the screen. */
   rows?: number;
 }
@@ -25,31 +38,42 @@ const EDITOR_ROWS = 6;
 export const GRACE_MS = 400;
 
 /**
- * The dialog an extension is waiting on, in the editor's place.
+ * An operator question or edit, in the editor's place.
  *
  * Esc cancels every kind; the caller owns that key, since it also aborts a run.
  */
 export function Dialog({ dialog, behind, onAnswer, rows = LIST_ROWS }: DialogProps) {
   const { id } = dialog;
+  const { width } = useTerminalDimensions();
   const [ready, setReady] = useState(false);
   // Each dialog mounts afresh, keyed by its id, so the grace runs once per dialog.
   useEffect(() => {
     const timer = setTimeout(() => setReady(true), GRACE_MS);
     return () => clearTimeout(timer);
   }, []);
+  const titleRows = Math.max(1, Math.min(3, Math.floor(rows / 3), wrappedRows(dialog.title, width - 4)));
   return (
     <box
       flexDirection="column"
       flexShrink={0}
       border
       borderColor={theme.tool}
+      backgroundColor={theme.bg}
       title={behind > 0 ? ` 1 of ${behind + 1} ` : undefined}
       titleAlignment="right"
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg={theme.tool}>{dialog.title}</text>
-      <Body dialog={dialog} onAnswer={onAnswer} ready={ready} rows={rows} key={id} />
+      <scrollbox maxHeight={titleRows} flexShrink={0} scrollX={false} focusable={false}>
+        <text fg={theme.tool}>{dialog.title}</text>
+      </scrollbox>
+      <Body
+        dialog={dialog}
+        onAnswer={onAnswer}
+        ready={ready}
+        rows={Math.max(1, rows - titleRows + 1)}
+        key={id}
+      />
     </box>
   );
 }
@@ -75,18 +99,15 @@ function Body({
             textColor={theme.assistant}
             backgroundColor={theme.bg}
             focusedBackgroundColor={theme.bg}
+            keyBindings={[{ name: "kpenter", action: "select-current" }]}
             onSelect={(index) => {
               const value = dialog.options[index];
-              if (value !== undefined) onAnswer({ type: "extension_ui_response", id, value });
+              if (value !== undefined) onAnswer({ type: "dialog_response", id, value });
             }}
           />
-          <Hint text="↑↓ choose · enter pick · esc cancel" />
+          <Hint text="↑↓ choose · enter pick" />
         </box>
       );
-    case "confirm":
-      return <Confirm id={id} message={dialog.message} onAnswer={onAnswer} ready={ready} />;
-    case "input":
-      return <Input id={id} placeholder={dialog.placeholder ?? ""} onAnswer={onAnswer} ready={ready} />;
     case "editor":
       return (
         <Editor
@@ -94,60 +115,10 @@ function Body({
           prefill={dialog.prefill ?? ""}
           onAnswer={onAnswer}
           ready={ready}
-          rows={Math.max(2, Math.min(EDITOR_ROWS, rows))}
+          rows={Math.max(1, Math.min(EDITOR_ROWS, rows))}
         />
       );
   }
-}
-
-function Confirm({
-  id,
-  message,
-  onAnswer,
-  ready,
-}: {
-  id: string;
-  message: string;
-  onAnswer: DialogProps["onAnswer"];
-  ready: boolean;
-}) {
-  useKeyboard((key) => {
-    if (!ready) return;
-    if (key.name === "y" || key.name === "return")
-      onAnswer({ type: "extension_ui_response", id, confirmed: true });
-    else if (key.name === "n") onAnswer({ type: "extension_ui_response", id, confirmed: false });
-  });
-  return (
-    <box flexDirection="column">
-      <text fg={theme.assistant}>{message}</text>
-      <Hint text="y / enter yes · n no · esc cancel" />
-    </box>
-  );
-}
-
-function Input({
-  id,
-  placeholder,
-  onAnswer,
-  ready,
-}: {
-  id: string;
-  placeholder: string;
-  onAnswer: DialogProps["onAnswer"];
-  ready: boolean;
-}) {
-  const field = useRef<InputRenderable | null>(null);
-  return (
-    <box flexDirection="column">
-      <input
-        ref={field}
-        focused={ready}
-        placeholder={placeholder}
-        onSubmit={() => onAnswer({ type: "extension_ui_response", id, value: field.current?.value ?? "" })}
-      />
-      <Hint text="enter submit · esc cancel" />
-    </box>
-  );
 }
 
 function Editor({
@@ -168,18 +139,29 @@ function Editor({
   useEffect(() => {
     area.current?.gotoBufferEnd();
   }, []);
-  const save = () => onAnswer({ type: "extension_ui_response", id, value: area.current?.plainText ?? "" });
+  const save = () => onAnswer({ type: "dialog_response", id, value: area.current?.plainText ?? "" });
   useKeyboard((key) => {
-    if (ready && key.ctrl && key.name === "s") save();
+    if (ready && !key.defaultPrevented && key.ctrl && key.name === "s") {
+      key.preventDefault();
+      save();
+    }
   });
   return (
     <box flexDirection="column">
       <textarea ref={area} focused={ready} initialValue={prefill} height={rows} onSubmit={save} />
-      <Hint text="alt+enter or ctrl+s save · esc cancel" />
+      <Hint text="ctrl+s save · alt+enter" />
     </box>
   );
 }
 
 function Hint({ text }: { text: string }) {
-  return <text fg={theme.dim}>{text}</text>;
+  const interrupt = useKeyHint("app.interrupt");
+  const clear = useKeyHint("app.clear");
+  const cancel = interrupt ?? clear;
+  return (
+    <text fg={theme.dim} truncate wrapMode="none">
+      {text}
+      {cancel ? ` · ${cancel} cancel` : ""}
+    </text>
+  );
 }

@@ -1,4 +1,4 @@
-import type { AgentLink } from "@pituitary/rpc";
+import type { ConversationLink } from "@pituitary/session";
 import { useEffect, useRef, useState } from "react";
 import { openLog } from "../config.ts";
 import { ghCommand } from "./gh.ts";
@@ -11,14 +11,18 @@ const log = openLog();
  * branch changes or a run settles, and on a slow timer. Null when there is none, or when
  * gh cannot say.
  */
-export function usePullRequest(link: AgentLink, cwd: string, branch: string | null): PullRequest | null {
+export function usePullRequest(
+  link: ConversationLink,
+  cwd: string | null,
+  branch: string | null,
+): PullRequest | null {
   const [pull, setPull] = useState<PullRequest | null>(null);
   const watch = useRef<PullRequestWatch | null>(null);
-  const inRepository = branch !== null;
+  const inRepository = cwd !== null && branch !== null;
 
   useEffect(() => {
     const gh = ghCommand();
-    if (!gh || !inRepository) return;
+    if (!gh || !inRepository || cwd === null) return;
     const current = new PullRequestWatch({
       lookup: () => lookupPullRequest(gh, cwd),
       onChange: setPull,

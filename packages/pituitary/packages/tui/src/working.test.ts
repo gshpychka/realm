@@ -1,24 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import {
-  agentRun,
-  assistantTurn,
   emptySession,
-  type PiEvent,
   reduce,
+  type SessionEvent,
   type SessionView,
   type TurnEntry,
-  toolRun,
-  userTurn,
-} from "@pituitary/rpc";
+} from "@pituitary/session";
+import { agentRun, assistantTurn, toolRun, userTurn } from "../../session/src/session.fixture.ts";
 import { glyphs } from "./glyphs.ts";
 import { clock, count, duration, turnLine, workingLine } from "./working.ts";
 
-function run(events: PiEvent[], at = 1_000): SessionView {
+function run(events: SessionEvent[], at = 1_000): SessionView {
   return events.reduce<SessionView>((view, event) => reduce(view, event, at), emptySession);
 }
 
 /** A run's events up to its settling, which the status line only shows until. */
-function open(events: PiEvent[]): PiEvent[] {
+function open(events: SessionEvent[]): SessionEvent[] {
   return events.slice(
     0,
     events.findIndex((event) => event.type === "agent_end"),
@@ -62,7 +59,7 @@ describe("workingLine", () => {
         { type: "toolCall", id: "c2", name: "read", arguments: {} },
       ],
       stopReason: "toolUse",
-    } as unknown as Extract<PiEvent, { type: "message_end" }>["message"];
+    } as unknown as Extract<SessionEvent, { type: "message_end" }>["message"];
     const two = run([
       ...open(agentRun([userTurn("q")])),
       { type: "message_start", message: both },

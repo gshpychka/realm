@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { getTreeSitterClient, type ScrollBoxRenderable } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
-import type { Entry } from "@pituitary/rpc";
+import type { Entry } from "@pituitary/session";
 import { act, createRef, useState } from "react";
 import { Conversation } from "./conversation.tsx";
 
