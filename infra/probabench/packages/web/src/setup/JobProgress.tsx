@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { Job } from "../bridge/protocol";
 import type { Bridge } from "../bridge/use-bridge";
 import { time } from "../common/format";
@@ -39,17 +39,12 @@ export function JobProgress({
   onSetUpAnother: () => void;
   onClose: () => void;
 }) {
-  const log = useRef<HTMLPreElement>(null);
-  const follow = useRef(true);
   // Only read while the job runs, so a finished job never shows a stale value.
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const running = job.status === "running";
   const reconnecting = bridge.connection.kind === "local" && bridge.connection.reconnecting;
   const { title, detail } = describe(job, cancelling);
-  useEffect(() => {
-    if (job.log && follow.current && log.current) log.current.scrollTop = log.current.scrollHeight;
-  }, [job.log]);
   const cancel = async () => {
     setCancelling(true);
     const error = await bridge.cancel();
@@ -107,17 +102,11 @@ export function JobProgress({
       <details className="job-output" open={job.status === "failed"}>
         <summary>Runner output</summary>
         <pre
-          ref={log}
           // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll the runner output.
           tabIndex={0}
           role="log"
           aria-live="off"
           aria-label="Runner output"
-          onScroll={() => {
-            const element = log.current;
-            if (element)
-              follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
-          }}
         >
           {job.log || "Preparing the sampling plan…"}
         </pre>

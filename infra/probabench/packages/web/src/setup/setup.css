@@ -408,7 +408,10 @@ body:has(.run-dialog[open]) {
   font-size: 13px;
   color: var(--text-3);
 }
+/* column-reverse opens the log at its latest line and keeps it there as lines arrive. */
 .job-progress pre {
+  display: flex;
+  flex-direction: column-reverse;
   font: 12px / 1.9 var(--mono);
   padding: 15px;
   margin: 15px 0 0;
