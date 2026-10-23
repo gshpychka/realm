@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Job } from "../bridge/protocol";
 import type { Bridge, Connection } from "../bridge/use-bridge";
 import { RunSetup } from "./RunSetup";
-import { submitLabel } from "./SetupForm";
 
 const bridge = (connection: Connection): Bridge => ({
   connection,
@@ -14,7 +13,6 @@ const bridge = (connection: Connection): Bridge => ({
 });
 const local = (job: Job | null = null, configured = true) =>
   bridge({ kind: "local", status: { configured, job }, reconnecting: false });
-const published = bridge({ kind: "published" });
 const render = (connection: Bridge) =>
   renderToStaticMarkup(
     <RunSetup
@@ -45,14 +43,6 @@ describe("benchmark setup workflow", () => {
     expect(html).toContain("Advanced settings");
   });
 
-  it("offers a usable primary command action on the published site", () => {
-    const html = render(published);
-    expect(html).toMatch(/<button[^>]*type="submit"[^>]*>Copy command/);
-    expect(html).toContain('aria-label="Benchmark terminal command"');
-    expect(html).not.toContain("Start benchmark");
-    expect(html).not.toContain("Connect your OpenRouter key");
-  });
-
   it("explains how to give the dev server its key before a run can start", () => {
     const html = render(local(null, false));
     expect(html).toContain("Connect your OpenRouter key");
@@ -74,17 +64,5 @@ describe("benchmark setup workflow", () => {
     expect(html).toMatch(/<button[^>]*class="button primary"[^>]*>View results/);
     expect(html).toContain("Set up another");
     expect(html).not.toContain('id="benchmark-model"');
-  });
-});
-
-describe("submitLabel", () => {
-  it.each([
-    ["connecting", false, false, "Connecting…"],
-    ["local", true, false, "Starting…"],
-    ["local", false, false, "Start benchmark"],
-    ["published", false, false, "Copy command"],
-    ["published", false, true, "Copied ✓"],
-  ] as const)("labels %s (pending %s, copied %s) as %s", (connection, pending, copied, label) => {
-    expect(submitLabel(connection, pending, copied)).toBe(label);
   });
 });

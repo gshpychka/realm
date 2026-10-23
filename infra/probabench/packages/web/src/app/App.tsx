@@ -49,7 +49,8 @@ export function App() {
   const runs = Result.isSuccess(result) ? result.value.runs : NO_RUNS;
   const styles = useMemo(() => modelStyles(runs), [runs]);
 
-  const openSetup = () => setSetupOpen(true);
+  // The published site is read-only: only the dev server can run benchmarks.
+  const openSetup = bridge.connection.kind === "published" ? undefined : () => setSetupOpen(true);
   const panel = () => {
     if (view.tab === "method") return <MethodPage />;
     if (Result.isInitial(result)) return <NotebookLoading />;
@@ -89,17 +90,19 @@ export function App() {
           About the method <span aria-hidden="true">↗</span>
         </button>
       </footer>
-      <RunSetup
-        open={setupOpen}
-        onClose={() => setSetupOpen(false)}
-        bridge={bridge}
-        modelSuggestions={runs.map((run) => run.modelSlug)}
-        onViewResults={() => {
-          setSetupOpen(false);
-          update({ tab: "history", runId: null, query: "", hidden: [] });
-          document.getElementById(tabId("history"))?.focus();
-        }}
-      />
+      {openSetup ? (
+        <RunSetup
+          open={setupOpen}
+          onClose={() => setSetupOpen(false)}
+          bridge={bridge}
+          modelSuggestions={runs.map((run) => run.modelSlug)}
+          onViewResults={() => {
+            setSetupOpen(false);
+            update({ tab: "history", runId: null, query: "", hidden: [] });
+            document.getElementById(tabId("history"))?.focus();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -9,13 +9,12 @@ import {
 } from "@probabench/domain";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { type FormEvent, type ReactNode, type RefObject, useRef } from "react";
-import { BenchRequest, BROWSER_LIMITS, BridgeRequest, firstIssue } from "../bridge/protocol";
+import type { FormEvent } from "react";
+import { BenchRequest, BROWSER_LIMITS, firstIssue } from "../bridge/protocol";
 import type { Bridge, Connection } from "../bridge/use-bridge";
-import { type CopyStatus, useClipboard } from "../common/clipboard";
 import { count } from "../common/format";
 import { FormError } from "./FormError";
-import { benchmarkCommand, DEFAULT_REQUEST, presetFor } from "./run-settings";
+import { DEFAULT_REQUEST, presetFor } from "./run-settings";
 
 /** What the form edits. Number fields can hold 0 or NaN while the user types. */
 export interface Settings {
@@ -34,60 +33,13 @@ export const initialSettings: Settings = {
   custom: false,
 };
 
-export const submitLabel = (
-  connection: Connection["kind"],
-  pending: boolean,
-  copied: boolean,
-): string => {
-  if (connection === "connecting") return "Connecting…";
-  if (pending) return "Starting…";
-  if (connection === "published") return copied ? "Copied ✓" : "Copy command";
-  return "Start benchmark";
-};
-
-const COPY_MESSAGE = {
-  copied: "Ready to paste into your terminal.",
-  failed: "Command selected. Use your system’s copy shortcut.",
-} as const satisfies Record<CopyStatus, string>;
+const submitLabel = (connection: Connection["kind"], pending: boolean): string =>
+  connection === "connecting" ? "Connecting…" : pending ? "Starting…" : "Start benchmark";
 
 const customToggleLabel = (custom: boolean, onPreset: boolean): string => {
   if (custom) return "Hide custom settings";
   return onPreset ? "Choose a custom budget" : "Edit custom budget";
 };
-
-/** The run as a terminal command; `children` go between the command and the copy status. */
-function CommandPreview({
-  command,
-  field,
-  status,
-  children,
-}: {
-  command: string;
-  field: RefObject<HTMLTextAreaElement | null>;
-  status: CopyStatus | null;
-  children?: ReactNode;
-}) {
-  return (
-    <>
-      <p className="helper">
-        In the Realm infra shell (<code>nix develop .#infra</code>). The CLI previews the plan and
-        asks for confirmation.
-      </p>
-      <textarea
-        ref={field}
-        aria-label="Benchmark terminal command"
-        readOnly
-        value={command}
-        rows={3}
-        onFocus={(event) => event.currentTarget.select()}
-      />
-      {children}
-      <span role="status" className="helper copy-status">
-        {status ? COPY_MESSAGE[status] : ""}
-      </span>
-    </>
-  );
-}
 
 function NumberField({
   id,
@@ -132,8 +84,6 @@ export function SetupForm({
   bridge: Bridge;
   modelSuggestions: readonly string[];
 }) {
-  const commandField = useRef<HTMLTextAreaElement>(null);
-  const { copy, statusOf } = useClipboard();
   const { model, trialsPerStep, stepPercent, concurrency, reasoning, custom } = settings;
   const request = {
     model: model.trim(),
@@ -142,34 +92,20 @@ export function SetupForm({
     concurrency,
     ...(reasoning ? { reasoning } : {}),
   };
-  const command = benchmarkCommand(request);
-  const copyStatus = statusOf(command);
   const { connection } = bridge;
-  const published = connection.kind === "published";
   const local = connection.kind === "local" ? connection.status : null;
   const budget =
     Schema.is(TrialsPerStep)(trialsPerStep) && Schema.is(StepPercent)(stepPercent)
       ? planBudget({ trialsPerStep, stepPercent })
       : { points: 0, samples: 0 };
-  // A copied command only has to be one the form can express; a browser run also has a budget.
-  const checked = Schema.validateEither(published ? BenchRequest : BridgeRequest)(request);
+  const checked = Schema.validateEither(BenchRequest)(request);
   const validationError = Either.isLeft(checked) ? firstIssue(checked.left) : null;
   const selectedPreset = presetFor(request);
-  const canSubmit =
-    !bridge.pending && !validationError && (published || local?.configured === true);
+  const canSubmit = !bridge.pending && !validationError && local?.configured === true;
 
-  const copyCommand = async () => {
-    if ((await copy(command)) === "copied") return;
-    requestAnimationFrame(() => {
-      commandField.current?.focus();
-      commandField.current?.select();
-    });
-  };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSubmit) return;
-    if (published) await copyCommand();
-    else await bridge.start(request);
+    if (canSubmit) await bridge.start(request);
   };
 
   return (
@@ -333,48 +269,13 @@ export function SetupForm({
         ) : null}
         <FormError message={bridge.error} />
         <div className="run-action">
-          <p>
-            {published
-              ? "Run this command locally with your OpenRouter key. Charges depend on generated tokens."
-              : "Your key stays on the dev server. OpenRouter charges for generated tokens."}
-          </p>
+          <p>Your key stays on the dev server. OpenRouter charges for generated tokens.</p>
           <button type="submit" className="button primary" disabled={!canSubmit}>
-            {submitLabel(connection.kind, bridge.pending, copyStatus === "copied")}
-            <span aria-hidden="true">{published ? "⧉" : "↗"}</span>
+            {submitLabel(connection.kind, bridge.pending)}
+            <span aria-hidden="true">↗</span>
           </button>
         </div>
-        {published ? (
-          <>
-            <section
-              className="terminal-command published-command"
-              aria-label="Run from your terminal"
-            >
-              <CommandPreview command={command} field={commandField} status={copyStatus} />
-            </section>
-            <p className="helper setup-local-link">
-              To run benchmarks from this page, start <code>bun run dev</code> in your local
-              workspace and open its local URL.
-            </p>
-          </>
-        ) : null}
       </form>
-      {published ? null : (
-        <details className="terminal-command" open={copyStatus === "failed"}>
-          <summary>Use the terminal instead</summary>
-          <CommandPreview command={command} field={commandField} status={copyStatus}>
-            <button
-              type="button"
-              className="button secondary compact"
-              disabled={!!validationError}
-              onClick={() => {
-                void copyCommand();
-              }}
-            >
-              {copyStatus === "copied" ? "Copied ✓" : "Copy command"}
-            </button>
-          </CommandPreview>
-        </details>
-      )}
     </>
   );
 }

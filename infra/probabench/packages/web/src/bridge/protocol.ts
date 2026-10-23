@@ -25,7 +25,7 @@ const wholeNumber = (label: string, max: number) =>
     }),
   );
 
-/** Settings the setup form can express; they also bound the copied terminal command. */
+/** A run the page may start: settings the form can express, within the browser's sample budget. */
 export const BenchRequest = Schema.Struct({
   model: Schema.String.pipe(
     Schema.maxLength(BROWSER_LIMITS.modelLength, {
@@ -39,18 +39,14 @@ export const BenchRequest = Schema.Struct({
   stepPercent: wholeNumber("Target step", 100),
   concurrency: wholeNumber("Concurrent requests", BROWSER_LIMITS.concurrency),
   reasoning: Schema.optional(ReasoningMode),
-});
-export type BenchRequest = typeof BenchRequest.Type;
-
-/** A run the page may start through the bridge: a request within the browser's sample budget. */
-export const BridgeRequest = BenchRequest.pipe(
+}).pipe(
   Schema.filter((request) => planBudget(request).samples <= BROWSER_LIMITS.samples, {
     message: () =>
       `Browser runs support up to ${BROWSER_LIMITS.samples.toLocaleString("en")} samples. ` +
-      "Choose a smaller budget, or use the terminal command.",
+      "Run larger benchmarks with the probabench CLI.",
   }),
 );
-export type BridgeRequest = typeof BridgeRequest.Type;
+export type BenchRequest = typeof BenchRequest.Type;
 
 /** One run started from the page, with the tail of the runner's output. */
 export const Job = Schema.Struct({

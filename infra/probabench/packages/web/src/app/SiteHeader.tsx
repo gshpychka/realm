@@ -11,7 +11,8 @@ export function SiteHeader({
   onOpenSetup,
 }: {
   connection: Connection;
-  onOpenSetup: () => void;
+  /** Absent on the published site, which cannot run benchmarks. */
+  onOpenSetup: (() => void) | undefined;
 }) {
   const local = connection.kind === "local" ? connection.status : null;
   const running = local?.job?.status === "running";
@@ -38,10 +39,12 @@ export function SiteHeader({
             {CONNECTION_LABEL[connection.kind]}
           </span>
         )}
-        <button type="button" className="button primary" onClick={onOpenSetup}>
-          {running ? "View progress" : "New benchmark"}
-          <span aria-hidden="true">↗</span>
-        </button>
+        {onOpenSetup ? (
+          <button type="button" className="button primary" onClick={onOpenSetup}>
+            {running ? "View progress" : "New benchmark"}
+            <span aria-hidden="true">↗</span>
+          </button>
+        ) : null}
       </div>
     </header>
   );

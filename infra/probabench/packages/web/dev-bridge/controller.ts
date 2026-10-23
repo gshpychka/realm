@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { stripVTControlCharacters } from "node:util";
 import { benchArgs, parsePointProgress } from "@probabench/domain";
-import type { BridgeRequest, BridgeStatus, Job } from "../src/bridge/protocol";
+import type { BenchRequest, BridgeStatus, Job } from "../src/bridge/protocol";
 
 export class RequestError extends Error {
   constructor(
@@ -43,7 +43,7 @@ export function createBenchController({
 
   return {
     status,
-    start(request: BridgeRequest): BridgeStatus {
+    start(request: BenchRequest): BridgeStatus {
       if (runner) throw new RequestError(409, "A benchmark is already running or stopping.");
       if (apiKey === "")
         throw new RequestError(

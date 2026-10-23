@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelRun, fetchStatus, startRun } from "./client";
-import type { BridgeRequest, BridgeStatus } from "./protocol";
+import type { BenchRequest, BridgeStatus } from "./protocol";
 
 export type Connection =
-  /** A production build: there is no dev bridge, so the page offers the terminal command. */
+  /** A production build: there is no dev bridge, so the page is read-only. */
   | { readonly kind: "published" }
   /** The dev server, before its first status arrives. */
   | { readonly kind: "connecting" }
@@ -40,7 +40,7 @@ export interface Bridge {
   readonly connection: Connection;
   readonly pending: boolean;
   readonly error: string | null;
-  readonly start: (request: BridgeRequest) => Promise<boolean>;
+  readonly start: (request: BenchRequest) => Promise<boolean>;
   readonly cancel: () => Promise<boolean>;
 }
 

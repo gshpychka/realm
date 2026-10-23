@@ -86,15 +86,13 @@ fieldset {
 }
 button,
 input,
-select,
-textarea {
+select {
   font: inherit;
 }
 button,
 a,
 input,
 select,
-textarea,
 summary,
 [tabindex] {
   -webkit-tap-highlight-color: transparent;
@@ -123,7 +121,6 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible,
 summary:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--accent);
@@ -235,11 +232,6 @@ var {
 .button.secondary:hover:not(:disabled) {
   background: var(--line);
   border-color: var(--muted);
-}
-.button.compact {
-  min-height: 40px;
-  font-size: 12px;
-  padding: 8px 12px;
 }
 .button.full-width {
   width: 100%;

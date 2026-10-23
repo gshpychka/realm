@@ -24,7 +24,14 @@ function ReferenceSketch() {
   );
 }
 
-export function EmptyNotebook({ onNew, onMethod }: { onNew: () => void; onMethod: () => void }) {
+export function EmptyNotebook({
+  onNew,
+  onMethod,
+}: {
+  /** Absent on the published site, which cannot run benchmarks. */
+  onNew: (() => void) | undefined;
+  onMethod: () => void;
+}) {
   return (
     <section className="card empty-notebook" role="status">
       <div className="empty-sketch">
@@ -36,9 +43,11 @@ export function EmptyNotebook({ onNew, onMethod }: { onNew: () => void; onMethod
         ask for. Each run becomes part of the history.
       </p>
       <div className="empty-actions">
-        <button type="button" className="button primary" onClick={onNew}>
-          New benchmark <span aria-hidden="true">↗</span>
-        </button>
+        {onNew ? (
+          <button type="button" className="button primary" onClick={onNew}>
+            New benchmark <span aria-hidden="true">↗</span>
+          </button>
+        ) : null}
         <button type="button" className="text-button" onClick={onMethod}>
           Read the method <span aria-hidden="true">→</span>
         </button>

@@ -1,6 +1,6 @@
 // Browser side of the dev bridge. Only the dev server serves these routes.
 import * as Schema from "effect/Schema";
-import { BRIDGE_ROUTES, BridgeFailure, type BridgeRequest, BridgeStatus } from "./protocol";
+import { type BenchRequest, BRIDGE_ROUTES, BridgeFailure, BridgeStatus } from "./protocol";
 
 const TIMEOUT_MS = { status: 5_000, action: 10_000 } as const;
 const UNAVAILABLE = "The dev bridge is unavailable. Try again.";
@@ -27,7 +27,7 @@ export const fetchStatus = async (): Promise<BridgeStatus | null> => {
   return ok && isStatus(body) ? body : null;
 };
 
-const post = async (route: string, request: BridgeRequest | null): Promise<BridgeStatus> => {
+const post = async (route: string, request: BenchRequest | null): Promise<BridgeStatus> => {
   const { ok, body } = await call(route, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -38,5 +38,5 @@ const post = async (route: string, request: BridgeRequest | null): Promise<Bridg
   throw new Error(isFailure(body) ? body.error : UNAVAILABLE);
 };
 
-export const startRun = (request: BridgeRequest) => post(BRIDGE_ROUTES.run, request);
+export const startRun = (request: BenchRequest) => post(BRIDGE_ROUTES.run, request);
 export const cancelRun = () => post(BRIDGE_ROUTES.cancel, null);

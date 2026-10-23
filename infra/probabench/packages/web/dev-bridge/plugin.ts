@@ -7,9 +7,9 @@ import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
 import type { Plugin } from "vite";
 import {
+  BenchRequest,
   BRIDGE_ROUTES,
   type BridgeFailure,
-  BridgeRequest,
   type BridgeStatus,
   firstIssue,
 } from "../src/bridge/protocol";
@@ -22,7 +22,7 @@ import { createBenchController, RequestError } from "./controller";
  */
 const RUNNER_ENTRY = "packages/runner/src/main.ts";
 const MAX_BODY_BYTES = 4_096;
-const decodeRequest = Schema.decodeEither(Schema.parseJson(BridgeRequest));
+const decodeRequest = Schema.decodeEither(Schema.parseJson(BenchRequest));
 
 /** Reject remote hosts and cross-site requests, including DNS rebinding to loopback. */
 export function isLocalRequest(request: IncomingMessage, mutation: boolean): boolean {

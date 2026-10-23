@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { BenchRequest, BridgeRequest, firstIssue } from "./protocol";
+import { BenchRequest, firstIssue } from "./protocol";
 
 const request = {
   model: "openai/example:free",
@@ -9,20 +9,20 @@ const request = {
   stepPercent: 25,
   concurrency: 5,
 };
-const problem = (schema: typeof BenchRequest | typeof BridgeRequest, value: unknown) =>
-  Either.match(Schema.decodeUnknownEither(schema)(value), {
+const problem = (value: unknown) =>
+  Either.match(Schema.decodeUnknownEither(BenchRequest)(value), {
     onLeft: firstIssue,
     onRight: () => null,
   });
 
-describe("BridgeRequest", () => {
+describe("BenchRequest", () => {
   it.each([
     request,
     { ...request, model: "gpt-5-mini-low" },
     { ...request, model: `vendor/${"a".repeat(193)}` },
     { ...request, reasoning: "xhigh" },
   ])("accepts %j", (value) => {
-    expect(problem(BridgeRequest, value)).toBeNull();
+    expect(problem(value)).toBeNull();
   });
 
   it.each([
@@ -38,12 +38,6 @@ describe("BridgeRequest", () => {
     [{ model: request.model }, "trialsPerStep: is missing"],
     [{ ...request, trialsPerStep: 10_000, stepPercent: 1 }, "Browser runs support up to 100,000"],
   ])("rejects %j with a readable reason", (value, reason) => {
-    expect(problem(BridgeRequest, value)).toContain(reason);
-  });
-});
-
-describe("BenchRequest", () => {
-  it("bounds each field but leaves the sample budget to browser runs", () => {
-    expect(problem(BenchRequest, { ...request, trialsPerStep: 10_000, stepPercent: 1 })).toBeNull();
+    expect(problem(value)).toContain(reason);
   });
 });
