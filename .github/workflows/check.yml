@@ -11,20 +11,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  fleet:
+  flake-eval:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
-      # Fleet-wide eval: all systems, no machine builds.
+      # Evaluate flake outputs on every supported system without building checks.
       - run: nix flake check --all-systems --no-build
 
-  source:
+  lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
-      - name: Check source
+      - name: Check lint and formatting
         run: >-
           nix build --no-link -L
           .#checks.x86_64-linux.statix
@@ -32,6 +32,7 @@ jobs:
           .#checks.x86_64-linux.treefmt
           .#checks.x86_64-linux.biome
           .#checks.x86_64-linux.ruff
+          .#checks.x86_64-linux.bay-shellcheck
 
   bay:
     runs-on: ubuntu-24.04
@@ -43,7 +44,6 @@ jobs:
         run: >-
           nix build --no-link -L
           .#bay .#flare
-          .#checks.x86_64-linux.bay-shellcheck
 
   pituitary:
     runs-on: ubuntu-24.04
@@ -60,7 +60,7 @@ jobs:
       - name: Check Pituitary
         run: >-
           nix develop .#pituitary --command bash -c
-          'cd packages/pituitary && bun install --frozen-lockfile && just typecheck lint unit e2e'
+          'cd packages/pituitary && bun install --frozen-lockfile && just typecheck unit e2e'
 
   pi-extensions:
     runs-on: ubuntu-24.04

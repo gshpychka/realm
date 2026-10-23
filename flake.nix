@@ -283,9 +283,10 @@
                 ruff check --no-cache --config ruff.toml .
                 touch $out
               '';
-              # the store copy has no .git for biome to read ignores from
+              # Treefmt owns formatting; Biome checks lint and import organization.
+              # The store copy has no .git for Biome to read ignores from.
               biome = pkgs.runCommand "check-biome" { nativeBuildInputs = [ pkgs.biome ]; } ''
-                biome check --config-path ${self}/biome.json --vcs-enabled=false ${self}
+                biome check --formatter-enabled=false --config-path ${self}/biome.json --vcs-enabled=false ${self}
                 touch $out
               '';
               # pi extensions typecheck against the vendored API declarations
