@@ -2,7 +2,7 @@ import { type BoxRenderable, type OptimizedBuffer, RGBA } from "@opentui/core";
 import { useEffect, useMemo, useRef } from "react";
 import { grain, type Mapping, paint, pixels } from "./cells.ts";
 import type { Fuel } from "./fuel.ts";
-import { type Hearth, type HearthOptions, kindle, stoke, warm } from "./hearth.ts";
+import { type Hearth, type HearthOptions, kindle, reshape, resolve, stoke, warm } from "./hearth.ts";
 import { FLAME, glow, type Stop } from "./ramp.ts";
 
 /** Milliseconds per step, the pace flames flicker at without strobing. */
@@ -75,8 +75,7 @@ export function shader(colours: readonly Stop[] = FLAME): (heat: number, backgro
 /**
  * A fire filling the box layout gives it.
  *
- * The hearth is sized to the box's cells under the mapping, and kindled afresh when
- * either changes, so a fire can stretch along a row or down a column with its parent.
+ * Resizing resamples the burning hearth; changing its seed or mapping kindles a new one.
  */
 export function Fire({
   mapping = "half",
@@ -112,7 +111,7 @@ export function Fire({
     const timer = setInterval(() => {
       const held = hearth.current;
       if (!held) return;
-      held.fire.options = { ...held.fire.options, ...latest.current };
+      held.fire.options = resolve(held.fire.width, held.fire.height, latest.current);
       stoke(held.fire);
       box.current?.requestRender();
     }, pace);
@@ -123,10 +122,12 @@ export function Fire({
     const cols = this.width;
     const rows = this.height;
     if (cols <= 0 || rows <= 0) return;
-    const key = `${mapping}:${cols}x${rows}:${seed}`;
+    const key = `${mapping}:${seed}`;
+    const [w, h] = pixels(mapping, cols, rows);
     if (hearth.current?.key !== key) {
-      const [w, h] = pixels(mapping, cols, rows);
       hearth.current = { fire: warm(kindle(w, h, latest.current)), key };
+    } else if (hearth.current.fire.width !== w || hearth.current.fire.height !== h) {
+      hearth.current.fire = reshape(hearth.current.fire, w, h, latest.current);
     }
     const cells = paint(hearth.current.fire, mapping, cols, rows);
     for (let row = 0; row < rows; row++) {
