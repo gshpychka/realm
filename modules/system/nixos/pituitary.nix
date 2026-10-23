@@ -83,6 +83,12 @@ in
       default = "/var/lib/pituitary";
       description = "Private durable host state. CLI clients discover the runtime through this same directory.";
     };
+    model = mkOption {
+      type = types.nullOr (types.strMatching "[^/[:space:]]+/[^[:space:]]+");
+      default = null;
+      example = "anthropic/your-model";
+      description = "Host default model for agents whose model is null. Explicit agent models take precedence.";
+    };
     limits = {
       maxTasks = mkOption {
         type = types.ints.positive;
@@ -240,7 +246,8 @@ in
         PITUITARY_STATE_DIR = cfg.stateDirectory;
         PITUITARY_CREDENTIAL_PROFILES = credentialProfilesPath;
         PITUITARY_RUN_LIMITS = builtins.toJSON cfg.limits;
-      };
+      }
+      // lib.optionalAttrs (cfg.model != null) { PITUITARY_MODEL = cfg.model; };
       serviceConfig = {
         User = cfg.operator;
         UMask = "0077";

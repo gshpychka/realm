@@ -190,8 +190,10 @@ features. Pituitary agent collaboration uses native durable conversations.
 
 ## Code and artifacts
 
-A run has one primary writable workspace. Additional repository inputs are read-only
-context. A local or private source does not require a GitHub push.
+A run has one primary workspace for retained code. Additional repositories start at
+pinned commits in writable session checkouts. Edits there stay in the session;
+retention and integration use the primary workspace. A local or private source does
+not require a GitHub push.
 
 Input capture reads tracked working files, including staged additions and unstaged
 changes, plus explicitly selected untracked files. Ignored untracked material is
@@ -223,15 +225,18 @@ A verification policy names a declared verifier environment and fixed argv comma
 A fresh Bay instance materializes the exact integrated artifact and executes those
 commands without a model or credentials. Evidence records command names, bounded
 output, exit results, the tested tree, policy digest, and exact environment identity.
-The source tree is checked before and after every command.
+The verifier compares Git source trees before and after every command. Checks and
+the project tools they invoke are trusted operator code; evidence assumes they
+preserve the checkout's Git configuration and attributes.
 
 Acceptance requires all configured checks to pass for the current integration tree,
 task revision, dependency results, policy, and verifier identity. Changed integration
 invalidates old evidence. Missing policy leaves code explicitly unverified. A model's
 reported test outcome never counts as independent evidence.
 
-A run completes when its required tasks have submitted their reports or accepted code,
-its current integration has matching evidence, and no operator question remains open.
+A run completes when its required tasks have submitted their reports or accepted code
+and no operator question remains open. Runs with code also require matching evidence
+for their current integration; report-only runs need no integration or verification.
 
 Applying the accepted result is an explicit operator command. It checks that the
 operator's HEAD, index, and working input still match the captured provenance, then

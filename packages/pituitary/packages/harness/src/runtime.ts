@@ -70,7 +70,7 @@ export class Runtime {
   }
   async stop(name: string, id: string = randomUUID()): Promise<Run> {
     await this.ensure();
-    return this.call("POST", `/v1/runs/${encodeURIComponent(name)}/stop`, { id });
+    return this.call("POST", `/v1/runs/${encodeURIComponent(name)}/stop`, { id }, 240_000);
   }
   async recover(name: string, id: string = randomUUID()): Promise<Run> {
     await this.ensure();
@@ -190,7 +190,21 @@ export class Runtime {
     }
     throw new Error(`Runtime did not become ready; see ${join(this.root, "runtime.log")}`);
   }
-  private call<T>(method: string, path: string, body?: unknown, timeout = 15_000): Promise<T> {
+  private async call<T>(method: string, path: string, body?: unknown, timeout = 15_000): Promise<T> {
+    try {
+      return await this.request<T>(method, path, body, timeout);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (path === "/v1/status" || !["ENOENT", "ECONNREFUSED", "ECONNRESET"].includes(code ?? ""))
+        throw error;
+      this.ready = undefined;
+      // A refused connection dispatched nothing. Never replay an uncertain command.
+      if (code === "ECONNRESET") throw error;
+      await this.ensure();
+      return this.request<T>(method, path, body, timeout);
+    }
+  }
+  private request<T>(method: string, path: string, body?: unknown, timeout = 15_000): Promise<T> {
     return new Promise((resolve, reject) => {
       const req = request(
         {

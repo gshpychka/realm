@@ -14,7 +14,7 @@ and artifact flow in detail.
 pituitary                              # a local durable conversation; choose a model
 pituitary --model provider/model 'Investigate this project'
 pituitary agents                       # available declared roles
-pituitary run --agent coordinator --name feature --workspace "$PWD" 'Build the feature'
+pituitary run --agent coordinator --name feature --workspace "$(git rev-parse --show-toplevel)" 'Build the feature'
 pituitary runs
 pituitary inspect feature
 pituitary attach feature
@@ -23,7 +23,8 @@ pituitary apply feature                 # explicitly apply the current verified 
 
 Provider credentials are configured on the host. A local conversation can choose an
 available model; a declared role freezes its model and capabilities for the run.
-`--repo OWNER/NAME@REF` adds read-only repository context to a declared run.
+`--repo OWNER/NAME@REF` adds repository context initially checked out at the selected
+revision. Those checkouts are writable; retained code comes from the primary workspace.
 
 `--workspace` captures tracked working files, including staged and unstaged edits,
 without changing the operator's branch or index. Add selected untracked paths with
@@ -55,6 +56,9 @@ pituitary attach RUN --task TASK
 
 Task commands name the current revision. Revising upstream work invalidates dependent
 results and rebuilds integration from valid contributions.
+Use `--clear-dependencies` or `--clear-acceptance` to clear a revision's lists. Mutating
+commands accept `--command-id KEY`; reuse that key after an uncertain result to recover
+the same command. Failed invocations print the key they used.
 
 ## Declare agents
 
@@ -62,9 +66,12 @@ Each entry in `services.pituitary.agents` is an ordinary NixOS module. Role meta
 lives beside its environment declaration and stays outside the machine image.
 
 ```nix
+imports = [ inputs.realm.nixosModules.pituitary ];
+
 services.pituitary = {
   enable = true;
   operator = "alice";
+  model = "anthropic/your-model";          # default for roles without an explicit model
   credentialProfiles.primary = {
     provider = "anthropic";
     file = "/run/secrets/agent-api-key";
@@ -108,6 +115,8 @@ guest. The host validates each role's credential grants before starting its work
 For client preferences, use `programs.pituitary` in Home Manager:
 
 ```nix
+imports = [ inputs.realm.homeManagerModules.pituitary ];
+
 programs.pituitary = {
   enable = true;
   model = "anthropic/your-model";          # local conversations
@@ -158,8 +167,9 @@ another executable; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select external
 
 `/model`, `/thinking`, `/compact`, `/name`, `/session`, `/copy`, `/hotkeys`, and `/quit`
 provide conversation controls. Declared roles keep their model fixed. `/` completes
-commands and `@` completes paths. The footer shows the directory, branch, conversation,
-model, context, and usage. GitHub CLI supplies the branch's pull request;
+commands. Local conversations also complete `@` paths and show the checkout's branch
+and GitHub pull request. The footer shows the directory, conversation, model, context,
+and usage. GitHub CLI supplies local pull-request information;
 `PITUITARY_GH=""` disables that lookup.
 
 `PITUITARY_PLAIN_GLYPHS=1` selects plain symbols. `PITUITARY_STILL=1` holds animation.
