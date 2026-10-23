@@ -18,9 +18,9 @@ func TestHelp(t *testing.T) {
 	names := []string{
 		"start", "attach", "list", "show", "suspend", "resume", "snap", "end", "rm", "threads", "read", "send", "help",
 	}
-	for _, arg := range []string{"help", "-h", "--help"} {
-		t.Run(arg, func(t *testing.T) {
-			got := h.run("", arg)
+	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}, {"help", "help"}, {"help", "-h"}, {"help", "--help"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			got := h.run("", args...)
 			if got.code != 0 || got.stderr != "" {
 				t.Fatalf("exit %d, stderr %q", got.code, got.stderr)
 			}

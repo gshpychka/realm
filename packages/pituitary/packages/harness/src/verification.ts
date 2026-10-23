@@ -38,6 +38,8 @@ export class Verifier {
     checks: VerificationCheckResult[];
     verificationExecution: NonNullable<Verification["execution"]>;
   }> {
+    if (artifact.id !== verification.artifactId || artifact.tree !== verification.tree)
+      throw new Error("Verification artifact does not match its recorded identity and tree");
     if (!run.catalog) throw new Error("Verification requires a declared agent catalog");
     const sessionName = baySessionName(this.namespace, "verify", verification.id);
     const bay = new Bay(run.catalog.baySocket, signal);
@@ -128,7 +130,9 @@ export class Verifier {
             argv: [
               "/bin/sh",
               "-c",
-              "set -eu; test -d .git && test ! -L .git; git -c core.hooksPath=/dev/null -c core.fsmonitor=false add -A -- .; git write-tree",
+              'set -eu; test -d .git && test ! -L .git; temporary=$(mktemp -d); trap \'rm -rf "$temporary"\' EXIT; export GIT_INDEX_FILE="$temporary/index"; git read-tree "$1"; git -c core.hooksPath=/dev/null -c core.fsmonitor=false add -A -- .; git write-tree',
+              "verify-tree",
+              artifact.tree,
             ],
             cwd: "workspace",
             timeoutMs: 60_000,
@@ -186,18 +190,19 @@ export class Verifier {
           status = "failed";
           output += "\nVerification changed the source tree; evidence does not match the retained artifact.";
         }
+        const outputBytes = Buffer.from(output);
         checks.push({
           name,
           status,
           exitCode: status === "passed" ? 0 : (result.exitCode ?? null),
-          output: Buffer.from(output)
-            .subarray(0, 256 * 1024)
-            .toString("utf8"),
+          output: outputBytes.subarray(0, 256 * 1024).toString("utf8"),
+          truncated: outputBytes.length > 256 * 1024,
         });
         if (status !== "passed") break;
       }
       const result = { checks, verificationExecution: identity };
       if (closing()) throw new Error("Runtime detached before verification acknowledgement");
+      if (!(await alive())) throw new Error("Verification was superseded before acknowledgement");
       checkpoint = { ...checkpoint, result };
       await journal.save(checkpoint);
       return result;

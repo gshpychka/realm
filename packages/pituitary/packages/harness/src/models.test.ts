@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentManifest } from "./agent.ts";
@@ -24,8 +24,12 @@ test("host model credentials require declared role access and stay in runtime fi
       key = join(root, "key");
     writeFileSync(key, "test-key-one\n");
     writeFileSync(profiles, JSON.stringify({ primary: { provider: "anthropic", file: key } }));
-    const host = loadModels({ PITUITARY_CREDENTIAL_PROFILES: profiles });
+    const host = loadModels({ PITUITARY_CREDENTIAL_PROFILES: profiles, PITUITARY_MODEL: role.model! });
     expect(() => host.authorize(role)).not.toThrow();
+    expect(() => host.authorize({ ...role, model: null })).not.toThrow();
+    expect(() => host.authorize({ ...role, model: null, credentials: [] })).toThrow(
+      "no declared credential profile",
+    );
     expect(() => host.authorize({ ...role, credentials: [] })).toThrow("no declared credential profile");
     expect(() => host.authorize({ ...role, credentials: ["missing"] })).toThrow(
       "Undeclared credential profile",
@@ -46,7 +50,7 @@ test("host model credentials require declared role access and stay in runtime fi
   }
 });
 
-test("credential declarations reject duplicate provider identities and store paths", () => {
+test("credential declarations reject duplicate providers and canonical store paths", async () => {
   const root = mkdtempSync(join(tmpdir(), "pituitary-models-"));
   try {
     const profiles = join(root, "profiles.json"),
@@ -61,6 +65,17 @@ test("credential declarations reject duplicate provider identities and store pat
     expect(() => loadModels(environment)).toThrow("one credential profile per provider");
     writeFileSync(profiles, JSON.stringify({ first: { provider: "anthropic", file: "/nix/store/key" } }));
     expect(() => loadModels(environment)).toThrow("Invalid runtime credential profile");
+    writeFileSync(
+      profiles,
+      JSON.stringify({ first: { provider: "anthropic", file: "/tmp/../nix/store/key" } }),
+    );
+    expect(() => loadModels(environment)).toThrow("Invalid runtime credential profile");
+    const linked = join(root, "linked-store");
+    symlinkSync("/nix/store", linked);
+    writeFileSync(profiles, JSON.stringify({ first: { provider: "anthropic", file: linked } }));
+    const host = loadModels(environment);
+    const model = host.models.getModels("anthropic")[0]!;
+    await expect(host.models.getAuth(model)).rejects.toThrow("Invalid runtime credential profile");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
