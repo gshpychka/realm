@@ -135,9 +135,13 @@ func (s *Store) Threads(ctx context.Context, viewer gateway.Participant) ([]mess
 	})
 }
 
-// Conversation returns a thread with its messages, oldest first, and marks the messages to viewer in it read. Only
-// the thread's participants and the operator may read it. The thread's Unread counts the messages this call marks.
-func (s *Store) Conversation(ctx context.Context, viewer gateway.Participant, thread int64) (messages.Conversation, error) {
+// Conversation returns a page, oldest first, before the given message ID (0 for the
+// latest page). Only returned messages to viewer are marked read. The thread's
+// Unread counts those this call marks; Earlier counts messages before this page.
+func (s *Store) Conversation(ctx context.Context, viewer gateway.Participant, thread, before int64) (messages.Conversation, error) {
+	if before < 0 {
+		return messages.Conversation{}, fmt.Errorf("%w: before must not be negative", fault.Invalid)
+	}
 	return inTx(ctx, s.db, func(tx *sql.Tx) (messages.Conversation, error) {
 		if err := authorize(ctx, tx, thread, viewer); err != nil {
 			return messages.Conversation{}, err
@@ -146,15 +150,29 @@ func (s *Store) Conversation(ctx context.Context, viewer gateway.Participant, th
 		if err != nil {
 			return messages.Conversation{}, err
 		}
-		msgs, err := latestMessages(ctx, tx, thread)
+		msgs, err := latestMessages(ctx, tx, thread, before)
 		if err != nil {
 			return messages.Conversation{}, err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE messages SET read_at = ? WHERE thread = ? AND to_id = ? AND read_at IS NULL`,
-			time.Now().UnixNano(), thread, viewer.ID); err != nil {
-			return messages.Conversation{}, err
+		earlier := 0
+		threads[0].Unread = 0
+		if len(msgs) > 0 {
+			oldest, newest := msgs[0].ID, msgs[len(msgs)-1].ID
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE thread = ? AND id < ?`, thread, oldest).Scan(&earlier); err != nil {
+				return messages.Conversation{}, err
+			}
+			res, err := tx.ExecContext(ctx, `UPDATE messages SET read_at = ? WHERE thread = ? AND to_id = ? AND read_at IS NULL AND id BETWEEN ? AND ?`,
+				time.Now().UnixNano(), thread, viewer.ID, oldest, newest)
+			if err != nil {
+				return messages.Conversation{}, err
+			}
+			marked, err := res.RowsAffected()
+			if err != nil {
+				return messages.Conversation{}, err
+			}
+			threads[0].Unread = int(marked)
 		}
-		return messages.Conversation{Thread: threads[0], Messages: msgs, Earlier: threads[0].Messages - len(msgs)}, nil
+		return messages.Conversation{Thread: threads[0], Messages: msgs, Earlier: earlier}, nil
 	})
 }
 
@@ -295,8 +313,14 @@ func participantNames(ctx context.Context, tx *sql.Tx, thread int64) ([]string, 
 
 // latestMessages returns the thread's newest message and as many before it as fit in messages.MaxConversation body
 // bytes, oldest first.
-func latestMessages(ctx context.Context, tx *sql.Tx, thread int64) ([]messages.Message, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT id, from_name, to_name, body, sent FROM messages WHERE thread = ? ORDER BY id DESC`, thread)
+func latestMessages(ctx context.Context, tx *sql.Tx, thread, before int64) ([]messages.Message, error) {
+	query := `SELECT id, from_name, to_name, body, sent FROM messages WHERE thread = ?`
+	args := []any{thread}
+	if before > 0 {
+		query += ` AND id < ?`
+		args = append(args, before)
+	}
+	rows, err := tx.QueryContext(ctx, query+` ORDER BY id DESC`, args...)
 	if err != nil {
 		return nil, err
 	}

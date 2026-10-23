@@ -382,7 +382,7 @@ func (brokenStore) Inbox(context.Context, gateway.Participant) ([]messages.Threa
 	return nil, errDiskGone
 }
 
-func (brokenStore) Conversation(context.Context, gateway.Participant, int64) (messages.Conversation, error) {
+func (brokenStore) Conversation(context.Context, gateway.Participant, int64, int64) (messages.Conversation, error) {
 	return messages.Conversation{}, errDiskGone
 }
 

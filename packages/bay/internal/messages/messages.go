@@ -4,6 +4,7 @@ package messages
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -20,6 +21,18 @@ const MaxBody = 64 << 10
 
 // MaxConversation is the most body bytes one Conversation carries.
 const MaxConversation = 256 << 10
+
+// ReadBody reads a message from stdin without buffering input beyond the message limit.
+func ReadBody(r io.Reader) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(r, MaxBody+1))
+	if err != nil {
+		return "", fmt.Errorf("read the message: %w", err)
+	}
+	if len(data) > MaxBody {
+		return "", fmt.Errorf("%w: a message body is at most %d bytes", fault.Invalid, MaxBody)
+	}
+	return string(data), nil
+}
 
 // Thread is a conversation between participants, seen by one viewer.
 type Thread struct {
@@ -64,8 +77,9 @@ type Send struct {
 type Service interface {
 	// Threads returns every thread, most recently updated first.
 	Threads(ctx context.Context) ([]Thread, error)
-	// Conversation returns a thread with its messages and marks the messages sent to the operator read.
-	Conversation(ctx context.Context, thread int64) (Conversation, error)
+	// Conversation returns the latest page, or messages before the given message ID
+	// when before is positive, and marks only the returned messages read.
+	Conversation(ctx context.Context, thread, before int64) (Conversation, error)
 	Send(ctx context.Context, s Send) (Message, error)
 }
 
@@ -78,11 +92,19 @@ func Handler(svc Service) http.Handler {
 	})
 	mux.HandleFunc("GET /threads/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil {
+		if err != nil || id <= 0 {
 			wire.Fail(w, fmt.Errorf("%w: thread %q", fault.Invalid, r.PathValue("id")))
 			return
 		}
-		c, err := svc.Conversation(r.Context(), id)
+		var before int64
+		if cursor := r.URL.Query().Get("before"); cursor != "" {
+			before, err = strconv.ParseInt(cursor, 10, 64)
+			if err != nil || before <= 0 {
+				wire.Fail(w, fmt.Errorf("%w: before must be a positive message ID", fault.Invalid))
+				return
+			}
+		}
+		c, err := svc.Conversation(r.Context(), id, before)
 		respond(w, c, err)
 	})
 	mux.HandleFunc("POST /messages", func(w http.ResponseWriter, r *http.Request) {
@@ -121,9 +143,13 @@ func (c *Client) Threads(ctx context.Context) ([]Thread, error) {
 	return threads, err
 }
 
-func (c *Client) Conversation(ctx context.Context, thread int64) (Conversation, error) {
+func (c *Client) Conversation(ctx context.Context, thread, before int64) (Conversation, error) {
 	var conv Conversation
-	err := c.c.Do(ctx, http.MethodGet, "/threads/"+strconv.FormatInt(thread, 10), nil, &conv)
+	path := "/threads/" + strconv.FormatInt(thread, 10)
+	if before != 0 {
+		path += "?before=" + strconv.FormatInt(before, 10)
+	}
+	err := c.c.Do(ctx, http.MethodGet, path, nil, &conv)
 	return conv, err
 }
 

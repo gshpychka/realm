@@ -13,7 +13,9 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/gshpychka/realm/packages/bay/internal/arguments"
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
+	"github.com/gshpychka/realm/packages/bay/internal/messages"
 	"github.com/gshpychka/realm/packages/bay/internal/sessionapi"
 	"github.com/gshpychka/realm/packages/bay/internal/text"
 )
@@ -69,19 +71,25 @@ func (a *app) send(ctx context.Context, args []string) error {
 	if len(rest) == 0 {
 		return fmt.Errorf("%w: send needs a recipient", fault.Invalid)
 	}
+	if *thread < 0 {
+		return fmt.Errorf("%w: thread must be a positive number", fault.Invalid)
+	}
 	to, words := rest[0], rest[1:]
 
 	body := strings.Join(words, " ")
 	if len(words) == 0 || (len(words) == 1 && words[0] == "-") {
-		data, err := io.ReadAll(a.stdin)
+		data, err := messages.ReadBody(a.stdin)
 		if err != nil {
-			return fmt.Errorf("read the message: %w", err)
+			return err
 		}
-		body = string(data)
+		body = data
 	}
 	body = strings.TrimRightFunc(body, unicode.IsSpace)
 	if body == "" {
 		return fmt.Errorf("%w: the message is empty", fault.Invalid)
+	}
+	if len(body) > messages.MaxBody {
+		return fmt.Errorf("%w: a message body is at most %d bytes", fault.Invalid, messages.MaxBody)
 	}
 
 	in := sessionapi.SendInput{To: to, Body: body, Thread: *thread, Subject: *subject}
@@ -116,14 +124,21 @@ func (a *app) inbox(ctx context.Context, args []string) error {
 }
 
 func (a *app) read(ctx context.Context, args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("%w: read takes one thread", fault.Invalid)
-	}
-	thread, err := strconv.ParseInt(args[0], 10, 64)
+	flags := flag.NewFlagSet("read", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	before := flags.Int64("before", 0, "")
+	positional, err := arguments.Parse(flags, args, 1, 1)
 	if err != nil {
-		return fmt.Errorf("%w: thread %q is not a number", fault.Invalid, args[0])
+		return fmt.Errorf("%w: read takes one thread: %w", fault.Invalid, err)
 	}
-	out, err := call[sessionapi.ReadOutput](ctx, a.gateway, sessionapi.Read, sessionapi.ReadInput{Thread: thread})
+	thread, err := strconv.ParseInt(positional[0], 10, 64)
+	if err != nil || thread <= 0 {
+		return fmt.Errorf("%w: thread %q is not a positive number", fault.Invalid, positional[0])
+	}
+	if *before < 0 {
+		return fmt.Errorf("%w: before must be a positive message ID", fault.Invalid)
+	}
+	out, err := call[sessionapi.ReadOutput](ctx, a.gateway, sessionapi.Read, sessionapi.ReadInput{Thread: thread, Before: *before})
 	if err != nil {
 		return err
 	}
@@ -133,8 +148,11 @@ func (a *app) read(ctx context.Context, args []string) error {
 			head += ": " + subject
 		}
 		fmt.Fprintln(w, head)
-		if out.Earlier > 0 {
-			fmt.Fprintf(w, "\n(%d earlier messages)\n", out.Earlier)
+		if out.Earlier > 0 && len(out.Messages) > 0 {
+			fmt.Fprintf(w, "\n(%d earlier messages; flare read %d --before %d)\n", out.Earlier, thread, out.Messages[0].ID)
+		}
+		if len(out.Messages) == 0 && *before > 0 {
+			fmt.Fprintf(w, "\n(no messages before %d)\n", *before)
 		}
 		for _, m := range out.Messages {
 			fmt.Fprintf(w, "\n%s -> %s  %s\n", m.From, m.To, stamp(m.Sent))

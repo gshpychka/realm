@@ -76,6 +76,18 @@ Participants:  alice, operator
 	}
 }
 
+func TestReadEarlierPageShowsHowToContinue(t *testing.T) {
+	h := newHarness(t)
+	h.msgs.conversation = messages.Conversation{
+		Thread: messages.Thread{ID: 7}, Earlier: 3,
+		Messages: []messages.Message{{ID: 41, Thread: 7, From: "alice", To: "operator", Body: "earlier"}},
+	}
+	got := h.run("", "read", "7", "--before", "50")
+	if got.code != 0 || h.msgs.before != 50 || !strings.Contains(got.stdout, "3 earlier messages; bay read 7 --before 41") {
+		t.Fatalf("earlier page: exit %d, before %d, stdout %q, stderr %q", got.code, h.msgs.before, got.stdout, got.stderr)
+	}
+}
+
 func TestReadKeepsSessionTextInsideItsMessage(t *testing.T) {
 	inZone(t)
 	h := newHarness(t)

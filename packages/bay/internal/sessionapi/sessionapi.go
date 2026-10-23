@@ -42,6 +42,7 @@ type InboxOutput struct {
 
 type ReadInput struct {
 	Thread int64 `json:"thread"`
+	Before int64 `json:"before,omitempty" jsonschema:"read messages before this message ID; omit it for the latest page"`
 }
 
 type ReadOutput = messages.Conversation

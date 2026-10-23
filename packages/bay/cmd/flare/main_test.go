@@ -132,7 +132,13 @@ operator -> alpha  2026-10-05T12:05:00Z
 
 		{name: "read", args: []string{"read", "7"}, stdout: conversation},
 		{name: "read an unknown thread", args: []string{"read", "99"}, code: 1, stderr: "flare: not found: thread 99\n"},
-		{name: "read a thread that is not a number", args: []string{"read", "abc"}, code: 2, stderr: `thread "abc" is not a number`},
+		{name: "read a thread that is not a number", args: []string{"read", "abc"}, code: 2, stderr: `thread "abc" is not a positive number`},
+		{name: "read thread zero", args: []string{"read", "0"}, code: 2, stderr: `thread "0" is not a positive number`},
+		{name: "read a negative thread", args: []string{"read", "--", "-1"}, code: 2, stderr: `thread "-1" is not a positive number`},
+		{name: "read with a negative cursor", args: []string{"read", "7", "-before=-1"}, code: 2, stderr: "before must be a positive message ID"},
+		{name: "send to a negative thread", args: []string{"send", "-thread=-1", "beta", "hi"}, code: 2, stderr: "thread must be a positive number"},
+		{name: "send too much stdin", args: []string{"send", "beta"}, stdin: strings.Repeat("x", messages.MaxBody+1), code: 2, stderr: "at most 65536 bytes"},
+		{name: "send too many words", args: []string{"send", "beta", strings.Repeat("x", messages.MaxBody+1)}, code: 2, stderr: "at most 65536 bytes"},
 		{name: "read without a thread", args: []string{"read"}, code: 2, stderr: "read takes one thread"},
 
 		{name: "no command", code: 2, stderr: "no command"},
@@ -170,7 +176,7 @@ operator -> alpha  2026-10-05T12:05:00Z
 }
 
 func TestHelp(t *testing.T) {
-	for _, args := range [][]string{{"-h"}, {"-json", "-help"}, {"send", "-h"}} {
+	for _, args := range [][]string{{"-h"}, {"-json", "-help"}, {"send", "-h"}, {"whoami", "--help"}, {"notify", "-h"}, {"read", "--help"}, {"inbox", "-help"}, {"mcp", "--help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			s := newStub(t)
 			code, stdout, stderr := s.flare("", args...)
@@ -186,6 +192,15 @@ func TestHelp(t *testing.T) {
 				t.Errorf("asking for help reached the gateway %d times", len(s.requests))
 			}
 		})
+	}
+}
+
+func TestReadEarlierPageShowsHowToContinue(t *testing.T) {
+	s := newStub(t)
+	s.conversation.Earlier = 3
+	code, stdout, stderr := s.flare("", "read", "7", "--before", "50")
+	if code != 0 || stderr != "" || len(s.reads) != 1 || s.reads[0].Before != 50 || !strings.Contains(stdout, "3 earlier messages; flare read 7 --before 41") {
+		t.Fatalf("earlier page: exit %d, reads %+v, stdout %q, stderr %q", code, s.reads, stdout, stderr)
 	}
 }
 

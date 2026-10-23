@@ -116,8 +116,9 @@ type fakeMessages struct {
 	threads      []messages.Thread
 	conversation messages.Conversation
 
-	calls []string
-	sent  []messages.Send
+	calls  []string
+	sent   []messages.Send
+	before int64
 }
 
 // newThread is the thread that a message starting one lands in.
@@ -134,8 +135,9 @@ func (f *fakeMessages) Threads(context.Context) ([]messages.Thread, error) {
 	return f.threads, f.err
 }
 
-func (f *fakeMessages) Conversation(_ context.Context, thread int64) (messages.Conversation, error) {
+func (f *fakeMessages) Conversation(_ context.Context, thread, before int64) (messages.Conversation, error) {
 	defer f.enter(fmt.Sprintf("Conversation %d", thread))()
+	f.before = before
 	return f.conversation, f.err
 }
 
