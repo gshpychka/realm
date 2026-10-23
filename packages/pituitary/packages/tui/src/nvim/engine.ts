@@ -241,7 +241,11 @@ export class DraftEngine {
     this.asked++;
     // Keep the last acknowledged draft until nvim confirms the clear. If it dies while
     // answering, the plain editor must still be able to recover what was on screen.
-    return this.fromNormal(() => this.lua("return pi_draft.take()")).then((text) => String(text ?? ""));
+    return this.fromNormal(() => this.lua("return pi_draft.take()")).then((text) => {
+      this.current = { ...EMPTY };
+      this.announce();
+      return String(text ?? "");
+    });
   }
 
   close(): void {

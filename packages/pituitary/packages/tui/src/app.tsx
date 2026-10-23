@@ -104,7 +104,6 @@ export function App({
   const editor = useRef<EditorHandle | null>(null);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const lastInterrupt = useRef(0);
-  const pendingCommand = useRef<Promise<void> | null>(null);
   const started = useRef(false);
   const [hint, flash] = useFlash();
   const [expanded, setExpanded] = useState(false);
@@ -171,8 +170,7 @@ export function App({
     );
   }, [keymap]);
 
-  const command = useCallback(
-    (name: string, args = "") => {
+  const command = (name: string, args = "") => {
       const work = runCommand(name, args, {
         link,
         session,
@@ -194,13 +192,8 @@ export function App({
         limits: () => bridge?.limits() ?? null,
         screen: () => frameRows(renderer.currentRenderBuffer),
       });
-      pendingCommand.current = work;
-      void work.finally(() => {
-        if (pendingCommand.current === work) pendingCommand.current = null;
-      });
-    },
-    [link, session, renderer, onQuit, onHandoff, onRestart, hotkeys, state?.sessionFile, bridge, reread],
-  );
+      holdCommand(work);
+  };
 
   const toBottom = () => {
     const box = scroll.current;
@@ -434,10 +427,9 @@ export function App({
     // A half-typed command in the draft, such as a count or ctrl+v, takes the next key whatever it is.
     if (editor.current?.pending()) return;
     if (draftKey(key, action, text, standing)) key.preventDefault();
-    return pendingCommand.current ?? undefined;
   };
 
-  useHeldKeys(editor, onKey, !away, dialog ?? custom ?? null);
+  const holdCommand = useHeldKeys(editor, onKey, !away, dialog ?? custom ?? null);
 
   usePaste((event) => {
     if (!custom || !bridge) return;
