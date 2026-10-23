@@ -1,6 +1,4 @@
-import type { Run } from "@probabench/domain";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { inspectedRun, modelSelections, visibleHistory } from "../common/run-history";
 
 export const TABS = ["calibration", "history", "method"] as const;
 export type Tab = (typeof TABS)[number];
@@ -60,25 +58,6 @@ export function notebookSearch(view: NotebookView, current = ""): string {
 
 export const toggleHidden = (hidden: readonly string[], model: string): string[] =>
   hidden.includes(model) ? hidden.filter((item) => item !== model) : [...hidden, model];
-
-/**
- * The view with the runs it shows named explicitly, so a shared link keeps showing
- * them instead of following runs saved later.
- */
-export const pinnedView = (runs: readonly Run[], view: NotebookView): Partial<NotebookView> => {
-  switch (view.tab) {
-    case "calibration":
-      return {
-        comparisons: modelSelections(runs, view.comparisons).map(({ selected }) => selected.id),
-      };
-    case "history": {
-      const visible = visibleHistory(runs, view.query, view.hidden);
-      return { runId: inspectedRun(visible, view.runId)?.id ?? null };
-    }
-    case "method":
-      return {};
-  }
-};
 
 export function useNotebookView(): readonly [NotebookView, UpdateView] {
   const [view, setView] = useState(() => readNotebookView(window.location.search));

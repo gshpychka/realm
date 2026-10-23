@@ -1,11 +1,8 @@
-import type { Run } from "@probabench/domain";
 import type { KeyboardEvent } from "react";
-import { type CopyStatus, useClipboard } from "../common/clipboard";
 import { count } from "../common/format";
 import {
   type NotebookView,
   PANEL_ID,
-  pinnedView,
   TABS,
   type Tab,
   tabId,
@@ -26,21 +23,15 @@ const KEY_TARGET: Readonly<Record<string, (index: number, length: number) => num
   End: (_, length) => length - 1,
 };
 
-const LINK_MESSAGE = {
-  copied: "View link copied",
-  failed: "Copy this page’s address from your browser to share the view.",
-} as const satisfies Record<CopyStatus, string>;
-
 export function NotebookTabs({
-  runs,
+  runCount,
   view,
   update,
 }: {
-  runs: readonly Run[];
+  runCount: number;
   view: NotebookView;
   update: UpdateView;
 }) {
-  const { copy, statusOf } = useClipboard();
   const moveFocus = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const target = KEY_TARGET[event.key];
     const tab = target && TABS[target(index, TABS.length)];
@@ -49,11 +40,6 @@ export function NotebookTabs({
     update({ tab });
     document.getElementById(tabId(tab))?.focus();
   };
-  const copyLink = () => {
-    update(pinnedView(runs, view), "replace");
-    void copy(window.location.href);
-  };
-  const linkStatus = statusOf(window.location.href);
   return (
     <div className="notebook-navigation">
       <div role="tablist" aria-label="Notebook views">
@@ -70,40 +56,12 @@ export function NotebookTabs({
             onClick={() => update({ tab })}
           >
             {TAB_LABELS[tab]}
-            {tab === "history" && runs.length > 0 ? (
-              <span className="tab-count">{count(runs.length)}</span>
+            {tab === "history" && runCount > 0 ? (
+              <span className="tab-count">{count(runCount)}</span>
             ) : null}
           </button>
         ))}
       </div>
-      {runs.length > 0 ? (
-        <div className="view-actions">
-          <button
-            type="button"
-            className="text-button share-view"
-            aria-label="Copy view link"
-            onClick={copyLink}
-          >
-            <span className="share-label">Copy view link</span>
-            <svg
-              className="copy-icon"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden="true"
-            >
-              <rect x="8" y="8" width="12" height="12" rx="2" />
-              <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
-            </svg>
-          </button>
-          <span role="status" className="view-status">
-            {linkStatus ? LINK_MESSAGE[linkStatus] : ""}
-          </span>
-        </div>
-      ) : null}
     </div>
   );
 }

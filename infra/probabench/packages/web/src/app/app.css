@@ -331,15 +331,9 @@ button.connection {
 
 /* NotebookTabs */
 .notebook-navigation {
-  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   border-bottom: 1px solid var(--line);
-
-  @media (max-width: 650px) {
-    gap: 8px;
-  }
 }
 .notebook-navigation [role="tablist"] {
   display: flex;
@@ -389,59 +383,6 @@ button.connection {
     display: none;
   }
 }
-.view-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-
-  @media (max-width: 650px) {
-    flex-shrink: 0;
-  }
-}
-.view-actions .text-button {
-  color: var(--text-3);
-
-  @media (max-width: 650px) {
-    padding: 10px;
-  }
-}
-.share-view {
-  min-width: 44px;
-  min-height: 44px;
-  gap: 9px;
-}
-.share-label {
-  @media (max-width: 650px) {
-    display: none;
-  }
-}
-.copy-icon {
-  flex-shrink: 0;
-
-  @media (max-width: 650px) {
-    width: 18px;
-    height: 18px;
-  }
-}
-.view-status {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  z-index: 2;
-  max-width: min(380px, 100%);
-  padding: 7px 11px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  font-size: 12px;
-  color: var(--text);
-  box-shadow: 0 4px 12px #0002;
-}
-.view-status:empty {
-  display: none;
-}
-
 /* EmptyNotebook */
 .empty-notebook {
   margin-top: 32px;

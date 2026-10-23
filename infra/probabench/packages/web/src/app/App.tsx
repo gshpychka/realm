@@ -77,7 +77,7 @@ export function App() {
       <SiteHeader connection={bridge.connection} onOpenSetup={openSetup} />
       <main>
         <Hero runs={runs} />
-        <NotebookTabs runs={runs} view={view} update={update} />
+        <NotebookTabs runCount={runs.length} view={view} update={update} />
         <div id={PANEL_ID} role="tabpanel" aria-labelledby={tabId(view.tab)} tabIndex={-1}>
           {panel()}
         </div>

@@ -1,12 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { makeRun } from "@probabench/domain/testing";
-import {
-  type NotebookView,
-  notebookSearch,
-  pinnedView,
-  readNotebookView,
-  toggleHidden,
-} from "./notebook-view";
+import { notebookSearch, readNotebookView, toggleHidden } from "./notebook-view";
 
 describe("Notebook addresses", () => {
   it("opens unknown views safely and keeps the default address clean", () => {
@@ -40,39 +33,5 @@ describe("toggleHidden", () => {
   it("hides a shown model and shows a hidden one", () => {
     expect(toggleHidden(["a"], "b")).toEqual(["a", "b"]);
     expect(toggleHidden(["a", "b"], "a")).toEqual(["b"]);
-  });
-});
-
-describe("pinnedView", () => {
-  const old = makeRun({ id: "old", modelSlug: "vendor/a" });
-  const latest = makeRun({
-    id: "new",
-    modelSlug: "vendor/a",
-    startedAt: "2026-10-22T00:00:00.000Z",
-  });
-  const other = makeRun({ id: "other", modelSlug: "vendor/b" });
-  const runs = [old, other, latest];
-  const view = readNotebookView("");
-
-  it("names each model's shown run on the calibration tab, hidden models included", () => {
-    expect(pinnedView(runs, { ...view, hidden: [other.model] })).toEqual({
-      comparisons: ["new", "other"],
-    });
-    expect(pinnedView(runs, { ...view, comparisons: ["old"] })).toEqual({
-      comparisons: ["old", "other"],
-    });
-  });
-
-  it("names the inspected run on the history tab", () => {
-    const history: NotebookView = { ...view, tab: "history" };
-    expect(pinnedView(runs, history)).toEqual({ runId: "new" });
-    expect(pinnedView(runs, { ...history, runId: "old" })).toEqual({ runId: "old" });
-    expect(pinnedView(runs, { ...history, hidden: [old.model, other.model] })).toEqual({
-      runId: null,
-    });
-  });
-
-  it("leaves the method tab as it is", () => {
-    expect(pinnedView(runs, { ...view, tab: "method" })).toEqual({});
   });
 });
