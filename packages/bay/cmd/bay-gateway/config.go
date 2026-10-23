@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,9 @@ func loadConfig(path string) (config, error) {
 	var c config
 	if err := dec.Decode(&c); err != nil {
 		return config{}, fmt.Errorf("config %s: %w", path, err)
+	}
+	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return config{}, fmt.Errorf("config %s: expected one JSON object", path)
 	}
 	switch {
 	case c.IdentitySocket == "":

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gshpychka/realm/packages/bay/internal/fault"
 	"github.com/gshpychka/realm/packages/bay/internal/records"
@@ -436,6 +437,8 @@ func TestStartRejects(t *testing.T) {
 		{"operator", StartSpec{}, fault.Invalid},
 		{"x", StartSpec{Program: "nope"}, fault.Invalid},
 		{"x", StartSpec{Program: "agent", Command: []string{"a"}}, fault.Invalid},
+		{"x", StartSpec{Command: []string{""}}, fault.Invalid},
+		{"x", StartSpec{Command: []string{"sh", "\x00"}}, fault.Invalid},
 		{"x", StartSpec{Repos: []RepoRef{{Owner: "o", Name: "r", Ref: "missing"}}}, fault.Invalid},
 		{"x", StartSpec{Repos: []RepoRef{{Owner: "o", Name: "r"}, {Owner: "o", Name: "r", Ref: "dev"}}}, fault.Invalid},
 		{"one", StartSpec{}, fault.Conflict},
@@ -1049,6 +1052,12 @@ func TestNewRejectsAConfigNoSessionCanRunUnder(t *testing.T) {
 	for _, config := range []Config{
 		{MaxRunning: 0},
 		{MaxRunning: -1},
+		{MaxRunning: 1, Programs: map[string]Program{"p": {}}},
+		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{""}}}},
+		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{"p", "\x00"}}}},
+		{MaxRunning: 1, Programs: map[string]Program{"p": {Command: []string{"p"}, Resume: []string{""}}}},
+		{MaxRunning: 1, Programs: map[string]Program{"": {Command: []string{"p"}}}},
+		{MaxRunning: 1, Programs: programs("a\x00b")},
 		{MaxRunning: 1, Programs: programs("")},
 		{MaxRunning: 1, Programs: programs(".")},
 		{MaxRunning: 1, Programs: programs("..")},
@@ -1072,5 +1081,24 @@ func TestNewRejectsAConfigNoSessionCanRunUnder(t *testing.T) {
 		if _, err := New(store, newFakeInstances(), fakeRepos{}, config, log); err != nil {
 			t.Errorf("New(%+v) = %v", config, err)
 		}
+	}
+}
+
+func TestAutomaticSnapshotsAvoidNameCollisions(t *testing.T) {
+	svc, instances, _ := newService(t, 4)
+	mustStart(t, svc, "one", StartSpec{})
+	// Fill nearby timestamps so the test is stable even across a second boundary.
+	now := time.Now().UTC()
+	for offset := -1; offset <= 60; offset++ {
+		name := now.Add(time.Duration(offset) * time.Second).Format("20060102-150405")
+		instances.instances["one"].snapshots = append(instances.instances["one"].snapshots, name, name+"-2")
+	}
+	first, err := svc.Snap(context.Background(), "one", "")
+	if err != nil || !strings.HasSuffix(first, "-3") {
+		t.Fatalf("automatic snapshot = %q, %v; want an unused name ending -3", first, err)
+	}
+	second, err := svc.Snap(context.Background(), "one", "")
+	if err != nil || second == first {
+		t.Fatalf("second automatic snapshot = %q, %v; first was %q", second, err, first)
 	}
 }

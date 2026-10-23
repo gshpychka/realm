@@ -136,8 +136,17 @@ func New(store *records.Store, instances Instances, repos Repos, config Config, 
 		return nil, fmt.Errorf("max running sessions must be at least 1, not %d", config.MaxRunning)
 	}
 	for name, program := range config.Programs {
+		if name == "" {
+			return nil, errors.New("program definitions need a name")
+		}
+		if err := validCommand(program.Command); err != nil || len(program.Command) == 0 {
+			return nil, fmt.Errorf("program %s: command must name an executable and contain no NUL bytes", name)
+		}
+		if err := validCommand(program.Resume); err != nil {
+			return nil, fmt.Errorf("program %s: resume: %w", name, err)
+		}
 		for _, path := range program.History {
-			if path == "." || !fs.ValidPath(path) {
+			if path == "." || !fs.ValidPath(path) || strings.ContainsRune(path, '\x00') {
 				return nil, fmt.Errorf("program %s: history path %q must be a clean path below the program's home", name, path)
 			}
 		}
@@ -221,6 +230,9 @@ func (s *Service) newRecord(ctx context.Context, name string, spec StartSpec) (r
 	}
 	if spec.Program != "" && len(spec.Command) > 0 {
 		return records.Record{}, fmt.Errorf("%w: give a program or a command, not both", fault.Invalid)
+	}
+	if err := validCommand(spec.Command); err != nil {
+		return records.Record{}, fmt.Errorf("%w: %v", fault.Invalid, err)
 	}
 	if spec.Program != "" {
 		if _, ok := s.config.Programs[spec.Program]; !ok {
@@ -479,15 +491,19 @@ func (s *Service) Snap(ctx context.Context, name, snapshot string) (string, erro
 	if err := s.require(ctx, name, InstanceRunning); err != nil {
 		return "", err
 	}
-	if snapshot == "" {
-		snapshot = time.Now().UTC().Format("20060102-150405")
-	}
-	if !snapshotName.MatchString(snapshot) {
+	if snapshot != "" && !snapshotName.MatchString(snapshot) {
 		return "", fmt.Errorf("%w: snapshot names are letters and digits, with dots, underscores and hyphens between: %q", fault.Invalid, snapshot)
 	}
 	existing, err := s.instances.Snapshots(ctx, name)
 	if err != nil {
 		return "", err
+	}
+	if snapshot == "" {
+		base := time.Now().UTC().Format("20060102-150405")
+		snapshot = base
+		for suffix := 2; slices.Contains(existing, snapshot); suffix++ {
+			snapshot = fmt.Sprintf("%s-%d", base, suffix)
+		}
 	}
 	if slices.Contains(existing, snapshot) {
 		return "", fmt.Errorf("%w: session %s has a snapshot %s", fault.Conflict, name, snapshot)
@@ -706,6 +722,18 @@ func (p Program) resume() []string {
 	return p.Command
 }
 
+func validCommand(argv []string) error {
+	if len(argv) > 0 && argv[0] == "" {
+		return errors.New("command must name an executable")
+	}
+	for _, arg := range argv {
+		if strings.ContainsRune(arg, '\x00') {
+			return errors.New("command arguments must not contain NUL bytes")
+		}
+	}
+	return nil
+}
+
 func (s *Service) guest(name string) guest.Guest {
 	return guest.New(func(ctx context.Context, argv []string, stdin io.Reader, stdout io.Writer) error {
 		return s.instances.Exec(ctx, name, argv, stdin, stdout)
@@ -762,7 +790,7 @@ var (
 
 func (s *Service) validName(name string) error {
 	if !sessionName.MatchString(name) {
-		return fmt.Errorf("%w: session names are lowercase letters, digits and hyphens, starting with a letter: %q", fault.Invalid, name)
+		return fmt.Errorf("%w: session names are 1–63 lowercase letters, digits and hyphens, starting with a letter and ending with a letter or digit: %q", fault.Invalid, name)
 	}
 	if slices.Contains(s.config.Reserved, name) {
 		return fmt.Errorf("%w: %q is reserved", fault.Invalid, name)

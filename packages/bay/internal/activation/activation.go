@@ -23,12 +23,22 @@ func Passed() (Sockets, error) {
 		return nil, errors.New("systemd passed no sockets to this process")
 	}
 	count, err := strconv.Atoi(os.Getenv("LISTEN_FDS"))
-	if err != nil {
-		return nil, fmt.Errorf("parse LISTEN_FDS: %w", err)
+	if err != nil || count < 1 {
+		return nil, fmt.Errorf("LISTEN_FDS must be a positive socket count, got %q", os.Getenv("LISTEN_FDS"))
 	}
 	names := strings.Split(os.Getenv("LISTEN_FDNAMES"), ":")
 	if len(names) != count {
 		return nil, fmt.Errorf("LISTEN_FDNAMES names %d sockets, LISTEN_FDS passes %d", len(names), count)
+	}
+	seen := make(map[string]bool, count)
+	for _, name := range names {
+		if name == "" {
+			return nil, errors.New("systemd passed a socket without a name")
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("systemd passed multiple sockets named %q", name)
+		}
+		seen[name] = true
 	}
 	sockets := make(Sockets, count)
 	for i, name := range names {
