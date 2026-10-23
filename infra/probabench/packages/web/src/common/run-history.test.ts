@@ -1,6 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
 import { makeRun } from "@probabench/domain/testing";
-import { modelColors } from "../calibration/calibration-chart-data";
 import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "./run-history";
 
 const old = makeRun({ id: "old", model: "model.a" });
@@ -54,11 +53,5 @@ describe("History selection", () => {
       ),
     ).toEqual(["new"]);
     expect(selectedRuns(groups, new Map(), new Set([old.model, other.model]))).toEqual([]);
-  });
-  it("keeps model colours when new observations reorder the latest model groups", () => {
-    const before = modelColors([old, other]);
-    const after = modelColors([old, other, latest]);
-    for (const group of groupHistory([old, other, latest]))
-      expect(after.get(group.model)).toBe(before.get(group.model));
   });
 });

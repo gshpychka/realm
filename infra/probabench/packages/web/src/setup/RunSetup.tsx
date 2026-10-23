@@ -18,7 +18,7 @@ import {
   type Job,
 } from "../bridge/protocol";
 import type { Bridge } from "../bridge/use-bridge";
-import { number, time } from "../common/format";
+import { count, time } from "../common/format";
 import {
   type BenchmarkDraft,
   benchmarkCommand,
@@ -402,7 +402,7 @@ export function RunSetup({
                     >
                       <strong>{preset.label}</strong>
                       <span>{PRESET_DESCRIPTIONS[preset.id]}</span>
-                      <small>{number(planBudget(preset).samples)} samples</small>
+                      <small>{count(planBudget(preset).samples)} samples</small>
                     </button>
                   ))}
                 </div>
@@ -500,14 +500,14 @@ export function RunSetup({
               </details>
               <div className="budget" aria-live="polite">
                 <div>
-                  <strong>{number(budget.samples)}</strong>
+                  <strong>{count(budget.samples)}</strong>
                   <span>planned samples</span>
                 </div>
                 <span className="budget-times">=</span>
                 <p>
-                  {number(budget.points)} targets × {number(trialsPerStep)} samples
+                  {count(budget.points)} targets × {count(trialsPerStep)} samples
                   <br />
-                  <span>Up to {number(budget.attempts)} attempts with retries.</span>
+                  <span>Up to {count(budget.attempts)} attempts with retries.</span>
                 </p>
               </div>
               {validationError ? (

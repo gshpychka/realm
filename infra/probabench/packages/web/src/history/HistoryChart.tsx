@@ -10,60 +10,47 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { modelDash } from "../calibration/calibration-chart-data";
-import { number, percent } from "../common/format";
+import { CHART, PlotEmpty } from "../common/chart-frame";
+import { gap, modelName, percent, samplingText, shortId, timestamp } from "../common/format";
+import { type ModelStyle, styleOf } from "../common/palette";
 import { buildHistoryChartModel, type HistoryPoint } from "./history-chart-data";
 
-export interface HistoryChartProps {
-  readonly runs: readonly Run[];
-  readonly colors: ReadonlyMap<string, string>;
-  readonly selectedId?: string | undefined;
-  readonly onSelect: (run: Run) => void;
-}
-
-const gap = (value: number | null): string =>
-  value === null
-    ? "No valid replies"
-    : `${(value * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })} pp`;
-
-function HistoryTooltip(
-  { active, label }: TooltipContentProps,
-  points: readonly HistoryPoint[],
-  colors: ReadonlyMap<string, string>,
-) {
-  if (!active) return null;
+function HistoryTooltip({
+  active,
+  label,
+  points,
+  styles,
+}: {
+  active: boolean;
+  label: TooltipContentProps["label"] | undefined;
+  points: readonly HistoryPoint[];
+  styles: ReadonlyMap<string, ModelStyle>;
+}) {
   const atTime = points.filter((point) => point.timestamp === Number(label));
   const first = atTime[0];
-  if (!first) return null;
+  if (!active || !first) return null;
   return (
     <div className="chart-tooltip">
       <p className="tooltip-target">
-        <time dateTime={first.run.startedAt}>
-          {first.run.startedAt.replace("T", " ").replace("Z", " UTC")}
-        </time>
+        <time dateTime={first.run.startedAt}>{timestamp(first.run.startedAt)}</time>
       </p>
       {atTime.map(({ run, summary }) => (
         <div key={run.id} className="tooltip-series">
           <p>
-            <span
-              className="color-dot"
-              style={{ background: colors.get(run.model) ?? "#d8a657" }}
-            />
-            <strong>{run.model}</strong>
+            <span className="color-dot" style={{ background: styleOf(styles, run.model).color }} />
+            <strong>{modelName(run.model)}</strong>
           </p>
           <div className="tooltip-value">
-            {gap(summary.meanCalibrationError)}
+            {gap(summary.meanCalibrationError, "No valid replies")}
             <span>mean calibration gap</span>
           </div>
           <p className="muted">
             {percent(summary.validity)} valid · {summary.coveredPoints}/{summary.totalPoints}{" "}
             targets covered
           </p>
+          <p className="muted">{samplingText(run)}</p>
           <p className="muted">
-            {number(run.trialsPerStep)} samples / target · {run.stepPercent}% step
-          </p>
-          <p className="muted">
-            {run.reasoning} reasoning · run {run.id.slice(-8)}
+            {run.reasoning} reasoning · run {shortId(run.id)}
           </p>
         </div>
       ))}
@@ -71,8 +58,79 @@ function HistoryTooltip(
   );
 }
 
+/** A focusable chart point: the history list offers the same action as a native button. */
+function HistoryDot({
+  cx,
+  cy,
+  point,
+  color,
+  selected,
+  onSelect,
+}: {
+  cx: number;
+  cy: number;
+  point: HistoryPoint;
+  color: string;
+  selected: boolean;
+  onSelect: (run: Run) => void;
+}) {
+  const { run } = point;
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: Native HTML buttons cannot render as SVG chart points; the history list provides the same action.
+    <g
+      className="history-dot"
+      stroke={color}
+      strokeWidth={selected ? 3 : 2}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      aria-label={`Inspect ${run.model}, ${timestamp(run.startedAt)}, mean gap ${gap(point.score)}, run ${run.id}`}
+      onClick={() => onSelect(run)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(run);
+        }
+      }}
+    >
+      <title>
+        {run.model} · {gap(point.score)}
+      </title>
+      <circle cx={cx} cy={cy} r={12} fill="transparent" stroke="none" />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={selected ? 7 : 4.5}
+        fill={selected ? color : CHART.surface}
+        pointerEvents="none"
+      />
+    </g>
+  );
+}
+
+const emptyPlot = (points: readonly HistoryPoint[]) => {
+  if (points.length === 0)
+    return { title: "No runs shown.", detail: "Show a model or clear the history search." };
+  if (points.every((point) => point.score === null))
+    return {
+      title: "No calibration scores to plot.",
+      detail: "These runs contain no valid replies. Their outcomes remain in the history list.",
+    };
+  return null;
+};
+
 /** Per-model timelines preserve null-score gaps and every execution, including timestamp ties. */
-export function HistoryChart({ runs, colors, selectedId, onSelect }: HistoryChartProps) {
+export function HistoryChart({
+  runs,
+  styles,
+  selectedId,
+  onSelect,
+}: {
+  runs: readonly Run[];
+  styles: ReadonlyMap<string, ModelStyle>;
+  selectedId: string | undefined;
+  onSelect: (run: Run) => void;
+}) {
   const descriptionId = useId();
   const [tooltipEnabled, setTooltipEnabled] = useState(true);
   const select = (run: Run) => {
@@ -81,67 +139,11 @@ export function HistoryChart({ runs, colors, selectedId, onSelect }: HistoryChar
     setTooltipEnabled(false);
     onSelect(run);
   };
-  const { points, series, minimum, maximum, domain, upperScore } = useMemo(
-    () => buildHistoryChartModel(runs, colors),
-    [runs, colors],
+  const { points, series, domain, upperScore, tickFormat } = useMemo(
+    () => buildHistoryChartModel(runs, styles),
+    [runs, styles],
   );
-  const tickDate = (timestamp: number): string =>
-    new Intl.DateTimeFormat(
-      "en-US",
-      maximum - minimum < 86_400_000
-        ? { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }
-        : {
-            month: "short",
-            day: "numeric",
-            ...(maximum - minimum >= 31_536_000_000 ? { year: "2-digit" as const } : {}),
-            timeZone: "UTC",
-          },
-    ).format(timestamp);
-  const renderDot = ({
-    cx,
-    cy,
-    payload,
-  }: {
-    cx?: number | undefined;
-    cy?: number | undefined;
-    payload?: HistoryPoint | undefined;
-  }) => {
-    if (cx === undefined || cy === undefined || !payload || payload.score === null) return <g />;
-    const selected = payload.run.id === selectedId;
-    const color = colors.get(payload.run.model) ?? "#d8a657";
-    return (
-      // biome-ignore lint/a11y/useSemanticElements: Native HTML buttons cannot render as SVG chart points; the history list provides the same action.
-      <g
-        className="history-dot"
-        stroke={color}
-        strokeWidth={selected ? 3 : 2}
-        role="button"
-        tabIndex={0}
-        aria-pressed={selected}
-        aria-label={`Inspect ${payload.run.model}, ${payload.run.startedAt}, mean gap ${gap(payload.score)}, run ${payload.run.id}`}
-        style={{ cursor: "pointer" }}
-        onClick={() => select(payload.run)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            select(payload.run);
-          }
-        }}
-      >
-        <title>
-          {payload.run.model} · {gap(payload.score)}
-        </title>
-        <circle cx={cx} cy={cy} r={12} fill="transparent" stroke="none" />
-        <circle
-          cx={cx}
-          cy={cy}
-          r={selected ? 7 : 4.5}
-          fill={selected ? color : "#282828"}
-          pointerEvents="none"
-        />
-      </g>
-    );
-  };
+  const empty = emptyPlot(points);
   return (
     <figure
       className="plot history-plot"
@@ -158,24 +160,23 @@ export function HistoryChart({ runs, colors, selectedId, onSelect }: HistoryChar
     >
       <ResponsiveContainer width="100%" height={300} minWidth={0}>
         <LineChart margin={{ top: 22, right: 26, bottom: 30, left: 8 }} accessibilityLayer>
-          <CartesianGrid stroke="#3c3836" strokeDasharray="2 5" vertical={false} />
+          <CartesianGrid {...CHART.grid} />
           <XAxis
             dataKey="timestamp"
             type="number"
             scale="time"
             domain={domain}
-            tickFormatter={tickDate}
+            tickFormatter={(value: number) => tickFormat.format(value)}
             minTickGap={35}
-            stroke="#665c54"
+            stroke={CHART.axis}
             tickLine={false}
-            tick={{ fill: "#bdae93", fontSize: 12, fontFamily: "monospace" }}
+            tick={CHART.tick}
             tickMargin={12}
             label={{
+              ...CHART.label,
               value: "Observation time (UTC)",
               position: "insideBottom",
               offset: -20,
-              fill: "#928374",
-              fontSize: 11,
             }}
           />
           <YAxis
@@ -184,33 +185,47 @@ export function HistoryChart({ runs, colors, selectedId, onSelect }: HistoryChar
             width={56}
             axisLine={false}
             tickLine={false}
-            tick={{ fill: "#bdae93", fontSize: 12, fontFamily: "monospace" }}
+            tick={CHART.tick}
             tickMargin={10}
             label={{
+              ...CHART.label,
               value: "Mean gap (pp)",
               angle: -90,
               position: "insideLeft",
               offset: -4,
-              fill: "#928374",
-              fontSize: 11,
             }}
           />
           <Tooltip
             {...(tooltipEnabled ? {} : { active: false })}
             filterNull={false}
-            cursor={{ stroke: "#665c54", strokeDasharray: "3 4" }}
-            content={(props) => HistoryTooltip(props, points, colors)}
+            cursor={CHART.cursor}
+            content={({ active, label }) => (
+              <HistoryTooltip active={active} label={label} points={points} styles={styles} />
+            )}
           />
-          {series.map((item) => (
+          {series.map(({ model, style, points: line }) => (
             <Line
-              key={item.model}
-              data={item.points}
+              key={model}
+              data={line}
               dataKey="score"
-              name={item.model}
-              stroke={item.color}
-              strokeDasharray={modelDash(item.model, colors) ?? "none"}
+              name={model}
+              stroke={style.color}
+              strokeDasharray={style.dash}
               strokeWidth={2}
-              dot={renderDot}
+              dot={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: HistoryPoint }) =>
+                cx === undefined || cy === undefined || !payload || payload.score === null ? (
+                  <g />
+                ) : (
+                  <HistoryDot
+                    cx={cx}
+                    cy={cy}
+                    point={payload}
+                    color={style.color}
+                    selected={payload.run.id === selectedId}
+                    onSelect={select}
+                  />
+                )
+              }
               activeDot={false}
               connectNulls={false}
               isAnimationActive={false}
@@ -219,16 +234,7 @@ export function HistoryChart({ runs, colors, selectedId, onSelect }: HistoryChar
           ))}
         </LineChart>
       </ResponsiveContainer>
-      {points.length === 0 || points.every((point) => point.score === null) ? (
-        <div className="plot-empty" role="status">
-          <p>{points.length === 0 ? "No runs shown." : "No calibration scores to plot."}</p>
-          <span>
-            {points.length === 0
-              ? "Show a model or clear the history search."
-              : "These runs contain no valid replies. Their outcomes remain in the history list."}
-          </span>
-        </div>
-      ) : null}
+      {empty ? <PlotEmpty {...empty} /> : null}
       <figcaption id={descriptionId} className="chart-description">
         Mean absolute calibration gap across recorded targets with valid replies, in percentage
         points. Lower is better. Each point is a saved run; select a point to inspect its settings.

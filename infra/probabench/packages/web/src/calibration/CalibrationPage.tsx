@@ -1,11 +1,21 @@
 import { type Results, type Run, summarizeRun } from "@probabench/domain";
-import { lazy, Suspense, useMemo } from "react";
+import { lazy, Suspense, useId, useMemo } from "react";
 import type { NotebookView, useNotebookView } from "../app/notebook-view";
-import { date, modelName, number, time } from "../common/format";
+import { ChartBoundary } from "../common/chart-frame";
+import {
+  count,
+  date,
+  gap,
+  modelName,
+  samplingText,
+  shortId,
+  time,
+  timestamp,
+} from "../common/format";
 import { LoadBoundary } from "../common/LoadBoundary";
+import { modelStyles, styleOf } from "../common/palette";
 import { groupHistory, selectedRuns } from "../common/run-history";
-import { gap, Measurements } from "../history/RunDetail";
-import { modelColors } from "./calibration-chart-data";
+import { Measurements } from "../history/RunDetail";
 
 type UpdateView = ReturnType<typeof useNotebookView>[1];
 const CalibrationChart = lazy(() =>
@@ -27,7 +37,8 @@ export function CalibrationPage({
   onRerun: (run: Run) => void;
 }) {
   const groups = useMemo(() => groupHistory(results.runs), [results]);
-  const colors = useMemo(() => modelColors(results.runs), [results]);
+  const styles = useMemo(() => modelStyles(results.runs), [results]);
+  const descriptionId = useId();
   const selections = useMemo(
     () =>
       new Map(
@@ -82,7 +93,7 @@ export function CalibrationPage({
         >
           <History
             runs={results.runs}
-            colors={colors}
+            styles={styles}
             view={view}
             update={update}
             onCompare={compare}
@@ -110,18 +121,14 @@ export function CalibrationPage({
               <span aria-hidden="true">↕</span> 95% intervals
             </button>
           </header>
-          <LoadBoundary>
-            <Suspense
-              fallback={
-                <div className="chart-loading" role="status">
-                  <span className="loading-line" />
-                  Loading the observations…
-                </div>
-              }
-            >
-              <CalibrationChart runs={chosen} colors={colors} intervals={view.intervals} />
-            </Suspense>
-          </LoadBoundary>
+          <ChartBoundary>
+            <CalibrationChart
+              runs={chosen}
+              styles={styles}
+              intervals={view.intervals}
+              descriptionId={descriptionId}
+            />
+          </ChartBoundary>
           <div className="chart-caption">
             <span className="reference-key">
               <span aria-hidden="true" />
@@ -131,7 +138,7 @@ export function CalibrationPage({
               {chosen.length} / {groups.length} models
             </span>
           </div>
-          <p id="chart-description" className="chart-description">
+          <p id={descriptionId} className="chart-description">
             Points mark measured targets; lines join them. Gaps mark targets with no valid replies.
             Intervals assume independent valid responses.
           </p>
@@ -171,8 +178,8 @@ export function CalibrationPage({
                     <span
                       className="model-check"
                       style={{
-                        color: colors.get(group.model),
-                        borderColor: active ? colors.get(group.model) : undefined,
+                        color: styleOf(styles, group.model).color,
+                        borderColor: active ? styleOf(styles, group.model).color : undefined,
                       }}
                     >
                       {active ? "✓" : ""}
@@ -180,7 +187,7 @@ export function CalibrationPage({
                     <span>
                       <strong>{modelName(group.model)}</strong>
                       <span>
-                        {number(summary.valid)} / {number(summary.total)} valid replies
+                        {count(summary.valid)} / {count(summary.total)} valid replies
                       </span>
                     </span>
                   </button>
@@ -190,7 +197,7 @@ export function CalibrationPage({
                       {group.runs.map((item, index) => (
                         <option key={item.id} value={item.id}>
                           {index === 0 ? "Latest · " : ""}
-                          {date(item.startedAt)} · {time(item.startedAt)} · {item.id.slice(-6)}
+                          {date(item.startedAt)} · {time(item.startedAt)} · {shortId(item.id)}
                         </option>
                       ))}
                     </select>
@@ -219,11 +226,12 @@ export function CalibrationPage({
           chosen.map((run) => (
             <details className="measurement-run" key={run.id}>
               <summary>
-                <span className="color-dot" style={{ background: colors.get(run.model) }} />
+                <span
+                  className="color-dot"
+                  style={{ background: styleOf(styles, run.model).color }}
+                />
                 <strong>{modelName(run.model)}</strong>
-                <span className="measurement-date">
-                  {date(run.startedAt)} · {time(run.startedAt)} UTC
-                </span>
+                <span className="measurement-date">{timestamp(run.startedAt)}</span>
                 <span className="measurement-gap">
                   {gap(summarizeRun(run).meanCalibrationError)}
                   <small>mean gap</small>
@@ -233,9 +241,7 @@ export function CalibrationPage({
                 </span>
               </summary>
               <Measurements run={run} />
-              <div className="measurement-foot">
-                {run.trialsPerStep} samples per target · {run.stepPercent}% target step
-              </div>
+              <div className="measurement-foot">{samplingText(run)}</div>
             </details>
           ))
         )}

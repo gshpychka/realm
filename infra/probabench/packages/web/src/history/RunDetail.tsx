@@ -6,11 +6,8 @@ import {
   summarizeRun,
 } from "@probabench/domain";
 import * as Schema from "effect/Schema";
-import { date, modelName, number, percent, time } from "../common/format";
+import { count, date, gap, modelName, percent, time } from "../common/format";
 import { rerunRequest } from "../setup/run-settings";
-
-export const gap = (value: number | null): string =>
-  value === null ? "—" : `${(value * 100).toFixed(1)} pp`;
 
 export function Measurements({ run }: { run: Run }) {
   return (
@@ -41,10 +38,10 @@ export function Measurements({ run }: { run: Run }) {
                 </td>
                 <td>{interval ? `${percent(interval[0], 0)}–${percent(interval[1], 0)}` : "—"}</td>
                 <td>
-                  {number(ones)} / {number(valid)}
+                  {count(ones)} / {count(valid)}
                 </td>
                 <td>
-                  {number(invalid)} / {number(total)}
+                  {count(invalid)} / {count(total)}
                 </td>
               </tr>
             );
@@ -103,7 +100,7 @@ export function RunDetail({
         <div>
           <dt>Samples</dt>
           <dd>
-            {number(summary.valid)} valid / {number(summary.total)}
+            {count(summary.valid)} valid / {count(summary.total)}
           </dd>
         </div>
         <div>
@@ -114,7 +111,7 @@ export function RunDetail({
         </div>
         <div>
           <dt>Samples per target</dt>
-          <dd>{number(run.trialsPerStep)}</dd>
+          <dd>{count(run.trialsPerStep)}</dd>
         </div>
         <div>
           <dt>Target step</dt>

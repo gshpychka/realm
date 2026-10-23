@@ -1,10 +1,11 @@
 import { type Run, summarizeRun } from "@probabench/domain";
-import { lazy, Suspense, useMemo, useRef } from "react";
+import { lazy, useMemo, useRef } from "react";
 import type { NotebookView, useNotebookView } from "../app/notebook-view";
-import { date, modelName, number, percent, time } from "../common/format";
-import { LoadBoundary } from "../common/LoadBoundary";
+import { ChartBoundary } from "../common/chart-frame";
+import { count, date, gap, modelName, percent, samplingText, time } from "../common/format";
+import { type ModelStyle, styleOf } from "../common/palette";
 import { visibleHistory } from "../common/run-history";
-import { gap, Measurements, RunDetail } from "./RunDetail";
+import { Measurements, RunDetail } from "./RunDetail";
 
 type UpdateView = ReturnType<typeof useNotebookView>[1];
 const HistoryChart = lazy(() =>
@@ -13,14 +14,14 @@ const HistoryChart = lazy(() =>
 
 export function HistoryPage({
   runs,
-  colors,
+  styles,
   view,
   update,
   onCompare,
   onRerun,
 }: {
   runs: readonly Run[];
-  colors: ReadonlyMap<string, string>;
+  styles: ReadonlyMap<string, ModelStyle>;
   view: NotebookView;
   update: UpdateView;
   onCompare: (run: Run) => void;
@@ -65,7 +66,7 @@ export function HistoryPage({
           />
         </label>
         <span className="mono muted">
-          {number(visible.length)} / {number(runs.length)} runs
+          {count(visible.length)} / {count(runs.length)} runs
         </span>
         {view.query || view.hidden.length > 0 ? (
           <button
@@ -103,28 +104,19 @@ export function HistoryPage({
                 )
               }
             >
-              <span className="color-dot" style={{ background: colors.get(model) }} />
+              <span className="color-dot" style={{ background: styleOf(styles, model).color }} />
               {modelName(model)}
             </button>
           ))}
         </fieldset>
-        <LoadBoundary>
-          <Suspense
-            fallback={
-              <div className="chart-loading" role="status">
-                <span className="loading-line" />
-                Loading the run history…
-              </div>
-            }
-          >
-            <HistoryChart
-              runs={visible}
-              colors={colors}
-              selectedId={inspected?.id}
-              onSelect={inspect}
-            />
-          </Suspense>
-        </LoadBoundary>
+        <ChartBoundary>
+          <HistoryChart
+            runs={visible}
+            styles={styles}
+            selectedId={inspected?.id}
+            onSelect={inspect}
+          />
+        </ChartBoundary>
       </section>
       {view.runId && !runs.some((run) => run.id === view.runId) ? (
         <p role="status" className="panel-note linked-run-missing">
@@ -180,13 +172,12 @@ export function HistoryPage({
                         >
                           <span
                             className="timeline-node"
-                            style={{ background: colors.get(run.model) }}
+                            style={{ background: styleOf(styles, run.model).color }}
                           />
                           <span className="history-row-main">
                             <strong>{modelName(run.model)}</strong>
                             <span>
-                              {time(run.startedAt)} · {number(run.trialsPerStep)} samples / target ·{" "}
-                              {run.stepPercent}% step
+                              {time(run.startedAt)} · {samplingText(run)}
                             </span>
                           </span>
                           <span className="history-row-metric">

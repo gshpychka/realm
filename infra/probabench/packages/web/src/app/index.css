@@ -13,6 +13,8 @@
   --faint: #bdae93;
   --accent: #d8a657;
   --line: #3c3836;
+  --border-strong: #665c54;
+  --dim: #928374;
   --panel: #282828;
   --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -685,7 +687,7 @@ button.connection {
 }
 .reference-key > span {
   width: 22px;
-  border-bottom: 1px dashed #a89984;
+  border-bottom: 1px dashed var(--dim);
 }
 .chart-description {
   font-size: 12px;

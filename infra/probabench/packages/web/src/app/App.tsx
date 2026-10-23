@@ -2,7 +2,7 @@ import { Result, useRxRefresh, useRxValue } from "@effect-rx/rx-react";
 import { type Run, summarizeRun } from "@probabench/domain";
 import { type KeyboardEvent, lazy, Suspense, useEffect, useState } from "react";
 import { type Connection, useBridge } from "../bridge/use-bridge";
-import { date, number, time } from "../common/format";
+import { count, date, time } from "../common/format";
 import { LoadBoundary } from "../common/LoadBoundary";
 import { resultsRx } from "../common/results";
 import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "../common/run-history";
@@ -245,15 +245,15 @@ export function App() {
             <dl>
               <div>
                 <dt>Saved runs</dt>
-                <dd>{number(runs.length)}</dd>
+                <dd>{count(runs.length)}</dd>
               </div>
               <div>
                 <dt>Models observed</dt>
-                <dd>{number(models.size)}</dd>
+                <dd>{count(models.size)}</dd>
               </div>
               <div>
                 <dt>Valid samples</dt>
-                <dd>{number(valid)}</dd>
+                <dd>{count(valid)}</dd>
               </div>
             </dl>
             <p className="overview-date">
@@ -284,7 +284,7 @@ export function App() {
               >
                 {item.label}
                 {item.id === "history" && runs.length > 0 ? (
-                  <span className="tab-count">{number(runs.length)}</span>
+                  <span className="tab-count">{count(runs.length)}</span>
                 ) : null}
               </button>
             ))}
