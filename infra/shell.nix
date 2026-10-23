@@ -21,10 +21,10 @@ let
   # sops exec-env takes one command string, which a shell re-parses, so each
   # argument is requoted with printf %q
   sopsExecEnv =
-    name: package:
+    name: envFile: command:
     pkgs.writeShellScriptBin name ''
-      ${lib.getExe pkgs.sops} exec-env "$REPO_ROOT/secrets/infra/terraform.env" \
-        "${lib.getExe package} $(printf '%q ' "$@")"
+      ${lib.getExe pkgs.sops} exec-env "$REPO_ROOT/secrets/infra/${envFile}" \
+        "${command} $(printf '%q ' "$@")"
     '';
 in
 pkgs.mkShell {
@@ -39,8 +39,13 @@ pkgs.mkShell {
     pkgs.sops
     pkgs.age
     pkgs.terragrunt
-    (sopsExecEnv "tf" terraform)
-    (sopsExecEnv "tg" pkgs.terragrunt)
+    (sopsExecEnv "tf" "terraform.env" (lib.getExe terraform))
+    (sopsExecEnv "tg" "terraform.env" (lib.getExe pkgs.terragrunt))
+    # the ProbaBench CLI with its OpenRouter key, run from the project root,
+    # where its default --out path resolves
+    (sopsExecEnv "probabench" "probabench.env"
+      "${lib.getExe pkgs.bun} run --cwd $REPO_ROOT/infra/probabench bench"
+    )
   ];
   shellHook = ''
     export REPO_ROOT=$(git rev-parse --show-toplevel)
