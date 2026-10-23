@@ -175,5 +175,4 @@ and screen captures under `artifacts`. Root `bun.lock` pins the workspace; the
 production dependency hash lives in [`../agent-workspace.nix`](../agent-workspace.nix).
 Renew it with a package build after changing dependencies.
 
-The former [Pituitary repository](https://github.com/gshpychka/pituitary) is retired;
-source, packages, modules, and issues belong in Realm.
+Pituitary source, packages, modules, and issues are maintained in Realm.

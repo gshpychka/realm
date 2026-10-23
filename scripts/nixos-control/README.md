@@ -28,17 +28,15 @@ existing retention policy. There are no receipts, replay/idempotency store, outb
 notification service, or custom status tool. On ambiguous admission, inspect the
 journal before deciding whether to retry. No automatic replay.
 
-The former nixos_control_status and requestId parameter are removed. Historical
-/var/lib/nixos-control records are deliberately untouched (root can inspect them);
-the old receipt runner is no longer created, and its completion service is removed.
-Let any already admitted old operation finish before deploying this replacement.
-Apply via the currently installed native control tool, never a shell restart of
-the hosting Gateway. Existing plugin paths, policy and broker overrides are merged
-unchanged. Controller drain/readiness/rollback behavior is unchanged.
+Apply via the native control tool. The controller handles Gateway drain, readiness,
+and rollback during activation. Plugin paths, policy, and broker overrides compose
+through the NixOS module.
 
 Build-only verification (no activation):
 
     nix build .#nixosConfigurations.hoard.config.system.build.nixosControl --max-jobs 0 --no-link --print-out-paths
 
-This runs a small installed-SDK registration/caller/dispatch test with subprocess
-effects mocked. Nix packages the SDK link and substitutes the exact helper path.
+The plugin package runs its installed-SDK registration/caller/dispatch test with
+subprocess effects mocked. Nix packages the SDK link and substitutes the exact helper
+path. This build requires the full Gateway package and belongs to deployment
+validation; it has no dedicated CI job or flake check.

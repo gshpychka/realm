@@ -6,10 +6,6 @@ Dura gives an operator one objective, a team of declared agents, and a reviewabl
 result with evidence. Work survives a closed terminal, a reloaded frontend, and a
 restarted host runtime.
 
-This is a greenfield system. The design describes its steady state. There are no
-compatibility backends, schema migrations, or alternate recovery implementations.
-Delete custom machinery when the upstream runtime already owns the concern.
-
 The architectural centre is one **Pi Durable Harness on the host**. Each agent is one
 native conversation bound to a declared NixOS execution environment in Bay. Models run
 through the host's Pi AI registry; file and shell tools run in that environment.
@@ -48,67 +44,11 @@ scheduler, or conversation state.
 
 ## Agent declarations
 
-~~~nix
-services.dura = {
-  enable = true;
-  operator = "alice";
-
-  authFile = "/home/alice/.pi/agent/auth.json";
-  credentialProfiles.primary = {
-    provider = "anthropic";
-  };
-
-  limits = {
-    maxTasks = 16;
-    maxLiveAttempts = 4;
-    maxDepth = 2;
-  };
-
-  agents = {
-    coordinator.dura.agent = {
-      description = "Plan, delegate, and assemble the result.";
-      instructions = builtins.readFile ./agents/coordinator.md;
-      model = "anthropic/your-model";
-      credentials = [ "primary" ];
-      delegatesTo = [ "builder" "reviewer" ];
-      limits = { maxChildren = 4; maxDepth = 2; };
-    };
-
-    builder = { pkgs, ... }: {
-      imports = [ ./agents/development-machine.nix ];
-      environment.systemPackages = [ pkgs.bun pkgs.go ];
-      dura.agent = {
-        description = "Implement one result from an exact input.";
-        instructions = builtins.readFile ./agents/builder.md;
-        model = "anthropic/your-model";
-        credentials = [ "primary" ];
-        verification = {
-          agent = "verifier";
-          checks.unit = {
-            command = [ "bun" "test" ];
-            timeoutMs = 300000;
-          };
-        };
-      };
-    };
-
-    reviewer = {
-      imports = [ ./agents/development-machine.nix ];
-      dura.agent = {
-        description = "Challenge the result and its evidence.";
-        instructions = builtins.readFile ./agents/reviewer.md;
-        model = "anthropic/your-model";
-        credentials = [ "primary" ];
-        tools = [ "read" "grep" "find" "ls" ];
-      };
-    };
-
-    verifier = { pkgs, ... }: {
-      environment.systemPackages = [ pkgs.bun pkgs.go ];
-    };
-  };
-};
-~~~
+The [starter team](../../../agents/default.nix) declares coordinator, builder,
+reviewer, and verifier environments. [Reaper's host module](../../../machines/reaper/dura.nix)
+enables Dura and imports that team. The [agent guide](../../../agents) provides
+the complete host setup and role examples; [agent-module.nix](../agent-module.nix)
+defines the role options.
 
 Each entry is an ordinary NixOS module: imports, packages, services, and role metadata.
 The role catalog is separate from the image. Editing instructions, models, tools, or

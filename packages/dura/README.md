@@ -2,9 +2,10 @@
 
 **Declare the team. Keep the work. Bring back verified code.**
 
-Dura is the durable harness behind [Pituitary](../pituitary). It gives agents native
-Pi Durable conversations, uses [Bay](../bay) for their NixOS machines, and retains
-code with independent verification against the exact integrated tree.
+Dura orchestrates durable agents, with [Pituitary](../pituitary) as its terminal
+frontend. It gives agents native Pi Durable conversations, uses [Bay](../bay) for
+their NixOS machines, and retains code with independent verification against the
+exact integrated tree.
 
 [Declare agents](../../agents) · [Host configuration](../../machines/reaper/dura.nix) ·
 [Architecture](docs/orchestration.md) · [CLI](src/main.ts)

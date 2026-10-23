@@ -44,11 +44,11 @@ speaker with it.
 
 ## Offline Nix firmware
 
-Build only on configured reaper. Zero local jobs is mandatory: hoard previously
-overheated. A path flake includes the currently untracked implementation.
+Build on the configured reaper builder with zero local jobs to keep firmware
+compilation off hoard.
 
 ```sh
-sudo -n nix build "path:$PWD#voice-pe-firmware" --max-jobs 0 --cores 8 --no-link --print-out-paths -L
+sudo -n nix build .#voice-pe-firmware --max-jobs 0 --cores 8 --no-link --print-out-paths -L
 ```
 
 Outputs: `firmware.bin` (OTA application), bootloader, partition table, ELF, size
@@ -74,18 +74,12 @@ passes: the first discovers built-in IDF components, the second supplies their
 REQUIRES. Neither step consumes an old ESPHome build directory. Build metadata
 uses a fixed release epoch, independent of wall-clock time.
 
-No imported store snapshots, local caches or GC roots are needed. The earlier
-`nix-inputs.lock.json` and `prepare-nix-inputs.py` remain preserved as unused
-preflight artifacts; they are not in the package dependency graph.
+The package builds from source and pinned public inputs without imported store
+snapshots, local caches, or GC roots.
 
 To update, change the release/commit/archive/PyPI hash locks deliberately, review
 localization in `reconstruct.py`, then build the firmware and the `voice-pe` check.
 Never add Wi-Fi/API/broker secrets as Nix attributes or files.
-
-Existing-solution preflight: `marcus7070/esphome-flake` packages only the old CLI.
-`mirrexagon/nixpkgs-esp-dev` provides maintained IDF/tool recipes (default 5.5.2),
-not this Voice PE 5.5.5 ESPHome assets and managed-component closure. This package
-uses upstream public archives and the existing pinned modern ESPHome CLI.
 
 ## Explicit flashing (never performed by a build)
 
@@ -128,9 +122,8 @@ at rest: physical flash access can recover secrets. Existing broker transport is
 ## Using it
 
 Say **Okay Nabu** for normal Assist, or **Hey Jarvis** for Live. Both models
-are enabled on HA client connection (also after reboot), overriding previously
-saved disabled states. Disable them in HA only until the next HA reconnect.
-The old **Voice backend** entity is removed; its stale HA entity can be deleted.
+are enabled on HA client connection (also after reboot), overriding saved disabled
+states. Disable them in HA only until the next HA reconnect.
 Mycroft, if manually enabled, retains normal Assist. Watch the broker with
 `ssh hoard journalctl -fu voice-broker`.
 
@@ -169,20 +162,9 @@ deployment are required.
 
 ### Verification
 
-ESPHome config/code generation passed without secrets. Never compile firmware on hoard.
+ESPHome config/code generation runs without secrets. Never compile firmware on hoard.
 The `voice-pe` flake check runs the component's startup fallback and token rules
 (`session.cpp`, `credential.h`) on the host.
-
-Verified clean-source artifact (2026-10-12):
-`/nix/store/9zdi5bkmy4ipi8sjdacpl0znwfcy6bar-voice-pe-firmware-26.9.0-esphome-2026.8.0`.
-Application: 2,789,216 bytes; 66% app-partition headroom. SHA-256:
-`0cfea5d5475fdf8036a94be02949c75a1c63418a160d94b4c0644297be97f31d`.
-Independent remote regenerations produced identical full generated-project and
-Python-module NAR hashes, and identical firmware/bootloader/partition-table/ELF
-checksums. Codegen uses a fixed Python hash seed to stabilize schema comments.
-The clean source copy contained no `.esphome`, imported lock, secrets or plan;
-its dependency graph had no imported snapshot/root references.
-No device flashing or NixOS switching was performed.
 
 With authorization, flash one named PE first, then check:
 
@@ -200,19 +182,14 @@ pass, flash other PEs. This firmware change needs no NixOS rebuild.
 
 ## Home Assistant's home-only pipeline
 
-In parallel mode (`my.voice-broker.mode = "parallel"`), during a Live
-conversation, Home Assistant hears every utterance and is the only thing that
-acts on the home (`packages/voice-broker/src/voice_broker/assist.py`).
-Parallel mode is held for now, and the module refuses it: consults are turns
-of OpenClaw's main agent, which can act on the home as well (see "Consults and
-main's session" below).
-It does this through its own Assist pipeline, named
-`my.voice-broker.homeAssistant.pipeline` on hoard. That pipeline uses a
-dedicated home-only OpenAI agent. The shared agent, `conversation.chatgpt`, is
-not used, because its prompt answers general questions. Create the agent and
-pipeline once, before deploying the broker that uses them. Until they exist,
-each conversation tells GPT-Live that Home Assistant is unavailable, and
-nothing in the home changes.
+Hoard uses `my.voice-broker.mode = "gated"`: its classifier routes each request
+to Home Assistant or OpenClaw. The module refuses `"parallel"`, because OpenClaw
+consults can also act on the home (see "Consults and main's session" below).
+
+The home-only integration has a dedicated OpenAI agent and Assist pipeline,
+named by `my.voice-broker.homeAssistant.pipeline`. The setup helper creates
+these independently of the broker mode. It copies speech recognition and
+language from **Remote** and gives the pipeline its own home-only prompt.
 
 From hoard, with the broker's Home Assistant token on stdin (never printed):
 
@@ -234,19 +211,11 @@ run it again with `--apply`. It only ever creates, and is safe to re-run:
 Check the result in Settings → Voice assistants → "Voice broker home".
 
 Any Home Assistant admin's token works on stdin; the broker's file is root's.
-Done on 2026-10-17 from the openclaw user, with the gateway's own token:
+The declared home-only pipeline is **Voice broker home**, using the agent
+`conversation.voice_broker_home`. Hoard runs in gated mode; parallel mode is
+unavailable while OpenClaw consults can also act on the home.
 
-```sh
-grep '^HOME_ASSISTANT_TOKEN=' /run/secrets/rendered/openclaw.env | cut -d= -f2- |
-  voice-broker-ha-setup --url http://homeassistant.glib.sh:8123 \
-    --backup-dir /var/lib/openclaw/workspace/backups/parallel-ha-20261017 [--apply]
-```
-
-It created agent `conversation.voice_broker_home` (subentry
-`01M54BAX3BE2NG46PNZSNWYNAJ`) and pipeline `01m54bbk2zytrd5fqaxd7dee0s`. The
-preferred pipeline ("Remote") and the exposure (99 entities) were unchanged.
-
-Exposure to Assist is set per assistant, not per agent. So the new agent can
+Exposure to Assist is set per assistant, not per agent. So the home-only agent can
 also see the exposed non-home scripts, `ask_gpt` and the weather script. Its
 prompt tells it not to use them for non-home questions. If it does, the broker
 counts that as non-home work (`nonHomeTools`), never as home evidence.
@@ -254,12 +223,9 @@ Unexposing them would also take them from "Remote", so that is left to the
 owner. A narrower tool scope for the agent alone does not exist: its only
 selectable LLM API is "Assist".
 
-`ask_gpt`'s announcement targets a device that was no longer in Home
-Assistant's device registry on 2026-10-17, so its use plays nothing on a speaker.
-
-To undo: first set `my.voice-broker.mode` back to `"gated"` and switch, so Home
-Assistant stops listening. Then delete the "Voice broker home" pipeline, then
-the agent of the same name under the OpenAI Conversation integration.
+To remove the helper-created integration, keep the broker in `"gated"` mode,
+then delete the **Voice broker home** pipeline and its agent under the OpenAI
+Conversation integration.
 
 ## Consults and main's session
 
@@ -272,12 +238,11 @@ and off on hoard. Turning it on needs the owner's approval of the
 approximation. The estimate is advisory and not atomic: it reads main's last
 recorded usage, then sends the consult as a separate request. A Telegram turn
 can land in between, and the gateway renders the real prompt only at that
-point. No gateway endpoint reserves room and submits in one step (OpenClaw
-e178c39e). So the estimate can't guarantee that main is used only while it has
-room, nor that a conversation moves only when main is really full. A strict
-version needs admission inside the gateway. Also, on 2026-10-17 the HTTP
-history endpoint returned main's assistant `usage` without `contextUsage`
-(the paired CLI's view has it), so every preflight would count as unknown.
+point. No gateway endpoint reserves room and submits in one step. So the estimate
+can't guarantee that main is used only while it has room, nor that a conversation
+moves only when main is really full. A strict
+version needs admission inside the gateway. Missing `contextUsage` in a history
+response makes the preflight's estimate unknown.
 
 With the overflow on, a conversation moves when the estimate finds main's
 session has no room for it. Before its first consult the broker reads, from
@@ -310,7 +275,6 @@ openclaw gateway call sessions.list --params '{"agentId":"main","search":"agent:
 
 Use the running gateway's view. `openclaw sessions --json` reads the store in
 its own process, which can lack the model's window and show a 200000 default.
-On 2026-10-17 it showed exactly that, while the gateway's budget was 500000.
 
 ## Recording conversations
 
