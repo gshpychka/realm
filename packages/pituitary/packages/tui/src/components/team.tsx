@@ -324,7 +324,10 @@ export function TaskResult({
   const verification = detail.verifications.find((item) => item.id === task?.verificationId);
   const canApply = task ? readyToApply(detail, task) : false;
   const canIntegrate = Boolean(
-    artifact && task?.status !== "accepted" && !["pending", "integrated"].includes(integration?.status ?? ""),
+    detail.run.desired === "running" &&
+      artifact &&
+      task?.status !== "accepted" &&
+      !["pending", "integrated"].includes(integration?.status ?? ""),
   );
   useKeyboard((key) => {
     if (!ready || key.ctrl || key.meta || key.shift) return;

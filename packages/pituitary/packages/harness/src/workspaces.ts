@@ -1,7 +1,18 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { link, lstat, mkdir, open, readFile, readlink, realpath, rename, rm } from "node:fs/promises";
+import {
+  link,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  readlink,
+  realpath,
+  rename,
+  rm,
+} from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { assertBayJob, Bay, type BayCommand, type BayIdentity, type BayJob } from "./bay.ts";
 import type { Artifact, BayExecution, ExecutionContext, Run } from "./model.ts";
@@ -14,6 +25,13 @@ const oid = (value: string): string => {
 };
 const key = (value: string): string => sha(value);
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === "ENOENT";
+const pathText = (bytes: Buffer): string => {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new Error("Workspace filenames must be valid UTF-8");
+  }
+};
 const pathName = (name: string): string => {
   if (
     !name ||
@@ -43,6 +61,7 @@ export function git(
   input?: Buffer | string,
   env: NodeJS.ProcessEnv = {},
   signal?: AbortSignal,
+  maxOutputBytes = 32 * 1024 * 1024,
 ): Promise<Buffer> {
   signal?.throwIfAborted();
   return new Promise((done, reject) => {
@@ -56,6 +75,10 @@ export function git(
         "core.hooksPath=/dev/null",
         "-c",
         "core.fsmonitor=false",
+        "-c",
+        "core.attributesFile=/dev/null",
+        "-c",
+        "core.autocrlf=false",
         "-c",
         "core.fsync=all",
         "-c",
@@ -71,6 +94,7 @@ export function git(
           GIT_CONFIG_GLOBAL: "/dev/null",
           GIT_TERMINAL_PROMPT: "0",
           GIT_NO_REPLACE_OBJECTS: "1",
+          GIT_ATTR_NOSYSTEM: "1",
           ...env,
         },
         stdio: ["pipe", "pipe", "pipe"],
@@ -99,7 +123,7 @@ export function git(
     if (signal?.aborted) terminate();
     child.stdout.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
-      if (bytes > 32 * 1024 * 1024) terminate();
+      if (bytes > maxOutputBytes) terminate();
       else chunks.push(chunk);
     });
     child.stderr.on("data", (chunk: Buffer) => {
@@ -112,19 +136,20 @@ export function git(
       reject(error);
     });
     child.stdin.on("error", () => {});
-    child.once("close", (code) => {
+    child.once("close", (code, killedBy) => {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", terminate);
       const output = Buffer.concat(chunks);
       if (signal?.aborted) reject(signal.reason);
-      else if (timedOut || code !== 0 || bytes > 32 * 1024 * 1024)
+      else if (timedOut || code !== 0 || bytes > maxOutputBytes)
         reject(
           new GitError(
             code ?? -1,
             output,
             timedOut
               ? "Git plumbing exceeded its two-minute time limit"
-              : Buffer.concat(errors).toString("utf8").trim() || "Git plumbing failed",
+              : Buffer.concat(errors).toString("utf8").trim() ||
+                  `Git ${args.join(" ")} failed${killedBy ? ` (${killedBy})` : ""}`,
           ),
         );
       else done(output);
@@ -299,7 +324,7 @@ export class Workspaces {
     const source = await this.provenance(cwd, signal),
       entries = new Map<string, string>();
     const stage = await git(cwd, ["ls-files", "--stage", "-z"], undefined, {}, signal);
-    for (const entry of stage.toString("utf8").split("\0").filter(Boolean)) {
+    for (const entry of pathText(stage).split("\0").filter(Boolean)) {
       const match = /^(\d+) ([a-f0-9]+) (\d)\t([\s\S]+)$/.exec(entry);
       if (match?.[3] !== "0") throw new Error("Resolve unmerged index entries before starting a workspace");
       if (match[1] === "160000")
@@ -313,10 +338,10 @@ export class Workspaces {
         cwd,
         ["ls-files", "--others", "--exclude-standard", "-z", "--", ...selected],
         undefined,
-        {},
+        { GIT_LITERAL_PATHSPECS: "1" },
         signal,
       );
-      for (const name of untracked.toString("utf8").split("\0").filter(Boolean))
+      for (const name of pathText(untracked).split("\0").filter(Boolean))
         entries.set(pathName(name), "100644");
     }
     for (const name of extraPaths) entries.set(pathName(name), "100644");
@@ -505,11 +530,14 @@ export class Workspaces {
     if (sha(bytes) !== artifact.content) throw new Error("Retained input bundle changed");
     const blob = await bay.upload(identity, bytes);
     const script = `set -eu
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1
 test ! -e workspace
 mkdir workspace
 git -c core.hooksPath=/dev/null init -q workspace
 git -C workspace -c core.hooksPath=/dev/null fetch -q --no-tags "$1" "$2"
-git -C workspace -c core.hooksPath=/dev/null checkout -q --detach "$2"
+GIT_ATTR_SOURCE=$(git -C workspace mktree </dev/null)
+export GIT_ATTR_SOURCE
+git -C workspace -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c core.autocrlf=false checkout -q --detach "$2"
 test "$(git -C workspace rev-parse HEAD^{tree})" = "$3"
 `;
     const receipt = await waitJob(
@@ -548,11 +576,13 @@ test "$(git -C workspace rev-parse HEAD^{tree})" = "$3"
     const ref = `refs/pituitary/results/${key(operation)}`,
       path = `.pituitary/${key(operation)}.bundle`;
     const script = `set -eu
-export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 GIT_ATTR_NOSYSTEM=1
 export GIT_AUTHOR_NAME=Pituitary GIT_AUTHOR_EMAIL=pituitary@localhost GIT_COMMITTER_NAME=Pituitary GIT_COMMITTER_EMAIL=pituitary@localhost
 export GIT_AUTHOR_DATE=2000-01-01T00:00:00Z GIT_COMMITTER_DATE=2000-01-01T00:00:00Z
 test -d .git && test ! -L .git
-git -c core.hooksPath=/dev/null -c core.fsmonitor=false add -A -- .
+GIT_ATTR_SOURCE=$(git mktree </dev/null)
+export GIT_ATTR_SOURCE
+git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.attributesFile=/dev/null -c core.autocrlf=false add -A -- .
 tree=$(git write-tree)
 head=$(printf '%s\\n' "$2" | git -c core.hooksPath=/dev/null commit-tree "$tree" -p "$1")
 git update-ref "$3" "$head"
@@ -619,12 +649,15 @@ git bundle create /work/"$4" "$3"
     operation: string,
     signal?: AbortSignal,
   ): Promise<{ head: string; tree: string }> {
-    const repo = await this.repositoryReady(run.id, signal),
-      path = join(dirname(repo), `${key(operation)}.${randomUUID()}.incoming.bundle`);
-    await atomic(path, bytes);
+    const retained = await this.repositoryReady(run.id, signal),
+      repo = await mkdtemp(join(dirname(retained), "incoming-")),
+      path = join(repo, "input.bundle"),
+      env = { GIT_ALTERNATE_OBJECT_DIRECTORIES: join(retained, "objects") };
     try {
-      await git(repo, ["bundle", "verify", path], undefined, {}, signal);
-      const heads = (await git(repo, ["bundle", "list-heads", path], undefined, {}, signal))
+      await git(repo, ["init", "--bare", "--object-format=sha1"], undefined, {}, signal);
+      await atomic(path, bytes);
+      await git(repo, ["bundle", "verify", path], undefined, env, signal);
+      const heads = (await git(repo, ["bundle", "list-heads", path], undefined, env, signal))
         .toString()
         .trim()
         .split("\n");
@@ -642,15 +675,16 @@ git bundle create /work/"$4" "$3"
           `${ref}:refs/pituitary/imports/${key(operation)}`,
         ],
         undefined,
-        {},
+        env,
         signal,
       );
-      await git(repo, ["merge-base", "--is-ancestor", oid(base), head], undefined, {}, signal);
+      await git(repo, ["merge-base", "--is-ancestor", oid(base), head], undefined, env, signal);
       const tree = oid(
-        (await git(repo, ["rev-parse", `${head}^{tree}`], undefined, {}, signal)).toString().trim(),
+        (await git(repo, ["rev-parse", `${head}^{tree}`], undefined, env, signal)).toString().trim(),
       );
-      const entries = (await git(repo, ["ls-tree", "-r", "-z", "--full-tree", tree], undefined, {}, signal))
-        .toString()
+      const entries = pathText(
+        await git(repo, ["ls-tree", "-r", "-z", "--full-tree", tree], undefined, env, signal),
+      )
         .split("\0")
         .filter(Boolean);
       const objects: string[] = [];
@@ -661,7 +695,7 @@ git bundle create /work/"$4" "$3"
         objects.push(oid(match[2] as string));
       }
       const sizes = (
-        await git(repo, ["cat-file", "--batch-check=%(objectsize)"], `${objects.join("\n")}\n`, {}, signal)
+        await git(repo, ["cat-file", "--batch-check=%(objectsize)"], `${objects.join("\n")}\n`, env, signal)
       )
         .toString()
         .trim()
@@ -674,9 +708,16 @@ git bundle create /work/"$4" "$3"
         if (!Number.isSafeInteger(total) || total > run.limits.artifactBytes)
           throw new Error("Export tree exceeds its artifact byte limit");
       }
+      await git(
+        retained,
+        ["fetch", "--no-tags", path, `${ref}:refs/pituitary/imports/${key(operation)}`],
+        undefined,
+        {},
+        signal,
+      );
       return { head, tree };
     } finally {
-      await rm(path, { force: true });
+      await rm(repo, { recursive: true, force: true });
     }
   }
 
@@ -781,8 +822,9 @@ git bundle create /work/"$4" "$3"
       throw new Error(
         "Operator HEAD or index changed since the run input; apply into a clean matching checkout",
       );
-    const paths = (await git(this.repository(run.id), ["ls-tree", "-r", "--name-only", "-z", accepted.tree]))
-      .toString()
+    const paths = pathText(
+      await git(this.repository(run.id), ["ls-tree", "-r", "--name-only", "-z", accepted.tree]),
+    )
       .split("\0")
       .filter(Boolean);
     const current = await this.tree(run, paths);
@@ -798,26 +840,42 @@ git bundle create /work/"$4" "$3"
       await atomic(receipt, JSON.stringify(result));
       return result;
     }
-    const patch = await git(this.repository(run.id), [
-      "diff",
-      "--binary",
-      "--no-ext-diff",
-      "--no-textconv",
-      input.head,
-      accepted.head,
-    ]);
-    await git(run.cwd, ["apply", "--check", "--binary", "-"], patch);
-    if (!this.active()) throw new Error("Runtime detached before apply intent");
-    await atomic(receipt, JSON.stringify({ artifactId: accepted.id, applied: false }));
-    if (!this.active()) throw new Error("Runtime detached before applying code");
-    await git(run.cwd, ["apply", "--binary", "-"], patch);
-    if (
-      (await this.tree(run, paths)).tree !== accepted.tree ||
-      JSON.stringify(await this.provenance(run.cwd)) !== JSON.stringify(input.source)
-    )
-      throw new Error("Apply outcome requires inspection; no automatic second apply will occur");
-    const result = { artifactId: accepted.id, applied: true };
-    await atomic(receipt, JSON.stringify(result));
-    return result;
+    const patch = await git(
+      this.repository(run.id),
+      ["diff", "--binary", "--no-ext-diff", "--no-textconv", input.head, accepted.head],
+      undefined,
+      {},
+      undefined,
+      32 * 1024 * 1024 + 4 * run.limits.artifactBytes,
+    );
+    const repo = this.repository(run.id),
+      index = join(dirname(repo), `${randomUUID()}.apply.index`),
+      env = {
+        GIT_DIR: repo,
+        GIT_WORK_TREE: resolve(run.cwd),
+        GIT_INDEX_FILE: index,
+        GIT_ATTR_SOURCE: (await git(repo, ["mktree"], "")).toString().trim(),
+      };
+    try {
+      // Apply raw artifact bytes through our own index, leaving the operator's staged edits intact.
+      await git(repo, ["read-tree", input.tree], undefined, env);
+      await git(run.cwd, ["update-index", "--refresh"], undefined, env);
+      await git(run.cwd, ["apply", "--index", "--check", "--binary", "-"], patch, env);
+      if (!this.active()) throw new Error("Runtime detached before apply intent");
+      await atomic(receipt, JSON.stringify({ artifactId: accepted.id, applied: false }));
+      if (!this.active()) throw new Error("Runtime detached before applying code");
+      await git(run.cwd, ["apply", "--index", "--binary", "-"], patch, env);
+      if (
+        (await this.tree(run, paths)).tree !== accepted.tree ||
+        JSON.stringify(await this.provenance(run.cwd)) !== JSON.stringify(input.source)
+      )
+        throw new Error("Apply outcome requires inspection; no automatic second apply will occur");
+      const result = { artifactId: accepted.id, applied: true };
+      await atomic(receipt, JSON.stringify(result));
+      return result;
+    } finally {
+      await rm(index, { force: true });
+      await rm(`${index}.lock`, { force: true });
+    }
   }
 }

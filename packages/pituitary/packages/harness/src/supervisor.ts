@@ -152,12 +152,13 @@ export async function startRuntime(options: SupervisorOptions): Promise<RuntimeH
         const bytes = `${JSON.stringify(record)}\n`;
         if (!welcomed) {
           pendingBytes += Buffer.byteLength(bytes);
-          if (pendingBytes > 1024 * 1024)
+          if (pendingBytes > 32 * 1024 * 1024)
             throw new Error("Conversation changed too quickly while opening; reconnect");
           pending.push(record);
           return;
         }
-        if (response.writableLength > 1024 * 1024) {
+        // One image input can publish two full-sized records (message start/end).
+        if (response.writableLength > 32 * 1024 * 1024) {
           response.destroy(new Error("Conversation observer fell behind; reconnect for a fresh snapshot"));
           return;
         }
@@ -454,7 +455,7 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
   for await (const chunk of request) {
     const bytes = Buffer.from(chunk);
     size += bytes.length;
-    if (size > 1024 * 1024) throw new HttpError(413, "Runtime request exceeds 1 MiB");
+    if (size > 16 * 1024 * 1024) throw new HttpError(413, "Runtime request exceeds 16 MiB");
     chunks.push(bytes);
   }
   const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));

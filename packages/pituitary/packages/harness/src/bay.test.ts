@@ -183,6 +183,10 @@ test("suspension is idempotent only for the same record and execution", async ()
     "replaced",
     "resumed",
     "still-running",
+    "response-lost",
+    "lost-replaced",
+    "server-error",
+    "forbidden",
   ] as const) {
     const root = mkdtempSync(join(tmpdir(), "pi-bay-suspend-")),
       socket = join(root, "bay.sock");
@@ -208,15 +212,21 @@ test("suspension is idempotent only for the same record and execution", async ()
       current = {
         ...current,
         state: scenario === "still-running" ? "running" : "suspended",
-        ...(scenario === "replaced" ? { id: "new-record" } : {}),
+        ...(scenario === "replaced" || scenario === "lost-replaced" ? { id: "new-record" } : {}),
         ...(scenario === "resumed" ? { generation: session.generation + 1 } : {}),
       };
-      response.writeHead(409).end(JSON.stringify({ error: "Session changed during cleanup" }));
+      if (scenario === "response-lost" || scenario === "lost-replaced") {
+        response.destroy();
+        return;
+      }
+      response
+        .writeHead(scenario === "server-error" ? 500 : scenario === "forbidden" ? 403 : 409)
+        .end(JSON.stringify({ error: "Session changed during cleanup" }));
     });
     await new Promise<void>((resolve) => server.listen(socket, resolve));
     try {
       const pending = new Bay(socket).suspend(session.name, session.id, session.generation);
-      if (scenario === "already" || scenario === "concurrent") await pending;
+      if (["already", "concurrent", "response-lost", "server-error"].includes(scenario)) await pending;
       else await expect(pending).rejects.toThrow();
       expect(posts).toBe(scenario.startsWith("already") ? 0 : 1);
     } finally {
