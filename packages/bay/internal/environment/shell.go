@@ -121,13 +121,7 @@ func (c *connection) run(ctx context.Context, r request) {
 		capture.err = err
 	}
 	capture.mu.Unlock()
-	if !spill {
-		os.Remove(spool.Name())
-	}
 	value := map[string]any{"exitCode": 0}
-	if spill {
-		value["spillPath"] = spool.Name()
-	}
 	var failed *failure
 	switch {
 	case capture.err != nil:
@@ -144,7 +138,14 @@ func (c *connection) run(ctx context.Context, r request) {
 			failed = &failure{"spawn_error", err.Error()}
 		}
 	}
-	c.send(response{ID: r.ID, Value: value, Error: failed})
+	if failed == nil && spill {
+		value["spillPath"] = spool.Name()
+	} else {
+		os.Remove(spool.Name())
+	}
+	if err := c.send(response{ID: r.ID, Value: value, Error: failed}); err != nil {
+		os.Remove(spool.Name())
+	}
 }
 
 type output struct {

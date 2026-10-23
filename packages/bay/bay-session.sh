@@ -9,6 +9,7 @@ usage: bay-session ready
        bay-session attach
        bay-session operator --record ID --generation GENERATION OPERATION KEY
        bay-session stop
+       bay-session snapshot-ready
        bay-session save-history -- PATH...
        bay-session restore-history
        bay-session deliver-repo OWNER/NAME COMMIT REMOTE [BRANCH]
@@ -97,6 +98,14 @@ stop)
   if [ -n "$sessions" ]; then
     timeout 10 "$BASH" -c 'while pgrep -s "$@" >/dev/null; do sleep 0.1; done' _ "$sessions" ||
       pkill -KILL -s "$sessions" || true
+  fi
+  ;;
+
+snapshot-ready)
+  jobs=$(systemctl list-units --plain --no-legend --state=activating,active,deactivating 'bay-job-*')
+  if [ -n "$jobs" ]; then
+    echo "detached jobs are still running; wait for them before taking a snapshot" >&2
+    exit 1
   fi
   ;;
 
