@@ -149,7 +149,7 @@ export async function bayWorkspaceFixture(
     });
   async function environment(request: IncomingMessage, response: ServerResponse, guest: Guest) {
     const handles = new Map<number, { file: FileHandle; path: string }>(),
-      commands = new Map<number, ChildProcess>();
+      commands = new Map<number, () => void>();
     let nextHandle = 0,
       pending = "",
       queue = Promise.resolve(),
@@ -160,7 +160,7 @@ export async function bayWorkspaceFixture(
     const close = async () => {
       if (closing) return;
       closing = true;
-      for (const command of commands.values()) stop(command);
+      for (const cancel of commands.values()) cancel();
       await Promise.allSettled([...handles.values()].map((handle) => handle.file.close()));
       response.end();
       links.delete(close);
@@ -169,7 +169,12 @@ export async function bayWorkspaceFixture(
     response.writeHead(200, { "Content-Type": "application/octet-stream" });
     response.flushHeaders();
     const shell = async (r: EnvironmentRequest) => {
-      const argv = typeof r.command === "string" ? ["sh", "-c", r.command] : r.command;
+      // This fixture maps guest paths; actual namespace isolation is tested in the VM.
+      const rewrite = (part: string) =>
+        part.replace(/\/(work|tmp)(?=\/|$|[\s'";])/g, (_, directory) =>
+          directory === "work" ? guest.work : guest.temporary,
+        );
+      const argv = (typeof r.command === "string" ? ["sh", "-c", r.command] : r.command).map(rewrite);
       if (!argv[0]) throw new Error("No fixture executable");
       const child = spawn(argv[0], argv.slice(1), {
         cwd: local(guest, r.path),
@@ -177,12 +182,15 @@ export async function bayWorkspaceFixture(
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
-      commands.set(r.id, child);
       running.add(child);
-      let cancelled = false;
+      let cancelled: "aborted" | "timeout" | undefined;
+      commands.set(r.id, () => {
+        cancelled = "aborted";
+        stop(child);
+      });
       const timer = r.timeoutMs
         ? setTimeout(() => {
-            cancelled = true;
+            cancelled = "timeout";
             stop(child);
           }, r.timeoutMs)
         : undefined;
@@ -200,7 +208,7 @@ export async function bayWorkspaceFixture(
         send({
           id: r.id,
           value: { exitCode: code ?? -1 },
-          ...(cancelled ? { error: { code: "timeout", message: "command timed out" } } : {}),
+          ...(cancelled ? { error: { code: cancelled, message: "command " + cancelled } } : {}),
         });
       });
     };
@@ -213,8 +221,7 @@ export async function bayWorkspaceFixture(
             void shell(r);
             return;
           case "cancel": {
-            const child = commands.get(r.handle);
-            if (child) stop(child);
+            commands.get(r.handle)?.();
             return;
           }
           case "open":

@@ -125,6 +125,7 @@ export function App({
   const editor = useRef<EditorHandle | null>(null);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const lastInterrupt = useRef(0);
+  const pendingCommand = useRef<Promise<void> | null>(null);
   const started = useRef(false);
   const [hint, flash] = useFlash();
   const [expanded, setExpanded] = useState(initialView?.expanded ?? false);
@@ -372,13 +373,17 @@ export function App({
       session.notify("warning", "The model is declared by this agent's role. Start a new run to change it.");
       return;
     }
-    void runCommand(name, args, {
+    const work = runCommand(name, args, {
       link,
       session,
       pick: setPicker,
       copy: (text) => renderer.copyToClipboardOSC52(text),
       quit: onQuit,
       hotkeys,
+    });
+    pendingCommand.current = work;
+    void work.finally(() => {
+      if (pendingCommand.current === work) pendingCommand.current = null;
     });
   };
 
@@ -598,7 +603,7 @@ export function App({
   const draftKey = (key: KeyEvent, action: Action | null, text: string, standing: Offer | null): boolean => {
     if (completions.key(key, action === "app.interrupt", runChosen)) return true;
     // Escape leaves insert mode first, where the draft has a use for it.
-    if (action === "app.interrupt" && editor.current?.wantsEscape()) return false;
+    if (action === "app.interrupt" && key.name === "escape" && editor.current?.wantsEscape()) return false;
     return (
       (action !== null && actions[action](key, text, standing)) ||
       pageKey(key) ||
@@ -644,6 +649,7 @@ export function App({
     // A half-typed command in the draft, such as a count or ctrl+v, takes the next key whatever it is.
     if (editor.current?.pending()) return;
     if (draftKey(key, action, text, standing)) key.preventDefault();
+    return pendingCommand.current ?? undefined;
   };
 
   useHeldKeys(editor, onKey, !away, dialog ?? null);

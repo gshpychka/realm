@@ -51,3 +51,11 @@ test("retained code explains integration state and missing verification policy",
     "integrating retained code",
   );
 });
+
+test("task errors stay on one line in the sidebar", () => {
+  const attempt = {
+    id: "attempt",
+    error: "Image unavailable\nlong diagnostics",
+  } as RunDetail["attempts"][number];
+  expect(taskState({ ...detail, attempts: [attempt] }, task)).toBe("Image unavailable");
+});
