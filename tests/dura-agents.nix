@@ -67,8 +67,7 @@ let
   checks = {
     manifest = builder.manifest == expected;
     defaults = defaults.model == null && defaults.delegatesTo == [ ] && defaults.credentials == [ ];
-    normalModules =
-      builder.system.config.environment.variables.DURA_MACHINE_CHECK == "shared machine";
+    normalModules = builder.system.config.environment.variables.DURA_MACHINE_CHECK == "shared machine";
     declaredPackages = lib.elem pkgs.ripgrep builder.system.config.environment.systemPackages;
     sharedSystem =
       builder.system.config.system.build.toplevel.drvPath

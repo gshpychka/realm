@@ -32,7 +32,13 @@
     {
       "includes": ["packages/dura/**"],
       "formatter": { "lineWidth": 110 },
-      "linter": { "rules": { "suspicious": { "noConsole": "off" }, "style": { "useImportType": "error" }, "performance": { "noReExportAll": "error" } } }
+      "linter": {
+        "rules": {
+          "suspicious": { "noConsole": "off" },
+          "style": { "useImportType": "error" },
+          "performance": { "noReExportAll": "error" }
+        }
+      }
     },
     {
       "includes": ["infra/probabench/**/*.css"],

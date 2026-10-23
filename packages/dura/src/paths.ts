@@ -11,10 +11,7 @@ export function privateDirectory(path: string): void {
 }
 
 export function socketDirectory(root: string): string {
-  const namespace = createHash("sha256")
-    .update(resolve(root))
-    .digest("hex")
-    .slice(0, 16);
+  const namespace = createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16);
   const parent = `/tmp/dura-${process.getuid?.() ?? "operator"}`;
   return join(parent, namespace);
 }

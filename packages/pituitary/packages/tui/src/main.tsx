@@ -8,7 +8,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, extend } from "@opentui/react";
 import { useEffect, useState } from "react";
 import { App } from "./app.tsx";
-import { duraOptions, piCommand, resumePiArgs, type PiCommand } from "./cli.ts";
+import { duraOptions, type PiCommand, piCommand, resumePiArgs } from "./cli.ts";
 import type { Command } from "./commands/commands.ts";
 import { OptInText } from "./components/text.ts";
 import { openLog } from "./config.ts";
@@ -22,7 +22,9 @@ mark("modules");
 const argv = process.argv.slice(2);
 try {
   if (argv.includes("--help") || argv.includes("-h")) {
-    process.stdout.write(`Pituitary — your terminal frontend for Pi and Dura\n\n  pituitary [Pi options] [task]\n  pituitary --dura RUN --state DIRECTORY [--task TASK] [--socket PATH] [--watch]\n\nPlain Pituitary uses your Pi settings, extensions, sessions and /login.\nDura connects to a durable team; closing the frontend leaves its work running.\n\nPi options:\n`);
+    process.stdout.write(
+      `Pituitary — your terminal frontend for Pi and Dura\n\n  pituitary [Pi options] [task]\n  pituitary --dura RUN --state DIRECTORY [--task TASK] [--socket PATH] [--watch]\n\nPlain Pituitary uses your Pi settings, extensions, sessions and /login.\nDura connects to a durable team; closing the frontend leaves its work running.\n\nPi options:\n`,
+    );
     const command = piCommand(["--help"]);
     process.exit(spawnSync(command.command, command.args, { stdio: "inherit" }).status ?? 1);
   }
@@ -48,11 +50,12 @@ async function runPi(agent: PiCommand): Promise<void> {
   }
   const log = openLog();
   process.on("unhandledRejection", (reason) => log.write(`unhandled rejection: ${String(reason)}\n`));
-  const start = (args: readonly string[]) => new PiConversation({
-    command: agent.command,
-    args,
-    onStderr: (text) => log.write(text),
-  });
+  const start = (args: readonly string[]) =>
+    new PiConversation({
+      command: agent.command,
+      args,
+      onStderr: (text) => log.write(text),
+    });
   let client = start(agent.args);
   mark("agent-spawned");
   prewarm();
@@ -83,32 +86,44 @@ async function runPi(agent: PiCommand): Promise<void> {
     useEffect(() => {
       let active = true;
       // Pi supplies its loaded extension, prompt and skill commands.
-      void client.request({ type: "get_commands" }).then((value) => {
-        const result = value as { commands: Array<{ name: string; description?: string; source: "extension" | "prompt" | "skill" }> };
-        if (active) setCommands(result.commands.map((command) => ({
-          name: command.name,
-          description: command.description ?? "",
-          source: command.source === "skill" ? "prompt" : command.source,
-        })));
-      }).catch((error) => log.write(`loading Pi commands: ${String(error)}\n`));
-      return () => { active = false; };
+      void client
+        .request({ type: "get_commands" })
+        .then((value) => {
+          const result = value as {
+            commands: Array<{ name: string; description?: string; source: "extension" | "prompt" | "skill" }>;
+          };
+          if (active)
+            setCommands(
+              result.commands.map((command) => ({
+                name: command.name,
+                description: command.description ?? "",
+                source: command.source === "skill" ? "prompt" : command.source,
+              })),
+            );
+        })
+        .catch((error) => log.write(`loading Pi commands: ${String(error)}\n`));
+      return () => {
+        active = false;
+      };
     }, []);
-    return <App
-      link={client}
-      extensionUI={client}
-      commands={commands}
-      initialPrompt={initialPrompt}
-      keys={loadPiKeymap()}
-      onQuit={() => void quit()}
-      onHandoff={(command) => void handoff(command)}
-      onNewSession={async () => {
-        const result = await client.request({ type: "new_session" }) as { cancelled: boolean };
-        if (result.cancelled) return;
-        root.unmount();
-        root = createRoot(renderer);
-        render();
-      }}
-    />;
+    return (
+      <App
+        link={client}
+        extensionUI={client}
+        commands={commands}
+        initialPrompt={initialPrompt}
+        keys={loadPiKeymap()}
+        onQuit={() => void quit()}
+        onHandoff={(command) => void handoff(command)}
+        onNewSession={async () => {
+          const result = (await client.request({ type: "new_session" })) as { cancelled: boolean };
+          if (result.cancelled) return;
+          root.unmount();
+          root = createRoot(renderer);
+          render();
+        }}
+      />
+    );
   }
   const render = (initialPrompt?: string) => root.render(<Workspace initialPrompt={initialPrompt} />);
   const handoff = async (command: string) => {
@@ -154,9 +169,16 @@ async function superviseDura(): Promise<void> {
     for (;;) {
       const child = spawn(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url), ...argv], {
         stdio: "inherit",
-        env: { ...process.env, PITUITARY_FRONTEND_CHILD: "1", PITUITARY_UI_STATE: state, PITUITARY_UI_RESUME: resume ? "1" : "0" },
+        env: {
+          ...process.env,
+          PITUITARY_FRONTEND_CHILD: "1",
+          PITUITARY_UI_STATE: state,
+          PITUITARY_UI_RESUME: resume ? "1" : "0",
+        },
       });
-      const stop = () => child.kill("SIGTERM");
+      const stop = () => {
+        child.kill("SIGTERM");
+      };
       process.once("SIGTERM", stop);
       process.once("SIGHUP", stop);
       const code = await new Promise<number>((resolve, reject) => {
@@ -166,7 +188,10 @@ async function superviseDura(): Promise<void> {
         process.off("SIGTERM", stop);
         process.off("SIGHUP", stop);
       });
-      if (code !== RELOAD_UI) { process.exitCode = code; return; }
+      if (code !== RELOAD_UI) {
+        process.exitCode = code;
+        return;
+      }
       resume = true;
     }
   } finally {

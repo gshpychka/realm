@@ -8,6 +8,7 @@ import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/conte
 import type { Models } from "@earendil-works/pi-ai/models";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import type { AgentCatalog } from "./catalog.ts";
+import { runtimeSocket } from "./client.ts";
 import type { ConversationCommand, ConversationUpdate } from "./conversation.ts";
 import {
   CONVERSATION_CAPABILITIES,
@@ -16,7 +17,6 @@ import {
 } from "./conversation-bridge.ts";
 import type { ReviseTaskInput, RunDetail, RunLimits, StartRunInput } from "./model.ts";
 import { DomainDoc, Orchestrator } from "./orchestrator.ts";
-import { runtimeSocket } from "./client.ts";
 import { privateDirectory, socketDirectory } from "./paths.ts";
 
 export interface SupervisorOptions {
@@ -389,8 +389,7 @@ export async function startRuntime(options: SupervisorOptions): Promise<RuntimeH
       catalog: options.catalog,
       catalogFile: options.catalogFile ?? environment.DURA_CATALOG,
       limits:
-        options.limits ??
-        (environment.DURA_RUN_LIMITS ? JSON.parse(environment.DURA_RUN_LIMITS) : undefined),
+        options.limits ?? (environment.DURA_RUN_LIMITS ? JSON.parse(environment.DURA_RUN_LIMITS) : undefined),
       environment,
       models: options.models,
     });

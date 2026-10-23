@@ -218,8 +218,7 @@ in
         }) agents
       );
       programs = lib.mapAttrs' (
-        name: agent:
-        lib.nameValuePair "dura-${name}" (agent.program // { machine = machineName agent; })
+        name: agent: lib.nameValuePair "dura-${name}" (agent.program // { machine = machineName agent; })
       ) agents;
     };
     environment.etc."dura/agents.json".source = catalogFile;

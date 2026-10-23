@@ -1,11 +1,20 @@
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { branchOf, tilde } from "./place.ts";
 
+const directories: string[] = [];
+function temporary(prefix: string): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  directories.push(root);
+  return root;
+}
+afterEach(() => {
+  for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true });
+});
 function repo(head: string): string {
-  const root = mkdtempSync(join(tmpdir(), "place-"));
+  const root = temporary("place-");
   mkdirSync(join(root, ".git"));
   writeFileSync(join(root, ".git", "HEAD"), `${head}\n`);
   mkdirSync(join(root, "src", "deep"), { recursive: true });
@@ -27,13 +36,14 @@ describe("branchOf", () => {
     const worktreeGit = join(main, ".git", "worktrees", "wt");
     mkdirSync(worktreeGit, { recursive: true });
     writeFileSync(join(worktreeGit, "HEAD"), "ref: refs/heads/side\n");
-    const worktree = mkdtempSync(join(tmpdir(), "wt-"));
+    const worktree = temporary("wt-");
     writeFileSync(join(worktree, ".git"), `gitdir: ${worktreeGit}\n`);
     expect(branchOf(worktree)).toBe("side");
   });
 
   test("is null outside a repository", () => {
-    expect(branchOf(mkdtempSync(join(tmpdir(), "bare-")))).toBeNull();
+    // TMPDIR may itself be inside the checkout; the filesystem root is outside it.
+    expect(branchOf(parse(tmpdir()).root)).toBeNull();
   });
 });
 

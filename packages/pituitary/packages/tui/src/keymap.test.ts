@@ -60,14 +60,17 @@ describe("keymap", () => {
 describe("loadKeymap", () => {
   test("Pi mode inherits terminal actions and applies frontend overrides last", () => {
     const directory = mkdtempSync(join(tmpdir(), "pituitary-pi-keymap-"));
-    const base = join(directory, "pi.json"), own = join(directory, "own.json");
+    const base = join(directory, "pi.json"),
+      own = join(directory, "own.json");
     try {
       writeFileSync(base, JSON.stringify({ "app.session.new": "alt+j", "app.model.select": "alt+m" }));
       writeFileSync(own, JSON.stringify({ "app.model.select": "alt+l" }));
       const map = loadPiKeymap(base, own);
       expect(map["app.session.new"]).toEqual(["alt+j"]);
       expect(map["app.model.select"]).toEqual(["alt+l"]);
-    } finally { rmSync(directory, { recursive: true, force: true }); }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
   test("loads only the declared Pituitary bindings file", () => {
     const directory = mkdtempSync(join(tmpdir(), "pituitary-keymap-")),

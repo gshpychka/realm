@@ -103,10 +103,7 @@ export function parseCatalog(value: unknown): AgentCatalog {
 }
 
 export function loadCatalog(path = process.env.DURA_CATALOG): AgentCatalog {
-  if (!path)
-    throw new Error(
-      "No agent catalog configured; declare services.dura.agents or set DURA_CATALOG",
-    );
+  if (!path) throw new Error("No agent catalog configured; declare services.dura.agents or set DURA_CATALOG");
   try {
     return parseCatalog(JSON.parse(readFileSync(path, "utf8")));
   } catch (error) {

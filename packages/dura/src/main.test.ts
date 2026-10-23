@@ -16,9 +16,7 @@ test("help and argument failures happen before any runtime is created", () => {
 });
 
 test("managed runtime state can be isolated without changing Pi state", () => {
-  expect(parseCommand(["runs"], { DURA_STATE_DIR: "/tmp/test-dura-runs" }).state).toBe(
-    "/tmp/test-dura-runs",
-  );
+  expect(parseCommand(["runs"], { DURA_STATE_DIR: "/tmp/test-dura-runs" }).state).toBe("/tmp/test-dura-runs");
 });
 
 test("the client forwards its solo model default to an existing host runtime", () => {
@@ -39,9 +37,7 @@ test("the client forwards its solo model default to an existing host runtime", (
 
 test("remote solo runs require an explicit host working directory", () => {
   expect(() => parseCommand(["run", "--socket", "/tmp/remote.sock"], {})).toThrow("requires --cwd");
-  expect(() => parseCommand(["run"], { DURA_RUNTIME_SOCKET: "/tmp/remote.sock" })).toThrow(
-    "requires --cwd",
-  );
+  expect(() => parseCommand(["run"], { DURA_RUNTIME_SOCKET: "/tmp/remote.sock" })).toThrow("requires --cwd");
 });
 
 test("operator command identities and empty revision lists are explicit", () => {

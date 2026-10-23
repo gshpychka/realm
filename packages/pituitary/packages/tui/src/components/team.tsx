@@ -1,7 +1,7 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import type { RunDetail } from "@realm/dura/types";
 import { plain } from "@pituitary/session";
+import type { RunDetail } from "@realm/dura/types";
 import { useEffect, useRef, useState } from "react";
 import { palette, theme } from "../theme.ts";
 import { Markdown } from "./markdown.tsx";

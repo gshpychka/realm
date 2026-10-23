@@ -134,8 +134,7 @@ let
       cfg.services.bay.programs.dura-builder.command == [ "${pkgs.bashInteractive}/bin/bash" ];
     verificationIndependentImage = (machine cfg).disk == (machine verificationEdited).disk;
     verificationChangesCatalog =
-      toString cfg.services.dura.catalogFile
-      != toString verificationEdited.services.dura.catalogFile;
+      toString cfg.services.dura.catalogFile != toString verificationEdited.services.dura.catalogFile;
     verificationOutsideRole =
       !(builtins.hasAttr "verification"
         (import ../packages/dura/agent.nix {
@@ -154,19 +153,16 @@ let
       );
     hostOwnsConversations = !(cfg.services.bay.programs.dura-builder ? connect);
     memoryBudget = cfg.services.bay.sessions.maxMemory == 2;
-    stableCatalogPath =
-      cfg.environment.sessionVariables.DURA_CATALOG == "/etc/dura/agents.json";
+    stableCatalogPath = cfg.environment.sessionVariables.DURA_CATALOG == "/etc/dura/agents.json";
     daemonOperator = cfg.systemd.services.dura.serviceConfig.User == "alice";
-    daemonModel =
-      cfg.systemd.services.dura.environment.DURA_MODEL == "anthropic/example-model";
+    daemonModel = cfg.systemd.services.dura.environment.DURA_MODEL == "anthropic/example-model";
     daemonState = cfg.environment.sessionVariables.DURA_STATE_DIR == "/var/lib/dura";
     managedClients = cfg.environment.sessionVariables.DURA_AUTO_START == "0";
     preparedMachines =
       builtins.elem "bay-base.service" cfg.systemd.services.dura.after
       && builtins.elem "bay-base.service" cfg.systemd.services.dura.requires;
     credentialReference =
-      cfg.systemd.services.dura.environment.DURA_CREDENTIAL_PROFILES
-      == "/etc/dura/credentials.json";
+      cfg.systemd.services.dura.environment.DURA_CREDENTIAL_PROFILES == "/etc/dura/credentials.json";
     sharedPiAuth =
       cfg.systemd.services.dura.environment.DURA_AUTH_FILE == "/home/alice/.pi/agent/auth.json"
       && cfg.environment.sessionVariables.DURA_AUTH_FILE == "/home/alice/.pi/agent/auth.json";

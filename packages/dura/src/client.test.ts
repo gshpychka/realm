@@ -3,8 +3,8 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { createModels, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
-import { rootAttempt, waitRun } from "./runtime.fixture.ts";
 import { Runtime, runtimeSocket } from "./client.ts";
+import { rootAttempt, waitRun } from "./runtime.fixture.ts";
 import { startRuntime } from "./supervisor.ts";
 
 async function fixture() {

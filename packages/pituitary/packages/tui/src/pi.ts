@@ -19,7 +19,12 @@ export type PiUiRequest = { type: "extension_ui_request"; id: string } & (
   | { method: "editor"; title: string; prefill?: string }
   | { method: "notify"; message: string; notifyType?: "info" | "warning" | "error" }
   | { method: "setStatus"; statusKey: string; statusText?: string }
-  | { method: "setWidget"; widgetKey: string; widgetLines?: string[]; widgetPlacement?: "aboveEditor" | "belowEditor" }
+  | {
+      method: "setWidget";
+      widgetKey: string;
+      widgetLines?: string[];
+      widgetPlacement?: "aboveEditor" | "belowEditor";
+    }
   | { method: "setTitle"; title: string }
   | { method: "set_editor_text"; text: string }
 );
@@ -42,12 +47,33 @@ export interface PiOptions {
 
 type Pending = { resolve(data: unknown): void; reject(error: Error): void };
 type PiCommand = { type: string; [key: string]: unknown };
-type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown };
+type Block = {
+  type: string;
+  text?: string;
+  thinking?: string;
+  id?: string;
+  name?: string;
+  arguments?: unknown;
+};
 const EVENTS = new Set([
-  "message_start", "message_end", "message_update", "agent_start", "agent_end", "agent_settled",
-  "turn_start", "turn_end", "session_info_changed", "tool_execution_start", "tool_execution_update",
-  "tool_execution_end", "queue_update", "compaction_start", "compaction_end", "auto_retry_start",
-  "auto_retry_end", "runtime_error",
+  "message_start",
+  "message_end",
+  "message_update",
+  "agent_start",
+  "agent_end",
+  "agent_settled",
+  "turn_start",
+  "turn_end",
+  "session_info_changed",
+  "tool_execution_start",
+  "tool_execution_update",
+  "tool_execution_end",
+  "queue_update",
+  "compaction_start",
+  "compaction_end",
+  "auto_retry_start",
+  "auto_retry_end",
+  "runtime_error",
 ]);
 
 /** Pi owns the session. This adapter owns its process and translates only presentation. */
@@ -59,7 +85,10 @@ export class PiConversation implements ConversationLink, PiUiPort {
   private readonly waitingUi: PiUiRequest[] = [];
   private readonly closeListeners = new Set<(reason: string) => void>();
   private readonly pending = new Map<string, Pending>();
-  private readonly tools = new Map<string, { callId: string; name: string; output?: string; details?: unknown }>();
+  private readonly tools = new Map<
+    string,
+    { callId: string; name: string; output?: string; details?: unknown }
+  >();
   private nextId = 0;
   private sequence = 0;
   private closed?: string;
@@ -110,15 +139,19 @@ export class PiConversation implements ConversationLink, PiUiPort {
     return this.send(command);
   }
   async call<C extends SessionCommand>(command: C): Promise<CommandResult<C["type"]>> {
-    return await this.send(command) as CommandResult<C["type"]>;
+    return (await this.send(command)) as CommandResult<C["type"]>;
   }
   async prompt(message: string, streamingBehavior?: "steer" | "followUp"): Promise<void> {
     await this.send({ type: "prompt", message, ...(streamingBehavior ? { streamingBehavior } : {}) });
   }
-  async abort(): Promise<void> { await this.send({ type: "abort" }); }
-  async abortRetry(): Promise<void> { await this.send({ type: "abort_retry" }); }
+  async abort(): Promise<void> {
+    await this.send({ type: "abort" });
+  }
+  async abortRetry(): Promise<void> {
+    await this.send({ type: "abort_retry" });
+  }
   async clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
-    return await this.send({ type: "clear_queue" }) as { steering: string[]; followUp: string[] };
+    return (await this.send({ type: "clear_queue" })) as { steering: string[]; followUp: string[] };
   }
   async getState(): Promise<SessionState> {
     return this.send({ type: "get_state" }, (data) => {
@@ -128,10 +161,10 @@ export class PiConversation implements ConversationLink, PiUiPort {
     });
   }
   async getMessages(): Promise<unknown[]> {
-    return (await this.send({ type: "get_messages" }) as { messages: unknown[] }).messages;
+    return ((await this.send({ type: "get_messages" })) as { messages: unknown[] }).messages;
   }
   async getSessionStats(): Promise<SessionStats> {
-    return await this.send({ type: "get_session_stats" }) as SessionStats;
+    return (await this.send({ type: "get_session_stats" })) as SessionStats;
   }
   async getSnapshot(): Promise<SessionSnapshot> {
     const state = await this.getState();
@@ -144,7 +177,9 @@ export class PiConversation implements ConversationLink, PiUiPort {
         isStreaming: this.running ?? state.isStreaming,
         isCompacting: this.compacting ?? state.isCompacting,
         messageCount: (data as { messages: unknown[] }).messages.length,
-        pendingMessageCount: this.queue ? this.queue.steering.length + this.queue.followUp.length : state.pendingMessageCount,
+        pendingMessageCount: this.queue
+          ? this.queue.steering.length + this.queue.followUp.length
+          : state.pendingMessageCount,
       },
       messages: (data as { messages: unknown[] }).messages,
       streamingMessage: this.streaming ? structuredClone(this.streaming) : undefined,
@@ -157,22 +192,40 @@ export class PiConversation implements ConversationLink, PiUiPort {
   close(): Promise<void> {
     if (this.closing) return this.closing;
     this.closing = new Promise<void>((resolve) => {
-      if (this.child.exitCode !== null || this.child.signalCode !== null) { resolve(); return; }
-      const timer = setTimeout(() => { this.child.kill("SIGKILL"); }, 2000);
-      this.child.once("close", () => { clearTimeout(timer); resolve(); });
+      if (this.child.exitCode !== null || this.child.signalCode !== null) {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(() => {
+        this.child.kill("SIGKILL");
+      }, 2000);
+      this.child.once("close", () => {
+        clearTimeout(timer);
+        resolve();
+      });
       this.child.stdin.end();
       this.child.kill("SIGTERM");
     });
     return this.closing;
   }
 
-  private send<T = unknown>(command: PiCommand, read: (data: unknown) => T = (data) => data as T): Promise<T> {
+  private send<T = unknown>(
+    command: PiCommand,
+    read: (data: unknown) => T = (data) => data as T,
+  ): Promise<T> {
     if (this.closed) return Promise.reject(new Error(this.closed));
     const id = `pituitary-${++this.nextId}`;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: (data) => {
-        try { resolve(read(data)); } catch (error) { reject(error instanceof Error ? error : new Error(String(error))); }
-      }, reject });
+      this.pending.set(id, {
+        resolve: (data) => {
+          try {
+            resolve(read(data));
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        },
+        reject,
+      });
       this.child.stdin.write(encodeJsonLine({ ...command, id }), (error) => {
         if (!error) return;
         this.pending.delete(id);
@@ -184,12 +237,16 @@ export class PiConversation implements ConversationLink, PiUiPort {
     let output: Record<string, unknown>;
     try {
       const parsed: unknown = JSON.parse(record);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Expected a record");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        throw new Error("Expected a record");
       output = scrub(parsed) as Record<string, unknown>;
+    } catch {
+      this.options.onStderr?.(`Invalid Pi JSON record: ${record}\n`);
+      return;
     }
-    catch { this.options.onStderr?.(`Invalid Pi JSON record: ${record}\n`); return; }
     if (output.type === "response") {
-      const id = String(output.id), pending = this.pending.get(id);
+      const id = String(output.id),
+        pending = this.pending.get(id);
       if (!pending) return;
       this.pending.delete(id);
       if (output.success) pending.resolve(output.data);
@@ -210,18 +267,37 @@ export class PiConversation implements ConversationLink, PiUiPort {
   }
   private project(event: SessionEvent): void {
     switch (event.type) {
-      case "agent_start": this.running = true; break;
-      case "agent_settled": this.running = false; this.streaming = undefined; break;
-      case "compaction_start": this.compacting = true; break;
-      case "compaction_end": this.compacting = false; break;
-      case "queue_update": this.queue = { steering: event.steering, followUp: event.followUp }; break;
-      case "auto_retry_start":
-        this.retry = { attempt: event.attempt, maxAttempts: event.maxAttempts, at: Date.now() + event.delayMs, errorMessage: event.errorMessage };
+      case "agent_start":
+        this.running = true;
         break;
-      case "auto_retry_end": this.retry = undefined; break;
+      case "agent_settled":
+        this.running = false;
+        this.streaming = undefined;
+        break;
+      case "compaction_start":
+        this.compacting = true;
+        break;
+      case "compaction_end":
+        this.compacting = false;
+        break;
+      case "queue_update":
+        this.queue = { steering: event.steering, followUp: event.followUp };
+        break;
+      case "auto_retry_start":
+        this.retry = {
+          attempt: event.attempt,
+          maxAttempts: event.maxAttempts,
+          at: Date.now() + event.delayMs,
+          errorMessage: event.errorMessage,
+        };
+        break;
+      case "auto_retry_end":
+        this.retry = undefined;
+        break;
       case "message_start": {
         const message = event.message as { role?: string; content?: Block[] };
-        if (message.role === "assistant") this.streaming = { role: "assistant", content: structuredClone(message.content ?? []) };
+        if (message.role === "assistant")
+          this.streaming = { role: "assistant", content: structuredClone(message.content ?? []) };
         break;
       }
       case "message_end":
@@ -230,33 +306,61 @@ export class PiConversation implements ConversationLink, PiUiPort {
       case "message_update": {
         const delta = event.assistantMessageEvent;
         if (!this.streaming) break;
-        const content = this.streaming.content, index = delta.contentIndex;
+        const content = this.streaming.content,
+          index = delta.contentIndex;
         switch (delta.type) {
-          case "text_start": content[index] = { type: "text", text: "" }; break;
-          case "thinking_start": content[index] = { type: "thinking", thinking: "" }; break;
+          case "text_start":
+            content[index] = { type: "text", text: "" };
+            break;
+          case "thinking_start":
+            content[index] = { type: "thinking", thinking: "" };
+            break;
           case "text_delta": {
             const block = content[index] ?? { type: "text", text: "" };
-            block.text = (block.text ?? "") + delta.delta; content[index] = block; break;
+            block.text = (block.text ?? "") + delta.delta;
+            content[index] = block;
+            break;
           }
           case "thinking_delta": {
             const block = content[index] ?? { type: "thinking", thinking: "" };
-            block.thinking = (block.thinking ?? "") + delta.delta; content[index] = block; break;
+            block.thinking = (block.thinking ?? "") + delta.delta;
+            content[index] = block;
+            break;
           }
-          case "text_end": content[index] = { type: "text", text: delta.content }; break;
-          case "thinking_end": content[index] = { type: "thinking", thinking: delta.content }; break;
-          case "toolcall_start": content[index] = { type: "toolCall", id: delta.id, name: delta.toolName, arguments: {} }; break;
-          case "toolcall_end": content[index] = delta.toolCall; break;
+          case "text_end":
+            content[index] = { type: "text", text: delta.content };
+            break;
+          case "thinking_end":
+            content[index] = { type: "thinking", thinking: delta.content };
+            break;
+          case "toolcall_start":
+            content[index] = { type: "toolCall", id: delta.id, name: delta.toolName, arguments: {} };
+            break;
+          case "toolcall_end":
+            content[index] = delta.toolCall;
+            break;
         }
         break;
       }
-      case "tool_execution_start": this.tools.set(event.toolCallId, { callId: event.toolCallId, name: event.toolName }); break;
+      case "tool_execution_start":
+        this.tools.set(event.toolCallId, { callId: event.toolCallId, name: event.toolName });
+        break;
       case "tool_execution_update": {
         const content = event.partialResult.content;
-        const output = Array.isArray(content) ? content.map((part) => typeof part?.text === "string" ? part.text : "").join("\n") : String(content ?? "");
-        this.tools.set(event.toolCallId, { callId: event.toolCallId, name: event.toolName, output, details: event.partialResult.details });
+        const output = Array.isArray(content)
+          ? content.map((part) => (typeof part?.text === "string" ? part.text : "")).join("\n")
+          : String(content ?? "");
+        this.tools.set(event.toolCallId, {
+          callId: event.toolCallId,
+          name: event.toolName,
+          output,
+          details: event.partialResult.details,
+        });
         break;
       }
-      case "tool_execution_end": this.tools.delete(event.toolCallId); break;
+      case "tool_execution_end":
+        this.tools.delete(event.toolCallId);
+        break;
     }
   }
   private fail(reason: string): void {

@@ -45,12 +45,7 @@ export class Runtime {
   }
   async start(input: StartRunInput, id: string = randomUUID(), catalogFile?: string): Promise<Run> {
     await this.ensure();
-    return this.call(
-      "POST",
-      "/v1/runs",
-      { id, ...input, ...(catalogFile ? { catalogFile } : {}) },
-      240_000,
-    );
+    return this.call("POST", "/v1/runs", { id, ...input, ...(catalogFile ? { catalogFile } : {}) }, 240_000);
   }
   async list(): Promise<Run[]> {
     await this.ensure();
