@@ -130,19 +130,19 @@ export class Runtime {
     });
     return this.ready;
   }
-  private async connectOrStart(): Promise<void> {
+  private async connectOrStart(
+    deadline = Date.now() + (this.options.startupTimeout ?? 15_000),
+  ): Promise<void> {
     let opening = false;
     let failure: Error | undefined;
+    const mayStart =
+      this.options.autoStart !== false && process.env.PITUITARY_AUTO_START !== "0" && !this.external;
     try {
       await this.call("GET", "/v1/status", undefined, 1000);
       return;
     } catch (error) {
       opening = error instanceof RuntimeError && error.status === 503;
-      if (
-        !opening &&
-        (this.options.autoStart === false || process.env.PITUITARY_AUTO_START === "0" || this.external)
-      )
-        throw error;
+      if (!opening && !mayStart) throw error;
       if (
         !opening &&
         (!(error instanceof Error) ||
@@ -178,13 +178,16 @@ export class Runtime {
         closeSync(log);
       }
     }
-    const deadline = Date.now() + (this.options.startupTimeout ?? 15_000);
     while (Date.now() < deadline) {
       if (failure) throw failure;
       try {
         await this.call("GET", "/v1/status", undefined, 1000);
         return;
-      } catch {
+      } catch (error) {
+        if (opening && ["ENOENT", "ECONNREFUSED"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+          if (!mayStart) throw error;
+          return this.connectOrStart(deadline);
+        }
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
     }
@@ -216,12 +219,8 @@ export class Runtime {
         },
         (response) => {
           const chunks: Buffer[] = [];
-          let bytes = 0;
           response.on("data", (chunk: Buffer) => {
-            bytes += chunk.length;
-            if (bytes > 64 * 1024 * 1024)
-              response.destroy(new Error("Runtime response exceeds its byte limit"));
-            else chunks.push(chunk);
+            chunks.push(chunk);
           });
           response.once("error", reject);
           response.once("end", () => {
