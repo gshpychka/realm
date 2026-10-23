@@ -68,7 +68,12 @@ export function RunSetup({
             key={job.id}
             job={job}
             bridge={bridge}
-            onViewResults={onViewResults}
+            onViewResults={() => {
+              // Close first: while the modal is open the rest of the page is inert, so focus
+              // that onViewResults moves would not land.
+              dialog.current?.close();
+              onViewResults();
+            }}
             onSetUpAnother={() => setSetAsideJobId(job.id)}
             onClose={onClose}
           />
