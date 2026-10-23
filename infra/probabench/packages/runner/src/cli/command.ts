@@ -1,5 +1,4 @@
-// The probabench command: flags, or guided setup in a terminal, then the plan,
-// its confirmation and its execution.
+// The probabench command: flags, then the plan, its confirmation and its execution.
 import { fileURLToPath } from "node:url";
 import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
@@ -18,7 +17,6 @@ import * as Schema from "effect/Schema";
 import { describePlan, InvalidOptions, resolvePlan, type SamplingOptions } from "../plan/plan";
 import { ALL_ALIASES, describeAliases, splitModels } from "../plan/series";
 import { executePlan } from "./execute";
-import { promptRunSetup } from "./setup";
 
 /**
  * The workspace's history file, which the web app serves at its site root. Resolved
@@ -58,13 +56,11 @@ const options = {
     ),
   ),
   trials: integerFlag("trials", TrialsPerStep, "a positive integer").pipe(
-    Options.optional,
-    Options.withDescription(
-      `Samples per target (default: ${DEFAULTS.trialsPerStep}; guided setup offers presets).`,
-    ),
+    Options.withDefault(DEFAULTS.trialsPerStep),
+    Options.withDescription(`Samples per target (default: ${DEFAULTS.trialsPerStep}).`),
   ),
   step: integerFlag("step", StepPercent, "from 1 to 100").pipe(
-    Options.optional,
+    Options.withDefault(DEFAULTS.stepPercent),
     Options.withDescription(
       `Target step from 1 to 100 percent (default: ${DEFAULTS.stepPercent}).`,
     ),
@@ -105,43 +101,26 @@ const options = {
   ),
 };
 
-type Flags = Command.Command.ParseConfig<typeof options>;
-
-/** Explicit flags win; guided setup asks a terminal without --model for the rest. */
-const resolveRequest = (flags: Flags, interactive: boolean) =>
+export const benchCommand = Command.make("probabench", options, (flags) =>
   Effect.gen(function* () {
-    const models = splitModels(Option.getOrElse(flags.model, () => ""));
-    const guided =
-      models.length === 0 && interactive
-        ? yield* promptRunSetup({
-            size: Option.isNone(flags.trials) && Option.isNone(flags.step),
-            reasoning: Option.isNone(flags.reasoning),
-          })
-        : undefined;
-    const sizing = guided?.sizing ?? DEFAULTS;
-    return {
-      models: guided?.models ?? models,
-      reasoning: Option.getOrElse(flags.reasoning, () => guided?.reasoning),
+    if (flags.list) return yield* Console.log(describeAliases());
+    const plan = yield* resolvePlan({
+      models: splitModels(Option.getOrElse(flags.model, () => "")),
+      reasoning: Option.getOrUndefined(flags.reasoning),
       options: {
-        trialsPerStep: Option.getOrElse(flags.trials, () => sizing.trialsPerStep),
-        stepPercent: Option.getOrElse(flags.step, () => sizing.stepPercent),
+        trialsPerStep: flags.trials,
+        stepPercent: flags.step,
         concurrency: flags.concurrency,
         maxTokens: flags.maxTokens,
       },
       out: flags.out,
-    };
-  });
-
-export const benchCommand = Command.make("probabench", options, (flags) =>
-  Effect.gen(function* () {
-    if (flags.list) return yield* Console.log(describeAliases());
-    // Prompts read their answers from stdin, which the dev server's runner lacks.
-    const interactive = process.stdin.isTTY === true;
-    const plan = yield* resolvePlan(yield* resolveRequest(flags, interactive));
+    });
     yield* Console.log(describePlan(plan));
     if (flags.dryRun) return;
     if (!flags.yes) {
-      if (!interactive) return yield* new InvalidOptions({ message: NON_TTY_MESSAGE });
+      // The prompt reads its answer from stdin, which the dev server's runner lacks.
+      if (process.stdin.isTTY !== true)
+        return yield* new InvalidOptions({ message: NON_TTY_MESSAGE });
       const confirmed = yield* Prompt.confirm({ message: "Run this plan?", initial: false });
       if (!confirmed) return yield* Console.log("Aborted.");
     }

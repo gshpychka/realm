@@ -10,7 +10,7 @@ import { ResultsStore } from "./store/results-store";
 
 /**
  * Node's FileSystem, Path and Terminal for the CLI and the store, and an HTTP client
- * for OpenRouter. Listing aliases, guided setup and dry runs never read the key.
+ * for OpenRouter. Listing aliases and dry runs never read the key.
  */
 const MainLive = Layer.mergeAll(ResultsStore.Default, NodeHttpClient.layer).pipe(
   Layer.provideMerge(NodeContext.layer),

@@ -63,7 +63,7 @@ describe("probabench command", () => {
     }),
   );
 
-  it.effect("asks for a model instead of starting guided setup", () =>
+  it.effect("asks for a model when none is given", () =>
     Effect.gen(function* () {
       expect(yield* invalidOptions([])).toBe(MISSING_MODEL_MESSAGE);
     }),

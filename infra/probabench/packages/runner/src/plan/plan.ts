@@ -11,7 +11,7 @@ export class InvalidOptions extends Data.TaggedError("InvalidOptions")<{
   readonly message: string;
 }> {}
 
-/** Validated by the CLI's flag schemas and prompt bounds; code past them trusts these numbers. */
+/** Validated by the CLI's flag schemas; code past them trusts these numbers. */
 export interface SamplingOptions {
   readonly trialsPerStep: number;
   readonly stepPercent: number;
@@ -29,7 +29,7 @@ export interface BenchPlan {
 }
 
 export const MISSING_MODEL_MESSAGE =
-  "Choose a model with --model vendor/model (or a listed alias). Run --list to see aliases, or run without --model in an interactive terminal for guided setup.";
+  "Choose a model with --model vendor/model (or a listed alias). Run --list to see aliases.";
 
 export const resolvePlan = (request: {
   /** Tokens from splitModels. */
