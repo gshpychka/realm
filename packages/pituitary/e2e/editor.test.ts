@@ -27,6 +27,17 @@ after(async () => {
   await closeAll();
 });
 
+test("the first prompt sends while the initial snapshot is still arriving", async () => {
+  const app = await launch({ env: { PITUITARY_FIXTURE_PENDING_SNAPSHOT: "1" } });
+  try {
+    assert.equal(app.profile()["session-loaded"], undefined);
+    await app.terminal.submit("first prompt");
+    await app.terminal.waitText("You said: first prompt", { timeout: 3000 });
+  } finally {
+    await app.close();
+  }
+});
+
 test("ctrl+j breaks the line and enter sends both lines as one prompt", async () => {
   const app = await launch({ scenario: "hello" });
   await app.terminal.type("first line");

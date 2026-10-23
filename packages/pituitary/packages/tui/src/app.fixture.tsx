@@ -31,6 +31,23 @@ const client = await connectConversation({
   taskId: "solo",
   control: !archived,
 });
+// Exercise input arriving before the initial snapshot, independently of machine speed.
+if (process.env.PITUITARY_FIXTURE_PENDING_SNAPSHOT === "1") {
+  let release!: () => void;
+  const firstPrompt = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const snapshot = client.getSnapshot.bind(client);
+  const prompt = client.prompt.bind(client);
+  client.getSnapshot = async () => {
+    await firstPrompt;
+    return snapshot();
+  };
+  client.prompt = (...args) => {
+    release();
+    return prompt(...args);
+  };
+}
 profile.mark("agent-spawned");
 prewarm();
 const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });
