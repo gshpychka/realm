@@ -7,10 +7,10 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/TestClock";
 import type { SamplingOptions } from "../plan/plan";
-import type { BenchTarget } from "../plan/targets";
+import type { ModelSeries } from "../plan/series";
 import { sweep } from "./sweep";
 
-const target: BenchTarget = { id: "vendor/model", slug: "vendor/model", reasoning: "off" };
+const series: ModelSeries = { id: "vendor/model", slug: "vendor/model", reasoning: "off" };
 /** One sample at 0% and one at 100%. */
 const twoSamples: SamplingOptions = {
   trialsPerStep: 1,
@@ -49,15 +49,15 @@ describe("sweep", () => {
       ),
     );
     return Effect.gen(function* () {
-      const run = yield* sweep(target, {
+      const run = yield* sweep(series, {
         trialsPerStep: 5,
         stepPercent: 30,
         concurrency: 2,
         maxTokens: 16,
       }).pipe(Effect.provide(model));
       expect(run).toMatchObject({
-        model: target.id,
-        modelSlug: target.slug,
+        model: series.id,
+        modelSlug: series.slug,
         reasoning: "off",
         trialsPerStep: 5,
         stepPercent: 30,
@@ -81,7 +81,7 @@ describe("sweep", () => {
   ] as const) {
     it.effect(`records the reply ${JSON.stringify(reply)} as ${JSON.stringify(outcome)}`, () =>
       Effect.gen(function* () {
-        const run = yield* sweep(target, twoSamples).pipe(
+        const run = yield* sweep(series, twoSamples).pipe(
           Effect.provide(fakeModel(() => Effect.succeed(reply))),
         );
         expect(run.points.map((point) => point.outcomes)).toEqual([[outcome], [outcome]]);
@@ -97,7 +97,7 @@ describe("sweep", () => {
       }).pipe(Effect.andThen(Effect.never)),
     );
     return Effect.gen(function* () {
-      const fiber = yield* Effect.fork(Effect.flip(sweep(target, twoSamples)));
+      const fiber = yield* Effect.fork(Effect.flip(sweep(series, twoSamples)));
       yield* TestClock.adjust("15 minutes");
       const error = yield* Fiber.join(fiber);
       expect(error.cause._tag).toBe("TimeoutException");

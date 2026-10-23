@@ -10,7 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { describePlan, InvalidOptions, resolvePlan, type SamplingOptions } from "../plan/plan";
-import { ALL_ALIASES, describeAliases, splitModels } from "../plan/targets";
+import { ALL_ALIASES, describeAliases, splitModels } from "../plan/series";
 import { executePlan } from "./execute";
 import { promptRunSetup } from "./setup";
 
@@ -53,13 +53,13 @@ const options = {
   trials: integerFlag("trials", TrialsPerStep, "a positive integer").pipe(
     Options.optional,
     Options.withDescription(
-      `Samples per probability (default: ${DEFAULTS.trialsPerStep}; guided setup offers presets).`,
+      `Samples per target (default: ${DEFAULTS.trialsPerStep}; guided setup offers presets).`,
     ),
   ),
   step: integerFlag("step", StepPercent, "from 1 to 100").pipe(
     Options.optional,
     Options.withDescription(
-      `Probability step from 1 to 100 percent (default: ${DEFAULTS.stepPercent}).`,
+      `Target step from 1 to 100 percent (default: ${DEFAULTS.stepPercent}).`,
     ),
   ),
   maxTokens: integerFlag("max-tokens", PositiveInt, "a positive integer").pipe(

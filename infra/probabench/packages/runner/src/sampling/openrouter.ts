@@ -1,5 +1,5 @@
 // OpenRouter as the sampling LanguageModel: one client built from the API key,
-// and per target a model layer that fixes its slug, reasoning and output ceiling.
+// and per series a model layer that fixes its slug, reasoning and output ceiling.
 import type * as LanguageModel from "@effect/ai/LanguageModel";
 import * as OpenRouterClient from "@effect/ai-openrouter/OpenRouterClient";
 import * as OpenRouterLanguageModel from "@effect/ai-openrouter/OpenRouterLanguageModel";
@@ -8,7 +8,7 @@ import * as Config from "effect/Config";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { BenchTarget } from "../plan/targets";
+import type { ModelSeries } from "../plan/series";
 
 export class MissingApiKey extends Data.TaggedError("MissingApiKey") {
   override get message() {
@@ -36,12 +36,12 @@ type ModelConfig = Omit<OpenRouterLanguageModel.Config.Service, "model" | "reaso
 };
 
 /** The provider's default sampling, an explicit reasoning mode and a bounded output. */
-const modelConfig = ({ reasoning }: BenchTarget, maxTokens: number): ModelConfig =>
+const modelConfig = ({ reasoning }: ModelSeries, maxTokens: number): ModelConfig =>
   reasoning === "off"
     ? { max_tokens: NO_REASONING_MAX_TOKENS, reasoning: { enabled: false } }
     : { max_tokens: maxTokens, reasoning: { effort: reasoning } };
 
-/** The client every target's model shares; building it reads the key from the environment. */
+/** The client every series' model shares; building it reads the key from the environment. */
 export const openrouterClientLayer: Layer.Layer<
   OpenRouterClient.OpenRouterClient,
   MissingApiKey,
@@ -54,7 +54,7 @@ export const openrouterClientLayer: Layer.Layer<
 );
 
 export const openrouterModelLayer = (
-  target: BenchTarget,
+  series: ModelSeries,
   maxTokens: number,
 ): Layer.Layer<LanguageModel.LanguageModel, never, OpenRouterClient.OpenRouterClient> =>
-  OpenRouterLanguageModel.layer({ model: target.slug, config: modelConfig(target, maxTokens) });
+  OpenRouterLanguageModel.layer({ model: series.slug, config: modelConfig(series, maxTokens) });

@@ -183,7 +183,7 @@ export function SetupForm({
   return (
     <>
       <p className="dialog-intro">
-        Choose a model and a sampling depth. Every completed run is saved alongside earlier runs.
+        Choose a model and a sample budget. Every completed run is saved alongside earlier runs.
       </p>
       <form
         onSubmit={(event) => {
@@ -228,7 +228,7 @@ export function SetupForm({
           </datalist>
           <p className="helper">Use any OpenRouter model ID.</p>
           <fieldset className="preset-fieldset">
-            <legend className="field-label">Sampling depth</legend>
+            <legend className="field-label">Sample budget</legend>
             <div className="preset-grid">
               {SAMPLING_PRESETS.map((preset) => (
                 <button

@@ -3,17 +3,17 @@ import { describe, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import type { BenchPlan } from "../plan/plan";
-import type { BenchTarget } from "../plan/targets";
+import type { ModelSeries } from "../plan/series";
 import { chatEndpoint } from "../sampling/testing";
 import { ResultsStore } from "../store/results-store";
 import { withResultsStore } from "../store/testing";
 import { executePlan } from "./execute";
 
-const target = (slug: string): BenchTarget => ({ id: slug, slug, reasoning: "off" });
+const seriesFor = (slug: string): ModelSeries => ({ id: slug, slug, reasoning: "off" });
 
 /** One sample at 0% and one at 100% for each slug, appended to `out`. */
 const planFor = (out: string, first: string, ...rest: string[]): BenchPlan => ({
-  targets: [target(first), ...rest.map(target)],
+  series: [seriesFor(first), ...rest.map(seriesFor)],
   options: { trialsPerStep: 1, stepPercent: 100, concurrency: 1, maxTokens: 4096 },
   out,
 });
@@ -24,7 +24,7 @@ const withKey = (key?: string) =>
   );
 
 describe("executePlan", () => {
-  it.effect("appends a run per target through the real adapter, keeping earlier runs", () =>
+  it.effect("appends a run per series through the real adapter, keeping earlier runs", () =>
     withResultsStore((path) => {
       const endpoint = chatEndpoint();
       return Effect.gen(function* () {
@@ -38,7 +38,7 @@ describe("executePlan", () => {
     }),
   );
 
-  it.effect("keeps completed runs when a later target fails", () =>
+  it.effect("keeps completed runs when a later series fails", () =>
     withResultsStore((path) => {
       const endpoint = chatEndpoint({ unauthorized: ["vendor/b"] });
       return Effect.gen(function* () {

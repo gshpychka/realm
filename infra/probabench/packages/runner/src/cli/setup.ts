@@ -11,7 +11,7 @@ import {
 } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 import type { SamplingOptions } from "../plan/plan";
-import { ALL_ALIASES, selectTargets, splitModels } from "../plan/targets";
+import { ALL_ALIASES, selectSeries, splitModels } from "../plan/series";
 
 type Sizing = Pick<SamplingOptions, "trialsPerStep" | "stepPercent">;
 
@@ -38,8 +38,8 @@ const sizeChoices: ReadonlyArray<Prompt.Prompt.SelectChoice<Sizing | "custom">> 
 const promptCustomModels = Prompt.text({
   message: "OpenRouter model ID, vendor/model (comma-separated for several)",
   validate: (list) => {
-    const { targets, unknown } = selectTargets(splitModels(list));
-    return targets.length > 0 && unknown.length === 0
+    const { series, unknown } = selectSeries(splitModels(list));
+    return series.length > 0 && unknown.length === 0
       ? Effect.succeed(list)
       : Effect.fail("Enter a listed alias or an OpenRouter model ID (vendor/model).");
   },

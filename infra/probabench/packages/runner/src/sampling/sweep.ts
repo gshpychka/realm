@@ -1,4 +1,4 @@
-// One target's calibration sweep: at each probability on the grid, ask the model
+// One series' calibration sweep: at each probability on the grid, ask the model
 // for trialsPerStep bits and record every reply.
 import { randomUUID } from "node:crypto";
 import * as LanguageModel from "@effect/ai/LanguageModel";
@@ -16,7 +16,7 @@ import * as Console from "effect/Console";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import type { SamplingOptions } from "../plan/plan";
-import type { BenchTarget } from "../plan/targets";
+import type { ModelSeries } from "../plan/series";
 import { type ProviderFailure, withProviderRetry } from "./retry";
 
 /** A sample whose request failed for good. An unparseable reply is an Outcome, not an error. */
@@ -46,7 +46,7 @@ const parseOutcome = (reply: string): Outcome => {
 /**
  * One bit requested at probability x. Never sets temperature, top_p or top_k: the
  * model's native sampling is what is measured. The provided LanguageModel fixes the
- * target's slug and reasoning.
+ * series' slug and reasoning.
  */
 const sampleBit = (x: Probability): Effect.Effect<Outcome, LlmError, LanguageModel.LanguageModel> =>
   LanguageModel.generateText({ prompt: prompt(x) }).pipe(
@@ -56,9 +56,9 @@ const sampleBit = (x: Probability): Effect.Effect<Outcome, LlmError, LanguageMod
     Effect.mapError((cause) => new LlmError({ cause })),
   );
 
-/** Samples the target's whole grid into a Run, printing a progress line per finished point. */
+/** Samples the series' whole grid into a Run, printing a progress line per finished point. */
 export const sweep = (
-  target: BenchTarget,
+  series: ModelSeries,
   options: SamplingOptions,
 ): Effect.Effect<Run, LlmError, LanguageModel.LanguageModel> =>
   Effect.gen(function* () {
@@ -72,7 +72,7 @@ export const sweep = (
         Effect.tap((point) =>
           Console.log(
             formatPointProgress({
-              model: target.id,
+              model: series.id,
               point,
               completed: index + 1,
               total: grid.length,
@@ -83,9 +83,9 @@ export const sweep = (
     );
     return {
       id: randomUUID(),
-      model: target.id,
-      modelSlug: target.slug,
-      reasoning: target.reasoning,
+      model: series.id,
+      modelSlug: series.slug,
+      reasoning: series.reasoning,
       trialsPerStep: options.trialsPerStep,
       stepPercent: options.stepPercent,
       startedAt,

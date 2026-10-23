@@ -35,13 +35,13 @@ interface PlanBudget {
   readonly attempts: number;
 }
 
-/** What a plan costs across `targets` models. Expects an already validated plan. */
+/** What a plan costs for `models` model series. Expects an already validated plan. */
 export const planBudget = (
   plan: { readonly trialsPerStep: number; readonly stepPercent: number },
-  targets = 1,
+  models = 1,
 ): PlanBudget => {
   const points = probabilityGrid(plan.stepPercent).length;
-  const samples = targets * points * plan.trialsPerStep;
+  const samples = models * points * plan.trialsPerStep;
   return { points, samples, attempts: samples * (MAX_RETRIES + 1) };
 };
 

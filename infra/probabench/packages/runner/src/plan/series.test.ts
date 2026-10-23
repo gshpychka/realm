@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { MODEL_ALIASES } from "@probabench/domain";
-import { ALL_ALIASES, describeAliases, selectTargets, splitModels } from "./targets";
+import { ALL_ALIASES, describeAliases, selectSeries, splitModels } from "./series";
 
 describe("OpenRouter model selection", () => {
   it("lists aliases with their canonical slugs", () => {
@@ -12,17 +12,17 @@ describe("OpenRouter model selection", () => {
   });
 
   it("expands all aliases with distinct reasoning variants", () => {
-    const selection = selectTargets([ALL_ALIASES]);
-    expect(selection.targets).toHaveLength(MODEL_ALIASES.length);
+    const selection = selectSeries([ALL_ALIASES]);
+    expect(selection.series).toHaveLength(MODEL_ALIASES.length);
     expect(selection.unknown).toEqual([]);
-    expect(selection.targets.map((target) => target.id)).toContain(
+    expect(selection.series.map((entry) => entry.id)).toContain(
       "anthropic/claude-sonnet-4.5 [reasoning=high]",
     );
   });
 
   it("accepts arbitrary OpenRouter slugs and preserves request order", () => {
-    const selection = selectTargets(["custom-vendor/new-model:free", "claude-haiku-4.5"]);
-    expect(selection.targets.map((target) => target.id)).toEqual([
+    const selection = selectSeries(["custom-vendor/new-model:free", "claude-haiku-4.5"]);
+    expect(selection.series.map((entry) => entry.id)).toEqual([
       "custom-vendor/new-model:free",
       "anthropic/claude-haiku-4.5",
     ]);
@@ -30,26 +30,24 @@ describe("OpenRouter model selection", () => {
   });
 
   it("dedupes aliases and model IDs resolving to the same series", () => {
-    expect(selectTargets(["claude-haiku-4.5", "anthropic/claude-haiku-4.5"]).targets).toHaveLength(
-      1,
-    );
-    expect(selectTargets([ALL_ALIASES, "gpt-5-mini-low"]).targets).toEqual(
-      selectTargets([ALL_ALIASES]).targets,
+    expect(selectSeries(["claude-haiku-4.5", "anthropic/claude-haiku-4.5"]).series).toHaveLength(1);
+    expect(selectSeries([ALL_ALIASES, "gpt-5-mini-low"]).series).toEqual(
+      selectSeries([ALL_ALIASES]).series,
     );
   });
 
   it("defaults slug reasoning off and preserves a named alias mode", () => {
-    expect(selectTargets(["openai/gpt-5-mini"]).targets[0]?.reasoning).toBe("off");
-    expect(selectTargets(["gpt-5-mini-low"]).targets[0]?.reasoning).toBe("low");
+    expect(selectSeries(["openai/gpt-5-mini"]).series[0]?.reasoning).toBe("off");
+    expect(selectSeries(["gpt-5-mini-low"]).series[0]?.reasoning).toBe("low");
   });
 
   it("can override aliases or slugs with an explicit reasoning mode", () => {
-    expect(selectTargets(["claude-sonnet-4.5-high"], "off").targets[0]).toEqual({
+    expect(selectSeries(["claude-sonnet-4.5-high"], "off").series[0]).toEqual({
       id: "anthropic/claude-sonnet-4.5",
       slug: "anthropic/claude-sonnet-4.5",
       reasoning: "off",
     });
-    expect(selectTargets(["custom/model"], "high").targets[0]).toEqual({
+    expect(selectSeries(["custom/model"], "high").series[0]).toEqual({
       id: "custom/model [reasoning=high]",
       slug: "custom/model",
       reasoning: "high",
@@ -57,14 +55,14 @@ describe("OpenRouter model selection", () => {
   });
 
   it("reports unknown aliases and malformed model IDs before execution", () => {
-    const selection = selectTargets([
+    const selection = selectSeries([
       "claude-haiku-4.5",
       "typo",
       "vendor/",
       "/model",
       "vendor/model with spaces",
     ]);
-    expect(selection.targets).toHaveLength(1);
+    expect(selection.series).toHaveLength(1);
     expect(selection.unknown).toEqual(["typo", "vendor/", "/model", "vendor/model with spaces"]);
   });
 });

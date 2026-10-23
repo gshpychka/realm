@@ -21,8 +21,8 @@ bun run dev
 `bun run dev` serves the notebook from Vite on 127.0.0.1 with the key decrypted
 through `sops exec-env`. Its dev bridge lets the page start a benchmark: it
 accepts same-origin requests only, runs one benchmark at a time by spawning the
-CLI, and limits a browser run to one model, 10,000 samples per target, 100,000
-samples in total and 50 concurrent requests (5 by default).
+CLI, and limits a browser run to one model, 10,000 samples per target
+probability, 100,000 samples in total and 50 concurrent requests (5 by default).
 `bun run dev:alchemy` runs the same Vite server under Alchemy's dev runtime,
 with local state; it needs Docker for Alchemy's AWS emulator.
 

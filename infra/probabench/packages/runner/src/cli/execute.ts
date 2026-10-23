@@ -1,5 +1,5 @@
 // Executes a confirmed plan. The OpenRouter key and the history file are checked
-// before any paid request; each target's run is then appended as soon as it
+// before any paid request; each series' run is then appended as soon as it
 // completes, so a later failure keeps every completed run.
 import type * as HttpClient from "@effect/platform/HttpClient";
 import { calibrationErrorText, type Run, summarizeRun } from "@probabench/domain";
@@ -23,7 +23,7 @@ const describeCompletedRun = (run: Run, out: string): string => {
 };
 
 export const executePlan = ({
-  targets,
+  series,
   options,
   out,
 }: BenchPlan): Effect.Effect<
@@ -34,10 +34,10 @@ export const executePlan = ({
   Effect.gen(function* () {
     const store = yield* ResultsStore;
     yield* store.prepare(out);
-    for (const target of targets) {
-      yield* Console.log(`[${target.id}] starting sweep`);
-      const run = yield* sweep(target, options).pipe(
-        Effect.provide(openrouterModelLayer(target, options.maxTokens)),
+    for (const entry of series) {
+      yield* Console.log(`[${entry.id}] starting sweep`);
+      const run = yield* sweep(entry, options).pipe(
+        Effect.provide(openrouterModelLayer(entry, options.maxTokens)),
       );
       yield* store.append(out, run);
       yield* Console.log(describeCompletedRun(run, out));

@@ -1,10 +1,10 @@
-// A benchmark plan: the resolved targets, sampling options and history file that
-// the CLI prints, confirms and executes.
+// A benchmark plan: the resolved model series, sampling options and history file
+// that the CLI prints, confirms and executes.
 import { planBudget, type ReasoningMode } from "@probabench/domain";
 import { isNonEmptyReadonlyArray, type NonEmptyReadonlyArray } from "effect/Array";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import { type BenchTarget, selectTargets } from "./targets";
+import { type ModelSeries, selectSeries } from "./series";
 
 /** A rejected run request, raised before any credentials are read or samples drawn. */
 export class InvalidOptions extends Data.TaggedError("InvalidOptions")<{
@@ -17,12 +17,12 @@ export interface SamplingOptions {
   readonly stepPercent: number;
   /** Most samples in flight at once. */
   readonly concurrency: number;
-  /** Output ceiling for targets that reason. */
+  /** Output ceiling for series that reason. */
   readonly maxTokens: number;
 }
 
 export interface BenchPlan {
-  readonly targets: NonEmptyReadonlyArray<BenchTarget>;
+  readonly series: NonEmptyReadonlyArray<ModelSeries>;
   readonly options: SamplingOptions;
   /** History file each completed run is appended to. */
   readonly out: string;
@@ -34,12 +34,12 @@ export const MISSING_MODEL_MESSAGE =
 export const resolvePlan = (request: {
   /** Tokens from splitModels. */
   readonly models: readonly string[];
-  /** Overrides every target's reasoning mode. */
+  /** Overrides every series' reasoning mode. */
   readonly reasoning: ReasoningMode | undefined;
   readonly options: SamplingOptions;
   readonly out: string;
 }): Effect.Effect<BenchPlan, InvalidOptions> => {
-  const { targets, unknown } = selectTargets(request.models, request.reasoning);
+  const { series, unknown } = selectSeries(request.models, request.reasoning);
   if (unknown.length > 0) {
     return Effect.fail(
       new InvalidOptions({
@@ -47,17 +47,17 @@ export const resolvePlan = (request: {
       }),
     );
   }
-  if (!isNonEmptyReadonlyArray(targets)) {
+  if (!isNonEmptyReadonlyArray(series)) {
     return Effect.fail(new InvalidOptions({ message: MISSING_MODEL_MESSAGE }));
   }
-  return Effect.succeed({ targets, options: request.options, out: request.out });
+  return Effect.succeed({ series, options: request.options, out: request.out });
 };
 
-export const describePlan = ({ targets, options }: BenchPlan): string => {
-  const { samples, attempts } = planBudget(options, targets.length);
+export const describePlan = ({ series, options }: BenchPlan): string => {
+  const { samples, attempts } = planBudget(options, series.length);
   return [
-    `Targets (${targets.length}):`,
-    ...targets.map((target) => `  ${target.slug} · reasoning ${target.reasoning}`),
+    `Models (${series.length}):`,
+    ...series.map((entry) => `  ${entry.slug} · reasoning ${entry.reasoning}`),
     `Projected samples: ${samples}`,
     `Provider attempts with retries: up to ${attempts}`,
   ].join("\n");
