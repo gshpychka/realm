@@ -60,7 +60,7 @@ export function RunSetup({
           </div>
           <button
             type="button"
-            className="icon-button"
+            className="dialog-close"
             aria-label="Close benchmark setup"
             onClick={onClose}
           >

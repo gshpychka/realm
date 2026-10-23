@@ -82,7 +82,7 @@ export function CalibrationPage({
   return (
     <section>
       <h2 className="sr-only">Calibration</h2>
-      <div className="chart-layout">
+      <div className="calibration-layout">
         <section className="card chart-card">
           <header className="chart-heading">
             <div>
@@ -101,7 +101,7 @@ export function CalibrationPage({
           <CalibrationChart runs={shown} styles={styles} intervals={view.intervals} />
         </section>
         <aside className="model-panel">
-          <div className="panel-heading">
+          <div className="model-panel-heading">
             <h3>Models</h3>
             <button
               type="button"

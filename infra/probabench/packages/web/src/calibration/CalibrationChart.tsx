@@ -40,7 +40,7 @@ function CalibrationTooltip({
   if (!active || hits.length === 0) return null;
   return (
     <div className="chart-tooltip">
-      <p className="tooltip-target">
+      <p className="tooltip-heading">
         Target <strong>{percent(x)}</strong>
       </p>
       {hits.map(({ run, style, point }) => (
@@ -167,7 +167,7 @@ export function CalibrationChart({
         </ResponsiveContainer>
         {empty ? <PlotEmpty {...empty} /> : null}
       </div>
-      <div className="chart-caption">
+      <div className="calibration-caption">
         <span className="reference-key">
           <span aria-hidden="true" />
           Calibrated sampling (y = x)

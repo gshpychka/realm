@@ -86,13 +86,13 @@
   box-shadow: 0 12px 36px #0004;
   font-size: 13px;
 }
-.tooltip-target {
+.tooltip-heading {
   color: var(--muted);
   display: flex;
   gap: 30px;
   justify-content: space-between;
 }
-.tooltip-target strong {
+.tooltip-heading strong {
   color: var(--text);
 }
 .tooltip-series {

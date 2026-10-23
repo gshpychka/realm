@@ -44,6 +44,21 @@ body:has(.run-dialog[open]) {
     font-size: var(--title-md);
   }
 }
+.dialog-close {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+.dialog-close:hover {
+  color: var(--text);
+  background: var(--line);
+}
 .run-dialog .text-button {
   @media (max-width: 650px) {
     min-height: 40px;
@@ -116,11 +131,11 @@ body:has(.run-dialog[open]) {
 .setup-fields {
   display: contents;
 }
-.run-dialog input[name="model"] {
+.model-input {
   font-family: var(--mono);
 }
 /* Chrome draws the datalist marker below centre otherwise. */
-.run-dialog input[name="model"]::-webkit-calendar-picker-indicator {
+.model-input::-webkit-calendar-picker-indicator {
   line-height: 1;
 }
 .preset-fieldset {
@@ -289,7 +304,7 @@ body:has(.run-dialog[open]) {
   color: var(--text-3);
   margin-top: 7px;
 }
-.run-action {
+.setup-submit {
   display: flex;
   gap: 25px;
   align-items: center;
@@ -302,7 +317,7 @@ body:has(.run-dialog[open]) {
     gap: 15px;
   }
 }
-.run-action > p {
+.setup-submit > p {
   max-width: 300px;
   font-size: 12px;
   line-height: 1.8;

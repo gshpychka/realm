@@ -104,7 +104,7 @@ export function SetupForm({
           </label>
           <input
             id="benchmark-model"
-            name="model"
+            className="model-input"
             type="text"
             list="starter-models"
             value={model}
@@ -247,7 +247,7 @@ export function SetupForm({
           </div>
         ) : null}
         <FormError message={startError} />
-        <div className="run-action">
+        <div className="setup-submit">
           <p>Your key stays on the dev server. OpenRouter charges for generated tokens.</p>
           <button type="submit" className="button primary" disabled={!canSubmit}>
             {submitLabel(connection.kind, bridge.pending)}

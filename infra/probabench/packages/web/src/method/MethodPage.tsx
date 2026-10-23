@@ -3,7 +3,7 @@ import "./method.css";
 export function MethodPage() {
   return (
     <section>
-      <header className="section-heading">
+      <header className="method-heading">
         <div>
           <p className="eyebrow">Behind the notebook</p>
           <h2>

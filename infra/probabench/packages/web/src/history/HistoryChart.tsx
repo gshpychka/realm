@@ -38,7 +38,7 @@ function HistoryTooltip({
   if (!active || !first) return null;
   return (
     <div className="chart-tooltip">
-      <p className="tooltip-target">
+      <p className="tooltip-heading">
         <time dateTime={first.run.startedAt}>{timestamp(first.run.startedAt)}</time>
       </p>
       {atTime.map(({ run, summary }) => (
