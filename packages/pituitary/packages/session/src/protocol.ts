@@ -108,20 +108,6 @@ export type CommandResult<T extends SessionCommand["type"]> = T extends keyof Co
   ? CommandResults[T]
   : undefined;
 
-/** Dialogs are operator interactions owned by the terminal; they never suspend a model turn. */
-export type DialogRequest = { type: "dialog"; id: string; title: string } & (
-  | { method: "select"; options: string[] }
-  | { method: "confirm"; message: string }
-  | { method: "input"; placeholder?: string }
-  | { method: "editor"; prefill?: string }
-);
-export interface DialogResponse {
-  type: "dialog_response";
-  id: string;
-  value?: string;
-  confirmed?: boolean;
-  cancelled?: boolean;
-}
 export function contentToText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -166,9 +152,7 @@ export function scrub<T>(value: T): T {
   if (typeof value === "string") return plain(value) as T;
   if (Array.isArray(value)) return value.map(scrub) as T;
   if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) out[key] = scrub(entry);
-    return out as T;
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, scrub(entry)])) as T;
   }
   return value;
 }
