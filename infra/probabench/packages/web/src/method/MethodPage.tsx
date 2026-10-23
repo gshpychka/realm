@@ -42,7 +42,7 @@ export function MethodPage() {
             Plot the fraction of valid replies that are ones. A calibrated sampler follows the
             diagonal: a 30% target produces about 30% ones.
           </p>
-          <div className="method-equation">observed ≈ target</div>
+          <div className="method-equation compact">observed ≈ target</div>
         </article>
       </div>
       <div className="method-notes">

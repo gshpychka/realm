@@ -91,11 +91,7 @@ export function App() {
           className="text-button"
           onClick={() => {
             update({ tab: "method" });
-            document.getElementById(PANEL_ID)?.scrollIntoView({
-              behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-                ? "instant"
-                : "smooth",
-            });
+            document.getElementById(PANEL_ID)?.scrollIntoView();
           }}
         >
           About the method <span aria-hidden="true">↗</span>

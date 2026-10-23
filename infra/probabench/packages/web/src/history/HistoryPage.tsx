@@ -9,6 +9,9 @@ import { type ModelStyle, styleOf } from "../common/palette";
 import { inspectedRun, runsByDay, visibleHistory, withComparison } from "../common/run-history";
 import { RunDetail } from "./RunDetail";
 
+// index.css stacks the inspector above the timeline at this width; keep the two in sync.
+const STACKED_LAYOUT = "(max-width: 900px)";
+
 const HistoryChart = lazy(() =>
   import("./HistoryChart").then((module) => ({ default: module.HistoryChart })),
 );
@@ -29,14 +32,7 @@ export function HistoryPage({
   const inspector = useRef<HTMLElement>(null);
   const inspect = (run: Run) => {
     update({ runId: run.id });
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      inspector.current?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "instant"
-          : "smooth",
-        block: "start",
-      });
-    }
+    if (window.matchMedia(STACKED_LAYOUT).matches) inspector.current?.scrollIntoView();
   };
   const compare = (run: Run) => {
     update({
