@@ -53,11 +53,11 @@ test("a remote agent shows its own workspace and never offers the operator's fil
     assert.equal(existsSync(ghCalls), false, "remote UI invoked the operator's GitHub CLI");
     await app.terminal.submit("/name reviewed remotely");
     await app.terminal.waitText("reviewed remotely");
-    await app.terminal.type("/co");
+    await app.terminal.type("/");
     await app.terminal.waitText("/compact [instructions]");
     const commands = await app.capture("remote-workspace-commands");
     assert.match(commands, /\/copy/);
-    assert.doesNotMatch(commands, /\/scoped-models/);
+    assert.doesNotMatch(commands, /\/model/);
   } finally {
     await app?.close();
     rmSync(root, { recursive: true, force: true });

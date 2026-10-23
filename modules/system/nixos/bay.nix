@@ -618,7 +618,11 @@ in
     systemd.services.bay-server = {
       description = "Bay server";
       wantedBy = [ "multi-user.target" ];
-      after = [ "incus.service" ];
+      after = [
+        "incus.service"
+        "bay-base.service"
+      ];
+      requires = [ "bay-base.service" ];
       wants = [ "incus.service" ];
       path = [ pkgs.git ];
       serviceConfig = {

@@ -18,16 +18,11 @@ let
         };
         programs.pituitary = {
           enable = true;
+          stateDirectory = "/home/check/.local/state/pituitary-runs";
           nvimPackage = pkgs.neovim-unwrapped;
           ghPackage = pkgs.gh;
-          agent = {
-            command = "/opt/pi/bin/pi";
-            args = [
-              "--no-extensions"
-              "--thinking"
-              "high"
-            ];
-          };
+          model = "anthropic/example-model";
+          runtimeSocket = "/home/check/.cache/pituitary/remote.sock";
           glyphs = "plain";
           animations = false;
           fire = {
@@ -76,8 +71,8 @@ pkgs.runCommand "pituitary-home-manager-check" { nativeBuildInputs = [ pkgs.jq ]
   expect() {
     grep -qF -- "$1" "$wrapper" || { echo "wrapper lacks: $1"; cat "$wrapper"; exit 1; }
   }
-  expect "PI_AGENT_CMD='/opt/pi/bin/pi'"
-  expect "PI_AGENT_ARGS='--no-extensions --thinking high'"
+  expect "PITUITARY_MODEL='anthropic/example-model'"
+  expect "PITUITARY_RUNTIME_SOCKET='/home/check/.cache/pituitary/remote.sock'"
   expect "PITUITARY_NVIM='${pkgs.neovim-unwrapped}/bin/nvim'"
   expect "PITUITARY_GH='${pkgs.gh}/bin/gh'"
   expect "PITUITARY_PLAIN_GLYPHS='1'"
@@ -103,6 +98,9 @@ pkgs.runCommand "pituitary-home-manager-check" { nativeBuildInputs = [ pkgs.jq ]
   expect "PITUITARY_PROFILE='/tmp/pituitary.profile'"
   expect "PITUITARY_KEYBINDINGS='/home/check/.config/pituitary/keybindings.json'"
   expect "PITUITARY_CHECK='set'"
+  expect "PITUITARY_STATE_DIR='/home/check/.local/state/pituitary-runs'"
+
+  "$wrapper" run --help >/dev/null
 
   bindings=${config.home-files}/.config/pituitary/keybindings.json
   test "$(jq -r '."app.model.select"' "$bindings")" = "alt+m"

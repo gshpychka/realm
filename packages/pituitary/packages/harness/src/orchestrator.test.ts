@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import type { AgentCatalog } from "./catalog.ts";
+import { nativeConversation } from "./identity.ts";
 import type { RunDetail } from "./model.ts";
 import { Orchestrator } from "./orchestrator.ts";
 
@@ -41,7 +42,10 @@ function declaration(name: string, delegatesTo: string[] = []) {
     machineRevision: "a".repeat(64),
   };
 }
-async function fixture(responses: Parameters<ReturnType<typeof fauxProvider>["setResponses"]>[0]) {
+async function fixture(
+  responses: Parameters<ReturnType<typeof fauxProvider>["setResponses"]>[0],
+  beforeStart?: (program: string) => Promise<void>,
+) {
   const directory = mkdtempSync(join(tmpdir(), "pituitary-domain-")),
     socket = join(directory, "bay.sock");
   const catalog: AgentCatalog = {
@@ -82,6 +86,7 @@ async function fixture(responses: Parameters<ReturnType<typeof fauxProvider>["se
           machineRevision: agent.machineRevision,
         };
         sessions.set(name, session);
+        await beforeStart?.(body.program);
         response.end(JSON.stringify(session));
         return;
       }
@@ -250,6 +255,12 @@ test("delegation uses bounded native ownership; revising a child withdraws its a
     child = done.tasks.find((task) => task.parentTaskId)!;
   expect(done.reports).toHaveLength(2);
   const reportId = parent.reportId;
+  for (const dependency of [child, parent]) {
+    await expect(
+      f.domain.revise(child.id, child.revision, { dependsOn: [dependency.id] }, `cycle-${dependency.id}`),
+    ).rejects.toThrow("invalidate a selected dependency");
+  }
+  expect((await f.domain.inspect(run.id)).tasks.find((task) => task.id === child.id)?.revision).toBe(1);
   await f.domain.revise(child.id, child.revision, { objective: "Child objective revised" }, "revise-child");
   const revised = await f.domain.inspect(run.id),
     withdrawn = revised.tasks.find((task) => task.id === parent.id)!;
@@ -373,4 +384,72 @@ test("a fresh parent attempt receives its own child grant while all task history
   expect(second.tasks.filter((task) => task.parentTaskId === first.run.rootTaskId)).toHaveLength(2);
   expect(second.tasks.filter((task) => task.status === "superseded")).toHaveLength(1);
   expect(second.reports).toHaveLength(4);
+});
+
+test("a queued agent message cannot cross a recipient revision", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let readerStarts = 0;
+  const f = await fixture(
+    Array.from({ length: 20 }, () => async (transcript) => {
+      const last = transcript.messages.at(-1),
+        first = transcript.messages.find((message) => message.role === "user");
+      if (JSON.stringify(first).includes("Recipient objective"))
+        return fauxAssistantMessage(fauxToolCall("ask", { question: "Current revision?" }), {
+          stopReason: "toolUse",
+        });
+      if (last?.role === "toolResult" && last.toolName === "delegate") {
+        const result = JSON.parse(last.content.find((part) => part.type === "text")?.text ?? "{}");
+        return fauxAssistantMessage(
+          fauxToolCall("message", { to: result.taskId, body: "Obsolete message for revision one" }),
+          { stopReason: "toolUse" },
+        );
+      }
+      if (
+        last?.role === "toolResult" ||
+        (last?.role === "user" && JSON.stringify(last.content).includes("new attempt"))
+      )
+        return fauxAssistantMessage(fauxToolCall("yield", { reason: "Awaiting recipient" }), {
+          stopReason: "toolUse",
+        });
+      return fauxAssistantMessage(
+        fauxToolCall("delegate", { agent: "reader", objective: "Recipient objective" }),
+        { stopReason: "toolUse" },
+      );
+    }),
+    async (program) => {
+      if (program === "reader" && ++readerStarts === 1) await gate;
+    },
+  );
+  try {
+    const run = await f.domain.start({
+      cwd: f.directory,
+      agent: "coordinator",
+      prompt: "Send a message to the reader.",
+    });
+    const deliveries = () =>
+      f.domain.harness.commit(
+        (tx) => tx.scanTasks({ conversationId: nativeConversation(run.id), kind: "pituitary.deliver" }, 100),
+        BACKGROUND_CONTEXT,
+      );
+    const queued = await wait(deliveries, (page) => page.items.length === 1 && readerStarts === 1),
+      detail = await f.domain.inspect(run.id),
+      child = detail.tasks.find((task) => task.parentTaskId)!;
+    expect(queued.items[0]?.input).toMatchObject({
+      toTaskId: child.id,
+      toAttemptId: child.currentAttemptId,
+    });
+    await f.domain.revise(child.id, child.revision, { objective: "Recipient objective revised" });
+    release();
+    await wait(deliveries, (page) => page.items[0]?.state.status === "terminal");
+    await wait(
+      () => f.domain.inspect(run.id),
+      (detail) => detail.questions.some((question) => question.revision === 2),
+    );
+    const current = await f.domain.conversation(run.id, child.id),
+      context = await current.conversation.context(BACKGROUND_CONTEXT);
+    expect(JSON.stringify(context.messages)).not.toContain("Obsolete message for revision one");
+  } finally {
+    release();
+  }
 });
