@@ -357,7 +357,6 @@
                     touch $out
                   '';
               voice-broker = pkgs.callPackage ./packages/voice-broker { };
-              nixos-control = hoard.nixosControl;
               arr-sync = hoard.arrSync;
               tautulli = hoard.tautulliConfig;
               kodi = pkgs.runCommand "check-kodi" { nativeBuildInputs = [ pkgs.python3 ]; } ''
