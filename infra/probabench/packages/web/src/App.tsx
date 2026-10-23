@@ -6,7 +6,7 @@ import { date, number, time } from "./format";
 import { groupHistory, newestFirst, selectedRuns, visibleHistory } from "./history";
 import { LoadBoundary } from "./LoadBoundary";
 import { useNotebookView } from "./notebook-view";
-import { resultsRx } from "./results-rx";
+import { resultsRx } from "./results";
 import { type BenchmarkDraft, rerunRequest } from "./setup/run-settings";
 
 const Method = lazy(() => import("./Method").then((module) => ({ default: module.Method })));

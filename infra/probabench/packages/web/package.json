@@ -9,7 +9,6 @@
     "preview": "vite preview --configLoader runner"
   },
   "dependencies": {
-    "@effect-rx/rx": "^0.48.7",
     "@effect-rx/rx-react": "^0.42.4",
     "@effect/platform": "0.96.2",
     "@probabench/domain": "workspace:*",
