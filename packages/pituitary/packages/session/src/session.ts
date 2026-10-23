@@ -18,6 +18,8 @@ export interface ToolView {
   endedAt?: number;
   /** The arguments' JSON as it streams in, until the call is complete. */
   streaming?: string;
+  /** The native content block receiving argument deltas. */
+  contentIndex?: number;
 }
 
 export interface UserEntry {
@@ -220,6 +222,14 @@ export function restore(
       view = patchAssistant(view, (entry) => ({ ...settle(entry, message), done: false }));
     }
   }
+  for (const tool of live?.pendingTools ?? [])
+    view = reduce(view, {
+      type: "tool_execution_update",
+      toolCallId: tool.callId,
+      toolName: tool.name,
+      args: {},
+      partialResult: { content: [{ type: "text", text: tool.output ?? "" }], details: tool.details },
+    });
   if (live?.state.isCompacting) view = { ...view, phase: "compacting" };
   if (live?.retry) {
     const { errorMessage, ...retry } = live.retry;
@@ -437,7 +447,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
               entries: [...state.entries.slice(0, -1), { ...last, text: event.finalError ?? last.text }],
             }
           : note(state, "error", event.finalError ?? "retry failed");
-      return { ...failed, phase: "idle", running: false, retry: null };
+      return { ...failed, phase: state.running ? "streaming" : "idle", retry: null };
     }
 
     case "runtime_error":
@@ -635,33 +645,43 @@ function applyDelta(state: SessionView, delta: AssistantDelta): SessionView {
       }));
     case "toolcall_start": {
       const id = String(delta.id ?? "");
-      return patchAssistant(state, (entry) =>
-        !id || entry.tools.some((tool) => tool.id === id)
-          ? entry
-          : {
-              ...entry,
-              tools: [
-                ...entry.tools,
-                {
-                  id,
-                  name: String(delta.toolName ?? ""),
-                  args: {},
-                  state: "running",
-                  output: "",
-                  streaming: "",
-                },
-              ],
-            },
-      );
+      return patchAssistant(state, (entry) => {
+        if (!id) return entry;
+        const known = entry.tools.findIndex((tool) => tool.id === id);
+        const tool: ToolView = entry.tools[known] ?? {
+          id,
+          name: String(delta.toolName ?? ""),
+          args: {},
+          state: "running",
+          output: "",
+        };
+        const streaming = {
+          ...tool,
+          streaming: tool.streaming ?? "",
+          contentIndex: delta.contentIndex as number,
+        };
+        const tools = [...entry.tools];
+        if (known === -1) tools.push(streaming);
+        else tools[known] = streaming;
+        return { ...entry, tools };
+      });
     }
     case "toolcall_delta":
       return patchAssistant(state, (entry) => {
-        const index = entry.tools.findLastIndex((tool) => tool.streaming !== undefined);
+        const index = entry.tools.findLastIndex(
+          (tool) => tool.streaming !== undefined && tool.contentIndex === delta.contentIndex,
+        );
         const tool = entry.tools[index];
         if (!tool) return entry;
-        const streaming = (tool.streaming ?? "") + String(delta.delta ?? "");
+        // Previews only need the leading path/command. Stop reparsing large payloads;
+        // toolcall_end supplies the authoritative complete arguments.
+        const streaming = ((tool.streaming ?? "") + String(delta.delta ?? "")).slice(0, 8193);
         const tools = [...entry.tools];
-        tools[index] = { ...tool, streaming, args: partialJson(streaming) ?? tool.args };
+        tools[index] = {
+          ...tool,
+          streaming,
+          args: streaming.length <= 8192 ? (partialJson(streaming) ?? tool.args) : tool.args,
+        };
         return { ...entry, tools };
       });
     case "toolcall_end": {
@@ -669,7 +689,11 @@ function applyDelta(state: SessionView, delta: AssistantDelta): SessionView {
       return patchAssistant(state, (entry) => {
         const known = entry.tools.findIndex((tool) => tool.id === call.id);
         // A call whose arguments are complete has none left streaming in.
-        const { streaming: _streaming, ...before } = entry.tools[known] ?? {
+        const {
+          streaming: _streaming,
+          contentIndex: _index,
+          ...before
+        } = entry.tools[known] ?? {
           id: call.id,
           state: "running" as const,
           output: "",

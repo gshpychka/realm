@@ -47,13 +47,15 @@ const ls = defineTool({
 const find = defineTool({
   name: "find",
   description:
-    "Find files by glob relative to the assigned workspace. Respects ignore files and does not follow symbolic links.",
+    "Find files by glob under a directory. Respects ignore files and skips symlinks encountered below the supplied root.",
   parameters: Type.Object({
     pattern: Type.String({
       description: "Glob such as **/*.ts or **/package.json; ':' is not supported",
       pattern: "^[^:]+$",
     }),
-    path,
+    path: Type.Optional(
+      Type.String({ description: "Directory to search, relative to the assigned workspace." }),
+    ),
   }),
   replay: "safe",
   outputLimits: { maxBytes: 65536, maxLines: 2000 },
@@ -61,10 +63,11 @@ const find = defineTool({
     if (!api.env) throw new Error("This agent has no filesystem environment");
     const root = await api.env.fileInfo(args.path ?? ".", context);
     if (!root.ok) throw root.error;
-    if (root.value.kind === "symlink") throw new Error("The find root cannot be a symbolic link");
+    if (root.value.kind !== "directory") throw new Error("The find root must be a directory");
     const result = await api.env.exec(
       [
         "rg",
+        "--no-config",
         "--files",
         "--hidden",
         "--glob",
@@ -94,7 +97,12 @@ const grep = defineTool({
   parameters: Type.Object({
     pattern: Type.String(),
     path,
-    glob: Type.Optional(Type.String({ description: "File glob; ':' is not supported", pattern: "^[^:]+$" })),
+    glob: Type.Optional(
+      Type.String({
+        description: "File glob for directory searches; ':' is not supported",
+        pattern: "^[^:]+$",
+      }),
+    ),
     ignoreCase: Type.Optional(Type.Boolean()),
     literal: Type.Optional(Type.Boolean()),
     context: Type.Optional(Type.Integer({ minimum: 0, maximum: 20 })),
@@ -106,9 +114,15 @@ const grep = defineTool({
   outputLimits: { maxBytes: 65536, maxLines: 2000 },
   execute: async (args, api, context) => {
     if (!api.env) throw new Error("This agent has no filesystem environment");
+    if (args.glob) {
+      const root = await api.env.fileInfo(args.path ?? ".", context);
+      if (!root.ok) throw root.error;
+      if (root.value.kind !== "directory") throw new Error("A grep file glob requires a directory path");
+    }
     const output = new OutputBuffer({ maxBytes: 65536, maxLines: args.limit ?? 100, retain: "head" });
     const command = [
       "rg",
+      "--no-config",
       "--hidden",
       "--glob",
       "!.git",
