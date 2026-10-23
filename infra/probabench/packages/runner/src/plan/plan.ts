@@ -28,9 +28,6 @@ export interface BenchPlan {
   readonly out: string;
 }
 
-export const MISSING_MODEL_MESSAGE =
-  "Choose a model with --model vendor/model (or a listed alias). Run --list to see aliases.";
-
 export const resolvePlan = (request: {
   /** Tokens from splitModels. */
   readonly models: readonly string[];
@@ -48,7 +45,12 @@ export const resolvePlan = (request: {
     );
   }
   if (!isNonEmptyReadonlyArray(series)) {
-    return Effect.fail(new InvalidOptions({ message: MISSING_MODEL_MESSAGE }));
+    return Effect.fail(
+      new InvalidOptions({
+        message:
+          "Choose a model with --model vendor/model (or a listed alias). Run --list to see aliases.",
+      }),
+    );
   }
   return Effect.succeed({ series, options: request.options, out: request.out });
 };

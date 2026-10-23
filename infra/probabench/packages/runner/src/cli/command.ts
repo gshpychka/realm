@@ -34,9 +34,6 @@ const DEFAULTS: SamplingOptions = {
   maxTokens: 4096,
 };
 
-export const NON_TTY_MESSAGE =
-  "Refusing to run without confirmation: stdin is not a TTY. Re-run with --yes to proceed non-interactively.";
-
 const PositiveInt = Schema.Int.pipe(Schema.positive());
 
 /** An integer flag whose out-of-range error names the flag. */
@@ -111,8 +108,12 @@ const benchCommand = Command.make("probabench", options, (flags) =>
     if (flags.dryRun) return;
     if (!flags.yes) {
       // The prompt reads its answer from stdin, which the dev server's runner lacks.
-      if (process.stdin.isTTY !== true)
-        return yield* new InvalidOptions({ message: NON_TTY_MESSAGE });
+      if (process.stdin.isTTY !== true) {
+        return yield* new InvalidOptions({
+          message:
+            "Refusing to run without confirmation: stdin is not a TTY. Re-run with --yes to proceed non-interactively.",
+        });
+      }
       // Ctrl-C at the prompt quits it, which answers no.
       const confirmed = yield* Prompt.confirm({ message: "Run this plan?", initial: false }).pipe(
         Effect.catchTag("QuitException", () => Effect.succeed(false)),

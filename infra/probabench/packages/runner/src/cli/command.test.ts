@@ -1,14 +1,14 @@
 import { existsSync } from "node:fs";
+import * as HelpDoc from "@effect/cli/HelpDoc";
+import * as ValidationError from "@effect/cli/ValidationError";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as NodeContext from "@effect/platform-node/NodeContext";
 import { describe, expect, it } from "@effect/vitest";
 import { benchArgs } from "@probabench/domain";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import { MISSING_MODEL_MESSAGE } from "../plan/plan";
 import { withApiKey } from "../sampling/testing";
-import { cli, HISTORY_PATH, NON_TTY_MESSAGE } from "./command";
+import { cli, HISTORY_PATH } from "./command";
 
 // Vitest's stdin is not a TTY, so these cover the non-interactive path.
 const runCommand = (args: readonly string[]) =>
@@ -17,36 +17,40 @@ const runCommand = (args: readonly string[]) =>
     withApiKey(),
   );
 
-/** The message of the InvalidOptions a command fails with. */
-const invalidOptions = (args: readonly string[]) =>
+/** What a failing command reports: a flag's validation text or an error's message. */
+const failureText = (args: readonly string[]) =>
   Effect.flip(runCommand(args)).pipe(
-    Effect.map((error) => (error._tag === "InvalidOptions" ? error.message : error._tag)),
+    Effect.map((error) =>
+      ValidationError.isValidationError(error) ? HelpDoc.toAnsiText(error.error) : error.message,
+    ),
   );
 
 describe("probabench command", () => {
-  for (const [flag, value] of [
-    ["step", "0"],
-    ["step", "101"],
-    ["step", "1.5"],
-    ["trials", "-1"],
-    ["trials", "9007199254740992"],
-    ["concurrency", "0"],
-    ["max-tokens", "0"],
-    ["reasoning", "bogus"],
-  ] as const) {
-    it.effect(`rejects --${flag} ${JSON.stringify(value)} before planning`, () =>
-      Effect.gen(function* () {
-        const exit = yield* Effect.exit(
-          runCommand(["--model", "all", "--dry-run", `--${flag}`, value]),
-        );
-        expect(Exit.isFailure(exit)).toBe(true);
-      }),
-    );
-  }
+  it.effect("dry-runs every alias without credentials", () =>
+    runCommand(["--model", "all", "--dry-run"]),
+  );
+
+  // Parse failures are @effect/cli's own text, so those rows match a short substring.
+  it.effect.each([
+    ["step", "0", "--step must be from 1 to 100."],
+    ["step", "101", "--step must be from 1 to 100."],
+    ["step", "1.5", "integer"],
+    ["trials", "-1", "--trials must be a positive integer."],
+    ["trials", "9007199254740992", "integer"],
+    ["concurrency", "0", "--concurrency must be a positive integer."],
+    ["max-tokens", "0", "--max-tokens must be a positive integer."],
+    ["reasoning", "bogus", "Expected one of the following cases"],
+  ] as const)("rejects --%s %j before planning", ([flag, value, expected]) =>
+    Effect.gen(function* () {
+      expect(yield* failureText(["--model", "all", "--dry-run", `--${flag}`, value])).toContain(
+        expected,
+      );
+    }),
+  );
 
   it.effect("rejects unknown models mixed with valid ones, even with --yes", () =>
     Effect.gen(function* () {
-      expect(yield* invalidOptions(["--model", "vendor/model,typo", "--yes"])).toBe(
+      expect(yield* failureText(["--model", "vendor/model,typo", "--yes"])).toBe(
         "Unknown models: typo. Use --list or an OpenRouter model ID (vendor/model).",
       );
     }),
@@ -54,13 +58,13 @@ describe("probabench command", () => {
 
   it.effect("asks for a model when none is given", () =>
     Effect.gen(function* () {
-      expect(yield* invalidOptions([])).toBe(MISSING_MODEL_MESSAGE);
+      expect(yield* failureText([])).toContain("--model");
     }),
   );
 
   it.effect("requires --yes to run without a terminal to confirm in", () =>
     Effect.gen(function* () {
-      expect(yield* invalidOptions(["--model", "vendor/model"])).toBe(NON_TTY_MESSAGE);
+      expect(yield* failureText(["--model", "vendor/model"])).toContain("--yes");
     }),
   );
 
