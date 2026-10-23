@@ -3,7 +3,7 @@ import { type ModelStyle, styleOf } from "../common/palette";
 
 /** A lone run still gets a visible minute either side. */
 const MIN_PADDING_MS = 60_000;
-/** Y gridlines every 5 pp (1 / 20). */
+/** The y-axis top moves in 5 pp steps (1 / 20); Recharts places the ticks below it. */
 const Y_STEPS = 20;
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365 * DAY_MS;
@@ -72,7 +72,7 @@ export const buildHistoryChartModel = (
     points,
     series: [...series.values()],
     domain: [minimum - padding, maximum + padding],
-    // The worst error rounded up to a gridline, plus one gridline of headroom, capped at 100 pp.
+    // The worst error rounded up to a step, plus one step of headroom, capped at 100 pp.
     yMax: Math.min(1, (Math.ceil(worst * Y_STEPS) + 1) / Y_STEPS),
     tickFormat: timeTickFormat(maximum - minimum),
   };
