@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,9 +28,22 @@ func (completedOperation) Get() api.Operation {
 // calls an unimplemented method and fails, rather than quietly passing a mock.
 type machineServer struct {
 	incus.InstanceServer
-	instances  map[string]*api.Instance
-	deleted    []string
-	clonedFrom string
+	instances     map[string]*api.Instance
+	deleted       []string
+	clonedFrom    string
+	deletedImages []string
+}
+
+func (f *machineServer) GetInstances(api.InstanceType) ([]api.Instance, error) {
+	var instances []api.Instance
+	for _, instance := range f.instances {
+		instances = append(instances, *instance)
+	}
+	return instances, nil
+}
+func (f *machineServer) DeleteImage(fingerprint string) (incus.Operation, error) {
+	f.deletedImages = append(f.deletedImages, fingerprint)
+	return completedOperation{}, nil
 }
 
 func (f *machineServer) GetImage(string) (*api.Image, string, error) { return &api.Image{}, "", nil }
@@ -128,5 +142,23 @@ func TestUnpreparedOrMismatchedBaseCannotLaunch(t *testing.T) {
 	server.instances[definition.Base].Config[machineKey] = strings.Repeat("b", 64)
 	if err := driver.Create(context.Background(), "worker", "id", selection); err == nil {
 		t.Fatal("ignored a mismatched pinned base")
+	}
+}
+
+func TestPruneBasesPreservesCatalogAndRecordPins(t *testing.T) {
+	server := &machineServer{instances: map[string]*api.Instance{}}
+	for name, image := range map[string]string{"current": "shared", "pinned": "pinned", "obsolete": "obsolete", "old-allocation": "shared"} {
+		server.instances[name] = &api.Instance{Name: name, StatusCode: api.Stopped, InstancePut: api.InstancePut{Config: map[string]string{machineKey: "revision", imageKey: image}}}
+	}
+	server.instances["session"] = &api.Instance{Name: "session", InstancePut: api.InstancePut{Config: map[string]string{sessionKey: "record", machineKey: "revision"}}}
+	server.instances["unrelated"] = &api.Instance{Name: "unrelated"}
+	driver := &Driver{server: server}
+	if err := driver.PruneBases(context.Background(), map[string]bool{"current": true, "pinned": true}); err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(server.deleted)
+	slices.Sort(server.deletedImages)
+	if !slices.Equal(server.deleted, []string{"obsolete", "old-allocation"}) || !slices.Equal(server.deletedImages, []string{"obsolete"}) {
+		t.Fatalf("unexpected reclamation: bases=%v images=%v", server.deleted, server.deletedImages)
 	}
 }
