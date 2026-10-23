@@ -106,11 +106,12 @@
   border-color: var(--border);
   background: var(--raised);
 }
-/* Centred on the rail (the ol's border): the row starts 10px right of the rail
-   (1px border + 9px padding) and the node is 12px wide with its border. */
+/* Centred on the rail (the ol's 1px border): the row's padding box starts 11px right of
+   the rail's left edge (1px rail + 9px ol padding + 1px row border), so -11 - 6 + 0.5
+   centres the 12px node (8px + 2px border each side). */
 .timeline-node {
   position: absolute;
-  left: -15px;
+  left: -16.5px;
   top: 22px;
   height: 8px;
   width: 8px;
