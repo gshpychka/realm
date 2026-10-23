@@ -16,7 +16,7 @@ const render = (item = run) =>
 describe("RunDetail", () => {
   it("summarizes the run's reasoning, mean calibration error and valid replies", () => {
     const html = render();
-    expect(html).toContain("off reasoning");
+    expect(html).toContain("reasoning off");
     expect(html).toContain("100.0 pp");
     expect(html).toContain("25%");
     expect(html).toContain("1 valid / 4");

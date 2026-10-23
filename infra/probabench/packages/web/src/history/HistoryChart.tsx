@@ -50,7 +50,7 @@ function HistoryTooltip({
           </p>
           <p className="muted">{samplingText(run)}</p>
           <p className="muted">
-            {run.reasoning} reasoning · run {shortId(run.id)}
+            reasoning {run.reasoning} · run {shortId(run.id)}
           </p>
         </div>
       ))}

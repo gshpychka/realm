@@ -57,7 +57,7 @@ export const describePlan = ({ targets, options }: BenchPlan): string => {
   const { samples, attempts } = planBudget(options, targets.length);
   return [
     `Targets (${targets.length}):`,
-    ...targets.map((target) => `  ${target.id} · reasoning ${target.reasoning}`),
+    ...targets.map((target) => `  ${target.slug} · reasoning ${target.reasoning}`),
     `Projected samples: ${samples}`,
     `Provider attempts with retries: up to ${attempts}`,
   ].join("\n");

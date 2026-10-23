@@ -16,9 +16,7 @@ describe("resolvePlan", () => {
       const samples = MODEL_ALIASES.length * 3 * 5;
       const description = describePlan(plan);
       expect(description).toContain(`Targets (${MODEL_ALIASES.length}):`);
-      expect(description).toContain(
-        "  anthropic/claude-sonnet-4.5 [reasoning=high] · reasoning high",
-      );
+      expect(description).toContain("  anthropic/claude-sonnet-4.5 · reasoning high");
       expect(description).toContain(`Projected samples: ${samples}`);
       expect(description).toContain(
         `Provider attempts with retries: up to ${samples * (MAX_RETRIES + 1)}`,

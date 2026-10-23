@@ -25,7 +25,7 @@ export function RunDetail({
           {date(run.startedAt)}
           <span>{time(run.startedAt)} UTC</span>
         </time>
-        <span className="tag">{run.reasoning} reasoning</span>
+        <span className="tag">reasoning {run.reasoning}</span>
       </div>
       <div className="detail-stats">
         <div>
