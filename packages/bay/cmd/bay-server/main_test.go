@@ -114,3 +114,16 @@ func TestShutdownWaitsForRequestsInFlight(t *testing.T) {
 		t.Fatalf("the request in flight got %q, want its answer", got)
 	}
 }
+
+func TestBaseConfigDoesNotRequireServeOnlyFields(t *testing.T) {
+	config, err := loadConfig(writeConfig(t, `{
+		"incusSocket":"/var/lib/incus/unix.socket", "project":"bay",
+		"base":"bay-base"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateServeConfig(config); err == nil {
+		t.Fatal("server accepted a base-only configuration")
+	}
+}
