@@ -87,6 +87,12 @@ in
           config.users.users.voice-broker.name
         ];
       };
+      hermes = {
+        port = ports.hermes;
+        # the dashboard's own password login
+        auth = "native";
+        websockets = true;
+      };
     };
     loopbackGate.clients = [
       config.services.sonarr.user

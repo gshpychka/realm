@@ -1,5 +1,5 @@
-# This host's SSH key, derived from its TPM's owner hierarchy and served to one
-# user by ssh-tpm-agent (https://github.com/Foxboron/ssh-tpm-agent).
+# This host's SSH key, derived from its TPM's owner hierarchy and served to
+# local users by ssh-tpm-agent (https://github.com/Foxboron/ssh-tpm-agent).
 {
   config,
   lib,
@@ -19,6 +19,12 @@ in
       description = "User the key is served to";
     };
 
+    extraUsers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Further users the key is served to";
+    };
+
     socket = lib.mkOption {
       type = lib.types.str;
       readOnly = true;
@@ -31,15 +37,31 @@ in
     # makes /dev/tpmrm0 usable by the tss group
     security.tpm2.enable = true;
 
+    # the socket's group, which extraUsers connect through
+    users.groups.${unitName}.members = cfg.extraUsers;
+
+    # created by systemd with the group's access, and passed to ssh-tpm-agent (LISTEN_FDS)
+    systemd.sockets.${unitName} = {
+      wantedBy = [ "sockets.target" ];
+      listenStreams = [ cfg.socket ];
+      socketConfig = {
+        SocketUser = cfg.user;
+        SocketGroup = unitName;
+        SocketMode = "0660";
+      };
+    };
+
     systemd.services.${unitName} = {
       description = "SSH agent with this host's TPM-derived key";
+      # started at boot: the agent answers requests before it has derived its keys
       wantedBy = [ "multi-user.target" ];
+      requires = [ "${unitName}.socket" ];
+      after = [ "${unitName}.socket" ];
       serviceConfig = {
-        ExecStart = "${lib.getExe' pkgs.ssh-tpm-agent "ssh-tpm-agent"} --no-load --hierarchy owner -l ${cfg.socket}";
+        ExecStart = "${lib.getExe' pkgs.ssh-tpm-agent "ssh-tpm-agent"} --no-load --hierarchy owner";
         User = cfg.user;
         Group = config.users.users.${cfg.user}.group;
         SupplementaryGroups = [ config.security.tpm2.tssGroup ];
-        RuntimeDirectory = unitName;
         UMask = "0077";
         Restart = "on-failure";
         DevicePolicy = "closed";

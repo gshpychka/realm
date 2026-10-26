@@ -232,7 +232,6 @@ in
       DURA_AUTO_START = "0";
       DURA_AUTH_FILE = cfg.authFile;
       DURA_CREDENTIAL_PROFILES = credentialProfilesPath;
-      DURA_RUN_LIMITS = builtins.toJSON cfg.limits;
     };
     systemd.tmpfiles.rules = [ "d ${cfg.stateDirectory} 0700 ${cfg.operator} - -" ];
     systemd.services.dura = {

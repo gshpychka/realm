@@ -2,7 +2,7 @@
 #   sops set secrets/hoard/openclaw.yaml '["openai-api-key"]' '"<key>"'
 #   sops set secrets/hoard/openclaw.yaml '["elevenlabs-api-key"]' '"<key>"'
 #   sops set secrets/hoard/openclaw.yaml '["home-assistant-token"]' '"<long-lived token of a dedicated HA user>"'
-#   sops set secrets/hoard/openclaw.yaml '["home-assistant-admin-mcp-path"]' '"<private_... path from the ha-mcp app log>"'
+#   sops set secrets/hoard/secrets.yaml '["home-assistant-admin-mcp-path"]' '"<private_... path from the ha-mcp app log>"'
 { config, ... }:
 {
   assertions = [
@@ -81,15 +81,10 @@
         url = "http://homeassistant.${config.my.domain}:9583/${config.my.openclaw.secretVars.HOME_ASSISTANT_ADMIN_MCP_PATH}";
         transport = "streamable-http";
       };
-      secrets.HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
+      hostSecrets.HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
     };
 
-    github = {
-      appId = 5273943;
-      slug = "calcifer-claw";
-      installationId = 170281690;
-      botUserId = 340989200;
-    };
+    github = "calcifer-claw";
 
     claudeCode.enable = true;
     codex.enable = true;
@@ -97,7 +92,7 @@
     onedrive.enable = true;
 
     root = {
-      publicKey = config.my.sshKeys.openclaw;
+      publicKey = config.my.sshKeys.hoardTpm;
       agentSocket = config.my.tpmSshKey.socket;
     };
   };
@@ -107,6 +102,13 @@
     Always pronounce Kyiv as Ukrainian Київ /ˈkɪjiu̯/, including when speaking
     English. Preserve the Ukrainian и vowel, ї glide and first-syllable stress.
   '';
+
+  my.githubApps.calcifer-claw = {
+    appId = 5273943;
+    installationId = 170281690;
+    botUserId = 340989200;
+    sopsFile = ../../secrets/hoard/openclaw.yaml;
+  };
 
   my.tpmSshKey = {
     enable = true;

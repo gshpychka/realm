@@ -31,9 +31,9 @@ in
             type = lib.types.str;
             description = "SSH public key for GitLab";
           };
-          openclaw = lib.mkOption {
+          hoardTpm = lib.mkOption {
             type = lib.types.str;
-            description = "SSH public key for OpenClaw";
+            description = "SSH public key derived from hoard's TPM";
           };
         };
       };
@@ -113,7 +113,7 @@ in
       main = values.sshKeys.main;
       homeassistant = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAC9nquQBUuHWrWJvuUJLuR2zfupJp+QtQlpck0n5J0J";
       gitlab = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH1ykR9CzbUNoPsyPqgs9OYIgUCRNOHj8KefPhYJv+qr";
-      openclaw = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBJOrPEgiVddcT1t+mm+xsbDnfj+nl1PBQyxzk5rQjeqPG3nkgWp/l8pIYrZojckIIOHLNERy1zYLigKGYp5crcA= openclaw@hoard";
+      hoardTpm = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBJOrPEgiVddcT1t+mm+xsbDnfj+nl1PBQyxzk5rQjeqPG3nkgWp/l8pIYrZojckIIOHLNERy1zYLigKGYp5crcA= openclaw@hoard";
     };
     my.nixbuildKeys = {
       eve = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP7jjV4iQfoCWZYWw2Q1bdsNg6PBc4U2SclLE2Wil0b9 nixbuild-eve@eve";

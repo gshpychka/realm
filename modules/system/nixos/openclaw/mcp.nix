@@ -22,6 +22,14 @@ in
             };
             description = "Environment variables for \${NAME} references in settings, each set from the named sopsFile key.";
           };
+          hostSecrets = lib.mkOption {
+            type = lib.types.attrsOf lib.types.str;
+            default = { };
+            example = {
+              HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
+            };
+            description = "Environment variables for \${NAME} references in settings, each set from the named key of this host's default sops file.";
+          };
         };
       }
     );
@@ -29,6 +37,9 @@ in
 
   config = lib.mkIf cfg.enable {
     my.openclaw.secrets = lib.mkMerge (lib.mapAttrsToList (_: server: server.secrets) cfg.mcpServers);
+    my.openclaw.hostSecrets = lib.mkMerge (
+      lib.mapAttrsToList (_: server: server.hostSecrets) cfg.mcpServers
+    );
     services.openclaw-gateway.config.mcp.servers = lib.mapAttrs (
       _: server: server.settings
     ) cfg.mcpServers;
