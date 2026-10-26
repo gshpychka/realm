@@ -16,6 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
+      # Workaround: Hermes's package reads its filtered Python source during
+      # evaluation, which the read-only `flake check --no-build` cannot add
+      # to the store; a writable evaluation of the package adds it first.
+      - run: nix eval --raw .#nixosConfigurations.hoard.config.services.hermes-agent.package.drvPath
       # Evaluate flake outputs on every supported system without building checks.
       - run: nix flake check --all-systems --no-build
 
