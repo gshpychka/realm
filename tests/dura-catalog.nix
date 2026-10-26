@@ -112,6 +112,10 @@ let
   # The server configuration names bases and programs, not image artifacts, so reading
   # it does not force a guest image build either.
   serverConfig = builtins.elemAt (lib.splitString " " cfg.systemd.services.bay-server.serviceConfig.ExecStart) 2;
+  # bay-base's `bay-server base` steps, one per warm base
+  baseSteps = builtins.filter (
+    step: builtins.elemAt (lib.splitString " " step) 1 == "base"
+  ) cfg.systemd.services.bay-base.serviceConfig.ExecStart;
   checks = {
     disabledIsLazy =
       !disabled.services.dura.enable
@@ -122,7 +126,7 @@ let
     sharedMachine = machineName cfg == cfg.services.bay.programs.dura-reviewer.machine;
     distinctMachine = machineName cfg != cfg.services.bay.programs.dura-data.machine;
     machineCount = builtins.length (builtins.attrNames cfg.services.bay.machines) == 3;
-    baseCount = builtins.length cfg.systemd.services.bay-base.serviceConfig.ExecStart == 3;
+    baseCount = builtins.length baseSteps == 3;
     roleIndependentBases =
       cfg.systemd.services.bay-base.serviceConfig.ExecStart
       == roleEdited.systemd.services.bay-base.serviceConfig.ExecStart;
