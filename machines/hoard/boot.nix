@@ -41,12 +41,9 @@
           authorizedKeyFiles = config.users.users.${config.my.user}.openssh.authorizedKeys.keyFiles;
         };
       };
-      systemd = {
-        enable = true;
-        # automatically present LUKS password prompt on SSH connection
-        # /bin/cryptsetup-askpass apparently only handles a single device at a time
-        users.root.shell = "/bin/systemd-tty-ask-password-agent";
-      };
+      # automatically present LUKS password prompt on SSH connection
+      # /bin/cryptsetup-askpass apparently only handles a single device at a time
+      systemd.users.root.shell = "/bin/systemd-tty-ask-password-agent";
       availableKernelModules = [
         "xhci_pci"
         "ahci"
