@@ -95,7 +95,7 @@ func (d *Driver) ensureBase(ctx context.Context, machine machines.Definition, im
 	if err != nil {
 		return err
 	}
-	// size.state reserves room for saved memory, which only sessions keep.
+	// A base keeps only its disk.
 	delete(put.Devices["root"], "size.state")
 	put.Config[imageKey] = image
 	put.Config[machineKey] = machine.Revision
