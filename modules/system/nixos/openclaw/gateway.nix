@@ -23,7 +23,7 @@ let
         env =
           gw.environment
           # each secret's variable, so that its ${VAR} references resolve
-          // lib.mapAttrs (_: _: "1") cfg.secrets
+          // lib.mapAttrs (_: _: "1") cfg.secretVars
           // {
             OPENCLAW_CONFIG_PATH = configFile;
           };

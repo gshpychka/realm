@@ -4,8 +4,8 @@
 #
 # Imperative, one-time: generate the owner's password and the key that signs
 # their sessions:
-#   openssl rand -base64 24 | jq -R . | sops set --value-stdin <sopsFile> '["hermes-dashboard-password"]'
-#   openssl rand -base64 32 | jq -R . | sops set --value-stdin <sopsFile> '["hermes-dashboard-secret"]'
+#   openssl rand -base64 24 | jq -R . | sops set --value-stdin <sopsFile> '["dashboard-password"]'
+#   openssl rand -base64 32 | jq -R . | sops set --value-stdin <sopsFile> '["dashboard-secret"]'
 { config, lib, ... }:
 let
   cfg = config.my.hermes-agent;
@@ -28,8 +28,8 @@ in
     };
 
     my.hermes-agent.secrets = {
-      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD = "hermes-dashboard-password";
-      HERMES_DASHBOARD_BASIC_AUTH_SECRET = "hermes-dashboard-secret";
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD = "dashboard-password";
+      HERMES_DASHBOARD_BASIC_AUTH_SECRET = "dashboard-secret";
     };
   };
 }

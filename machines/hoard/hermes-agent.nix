@@ -1,3 +1,10 @@
+# Imperative, one-time, with the YubiKey or the op age key: create the agent's
+# sops file, then set its own credentials in it:
+#   printf '{}\n' | sops encrypt --filename-override secrets/hoard/hermes.yaml > secrets/hoard/hermes.yaml
+#   sops set secrets/hoard/hermes.yaml '["openai-api-key"]' '"<key>"'
+#   sops set secrets/hoard/hermes.yaml '["elevenlabs-api-key"]' '"<key>"'
+#   sops set secrets/hoard/hermes.yaml '["home-assistant-token"]' '"<long-lived token of a dedicated HA user>"'
+#
 # Imperative, one-time, after the first start: sign in to the owner's ChatGPT
 # subscription for the agent's model, and to Claude and Codex for its coding
 # sessions, each as the service user:
@@ -44,16 +51,15 @@
   };
 
   my.hermes-agent = {
-    sopsFile = ../../secrets/hoard/openclaw.yaml;
+    sopsFile = ../../secrets/hoard/hermes.yaml;
     secrets = {
       OPENAI_API_KEY = "openai-api-key";
       ELEVENLABS_API_KEY = "elevenlabs-api-key";
       HOME_ASSISTANT_TOKEN = "home-assistant-token";
-      HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
     };
+    hostSecrets.HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
     publicHost = config.services.nginx.virtualHosts.hermes.serverName;
     telegram.enable = true;
-    github = config.my.openclaw.github;
     onedrive.enable = true;
     root = {
       publicKey = config.my.sshKeys.hoardTpm;

@@ -2,7 +2,7 @@
 #   sops set secrets/hoard/openclaw.yaml '["openai-api-key"]' '"<key>"'
 #   sops set secrets/hoard/openclaw.yaml '["elevenlabs-api-key"]' '"<key>"'
 #   sops set secrets/hoard/openclaw.yaml '["home-assistant-token"]' '"<long-lived token of a dedicated HA user>"'
-#   sops set secrets/hoard/openclaw.yaml '["home-assistant-admin-mcp-path"]' '"<private_... path from the ha-mcp app log>"'
+#   sops set secrets/hoard/secrets.yaml '["home-assistant-admin-mcp-path"]' '"<private_... path from the ha-mcp app log>"'
 { config, ... }:
 {
   assertions = [
@@ -81,7 +81,7 @@
         url = "http://homeassistant.${config.my.domain}:9583/${config.my.openclaw.secretVars.HOME_ASSISTANT_ADMIN_MCP_PATH}";
         transport = "streamable-http";
       };
-      secrets.HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
+      hostSecrets.HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
     };
 
     github = "calcifer-claw";
