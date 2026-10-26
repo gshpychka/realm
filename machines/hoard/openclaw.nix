@@ -84,12 +84,7 @@
       secrets.HOME_ASSISTANT_ADMIN_MCP_PATH = "home-assistant-admin-mcp-path";
     };
 
-    github = {
-      appId = 5273943;
-      slug = "calcifer-claw";
-      installationId = 170281690;
-      botUserId = 340989200;
-    };
+    github = "calcifer-claw";
 
     claudeCode.enable = true;
     codex.enable = true;
@@ -107,6 +102,13 @@
     Always pronounce Kyiv as Ukrainian Київ /ˈkɪjiu̯/, including when speaking
     English. Preserve the Ukrainian и vowel, ї glide and first-syllable stress.
   '';
+
+  my.githubApps.calcifer-claw = {
+    appId = 5273943;
+    installationId = 170281690;
+    botUserId = 340989200;
+    sopsFile = ../../secrets/hoard/openclaw.yaml;
+  };
 
   my.tpmSshKey = {
     enable = true;
