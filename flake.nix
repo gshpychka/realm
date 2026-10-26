@@ -47,7 +47,8 @@
       url = "github:numtide/llm-agents.nix";
     };
     hermes-agent = {
-      url = "github:NousResearch/hermes-agent";
+      # a git fetch: GitHub's tarball API answers HTTP 429 to CI's parallel jobs for this repository
+      url = "git+https://github.com/NousResearch/hermes-agent?shallow=1";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
