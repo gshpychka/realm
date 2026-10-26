@@ -92,7 +92,7 @@
     onedrive.enable = true;
 
     root = {
-      publicKey = config.my.sshKeys.openclaw;
+      publicKey = config.my.sshKeys.hoardTpm;
       agentSocket = config.my.tpmSshKey.socket;
     };
   };
