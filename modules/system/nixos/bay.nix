@@ -277,7 +277,7 @@ in
       memory = mkOption {
         type = types.ints.positive;
         default = 8;
-        description = "Memory per session, in GiB. Each session and the warm base reserve this plus 1 GiB of storage for saved memory.";
+        description = "Memory per session, in GiB. Each session reserves this plus 1 GiB of storage for saved memory.";
       };
       disk = mkOption {
         type = types.ints.positive;
@@ -548,7 +548,15 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = map (
+        ExecStart = [
+          (lib.escapeShellArgs [
+            "${bay}/bin/bay-server"
+            "prune"
+            "-config"
+            (toString serverConfig)
+          ])
+        ]
+        ++ map (
           { name, machine }:
           lib.escapeShellArgs [
             "${bay}/bin/bay-server"
@@ -565,6 +573,8 @@ in
         ) (builtins.attrValues bases);
         User = "bay";
         Group = "bay";
+        StateDirectory = "bay";
+        StateDirectoryMode = "0700";
         TimeoutStartSec = "30min";
       };
     };
@@ -622,6 +632,7 @@ in
         "incus.service"
         "bay-base.service"
       ];
+      # the server's catalog is always the one its bases were pruned against
       requires = [ "bay-base.service" ];
       wants = [ "incus.service" ];
       path = [ pkgs.git ];

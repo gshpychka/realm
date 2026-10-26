@@ -198,8 +198,9 @@ omitted values follow `services.bay.sessions`.
 Equal images and allocations share an immutable warm base. Sessions pin their
 machine revision and allocation. `sessions.maxRunning` limits running and starting
 sessions; `sessions.maxMemory` limits their total pinned memory and defaults to
-`maxRunning * memory`. Suspended sessions consume neither allowance. At startup,
-Bay removes old bases and images once no catalog or session record references them.
+`maxRunning * memory`. Suspended sessions consume neither allowance. Before
+preparing its bases, Bay removes old bases and images that no catalog or session
+record references.
 
 [Dura’s module](../../modules/system/nixos/dura.nix) generates these
 machine and program declarations from [NixOS agent modules](../../agents).

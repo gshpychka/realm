@@ -111,6 +111,9 @@ func TestPreparedMachinesCoexistAndCloneTheirPinnedResources(t *testing.T) {
 	if len(server.instances) != 2 || len(server.deleted) != 0 {
 		t.Fatalf("base replacement: instances=%d, deleted=%q", len(server.instances), server.deleted)
 	}
+	if _, ok := server.instances[first.Base].Devices["root"]["size.state"]; ok {
+		t.Fatal("base reserved state space")
+	}
 	if err := driver.Create(ctx, "worker", "session-id", &machines.Selection{Name: "first", Definition: first}); err != nil {
 		t.Fatal(err)
 	}

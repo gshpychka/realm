@@ -81,8 +81,13 @@ func main() {
 }
 
 func run(args []string, log *slog.Logger) error {
-	if len(args) > 0 && args[0] == "base" {
-		return base(args[1:], log)
+	if len(args) > 0 {
+		switch args[0] {
+		case "base":
+			return base(args[1:], log)
+		case "prune":
+			return prune(args[1:])
+		}
 	}
 	flags := flag.NewFlagSet("bay-server", flag.ContinueOnError)
 	configPath := flags.String("config", "", "configuration file")
@@ -157,23 +162,6 @@ func serve(config Config, log *slog.Logger) error {
 	}
 	driver, err := incus.Connect(config.IncusSocket, config.Project)
 	if err != nil {
-		return err
-	}
-	retained := map[string]bool{}
-	for _, machine := range config.Machines {
-		retained[machine.Base] = true
-	}
-	all, err := store.List()
-	if err != nil {
-		return err
-	}
-	for _, record := range all {
-		if record.Machine == nil {
-			return fmt.Errorf("session %s has no pinned machine", record.Name)
-		}
-		retained[record.Machine.Base] = true
-	}
-	if err := driver.PruneBases(context.Background(), retained); err != nil {
 		return err
 	}
 	mirrors, err := repos.New(config.Mirrors, remoteBase)
@@ -304,4 +292,45 @@ func base(args []string, log *slog.Logger) error {
 	}
 	log.Info("warm base ready")
 	return nil
+}
+
+// prune removes the bases and images that no declared machine or session record references.
+func prune(args []string) error {
+	flags := flag.NewFlagSet("bay-server prune", flag.ContinueOnError)
+	configPath := flags.String("config", "", "configuration file")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	config, err := loadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+	if config.Records == "" {
+		return fmt.Errorf("config %s: records is required", *configPath)
+	}
+	store, err := records.Open(config.Records)
+	if err != nil {
+		return err
+	}
+	driver, err := incus.Connect(config.IncusSocket, config.Project)
+	if err != nil {
+		return err
+	}
+	retained := map[string]bool{}
+	for _, machine := range config.Machines {
+		retained[machine.Base] = true
+	}
+	all, err := store.List()
+	if err != nil {
+		return err
+	}
+	for _, record := range all {
+		if record.Machine == nil {
+			return fmt.Errorf("session %s has no pinned machine", record.Name)
+		}
+		retained[record.Machine.Base] = true
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return driver.PruneBases(ctx, retained)
 }

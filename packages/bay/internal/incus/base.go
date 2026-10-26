@@ -37,7 +37,6 @@ func (d *Driver) EnsureBase(ctx context.Context, machine machines.Definition, me
 }
 
 // PruneBases reclaims revisions not referenced by the catalog or a session record.
-// It runs at server startup, after the declared bases have been prepared.
 func (d *Driver) PruneBases(ctx context.Context, retained map[string]bool) error {
 	instances, err := d.server.GetInstances(api.InstanceTypeVM)
 	if err != nil {
@@ -96,6 +95,8 @@ func (d *Driver) ensureBase(ctx context.Context, machine machines.Definition, im
 	if err != nil {
 		return err
 	}
+	// size.state reserves room for saved memory, which only sessions keep.
+	delete(put.Devices["root"], "size.state")
 	put.Config[imageKey] = image
 	put.Config[machineKey] = machine.Revision
 	op, err := d.server.CreateInstance(api.InstancesPost{Name: machine.Base, Type: api.InstanceTypeVM, Source: api.InstanceSource{Type: "image", Fingerprint: image}, InstancePut: put})
