@@ -43,6 +43,7 @@
     ./bay.nix
     ./dura.nix
     ./twingate.nix
+    ./rolesanywhere.nix
     # ./comfyui.nix
   ];
   networking.hostName = "reaper";

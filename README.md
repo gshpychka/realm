@@ -27,7 +27,7 @@ One Nix flake for every machine I run: NixOS, nix-darwin and home-manager, with 
 | `modules/home-manager/` | neovim, zsh, tmux, git, coding agents |
 | `overlays/` `packages/` | Package overlays and custom packages |
 | `secrets/` | sops-encrypted secrets |
-| `infra/` | Terraform for GCP, Cloudflare and Tailscale; Alchemy stacks for Link Sanitizer and ProbaBench |
+| `infra/` | Terraform for GCP, Cloudflare, Tailscale and AWS; Alchemy stacks for Link Sanitizer and ProbaBench |
 | `scripts/` | Runbooks for the travel router, Kodi box and Voice PE; OpenClaw's nixos-control plugin |
 | `tests/` | NixOS VM tests and declarative module/catalog checks |
 

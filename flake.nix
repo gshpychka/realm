@@ -357,6 +357,8 @@
                     touch $out
                   '';
               voice-broker = pkgs.callPackage ./packages/voice-broker { };
+              rolesanywhere = pkgs.callPackage ./packages/rolesanywhere { };
+              rolesanywhere-vm = import ./tests/rolesanywhere.nix { inherit pkgs; };
               arr-sync = hoard.arrSync;
               tautulli = hoard.tautulliConfig;
               kodi = pkgs.runCommand "check-kodi" { nativeBuildInputs = [ pkgs.python3 ]; } ''

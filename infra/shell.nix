@@ -17,6 +17,7 @@ let
     p.hashicorp_google
     p.clementblaise_age
     p.tailscale_tailscale
+    p.hashicorp_aws
   ]);
   # sops exec-env takes one command string, which a shell re-parses, so each
   # argument is requoted with bash's ${*@Q}, which, unlike printf %q, expands to
@@ -27,6 +28,24 @@ let
       ${lib.getExe pkgs.sops} exec-env "$REPO_ROOT/secrets/infra/${envFile}" \
         "${command} ''${*@Q}"
     '';
+  # Alchemy reads AWS credentials from the environment or its own profiles, so
+  # its stacks deploy under this with the current AWS CLI profile's
+  awsExec = pkgs.writeShellApplication {
+    name = "aws-exec";
+    runtimeInputs = [ pkgs.awscli2 ];
+    text = ''
+      # the profile's credentials, as export lines
+      credentials=$(aws configure export-credentials --format env)
+      # puts them in this environment
+      eval "$credentials"
+      # the profile's region, unless AWS_REGION names one
+      AWS_REGION=''${AWS_REGION:-$(aws configure get region)}
+      # puts the region in this environment
+      export AWS_REGION
+      # runs the command with both
+      exec "$@"
+    '';
+  };
 in
 pkgs.mkShell {
   buildInputs = [
@@ -42,6 +61,7 @@ pkgs.mkShell {
     pkgs.terragrunt
     (sopsExecEnv "tf" "terraform.env" (lib.getExe terraform))
     (sopsExecEnv "tg" "terraform.env" (lib.getExe pkgs.terragrunt))
+    awsExec
     # the ProbaBench CLI with its OpenRouter key; it finds its history file from its
     # own path, so it runs from any directory
     (sopsExecEnv "probabench" "probabench.env"
@@ -55,11 +75,13 @@ pkgs.mkShell {
     export CLOUDSDK_CORE_PROJECT="${values.gcpProjectId}"
     export TF_VAR_gcp_project_id="${values.gcpProjectId}"
     export TF_VAR_domain_name="${values.domain}"
+    export TF_VAR_user="${values.user}"
     export DOMAIN_NAME="${values.domain}"
     export TF_STATE_BUCKET="${values.gcpTfStateBucket}"
     # Alchemy and AWS profiles live under infra/.home, apart from any others
-    # on the machine. The AWS CLI keeps its SSO token cache in ~/.aws/sso/cache,
-    # so the SSO session needs a name no other config uses.
+    # on the machine. The default AWS profile is infra/aws's aws_config output.
+    # The AWS CLI keeps its SSO token cache in ~/.aws/sso/cache, so the SSO
+    # session needs a name no other config uses.
     export ALCHEMY_HOME=$REPO_ROOT/infra/.home/.alchemy
     export AWS_CONFIG_FILE=$REPO_ROOT/infra/.home/.aws/config
     export AWS_SHARED_CREDENTIALS_FILE=$REPO_ROOT/infra/.home/.aws/credentials

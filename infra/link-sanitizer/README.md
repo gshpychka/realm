@@ -13,17 +13,17 @@ ClearURLs, AdGuard, Brave and Firefox catalog. An
 From this directory, in the infra shell:
 
 ```sh
-# once: the bot token, an AWS profile and the account's Alchemy assets bucket
+# once: the bot token and the account's Alchemy assets bucket
 sops ../../secrets/infra/link-sanitizer.env  # TELEGRAM_BOT_TOKEN=<token from @BotFather>
-bun alchemy profile edit --add AWS
-bun alchemy provider aws bootstrap --aws-profile "$(aws configure list-profiles)"
+bun alchemy provider aws bootstrap --aws-profile <SSO profile>
 
 bun install --frozen-lockfile
 bun run deploy
 ```
 
 A bot has a single webhook, so the scripts deploy one stage, `prod`. They read
-the token through `sops exec-env`.
+the token through `sops exec-env`, and the current AWS profile's credentials
+through `aws-exec`.
 
 `bun run dev` serves the stack from Alchemy's local AWS emulator in Docker
 while the bot's webhook stays on `prod`.
