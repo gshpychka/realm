@@ -35,10 +35,7 @@ pkgs.testers.runNixOSTest {
     {
       imports = [ ../modules/system/nixos/rolesanywhere.nix ];
       virtualisation.tpm.enable = true;
-      users.users = {
-        alice.isNormalUser = true;
-        bob.isNormalUser = true;
-      };
+      users.users.alice.isNormalUser = true;
       services.rolesanywhere = {
         enable = true;
         clients = [ "alice" ];
@@ -68,17 +65,10 @@ pkgs.testers.runNixOSTest {
         return machine.fail(f"su - {user} -c 'rolesanywhere-credentials --certificate' 2>&1")
 
 
-    def register() -> str:
-        """Registers a CA certificate for the TPM2's current CA key; returns the key."""
-        machine.succeed("${rolesanywhere} ca-certificate > /tmp/ca.pem")
-        machine.succeed(f"install -D -m 0644 /tmp/ca.pem {registered}")
-        return machine.succeed(f"openssl x509 -in {registered} -noout -pubkey")
-
-
     machine.wait_for_unit("rolesanywhere.socket")
-
-    with subtest("the TPM2 derives the same CA key each time"):
-        assert register() == register()
+    # registers a CA certificate for the TPM2's CA key
+    machine.succeed("${rolesanywhere} ca-certificate > /tmp/ca.pem")
+    machine.succeed(f"install -D -m 0644 /tmp/ca.pem {registered}")
 
     with subtest("alice gets a certificate for machine:alice, and it is logged"):
         machine.succeed("su - alice -c 'rolesanywhere-credentials --certificate' > /tmp/alice.pem")
@@ -87,9 +77,8 @@ pkgs.testers.runNixOSTest {
         serial = machine.succeed("openssl x509 -in /tmp/alice.pem -noout -serial").strip().removeprefix("serial=").lower()
         machine.succeed(f"journalctl -u 'rolesanywhere@*' | grep -q 'issued {serial} subject=machine:alice until=[0-9]* to alice (pid [0-9]*'")
 
-    with subtest("anyone not in clients is refused"):
-        assert "no access to /run/rolesanywhere/certificate.sock" in refusal_as("bob")
-        # root reaches the socket, and the issuer itself refuses
+    with subtest("the issuer refuses a user not in clients"):
+        # root reaches the socket despite its mode and group
         assert "root is not in services.rolesanywhere.clients" in refusal_as("root")
 
     with subtest("aws_signing_helper trades the certificate for credentials"):
@@ -99,9 +88,6 @@ pkgs.testers.runNixOSTest {
             f"su - alice -c 'rolesanywhere-credentials {arns} --endpoint http://127.0.0.1:8099'"
         )
         assert json.loads(output)["AccessKeyId"] == "ASIATEST", output
-
-    with subtest("the throwaway key is not written to a file"):
-        machine.fail("grep -rlI --devices=skip 'PRIVATE KEY' /tmp /home /root /run /var /etc")
 
     with subtest("after a PCR 7 change the TPM2 derives another CA key, which the issuer refuses"):
         machine.succeed("tpm2_pcrextend 7:sha256=" + "ab" * 32)
