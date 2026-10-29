@@ -1045,6 +1045,10 @@
     url = "https://registry.npmjs.org/@types/node/-/node-22.20.0.tgz";
     hash = "sha512-QWlFW2wf3nTjC13/DqRnBpR4ZO36VJH/JVBkA/vcnmbTBNQIlnObqyqZE1tUR7+Ni23Lda8R1BxMfbXRpCUx5g==";
   };
+  "@types/proper-lockfile@4.1.4" = fetchurl {
+    url = "https://registry.npmjs.org/@types/proper-lockfile/-/proper-lockfile-4.1.4.tgz";
+    hash = "sha512-uo2ABllncSqg9F1D4nugVl9v93RmjxF6LJzQLMLDdPaXCUIDPeOJ21Gbqi43xNKzBi/WQ0Q0dICqufzQbMjipQ==";
+  };
   "@types/react-dom@19.2.3" = fetchurl {
     url = "https://registry.npmjs.org/@types/react-dom/-/react-dom-19.2.3.tgz";
     hash = "sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==";
@@ -1052,6 +1056,10 @@
   "@types/react@19.2.17" = fetchurl {
     url = "https://registry.npmjs.org/@types/react/-/react-19.2.17.tgz";
     hash = "sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw==";
+  };
+  "@types/retry@0.12.5" = fetchurl {
+    url = "https://registry.npmjs.org/@types/retry/-/retry-0.12.5.tgz";
+    hash = "sha512-3xSjTp3v03X/lSQLkczaN9UIEwJMoMCA1+Nb5HfbJEQWogdeQIyVtTvxPXDQjZ5zws8rFQfVfRdz03ARihPJgw==";
   };
   "@types/use-sync-external-store@0.0.6" = fetchurl {
     url = "https://registry.npmjs.org/@types/use-sync-external-store/-/use-sync-external-store-0.0.6.tgz";

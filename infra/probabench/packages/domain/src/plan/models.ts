@@ -4,43 +4,44 @@
 import * as Schema from "effect/Schema";
 
 /** Reasoning a run requests from OpenRouter; "off" disables it. */
-export const ReasoningMode = Schema.Literal("off", "low", "medium", "high", "xhigh");
+export const ReasoningMode = Schema.Literal("off", "minimal", "low", "medium", "high", "xhigh");
 export type ReasoningMode = typeof ReasoningMode.Type;
 
 export interface Model {
   /** OpenRouter model ID. */
   readonly slug: string;
   /** Reasoning the model runs with unless a run overrides it; absent means off. */
-  readonly reasoning?: Exclude<ReasoningMode, "off">;
+  readonly reasoning?: ReasoningMode;
 }
 
 interface ModelAlias extends Model {
   readonly alias: string;
+  readonly reasoning: ReasoningMode;
 }
 
 /**
  * Saved models, checked against OpenRouter's catalog on 2026-10-29.
- * Versioned IDs keep comparisons attributable. Low reasoning leaves room for a
- * visible reply on models that require thinking; callers can override the effort.
+ * Each alias selects the lowest supported reasoning setting: off when optional,
+ * otherwise minimal or low. Callers can override the effort.
  */
 export const MODEL_ALIASES: readonly [ModelAlias, ...ModelAlias[]] = [
-  { alias: "claude-haiku-5.5-low", slug: "anthropic/claude-haiku-5.5", reasoning: "low" },
+  { alias: "claude-haiku-5.5-off", slug: "anthropic/claude-haiku-5.5", reasoning: "off" },
   { alias: "claude-sonnet-5.5-low", slug: "anthropic/claude-sonnet-5.5", reasoning: "low" },
   { alias: "claude-opus-5.5-low", slug: "anthropic/claude-opus-5.5", reasoning: "low" },
   { alias: "claude-fable-5.1-low", slug: "anthropic/claude-fable-5.1", reasoning: "low" },
   { alias: "gpt-6-astra-low", slug: "openai/gpt-6-astra", reasoning: "low" },
   { alias: "gpt-6.1-sol-low", slug: "openai/gpt-6.1-sol", reasoning: "low" },
-  { alias: "gpt-6.1-terra-low", slug: "openai/gpt-6.1-terra", reasoning: "low" },
+  { alias: "gpt-6.1-terra-off", slug: "openai/gpt-6.1-terra", reasoning: "off" },
   { alias: "gemini-4-argon-low", slug: "google/gemini-4-argon", reasoning: "low" },
   { alias: "grok-4.7-low", slug: "x-ai/grok-4.7", reasoning: "low" },
-  { alias: "muse-wonder-low", slug: "meta/muse-wonder", reasoning: "low" },
+  { alias: "muse-wonder-minimal", slug: "meta/muse-wonder", reasoning: "minimal" },
   {
-    alias: "deepseek-v4.1-flash-1017-low",
+    alias: "deepseek-v4.1-flash-1017-off",
     slug: "deepseek/deepseek-v4.1-flash-1017",
-    reasoning: "low",
+    reasoning: "off",
   },
-  { alias: "qwen3.8-max-0902-low", slug: "qwen/qwen3.8-max-0902", reasoning: "low" },
-  { alias: "kimi-k3.1-pro-low", slug: "moonshotai/kimi-k3.1-pro", reasoning: "low" },
+  { alias: "qwen3.8-max-0902-minimal", slug: "qwen/qwen3.8-max-0902", reasoning: "minimal" },
+  { alias: "kimi-k3.1-pro-off", slug: "moonshotai/kimi-k3.1-pro", reasoning: "off" },
   { alias: "glm-5.3-low", slug: "z-ai/glm-5.3", reasoning: "low" },
   { alias: "minimax-m3.1-flash-low", slug: "minimax/minimax-m3.1-flash", reasoning: "low" },
 ];

@@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
 
 export const BRIDGE_ROUTES = {
   status: "/api/bench/status",
+  estimate: "/api/bench/estimate",
   run: "/api/bench/run",
   cancel: "/api/bench/cancel",
 } as const;
@@ -50,7 +51,7 @@ export const Job = Schema.Struct({
   status: Schema.Literal("running", "completed", "failed", "cancelled"),
   startedAt: Schema.String,
   log: Schema.String,
-  /** The latest finished probability point the runner reported; null before the first. */
+  /** Newly saved sample counts; null before the first progress report. */
   progress: Schema.NullOr(Schema.Struct({ completed: Schema.Int, total: Schema.Int })),
   error: Schema.optional(Schema.String),
 });

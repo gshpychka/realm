@@ -1,37 +1,33 @@
 // The probabench command: flags, then the plan, its confirmation and its execution.
-import { fileURLToPath } from "node:url";
 import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Prompt from "@effect/cli/Prompt";
 import {
   DEFAULT_CONCURRENCY,
   DEFAULT_PRESET,
-  RESULTS_FILE,
   ReasoningMode,
   StepPercent,
   TrialsPerStep,
 } from "@probabench/domain";
+import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { describePlan, InvalidOptions, resolvePlan, type SamplingOptions } from "../plan/plan";
+import { estimateCost } from "../plan/cost";
+import { planDaily } from "../plan/daily";
+import { InvalidOptions, resolvePlan, type SamplingOptions } from "../plan/plan";
 import { ALL_ALIASES, describeAliases, splitModels } from "../plan/series";
+import { DEFAULT_MAX_TOKENS } from "../sampling/request";
+import { HISTORY_PATH, readHistory } from "../store/results-store";
+import { describeBriefing } from "./briefing";
 import { executePlan } from "./execute";
-
-/**
- * The workspace's history file, which the web app serves at its site root. Resolved
- * from this file rather than the working directory.
- */
-export const HISTORY_PATH = fileURLToPath(
-  new URL(`../../../../data/${RESULTS_FILE}`, import.meta.url),
-);
 
 const DEFAULTS: SamplingOptions = {
   trialsPerStep: DEFAULT_PRESET.trialsPerStep,
   stepPercent: DEFAULT_PRESET.stepPercent,
   concurrency: DEFAULT_CONCURRENCY,
-  maxTokens: 4096,
+  maxTokens: DEFAULT_MAX_TOKENS,
 };
 
 const PositiveInt = Schema.Int.pipe(Schema.positive());
@@ -54,7 +50,9 @@ const options = {
   ),
   trials: integerFlag("trials", TrialsPerStep, "a positive integer").pipe(
     Options.withDefault(DEFAULTS.trialsPerStep),
-    Options.withDescription(`Samples per target (default: ${DEFAULTS.trialsPerStep}).`),
+    Options.withDescription(
+      `Desired samples per probability today (default: ${DEFAULTS.trialsPerStep}).`,
+    ),
   ),
   step: integerFlag("step", StepPercent, "from 1 to 100").pipe(
     Options.withDefault(DEFAULTS.stepPercent),
@@ -85,7 +83,9 @@ const options = {
     Options.withDescription("Skip final confirmation."),
   ),
   dryRun: Options.boolean("dry-run").pipe(
-    Options.withDescription("Print and validate the plan without credentials or provider calls."),
+    Options.withDescription(
+      "Show the plan and live API cost estimate without credentials or sampling.",
+    ),
   ),
   list: Options.boolean("list").pipe(
     Options.withDescription("List saved models and their reasoning settings without credentials."),
@@ -106,8 +106,15 @@ const benchCommand = Command.make("probabench", options, (flags) =>
       },
       out: HISTORY_PATH,
     });
-    yield* Console.log(describePlan(plan));
+    const daily = planDaily(
+      plan,
+      yield* readHistory(plan.out),
+      new Date(yield* Clock.currentTimeMillis).toISOString(),
+    );
+    const estimate = yield* estimateCost(daily, plan.options);
+    yield* Console.log(describeBriefing(plan, daily, estimate, process.stdout.columns || 80));
     if (flags.dryRun) return;
+    if (daily.remaining === 0) return yield* Console.log("Nothing to collect today.");
     if (!flags.yes) {
       // The prompt needs a terminal on stdin; the dev bridge spawns the CLI with stdin ignored.
       if (process.stdin.isTTY !== true) {

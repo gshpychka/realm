@@ -3,9 +3,10 @@
 // the web app. It depends only on effect, and its tsconfig's empty "types" keeps
 // node globals out.
 export * from "./plan/bench-args";
+export * from "./plan/cost";
 export * from "./plan/models";
 export * from "./plan/sampling";
-export * from "./progress/line";
+export * from "./progress/samples";
 export * from "./results/evidence";
 export * from "./results/metrics";
 export * from "./results/schema";

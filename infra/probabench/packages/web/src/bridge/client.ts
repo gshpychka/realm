@@ -1,4 +1,6 @@
 // Browser side of the dev bridge. Only the dev server serves these routes.
+
+import { CostEstimate } from "@probabench/domain";
 import * as Schema from "effect/Schema";
 import { type BenchRequest, BRIDGE_ROUTES, BridgeFailure, BridgeStatus } from "./protocol";
 
@@ -40,3 +42,17 @@ const post = async (route: string, request: BenchRequest | null): Promise<Bridge
 
 export const startRun = (request: BenchRequest) => post(BRIDGE_ROUTES.run, request);
 export const cancelRun = () => post(BRIDGE_ROUTES.cancel, null);
+
+export const fetchEstimate = async (
+  request: BenchRequest,
+  signal: AbortSignal,
+): Promise<CostEstimate> => {
+  const { ok, body } = await call(BRIDGE_ROUTES.estimate, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
+  });
+  if (ok && Schema.is(CostEstimate)(body)) return body;
+  throw new Error(isFailure(body) ? body.error : "Could not load the cost estimate.");
+};

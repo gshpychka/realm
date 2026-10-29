@@ -28,8 +28,8 @@ export function MethodPage() {
         </pre>
         <p>
           The same task is repeated at percentages from 0% to 100%. Requests go through OpenRouter.
-          The model and its reasoning setting are saved with the answers; temperature and other
-          sampling controls use the provider’s defaults.
+          We use the selected reasoning setting and the provider’s default temperature and other
+          sampling controls.
         </p>
       </section>
 
@@ -37,13 +37,12 @@ export function MethodPage() {
         <h3>How answers are counted</h3>
         <p>
           A reply counts if it is exactly <code>0</code> or <code>1</code> after removing whitespace
-          at the ends. Other replies, including empty answers, are saved as invalid and excluded
-          from the percentage calculation.
+          at the ends. Other replies, including empty answers, are invalid and excluded from the
+          percentage calculation.
         </p>
         <p>
           If a model returns 30 ones, 60 zeros and 10 invalid answers, its observed percentage of
-          ones is 30 ÷ 90 = 33.3%. Collecting more answers adds them to the existing totals for that
-          model, reasoning setting and requested percentage.
+          ones is 30 ÷ 90 = 33.3%.
         </p>
       </section>
 

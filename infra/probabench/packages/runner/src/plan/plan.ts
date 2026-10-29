@@ -1,6 +1,6 @@
 // A benchmark plan: the resolved model series, sampling options and history file the
-// CLI executes; describePlan is what it prints and confirms.
-import { planBudget, type ReasoningMode } from "@probabench/domain";
+// CLI executes.
+import type { ReasoningMode } from "@probabench/domain";
 import { isNonEmptyReadonlyArray, type NonEmptyReadonlyArray } from "effect/Array";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -24,7 +24,7 @@ export interface SamplingOptions {
 export interface BenchPlan {
   readonly series: NonEmptyReadonlyArray<ModelSeries>;
   readonly options: SamplingOptions;
-  /** History file each completed run is appended to. */
+  /** History file receiving durable partial checkpoints. */
   readonly out: string;
 }
 
@@ -53,14 +53,4 @@ export const resolvePlan = (request: {
     );
   }
   return Effect.succeed({ series, options: request.options, out: request.out });
-};
-
-export const describePlan = ({ series, options }: BenchPlan): string => {
-  const { points, samples } = planBudget(options, series.length);
-  return [
-    `Models (${series.length}):`,
-    ...series.map((entry) => `  ${entry.modelSlug} · reasoning ${entry.reasoning}`),
-    `Sampling: ${options.trialsPerStep} trials × ${points} points (${options.stepPercent}% step), adaptive concurrency up to ${options.concurrency} across all models`,
-    `Projected samples: ${samples}`,
-  ].join("\n");
 };

@@ -38,7 +38,7 @@ decrypted:
 
 ```sh
 probabench --list   # saved models; any OpenRouter model ID works too
-probabench --model claude-haiku-5.5-low --dry-run
+probabench --model claude-haiku-5.5-off --dry-run
 probabench --model claude-opus-5.5-low,gemini-4-argon-low --yes
 probabench --model openai/gpt-6.1-sol --reasoning low --trials 10 --step 25
 probabench --model all --trials 10 --step 25   # 50 samples per saved model
@@ -53,33 +53,87 @@ flagships, Grok, DeepSeek, Alibaba Qwen, Moonshot Kimi, Z.ai GLM and MiniMax.
 
 | Saved name | OpenRouter model ID | Reasoning |
 | --- | --- | --- |
-| `claude-haiku-5.5-low` | `anthropic/claude-haiku-5.5` | Low |
+| `claude-haiku-5.5-off` | `anthropic/claude-haiku-5.5` | Off |
 | `claude-sonnet-5.5-low` | `anthropic/claude-sonnet-5.5` | Low |
 | `claude-opus-5.5-low` | `anthropic/claude-opus-5.5` | Low |
 | `claude-fable-5.1-low` | `anthropic/claude-fable-5.1` | Low |
 | `gpt-6-astra-low` | `openai/gpt-6-astra` | Low |
 | `gpt-6.1-sol-low` | `openai/gpt-6.1-sol` | Low |
-| `gpt-6.1-terra-low` | `openai/gpt-6.1-terra` | Low |
+| `gpt-6.1-terra-off` | `openai/gpt-6.1-terra` | Off |
 | `gemini-4-argon-low` | `google/gemini-4-argon` | Low |
 | `grok-4.7-low` | `x-ai/grok-4.7` | Low |
-| `muse-wonder-low` | `meta/muse-wonder` | Low |
-| `deepseek-v4.1-flash-1017-low` | `deepseek/deepseek-v4.1-flash-1017` | Low |
-| `qwen3.8-max-0902-low` | `qwen/qwen3.8-max-0902` | Low |
-| `kimi-k3.1-pro-low` | `moonshotai/kimi-k3.1-pro` | Low |
+| `muse-wonder-minimal` | `meta/muse-wonder` | Minimal |
+| `deepseek-v4.1-flash-1017-off` | `deepseek/deepseek-v4.1-flash-1017` | Off |
+| `qwen3.8-max-0902-minimal` | `qwen/qwen3.8-max-0902` | Minimal |
+| `kimi-k3.1-pro-off` | `moonshotai/kimi-k3.1-pro` | Off |
 | `glm-5.3-low` | `z-ai/glm-5.3` | Low |
 | `minimax-m3.1-flash-low` | `minimax/minimax-m3.1-flash` | Low |
 
-All saved models request low reasoning; several require thinking and cannot run
-with it disabled. A saved name is a shortcut for the model ID and that setting.
-`--reasoning` overrides the saved setting. A full model ID defaults to off, so
-pass `--reasoning low` when using these reasoning models by their full IDs.
-The list has 15 models: `--model all` collects 8,250 samples at Standard settings,
-or 750 with `--trials 10 --step 25`. `--dry-run` previews the plan without calling OpenRouter.
+Saved models use the lowest supported reasoning setting: off for Haiku, Terra,
+DeepSeek, and Kimi; minimal for Muse Wonder and Qwen; low for the remaining models.
+A saved name is a shortcut for the model ID and that setting. `--reasoning`
+overrides it. A full model ID defaults to off, so specify a supported reasoning
+effort when the model requires it.
+`--reasoning` accepts `off`, `minimal`, `low`, `medium`, `high`, and `xhigh`;
+choose a setting the model supports. Muse Wonder and Qwen 3.8 Max support `minimal`:
+
+```sh
+probabench --model meta/muse-wonder --reasoning minimal
+```
+
+The list has 15 models: `--model all` targets 8,250 samples per day at Standard settings,
+or 750 with `--trials 10 --step 25`. Already saved answers count toward that total.
+`--dry-run` shows the missing requests and estimates their cost from OpenRouter’s
+live model pricing API. It needs no key and sends no sampling requests.
 
 `--trials` and `--step` default to the Standard preset, which the page's form
-also starts from: 50 samples at each target probability, every 10%. The CLI
+also starts from: a daily total of 50 samples at each probability, every 10%. The CLI
 prints the plan and asks before running unless `--yes` is given; without a
-terminal it refuses. `--dry-run` stops after the plan.
+terminal it refuses. A completed daily target exits immediately, without confirmation
+or credentials. `--dry-run` stops after the plan and cost estimate.
+
+During sampling, an interactive terminal shows a live table with saved samples,
+active requests, retries, and each model’s status. Cooldowns count down in place.
+Progress counts answers only after they are saved, including invalid replies;
+earlier samples reused toward today’s target are excluded from this invocation’s
+counts. Average throughput includes all elapsed time, including cooldowns. After
+30 seconds and five newly saved answers per unfinished model, ETA uses the longest
+remaining time estimated from each model’s average throughput. It stays visible
+during cooldowns and accounts for any wait before requests can resume. Redirected output has no
+terminal control sequences: it prints totals every 10 seconds, per-model details
+every minute, and a final summary on completion, failure, or interruption.
+
+Before confirmation, the CLI shows one table of models, reasoning settings,
+missing requests, and estimated USD costs, followed by a total. Models whose daily
+targets are met are marked Already saved. The local page shows its estimate before
+Start benchmark. Totals below one cent are shown as `<$0.01`. Estimates include
+input, output (including reasoning), and any per-request charge. Input tokens are
+approximated from the actual prompts using four characters per token plus chat
+overhead. The range uses one output token through the configured output limit:
+16 when reasoning is off, otherwise `--max-tokens` (default 4,096). It is a range
+of token-use scenarios, not a guaranteed spending cap. Provider routing, actual
+token counts, credit purchase fees and taxes can change the final charge. Missing
+or invalid prices are shown as unavailable rather than counted as free. If the
+pricing API is unavailable, sampling can still proceed after that is shown.
+
+## Daily sampling and checkpoints
+
+The daily target is tracked separately for each model, reasoning setting and
+requested probability. The day is the UTC date when sampling starts; that date
+stays fixed if sampling crosses midnight. All returned answers count toward the
+trial total, including invalid replies. Failed requests without an answer do not.
+
+```sh
+probabench --model grok-4.7-low --trials 50 --step 10
+probabench --model grok-4.7-low --trials 50 --step 10   # same day: no new requests
+probabench --model grok-4.7-low --trials 100 --step 10  # adds 50 per probability
+probabench --model grok-4.7-low --trials 100 --step 5   # fills the new probabilities
+```
+
+A lower trial target or a coarser grid never removes answers. A new day starts a
+new daily target while preserving the complete history. Checkpoints are saved as
+answers arrive, including partial probability grids. Stop with Ctrl-C and repeat
+the command to collect only the missing answers.
 
 Samples use the provider's default temperature, top_p and top_k. A reply may use
 16 output tokens with reasoning off, or `--max-tokens` (4096 by default) with it
@@ -105,9 +159,10 @@ See [OpenRouter's limits](https://openrouter.ai/docs/api/reference/limits).
 ## Evidence and history
 
 `data/results.json` holds the raw observations and is their only source copy.
-The CLI appends to it whether started in a terminal or by the dev bridge. A completed
-model sweep is saved immediately; an aborted benchmark keeps completed sweeps and
-discards the incomplete one. Commit the file after collecting samples:
+The CLI appends immutable checkpoints whether started in a terminal or by the dev
+bridge. Each received answer is committed before its task completes. Concurrent
+replies can share a disk write; interruption waits for those commits to finish.
+Commit the file after collecting samples:
 `bun run deploy` publishes the working-tree copy, committed or not.
 
 The results page combines all observations of a model with the same reasoning setting.
@@ -116,7 +171,8 @@ then computes the observed frequency, Wilson interval and calibration error.
 Different sampling grids contribute only at the targets they actually measured.
 An invocation's boundaries, its ID and how many samples it collected have no
 independent statistical weight. Repeating a benchmark adds evidence to the same
-model instead of replacing its chart with the newest collection.
+model instead of replacing its chart with the newest collection. Repeating an
+already completed daily target leaves the history unchanged.
 
 The **Over time** view plots mean absolute error using all answers collected by
 each date. Select a graph point to inspect measurements at that date, or choose
@@ -130,9 +186,10 @@ The runner reads the final answer directly from OpenRouter's chat-completions
 response. It validates the answer fields and ignores reasoning metadata, whose
 provider-specific formats are unrelated to the measurement.
 
-Simultaneous model completions are saved serially within the CLI. Separate CLI
-processes do not share that lock, so start one benchmark process at a time. Each
-save goes through a temporary `.probabench-*` directory beside the history, and
+Concurrent invocations share a file lease. The second waits for the first, then
+rechecks the saved totals before sending requests. The lease is released on exit;
+after a hard kill, a stale lease expires after 30 seconds. Each save atomically
+replaces the JSON snapshot through a temporary `.probabench-*` directory beside the history, and
 a process killed mid-save can leave it behind. Delete it: `bun run deploy`
 publishes everything in `data/`.
 

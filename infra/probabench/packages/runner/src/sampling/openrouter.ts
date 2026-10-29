@@ -12,16 +12,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { ModelSeries } from "../plan/series";
+import { outputTokenLimit, type TextMessage } from "./request";
 
 export class MissingApiKey extends Data.TaggedError("MissingApiKey") {
   override get message() {
     return "OPENROUTER_API_KEY is not set. Run the CLI as probabench in the infra dev shell (nix develop .#infra), which loads the key from secrets/infra/probabench.env with sops exec-env.";
   }
-}
-
-export interface TextMessage {
-  readonly role: "system" | "user";
-  readonly content: string;
 }
 
 export class OpenRouterClient extends Context.Tag("probabench/OpenRouterClient")<
@@ -34,10 +30,6 @@ export class OpenRouterClient extends Context.Tag("probabench/OpenRouterClient")
     ) => Effect.Effect<string, AiError.AiError>;
   }
 >() {}
-
-// Some OpenAI routes require at least 16 tokens. Empty output (including an
-// exhausted reasoning budget) is still an observation and is counted as invalid.
-const NO_REASONING_MAX_TOKENS = 16;
 
 const Completion = Schema.Struct({
   choices: Schema.NonEmptyArray(
@@ -66,7 +58,7 @@ export const openrouterClientLayer = Layer.effect(
             model: series.modelSlug,
             messages,
             stream: false,
-            max_tokens: series.reasoning === "off" ? NO_REASONING_MAX_TOKENS : maxTokens,
+            max_tokens: outputTokenLimit(series.reasoning, maxTokens),
             reasoning:
               series.reasoning === "off"
                 ? { enabled: false, exclude: true }

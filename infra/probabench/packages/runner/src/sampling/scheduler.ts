@@ -3,15 +3,14 @@
 // multiplicative decrease. Provider throttles affect one model; gateway limits and
 // temporary spending holds affect the account. Waiting and retries hold no permits.
 import * as Clock from "effect/Clock";
-import * as Console from "effect/Console";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
+import { SamplingProgress } from "../progress/observer";
 import { inFlightBudgetLimited, type ProviderFailure, providerDelayMillis } from "./retry";
 
 interface Window {
-  readonly name: string;
   active: number;
   limit: number;
   threshold: number;
@@ -49,10 +48,10 @@ export class RequestScheduler extends Context.Tag("probabench/RequestScheduler")
 const makeScheduler = (maximum: number) =>
   Effect.gen(function* () {
     const clock = yield* Clock.clockWith(Effect.succeed);
+    const progress = yield* SamplingProgress;
     // Coalesce wakeups. One dispatcher and one timer serve every waiting sample.
     const wake = yield* Queue.sliding<void>(1);
-    const window = (name: string, initial: number): Window => ({
-      name,
+    const window = (initial: number): Window => ({
       active: 0,
       limit: Math.min(initial, maximum),
       threshold: Infinity,
@@ -61,11 +60,31 @@ const makeScheduler = (maximum: number) =>
       strikes: 0,
       blockedUntil: 0,
     });
-    const account = window("OpenRouter", 8);
-    const free = window("OpenRouter free models", 2);
+    const account = window(8);
+    const free = window(2);
     const models = new Map<string, ModelQueue>();
     const queues: ModelQueue[] = [];
     let cursor = 0;
+
+    progress.scheduler(() => ({
+      active: account.active,
+      limit: account.limit,
+      blockedUntil: account.blockedUntil,
+      models: new Map(
+        [...models].map(([slug, queue]) => {
+          const own = queue.windows[queue.windows.length - 1];
+          return [
+            slug,
+            {
+              active: own?.active ?? 0,
+              limit: own?.limit ?? 0,
+              blockedUntil: Math.max(0, ...queue.windows.slice(1).map((w) => w.blockedUntil)),
+              queued: queue.pending.length,
+            },
+          ];
+        }),
+      ),
+    }));
 
     const notify = () => {
       wake.unsafeOffer(undefined);
@@ -80,7 +99,7 @@ const makeScheduler = (maximum: number) =>
       const existing = models.get(model);
       if (existing) return existing;
       const queue: ModelQueue = {
-        windows: [account, ...(model.endsWith(":free") ? [free] : []), window(model, 4)],
+        windows: [account, ...(model.endsWith(":free") ? [free] : []), window(4)],
         pending: [],
       };
       models.set(model, queue);
@@ -198,10 +217,6 @@ const makeScheduler = (maximum: number) =>
           Math.min(60_000, 1000 * 2 ** (affected.strikes - 1)),
         );
         affected.blockedUntil = Math.max(affected.blockedUntil, now + delay);
-        if (fresh)
-          yield* Console.log(
-            `[${affected.name}] throttled; waiting ${Math.ceil(delay / 1000)}s, concurrency ${affected.limit}`,
-          );
       });
 
     return RequestScheduler.of({

@@ -3,15 +3,13 @@ import type { Job } from "../bridge/protocol";
 import type { Bridge } from "../bridge/use-bridge";
 import { FormError } from "./FormError";
 
-const UNSAVED = "Incomplete measurements were not saved. Earlier results are unchanged.";
-
 const OUTCOME = {
   completed: {
-    title: "Samples saved",
+    title: "Complete",
     detail: "",
   },
-  cancelled: { title: "Sampling cancelled", detail: UNSAVED },
-  failed: { title: "Sampling stopped", detail: UNSAVED },
+  cancelled: { title: "Sampling cancelled", detail: "" },
+  failed: { title: "Sampling stopped", detail: "" },
 } as const satisfies Record<Exclude<Job["status"], "running">, { title: string; detail: string }>;
 
 const describe = (job: Job, cancelling: boolean) => {
@@ -19,7 +17,7 @@ const describe = (job: Job, cancelling: boolean) => {
   return {
     title: cancelling ? "Stopping the benchmark…" : "Sampling in progress",
     detail: job.progress
-      ? `${job.progress.completed} of ${job.progress.total} probabilities complete.`
+      ? `${job.progress.completed.toLocaleString("en-US")} of ${job.progress.total.toLocaleString("en-US")} samples saved.`
       : "Starting…",
   };
 };
@@ -62,7 +60,7 @@ export function JobProgress({
       </div>
       {running ? (
         <progress
-          aria-label="Probability targets sampled"
+          aria-label="Samples saved"
           value={job.progress?.completed}
           max={job.progress?.total ?? 1}
         />
@@ -92,7 +90,7 @@ export function JobProgress({
               View results <span aria-hidden="true">↗</span>
             </button>
             <button type="button" className="text-button" onClick={onSetUpAnother}>
-              Collect more samples
+              Change settings
             </button>
           </>
         )}

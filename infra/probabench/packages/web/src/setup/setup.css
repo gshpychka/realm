@@ -224,46 +224,38 @@ body:has(.run-dialog[open]) {
 .advanced .form-grid {
   margin-bottom: 17px;
 }
-.budget {
-  display: flex;
-  align-items: center;
-  gap: 22px;
+.cost-preview {
   padding: 18px 20px;
   background: var(--raised);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-
-  @media (max-width: 650px) {
-    gap: 13px;
-    padding: 17px 14px;
-  }
+  font-size: 12px;
+  line-height: 1.8;
 }
-.budget-total strong {
-  font: 27px / 1.3 var(--mono);
+.cost-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+.cost-heading strong {
   color: var(--accent);
-  letter-spacing: -1px;
-
-  @media (max-width: 650px) {
-    font-size: 23px;
-  }
+  font: 18px / 1.5 var(--mono);
 }
-.budget-total span {
-  display: block;
+.cost-preview > p,
+.cost-preview details {
   color: var(--muted);
-  font-size: 12px;
-  margin-top: 3px;
-
-  @media (max-width: 650px) {
-    font-size: 11px;
-  }
+  margin-top: 8px;
 }
-.budget-times {
-  color: var(--muted);
-  font-family: var(--mono);
+.cost-preview .form-error {
+  color: var(--danger);
 }
-.budget > p {
-  font-size: 12px;
-  line-height: 1.9;
+.cost-preview details p {
+  margin: 8px 0;
+}
+.cost-preview > button {
+  margin-top: 10px;
 }
 .environment-note {
   display: flex;
@@ -289,7 +281,7 @@ body:has(.run-dialog[open]) {
   display: flex;
   gap: 25px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-top: 26px;
 
   @media (max-width: 650px) {
@@ -298,17 +290,6 @@ body:has(.run-dialog[open]) {
     gap: 15px;
   }
 }
-.setup-submit > p {
-  max-width: 300px;
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--muted);
-
-  @media (max-width: 650px) {
-    max-width: none;
-  }
-}
-
 /* JobProgress */
 .job-progress {
   margin-top: 24px;

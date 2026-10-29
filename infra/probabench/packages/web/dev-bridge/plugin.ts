@@ -3,9 +3,12 @@
 import { spawn } from "node:child_process";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
+import type { CostEstimate } from "@probabench/domain";
+import * as Effect from "effect/Effect";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
 import type { Connect, Plugin } from "vite";
+import { previewCost } from "../../runner/src/plan/preview";
 import {
   BenchRequest,
   BRIDGE_ROUTES,
@@ -65,7 +68,11 @@ async function readBody(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function send(response: ServerResponse, code: number, body: BridgeStatus | BridgeFailure) {
+function send(
+  response: ServerResponse,
+  code: number,
+  body: BridgeStatus | BridgeFailure | CostEstimate,
+) {
   response.writeHead(code, {
     "Content-Type": "application/json",
     "Cache-Control": "no-store",
@@ -88,9 +95,14 @@ export const bridgeMiddleware =
       try {
         if (path === BRIDGE_ROUTES.status && request.method === "GET")
           return send(response, 200, controller.status());
-        if (path === BRIDGE_ROUTES.run && request.method === "POST") {
+        if (
+          (path === BRIDGE_ROUTES.run || path === BRIDGE_ROUTES.estimate) &&
+          request.method === "POST"
+        ) {
           const decoded = decodeRequest(await readBody(request));
           if (Either.isLeft(decoded)) throw new RequestError(400, firstIssue(decoded.left));
+          if (path === BRIDGE_ROUTES.estimate)
+            return send(response, 200, await Effect.runPromise(previewCost(decoded.right)));
           const result = controller.start(decoded.right);
           return send(response, "error" in result ? 409 : 202, result);
         }

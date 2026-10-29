@@ -3,16 +3,15 @@ import {
   planBudget,
   ReasoningMode,
   SAMPLING_PRESETS,
-  StepPercent,
   seriesLabel,
-  TrialsPerStep,
 } from "@probabench/domain";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { BenchRequest, BROWSER_LIMITS, firstIssue } from "../bridge/protocol";
 import type { Bridge, Connection } from "../bridge/use-bridge";
 import { count } from "../common/format";
+import { CostPreview, useCostEstimate } from "./CostPreview";
 import { FormError } from "./FormError";
 import { presetFor, type Settings } from "./settings";
 
@@ -64,23 +63,24 @@ export function SetupForm({
 }) {
   const [startError, setStartError] = useState<string | null>(null);
   const { model, trialsPerStep, stepPercent, concurrency, reasoning, custom } = settings;
-  const request = {
-    model: model.trim(),
-    trialsPerStep,
-    stepPercent,
-    concurrency,
-    ...(reasoning ? { reasoning } : {}),
-  };
+  const request = useMemo(
+    () => ({
+      model: model.trim(),
+      trialsPerStep,
+      stepPercent,
+      concurrency,
+      ...(reasoning ? { reasoning } : {}),
+    }),
+    [model, trialsPerStep, stepPercent, concurrency, reasoning],
+  );
   const { connection } = bridge;
   const local = connection.kind === "local" ? connection.status : null;
-  const budget =
-    Schema.is(TrialsPerStep)(trialsPerStep) && Schema.is(StepPercent)(stepPercent)
-      ? planBudget({ trialsPerStep, stepPercent })
-      : { points: 0, samples: 0 };
   const checked = Schema.validateEither(BenchRequest)(request);
   const validationError = Either.isLeft(checked) ? firstIssue(checked.left) : null;
   const selectedPreset = presetFor(request);
-  const canSubmit = !bridge.pending && !validationError && local?.configured === true;
+  const quote = useCostEstimate(validationError ? null : request, connection.kind === "local");
+  const canSubmit =
+    !bridge.pending && !validationError && local?.configured === true && quote.estimate !== null;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -127,7 +127,7 @@ export function SetupForm({
             ))}
         </datalist>
         <fieldset className="preset-fieldset">
-          <legend className="field-label">Sample budget</legend>
+          <legend className="field-label">Daily sample target</legend>
           <div className="preset-grid">
             {SAMPLING_PRESETS.map((preset) => (
               <button
@@ -166,7 +166,7 @@ export function SetupForm({
           <div className="form-grid" id="custom-sampling">
             <NumberField
               id="benchmark-trials"
-              label="Answers per probability"
+              label="Answers per probability today"
               value={trialsPerStep}
               max={BROWSER_LIMITS.trialsPerStep}
               onChange={(value) => onChange({ trialsPerStep: value })}
@@ -223,16 +223,7 @@ export function SetupForm({
           </p>
         </details>
       </fieldset>
-      <div className="budget" aria-live="polite">
-        <div className="budget-total">
-          <strong>{count(budget.samples)}</strong>
-          <span>planned samples</span>
-        </div>
-        <span className="budget-times">=</span>
-        <p>
-          {count(budget.points)} targets × {count(trialsPerStep)} samples
-        </p>
-      </div>
+      {!validationError && local ? <CostPreview quote={quote} /> : null}
       <FormError message={validationError} />
       {local && !local.configured ? (
         <div className="environment-note">
@@ -248,9 +239,8 @@ export function SetupForm({
       ) : null}
       <FormError message={startError} />
       <div className="setup-submit">
-        <p>Your key stays on the dev server. OpenRouter charges for generated tokens.</p>
         <button type="submit" className="button primary" disabled={!canSubmit}>
-          {submitLabel(connection.kind, bridge.pending)}
+          {quote.pending ? "Estimating…" : submitLabel(connection.kind, bridge.pending)}
           <span aria-hidden="true">↗</span>
         </button>
       </div>

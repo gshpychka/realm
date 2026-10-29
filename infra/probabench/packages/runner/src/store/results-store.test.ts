@@ -6,21 +6,21 @@ import { makeRun } from "@probabench/domain/testing";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import { appendRun, prepareHistory } from "./results-store";
+import { appendCheckpoints, prepareHistory } from "./results-store";
 import { readResults, withHistoryFile } from "./testing";
 
 /** Runs an effect against `fs` with `overrides` swapped in, such as a failing rename. */
 const withFileSystem = (fs: FileSystem.FileSystem, overrides: Partial<FileSystem.FileSystem>) =>
   Effect.provideService(FileSystem.FileSystem, { ...fs, ...overrides });
 
-describe("appendRun", () => {
+describe("appendCheckpoints", () => {
   it.effect("retains every model when many saves finish together", () =>
     withHistoryFile((path) =>
       Effect.gen(function* () {
         const runs = Array.from({ length: 20 }, (_, i) =>
           makeRun({ modelSlug: `vendor/model-${i}` }),
         );
-        yield* Effect.forEach(runs, (run) => appendRun(path, run), {
+        yield* Effect.forEach(runs, (run) => appendCheckpoints(path, [run]), {
           concurrency: "unbounded",
           discard: true,
         });
@@ -36,7 +36,7 @@ describe("appendRun", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         yield* fs.writeFileString(path, "{broken");
-        yield* Effect.flip(appendRun(path, makeRun()));
+        yield* Effect.flip(appendCheckpoints(path, [makeRun()]));
         expect(yield* fs.readFileString(path)).toBe("{broken");
       }),
     ),
@@ -47,9 +47,9 @@ describe("appendRun", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const original = makeRun();
-        yield* appendRun(path, original);
+        yield* appendCheckpoints(path, [original]);
         yield* Effect.flip(
-          appendRun(path, makeRun()).pipe(
+          appendCheckpoints(path, [makeRun()]).pipe(
             withFileSystem(fs, {
               rename: () =>
                 Effect.fail(
@@ -73,10 +73,10 @@ describe("appendRun", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const original = makeRun();
-        yield* appendRun(path, original);
+        yield* appendCheckpoints(path, [original]);
         const reachedRename = yield* Deferred.make<void>();
         const fiber = yield* Effect.fork(
-          appendRun(path, makeRun()).pipe(
+          appendCheckpoints(path, [makeRun()]).pipe(
             withFileSystem(fs, {
               rename: () =>
                 Deferred.succeed(reachedRename, undefined).pipe(Effect.andThen(Effect.never)),

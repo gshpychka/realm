@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { stripVTControlCharacters } from "node:util";
-import { benchArgs, parsePointProgress } from "@probabench/domain";
+import { benchArgs, parseSampleProgress } from "@probabench/domain";
 import type { BenchRequest, BridgeFailure, BridgeStatus, Job } from "../src/bridge/protocol";
 
 /** The page shows this much of the end of the runner's output. */
@@ -58,7 +58,7 @@ export function createBenchController({
         const line = stripVTControlCharacters(raw);
         update((current) => ({
           log: keepTail(`${current.log}${line}\n`),
-          progress: parsePointProgress(line) ?? current.progress,
+          progress: parseSampleProgress(line) ?? current.progress,
         }));
       };
       for (const stream of [child.stdout, child.stderr])

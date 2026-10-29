@@ -38,7 +38,7 @@ const IsoTimestamp = Schema.String.pipe(
 export const seriesLabel = (modelSlug: string, reasoning: ReasoningMode): string =>
   reasoning === "off" ? modelSlug : `${modelSlug} [reasoning=${reasoning}]`;
 
-/** Internal collection record: a model sampled over its full probability grid. */
+/** An immutable checkpoint containing newly collected answers for one model. */
 export const Run = Schema.Struct({
   /** Unique in the history; a series keeps every earlier run. */
   id: Schema.NonEmptyTrimmedString,
@@ -59,19 +59,29 @@ export const Run = Schema.Struct({
   Schema.filter((run) => run.model === seriesLabel(run.modelSlug, run.reasoning), {
     message: () => "model must be seriesLabel(modelSlug, reasoning)",
   }),
-  Schema.filter((run) => run.points.every((point) => point.outcomes.length === run.trialsPerStep), {
-    message: () => "Every point must contain trialsPerStep outcomes",
-  }),
+  Schema.filter(
+    (run) =>
+      run.points.every(
+        (point) => point.outcomes.length > 0 && point.outcomes.length <= run.trialsPerStep,
+      ),
+    {
+      message: () => "Checkpoint points must contain between 1 and trialsPerStep outcomes",
+    },
+  ),
   // Exact equality holds: the runner builds every x with probabilityGrid, and JSON
   // round-trips doubles exactly.
   Schema.filter(
     (run) => {
       const grid = probabilityGrid(run.stepPercent);
       return (
-        run.points.length === grid.length && run.points.every((point, i) => point.x === grid[i])
+        run.points.length > 0 &&
+        run.points.every(
+          (point, i) =>
+            grid.includes(point.x) && (i === 0 || point.x > (run.points[i - 1]?.x ?? -1)),
+        )
       );
     },
-    { message: () => "Points must be the stepPercent grid from 0 to 1, in order" },
+    { message: () => "Checkpoint points must be unique, ordered members of the requested grid" },
   ),
 );
 export type Run = typeof Run.Type;
