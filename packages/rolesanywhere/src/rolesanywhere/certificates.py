@@ -18,9 +18,8 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 # Signs SHA-256(message) with the CA key; returns a DER ECDSA signature.
 Signer = Callable[[bytes], bytes]
 
-# Replaced only when the TPM2 can no longer sign with its key, or on request:
-# a key that can't leave the TPM2 gains nothing from expiring, and every new
-# CA has to be registered with AWS by hand.
+# A key that can't leave the TPM2 gains nothing from expiring, and every CA
+# certificate is registered with AWS by hand.
 CA_VALIDITY = datetime.timedelta(days=3650)
 # leeway for AWS's clock running behind this machine's
 CLOCK_SKEW = datetime.timedelta(minutes=1)
@@ -171,10 +170,3 @@ def issued_by(certificate: x509.Certificate, ca: x509.Certificate) -> bool:
     except (ValueError, TypeError, InvalidSignature):
         return False
     return True
-
-
-def ski(certificate: x509.Certificate) -> str:
-    """The certificate's subject key identifier, as hex: the CA's name on disk and in logs."""
-    return certificate.extensions.get_extension_for_class(
-        x509.SubjectKeyIdentifier
-    ).value.digest.hex()

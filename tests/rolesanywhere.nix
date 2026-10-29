@@ -1,7 +1,7 @@
-# VM test of services.rolesanywhere on an emulated TPM2: the CA's lifecycle
-# (generated, registered, kept across a reboot, replaced after a PCR 7 change
-# or on request), who gets a certificate, and aws_signing_helper trading one
-# for credentials at a stand-in for the Roles Anywhere endpoint.
+# VM test of services.rolesanywhere on an emulated TPM2: the CA key the TPM2
+# derives (the same across a reboot, another after a PCR 7 change), who gets a
+# certificate, and aws_signing_helper trading one for credentials at a
+# stand-in for the Roles Anywhere endpoint.
 #   nix build .#checks.x86_64-linux.rolesanywhere-vm
 { pkgs }:
 let
@@ -29,6 +29,7 @@ let
     HTTPServer(("127.0.0.1", 8099), Handler).serve_forever()
   '';
   account = "000000000000";
+  rolesanywhere = pkgs.lib.getExe (pkgs.callPackage ../packages/rolesanywhere { });
 in
 pkgs.testers.runNixOSTest {
   name = "rolesanywhere";
@@ -45,8 +46,8 @@ pkgs.testers.runNixOSTest {
       services.rolesanywhere = {
         enable = true;
         clients = [ "alice" ];
-        # The CA is generated in the VM's TPM2, after the build, so the test
-        # registers it by writing this file.
+        # The CA key is derived in the VM's TPM2, after the build, so the test
+        # registers its certificate by writing this file.
         caCertificate = "/etc/rolesanywhere-test/registered.pem";
       };
       environment.systemPackages = [
@@ -61,17 +62,12 @@ pkgs.testers.runNixOSTest {
     import json
     from datetime import datetime, timedelta
 
-    current = "/var/lib/rolesanywhere/current"
     registered = "/etc/rolesanywhere-test/registered.pem"
     arns = (
         "--trust-anchor-arn arn:aws:rolesanywhere:us-east-1:${account}:trust-anchor/11111111-1111-1111-1111-111111111111 "
         "--profile-arn arn:aws:rolesanywhere:us-east-1:${account}:profile/22222222-2222-2222-2222-222222222222 "
         "--role-arn arn:aws:iam::${account}:role/test"
     )
-
-
-    def ca() -> str:
-        return machine.succeed(f"readlink {current}").strip()
 
 
     def certificate_as(user: str) -> str:
@@ -82,39 +78,32 @@ pkgs.testers.runNixOSTest {
         return machine.fail(f"su - {user} -c 'rolesanywhere-credentials --certificate' 2>&1")
 
 
-    def register() -> None:
-        machine.succeed(f"install -D -m 0644 {current}/ca.pem {registered}")
+    def register() -> str:
+        """Registers a CA certificate for the TPM2's current CA key; returns the key."""
+        machine.succeed("${rolesanywhere} ca-certificate > /tmp/ca.pem")
+        machine.succeed(f"install -D -m 0644 /tmp/ca.pem {registered}")
+        return machine.succeed(f"openssl x509 -in {registered} -noout -pubkey")
 
 
-    def ca_log() -> str:
-        return machine.succeed("journalctl -u rolesanywhere-ca")
+    def check_alice() -> None:
+        machine.succeed(f"cat > /tmp/alice.pem <<'EOF'\n{certificate_as('alice')}EOF")
+        machine.succeed(f"openssl verify -x509_strict -CAfile {registered} /tmp/alice.pem")
 
 
-    machine.wait_for_unit("rolesanywhere-ca.service")
     machine.wait_for_unit("rolesanywhere.socket")
 
-    with subtest("the CA's key is in the TPM2, usable only through PCR 7"):
-        first = ca()
-        public = machine.succeed(f"tpm2_print -t TPM2B_PUBLIC {current}/key.pub")
-        attributes = public.split("attributes:")[1].split("\n")[1]
-        for attribute in ("fixedtpm", "fixedparent", "sensitivedataorigin", "adminwithpolicy", "sign"):
-            assert attribute in attributes, attributes
-        assert "userwithauth" not in attributes, attributes
-        machine.succeed(f"test $(stat -c %a {current}/key.priv) = 600")
-        text = machine.succeed(f"openssl x509 -in {current}/ca.pem -noout -text")
+    with subtest("nothing is issued before a CA certificate is registered"):
+        assert f"No such file or directory: '{registered}'" in refusal_as("alice")
+
+    with subtest("the TPM2 derives the same CA key each time"):
+        first = register()
+        assert register() == first
+        text = machine.succeed(f"openssl x509 -in {registered} -noout -text")
         assert "CA:TRUE, pathlen:0" in text, text
         assert "Certificate Sign" in text, text
 
-    with subtest("nothing is issued before the CA is registered"):
-        assert f"CA {first} is not registered with AWS ({registered} is unreadable)" in ca_log()
-        assert f"this machine's CA {first} is not registered with AWS" in refusal_as("alice")
-
-    with subtest("once registered, alice gets a 5-minute certificate for machine:alice"):
-        register()
-        machine.succeed("systemctl restart rolesanywhere-ca")
-        assert f"CA {first} is the one registered with AWS" in ca_log()
-        machine.succeed(f"cat > /tmp/alice.pem <<'EOF'\n{certificate_as('alice')}EOF")
-        machine.succeed(f"openssl verify -x509_strict -CAfile {registered} /tmp/alice.pem")
+    with subtest("alice gets a 5-minute certificate for machine:alice"):
+        check_alice()
         assert "subject=CN=machine:alice" in machine.succeed("openssl x509 -in /tmp/alice.pem -noout -subject")
         # valid for 5 minutes, after a minute's leeway for clock skew
         dates = dict(
@@ -154,30 +143,17 @@ pkgs.testers.runNixOSTest {
     with subtest("the throwaway key is written to no file"):
         machine.fail("grep -rlI --devices=skip 'PRIVATE KEY' /tmp /home /root /run /var /etc")
 
-    with subtest("the CA survives a reboot"):
+    with subtest("the CA key survives a reboot"):
         # the emulated TPM2 keeps its state in the machine's state directory
         machine.shutdown()
         machine.start()
-        machine.wait_for_unit("rolesanywhere-ca.service")
-        assert ca() == first
-        certificate_as("alice")
+        machine.wait_for_unit("rolesanywhere.socket")
+        check_alice()
 
-    with subtest("after a PCR 7 change the TPM2 refuses, and the CA is replaced"):
+    with subtest("after a PCR 7 change the TPM2 derives another CA key"):
         machine.succeed("tpm2_pcrextend 7:sha256=" + "ab" * 32)
-        assert "the TPM2 did not sign" in refusal_as("alice")
-        machine.succeed("systemctl restart rolesanywhere-ca")
-        second = ca()
-        assert second != first
-        assert f"replacing CA {first}: the TPM2 refuses to sign with its key: PCR 7 changed" in ca_log()
-        machine.fail(f"test -e /var/lib/rolesanywhere/{first}")
-        assert f"this machine's CA {second} is not registered with AWS" in refusal_as("alice")
-        register()
-        machine.succeed(f"cat > /tmp/alice.pem <<'EOF'\n{certificate_as('alice')}EOF")
-        machine.succeed(f"openssl verify -x509_strict -CAfile {registered} /tmp/alice.pem")
-
-    with subtest("rolesanywhere-replace-ca replaces the CA on request"):
-        machine.succeed("rolesanywhere-replace-ca")
-        assert ca() != second
-        assert f"replacing CA {second}: a replacement was requested" in ca_log()
+        assert "this TPM2's CA key is not the registered CA certificate's" in refusal_as("alice")
+        assert register() != first
+        check_alice()
   '';
 }

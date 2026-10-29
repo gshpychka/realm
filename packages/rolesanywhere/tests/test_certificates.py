@@ -94,7 +94,10 @@ def test_client_certificate(
     authority = certificate.extensions.get_extension_for_class(
         x509.AuthorityKeyIdentifier
     ).value
-    assert authority.key_identifier.hex() == certificates.ski(ca)
+    assert (
+        authority.key_identifier
+        == ca.extensions.get_extension_for_class(x509.SubjectKeyIdentifier).value.digest
+    )
     assert certificate.not_valid_before_utc == NOW - certificates.CLOCK_SKEW
     assert certificate.not_valid_after_utc == NOW + LIFETIME
 

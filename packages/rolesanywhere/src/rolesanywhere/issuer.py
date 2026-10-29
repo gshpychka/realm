@@ -1,13 +1,13 @@
 """Issues one short-lived client certificate to the caller of an accepted connection.
 
 systemd starts `serve` per connection (Accept=yes) with the accepted socket as
-stdin, and the current CA's files as credentials. The caller is identified by
-the UID the kernel recorded when it connected (SO_PEERCRED). Nothing is read
-from the connection, so there is no request to parse or forge.
+stdin. The caller is identified by the UID the kernel recorded when it
+connected (SO_PEERCRED). Nothing is read from the connection, so there is no
+request to parse or forge.
 
 A declared client gets one JSON line back: a fresh P-256 key, generated here
 in memory, and a certificate for it with the subject "<name>:<user>", signed
-by the CA in the TPM2 and valid for certificateLifetimeSeconds:
+by the CA key in the TPM2 and valid for certificateLifetimeSeconds:
 {"certificate": PEM, "privateKey": PEM, "expiresAt": unix time}. Together they
 get AWS credentials until the certificate expires, the same way a short-lived
 token would. Anyone else gets {"error": ...}.
@@ -15,7 +15,6 @@ token would. Anyone else gets {"error": ...}.
 
 import datetime
 import json
-import os
 import pwd
 import socket
 import struct
@@ -27,11 +26,9 @@ from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from . import certificates
-from .ca import load_certificate
+from . import certificates, tpm
 from .config import Config
 from .log import log
-from .tpm import Tpm, TpmError
 
 # struct ucred: pid, uid, gid
 UCRED = struct.Struct("3i")
@@ -75,33 +72,18 @@ def reply(conn: socket.socket, message: dict[str, str | int]) -> None:
 def issue(
     config: Config, subject: str, key: ec.EllipticCurvePrivateKey
 ) -> x509.Certificate:
-    """A certificate for key, signed by the current CA, if AWS trusts it."""
-    # systemd copied the current CA's files into this per-service, in-memory directory
-    credentials = Path(os.environ["CREDENTIALS_DIRECTORY"])
-    names = config["caFiles"]
-    ca = load_certificate(credentials / names["certificate"])
-    registered = config["registeredCertificate"]
+    """A certificate for key, signed by the CA key the registered CA certificate names."""
     try:
-        trusted = registered is not None and load_certificate(Path(registered)) == ca
-    except (OSError, ValueError):
-        trusted = False
-    if not trusted:
-        # AWS would reject its certificates; see ca.report_registration
-        raise IssuerError(
-            f"this machine's CA {certificates.ski(ca)} is not registered with AWS; "
-            "see journalctl -u rolesanywhere-ca"
-        )
-    tpm = Tpm(Path(config["tpm2Tools"]), config["tcti"])
-    try:
+        ca = x509.load_pem_x509_certificate(Path(config["caCertificate"]).read_bytes())
         with tempfile.TemporaryDirectory() as scratch:
             workdir = Path(scratch)
-            context = workdir / "ca.ctx"
-            tpm.load(
-                tpm.primary(workdir),
-                credentials / names["public"],
-                credentials / names["private"],
-                context,
-            )
+            context, ca_key = tpm.derive(workdir)
+            if ca_key != ca.public_key():
+                raise IssuerError(
+                    "this TPM2's CA key is not the registered CA certificate's: "
+                    "the Secure Boot state (PCR 7) changed or the TPM2 was cleared, "
+                    "so a new CA certificate needs registering"
+                )
             return certificates.client_certificate(
                 subject,
                 key.public_key(),
@@ -110,10 +92,8 @@ def issue(
                 datetime.datetime.now(datetime.UTC),
                 datetime.timedelta(seconds=config["certificateLifetimeSeconds"]),
             )
-    except TpmError as error:
-        raise IssuerError(
-            f"the TPM2 did not sign ({error}); see journalctl -u rolesanywhere-ca"
-        ) from error
+    except tpm.TpmError as error:
+        raise IssuerError(f"the TPM2 did not sign ({error})") from error
     except ValueError as error:
         raise IssuerError(str(error)) from error
 

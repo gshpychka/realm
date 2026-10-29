@@ -51,10 +51,7 @@ def fetch(socket_path: str, unit: str) -> dict[str, str]:
             f"nothing is listening on {socket_path}: is {unit}.socket running?"
         ) from None
     if not chunks:
-        # the per-connection unit starts only once there is a CA
-        raise Failure(
-            f"the issuer answered nothing; see journalctl -u {unit}-ca -u '{unit}@*'"
-        )
+        raise Failure(f"the issuer answered nothing; see journalctl -u '{unit}@*'")
     reply = json.loads(b"".join(chunks))
     if "error" in reply:
         raise Failure(f"the issuer refused: {reply['error']}")

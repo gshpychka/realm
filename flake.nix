@@ -118,6 +118,7 @@
         // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           inherit bay;
           inherit (bay) flare;
+          rolesanywhere = pkgs.callPackage ./packages/rolesanywhere { };
         }
       );
     in
@@ -346,7 +347,7 @@
               hoard = self.nixosConfigurations.hoard.config.system.build;
             in
             {
-              inherit (projectPackages.x86_64-linux) bay flare;
+              inherit (projectPackages.x86_64-linux) bay flare rolesanywhere;
               dura-agents = import ./tests/dura-agents.nix { inherit pkgs; };
               dura-catalog = import ./tests/dura-catalog.nix { inherit pkgs; };
               bay-vm = import ./tests/bay.nix { inherit inputs pkgs; };
@@ -357,7 +358,6 @@
                     touch $out
                   '';
               voice-broker = pkgs.callPackage ./packages/voice-broker { };
-              rolesanywhere = pkgs.callPackage ./packages/rolesanywhere { };
               rolesanywhere-vm = import ./tests/rolesanywhere.nix { inherit pkgs; };
               arr-sync = hoard.arrSync;
               tautulli = hoard.tautulliConfig;

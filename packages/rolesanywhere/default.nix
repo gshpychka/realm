@@ -1,6 +1,7 @@
 {
   lib,
   python3Packages,
+  tpm2-tools,
 }:
 python3Packages.buildPythonApplication {
   pname = "rolesanywhere";
@@ -19,6 +20,13 @@ python3Packages.buildPythonApplication {
   build-system = [ python3Packages.setuptools ];
 
   dependencies = [ python3Packages.cryptography ];
+
+  makeWrapperArgs = [
+    "--prefix"
+    "PATH"
+    ":"
+    (lib.makeBinPath [ tpm2-tools ])
+  ];
 
   nativeCheckInputs = [ python3Packages.pytestCheckHook ];
 
