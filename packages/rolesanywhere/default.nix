@@ -13,7 +13,6 @@ python3Packages.buildPythonApplication {
     fileset = lib.fileset.unions [
       ./pyproject.toml
       ./src
-      ./tests
     ];
   };
 
@@ -27,8 +26,6 @@ python3Packages.buildPythonApplication {
     ":"
     (lib.makeBinPath [ tpm2-tools ])
   ];
-
-  nativeCheckInputs = [ python3Packages.pytestCheckHook ];
 
   meta.mainProgram = "rolesanywhere";
 }

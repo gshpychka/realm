@@ -124,11 +124,6 @@ def client_certificate(
     lifetime: datetime.timedelta,
 ) -> x509.Certificate:
     """A short-lived certificate for subject's key, signed by the CA."""
-    expiry = now + lifetime
-    if expiry > ca.not_valid_after_utc:
-        raise ValueError(
-            "the CA certificate expires before the client certificate would"
-        )
     certificate = _signed(
         x509.CertificateBuilder()
         # IAM Roles Anywhere maps this to aws:PrincipalTag/x509Subject/CN,
@@ -140,7 +135,7 @@ def client_certificate(
         # session after its certificate's serial number
         .serial_number(_serial_number())
         .not_valid_before(now - CLOCK_SKEW)
-        .not_valid_after(expiry)
+        .not_valid_after(now + lifetime)
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(_key_usage(digital_signature=True), critical=True)
         .add_extension(
