@@ -59,8 +59,8 @@ def fetch(socket_path: str, unit: str) -> dict[str, str]:
 
 
 def memfd(name: str, content: str) -> int:
-    """content in an anonymous in-memory file: on no filesystem, gone when
-    every process holding it exits. aws_signing_helper opens /dev/fd/<fd>
+    """content in an anonymous file that lives only in memory and disappears
+    when every process holding it exits. aws_signing_helper opens /dev/fd/<fd>
     afresh, at offset 0, each time it reads (several times for the key, so a
     pipe would not do)."""
     fd = os.memfd_create(name)

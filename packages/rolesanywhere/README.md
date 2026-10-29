@@ -31,7 +31,7 @@ sequenceDiagram
   checks the list again against the UID the kernel reports for the connection.
 - **Credential:** a certificate valid for 5 minutes and its throwaway key.
   `rolesanywhere-credentials` hands both to `aws_signing_helper` as memfds, so
-  the key is written to no file.
+  the key only ever exists in memory.
 - **Audit:** the issuer's journal logs each certificate's serial number with
   the user and process it went to, and Roles Anywhere names the AWS session
   after the same serial number.

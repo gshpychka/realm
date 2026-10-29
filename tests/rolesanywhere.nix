@@ -140,7 +140,7 @@ pkgs.testers.runNixOSTest {
         machine.succeed(f"openssl verify -x509_strict -CAfile {registered} /tmp/sent.pem")
         assert "subject=CN=machine:alice" in machine.succeed("openssl x509 -in /tmp/sent.pem -noout -subject")
 
-    with subtest("the throwaway key is written to no file"):
+    with subtest("the throwaway key only ever exists in memory"):
         machine.fail("grep -rlI --devices=skip 'PRIVATE KEY' /tmp /home /root /run /var /etc")
 
     with subtest("the CA key survives a reboot"):
