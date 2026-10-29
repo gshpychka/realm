@@ -22,8 +22,8 @@ bun run deploy
 ```
 
 A bot has a single webhook, so the scripts deploy one stage, `prod`. They read
-the token through `sops exec-env`, and the current AWS profile's credentials
-through `aws-exec`.
+the token through `sops exec-env`, and run the infra shell's `alchemy-aws`,
+which hands Alchemy the current AWS profile's credentials.
 
 `bun run dev` serves the stack from Alchemy's local AWS emulator in Docker
 while the bot's webhook stays on `prod`.

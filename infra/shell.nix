@@ -28,11 +28,14 @@ let
       ${lib.getExe pkgs.sops} exec-env "$REPO_ROOT/secrets/infra/${envFile}" \
         "${command} ''${*@Q}"
     '';
-  # Alchemy reads AWS credentials from the environment or its own profiles, so
-  # its stacks deploy under this with the current AWS CLI profile's
-  awsExec = pkgs.writeShellApplication {
-    name = "aws-exec";
-    runtimeInputs = [ pkgs.awscli2 ];
+  # The Alchemy CLI with the current AWS CLI profile's credentials: Alchemy reads
+  # AWS credentials from the environment or its own profiles alone
+  alchemyAws = pkgs.writeShellApplication {
+    name = "alchemy-aws";
+    runtimeInputs = [
+      pkgs.awscli2
+      pkgs.bun
+    ];
     text = ''
       # the profile's credentials, as export lines
       credentials=$(aws configure export-credentials --format env)
@@ -42,8 +45,8 @@ let
       AWS_REGION=''${AWS_REGION:-$(aws configure get region)}
       # puts the region in this environment
       export AWS_REGION
-      # runs the command with both
-      exec "$@"
+      # runs this directory's Alchemy CLI with both
+      exec bun alchemy "$@"
     '';
   };
 in
@@ -61,7 +64,7 @@ pkgs.mkShell {
     pkgs.terragrunt
     (sopsExecEnv "tf" "terraform.env" (lib.getExe terraform))
     (sopsExecEnv "tg" "terraform.env" (lib.getExe pkgs.terragrunt))
-    awsExec
+    alchemyAws
     # the ProbaBench CLI with its OpenRouter key; it finds its history file from its
     # own path, so it runs from any directory
     (sopsExecEnv "probabench" "probabench.env"

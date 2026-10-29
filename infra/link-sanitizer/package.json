@@ -8,10 +8,10 @@
     "typecheck": "tsc",
     "check": "tsc && bun test",
     "dev": "sops exec-env ../../secrets/infra/link-sanitizer.env 'bun alchemy dev'",
-    "plan": "aws-exec sops exec-env ../../secrets/infra/link-sanitizer.env 'bun alchemy plan --stage prod'",
-    "deploy": "aws-exec sops exec-env ../../secrets/infra/link-sanitizer.env 'bun alchemy deploy --stage prod'",
-    "destroy": "aws-exec sops exec-env ../../secrets/infra/link-sanitizer.env 'bun alchemy destroy --stage prod'",
-    "logs": "aws-exec sops exec-env ../../secrets/infra/link-sanitizer.env 'bun alchemy logs --stage prod --tail'"
+    "plan": "sops exec-env ../../secrets/infra/link-sanitizer.env 'alchemy-aws plan --stage prod'",
+    "deploy": "sops exec-env ../../secrets/infra/link-sanitizer.env 'alchemy-aws deploy --stage prod'",
+    "destroy": "sops exec-env ../../secrets/infra/link-sanitizer.env 'alchemy-aws destroy --stage prod'",
+    "logs": "sops exec-env ../../secrets/infra/link-sanitizer.env 'alchemy-aws logs --stage prod --tail'"
   },
   "dependencies": {
     "@effect/platform-bun": "^4.0.4",
