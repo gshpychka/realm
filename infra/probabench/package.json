@@ -26,7 +26,5 @@
     "packages/*"
   ],
   "trustedDependencies": [],
-  "patchedDependencies": {
-    "@distilled.cloud/aws@1.0.0-rc.15": "patches/@distilled.cloud%2Faws@1.0.0-rc.15.patch"
-  }
+  "patchedDependencies": {}
 }

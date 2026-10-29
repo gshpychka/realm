@@ -1,6 +1,6 @@
 // The dev bridge's HTTP contract, shared by the Vite plugin (dev-bridge/) and the
 // browser client. Every route answers with BridgeStatus, or BridgeFailure on error.
-import { planBudget, ReasoningMode, resolveModel } from "@probabench/domain";
+import { DEFAULT_CONCURRENCY, planBudget, ReasoningMode, resolveModel } from "@probabench/domain";
 import * as ParseResult from "effect/ParseResult";
 import * as Schema from "effect/Schema";
 
@@ -13,7 +13,7 @@ export const BRIDGE_ROUTES = {
 /** What the page lets one run ask for; the CLI accepts larger runs. */
 export const BROWSER_LIMITS = {
   trialsPerStep: 10_000,
-  concurrency: 50,
+  concurrency: DEFAULT_CONCURRENCY,
   samples: 100_000,
 } as const;
 
@@ -28,7 +28,7 @@ const wholeNumber = (label: string, max: number) =>
 export const BenchRequest = Schema.Struct({
   model: Schema.String.pipe(
     Schema.filter((token) => resolveModel(token) !== undefined, {
-      message: () => "Choose one model alias or OpenRouter vendor/model ID.",
+      message: () => "Choose one model from the saved list or use an OpenRouter vendor/model ID.",
     }),
   ),
   trialsPerStep: wholeNumber("Samples per target", BROWSER_LIMITS.trialsPerStep),
@@ -38,7 +38,7 @@ export const BenchRequest = Schema.Struct({
 }).pipe(
   Schema.filter((request) => planBudget(request).samples <= BROWSER_LIMITS.samples, {
     message: () =>
-      `Browser runs support up to ${BROWSER_LIMITS.samples.toLocaleString("en")} samples. ` +
+      `Browser benchmarks support up to ${BROWSER_LIMITS.samples.toLocaleString("en")} samples. ` +
       "Run larger benchmarks with the probabench CLI.",
   }),
 );
@@ -73,7 +73,7 @@ export type BridgeFailure = typeof BridgeFailure.Type;
  */
 export const firstIssue = (error: ParseResult.ParseError): string => {
   const [issue] = ParseResult.ArrayFormatter.formatErrorSync(error);
-  if (issue === undefined) return "Invalid run settings.";
+  if (issue === undefined) return "Invalid benchmark settings.";
   return issue._tag === "Refinement" || issue.path.length === 0
     ? issue.message
     : `${issue.path.join(".")}: ${issue.message}`;

@@ -1,5 +1,4 @@
 import * as Alchemy from "alchemy";
-import * as AWS from "alchemy/AWS";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -12,10 +11,12 @@ export default Alchemy.Stack(
   "ProbaBench",
   {
     providers: Cloudflare.providers(),
-    // Alchemy's AWS state store resolves real credentials even in dev mode.
-    // Keep local development independent of the account's remote state.
+    // Deployment state lives in Cloudflare; local development needs no cloud login
+    // and must not bootstrap the account's remote state store.
     state: Layer.unwrap(
-      Alchemy.AlchemyContext.useSync(({ dev }) => (dev ? Alchemy.localState() : AWS.state())),
+      Alchemy.AlchemyContext.useSync(({ dev }) =>
+        dev ? Alchemy.localState() : Cloudflare.state(),
+      ),
     ),
   },
   Effect.gen(function* () {

@@ -1,5 +1,4 @@
-// How every view writes numbers, times and run settings. Times are always UTC.
-import type { Run } from "@probabench/domain";
+// How every view writes numbers and times. Times are always UTC.
 
 const DATE = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -30,11 +29,5 @@ export const date = (iso: string): string => DATE.format(new Date(iso));
 export const time = (iso: string): string => TIME.format(new Date(iso));
 
 export const timestamp = (iso: string): string => `${date(iso)} · ${time(iso)} UTC`;
-
-/** Enough of a run id to tell a model's runs apart. */
-export const shortId = (id: string): string => id.slice(-6);
-
-export const samplingText = (run: Pick<Run, "trialsPerStep" | "stepPercent">): string =>
-  `${count(run.trialsPerStep)} samples / target · ${run.stepPercent}% step`;
 
 export const modelName = (model: string): string => model.split("/").at(-1) ?? model;

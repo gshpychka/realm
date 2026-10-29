@@ -1,5 +1,5 @@
-import type { Run } from "@probabench/domain";
-import { useId, useMemo } from "react";
+import type { ModelEvidence } from "@probabench/domain";
+import { useMemo } from "react";
 import {
   CartesianGrid,
   ErrorBar,
@@ -33,28 +33,28 @@ function CalibrationTooltip({
   series: readonly CalibrationSeries[];
 }) {
   const x = Number(label);
-  const hits = series.flatMap(({ run, style, points }) => {
+  const hits = series.flatMap(({ model, style, points }) => {
     const point = points.find((item) => item.x === x);
-    return point ? [{ run, style, point }] : [];
+    return point ? [{ model, style, point }] : [];
   });
   if (!active || hits.length === 0) return null;
   return (
     <div className="chart-tooltip">
       <p className="tooltip-heading">
-        Target <strong>{percent(x)}</strong>
+        Requested <strong>{percent(x)}</strong>
       </p>
-      {hits.map(({ run, style, point }) => (
-        <div key={run.id} className="tooltip-series">
+      {hits.map(({ model, style, point }) => (
+        <div key={model} className="tooltip-series">
           <p className="tooltip-model">
             <span className="color-dot" style={{ background: style.color }} />
-            <strong>{modelName(run.model)}</strong>
+            <strong>{modelName(model)}</strong>
             <span className="tooltip-observed">{observedText(point.observed)}</span>
           </p>
           <p className="muted">
             {point.interval
               ? `95% interval ${percent(point.interval[0])}–${percent(point.interval[1])} · `
               : null}
-            {count(point.invalid)} of {count(point.total)} invalid
+            {count(point.valid)} valid samples · {count(point.invalid)} invalid
           </p>
         </div>
       ))}
@@ -65,34 +65,30 @@ function CalibrationTooltip({
 const emptyPlot = (series: readonly CalibrationSeries[]) => {
   if (series.length === 0)
     return {
-      title: "Select a model to draw its run.",
+      title: "Select a model to see its measurements.",
       detail: "Choose one from the Models list.",
     };
   if (series.every(({ points }) => points.every((point) => point.observed === null)))
     return {
-      title: "No valid samples in the selected runs.",
-      detail: "Invalid replies remain recorded in the measurement tables.",
+      title: "No valid answers.",
+      detail: "See the measurements for the replies received.",
     };
   return null;
 };
 
 export function CalibrationChart({
-  runs,
+  evidence,
   styles,
   intervals,
 }: {
-  runs: readonly Run[];
+  evidence: readonly ModelEvidence[];
   styles: ReadonlyMap<string, ModelStyle>;
   intervals: boolean;
 }) {
-  const descriptionId = useId();
-  const series = useMemo(() => buildCalibrationSeries(runs, styles), [runs, styles]);
+  const series = useMemo(() => buildCalibrationSeries(evidence, styles), [evidence, styles]);
   const empty = emptyPlot(series);
   return (
-    <figure
-      aria-label="Observed fraction of ones versus target probability"
-      aria-describedby={descriptionId}
-    >
+    <figure aria-label="Observed frequency of 1 versus requested probability">
       <div className="plot calibration-plot">
         <ResponsiveContainer>
           <LineChart margin={CHART.margin}>
@@ -104,7 +100,7 @@ export function CalibrationChart({
               domain={[0, 1]}
               ticks={TICKS}
               tickFormatter={(value: number) => percent(value, 0)}
-              label={{ ...CHART.xLabel, value: "Target probability" }}
+              label={{ ...CHART.xLabel, value: "Requested probability of 1" }}
             />
             <YAxis
               {...CHART.yAxis}
@@ -112,6 +108,13 @@ export function CalibrationChart({
               ticks={TICKS}
               tickFormatter={(value: number) => percent(value, 0)}
               width={52}
+              label={{
+                ...CHART.label,
+                value: "Observed frequency of 1",
+                angle: -90,
+                position: "insideLeft",
+                offset: -4,
+              }}
             />
             <Tooltip
               // Keep null entries: a target with no valid replies must still open its tooltip.
@@ -131,9 +134,9 @@ export function CalibrationChart({
               activeDot={false}
               isAnimationActive={false}
             />
-            {series.map(({ run, style, points }) => (
+            {series.map(({ model, style, points }) => (
               <Line
-                key={run.id}
+                key={model}
                 data={points}
                 dataKey="observed"
                 stroke={style.color}
@@ -160,18 +163,11 @@ export function CalibrationChart({
         </ResponsiveContainer>
         {empty ? <PlotEmpty {...empty} /> : null}
       </div>
-      <div className="calibration-caption">
+      <figcaption className="calibration-caption">
         <span className="reference-key">
           <span aria-hidden="true" />
-          Calibrated sampling (y = x)
+          Ideal (y = x)
         </span>
-        <span className="mono">
-          {series.length} / {styles.size} models
-        </span>
-      </div>
-      <figcaption id={descriptionId} className="chart-description">
-        Points mark measured targets; lines join them. Gaps mark targets with no valid replies.
-        Intervals assume independent valid responses.
       </figcaption>
     </figure>
   );

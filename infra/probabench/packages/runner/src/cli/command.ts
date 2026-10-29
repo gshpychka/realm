@@ -4,6 +4,7 @@ import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Prompt from "@effect/cli/Prompt";
 import {
+  DEFAULT_CONCURRENCY,
   DEFAULT_PRESET,
   RESULTS_FILE,
   ReasoningMode,
@@ -20,8 +21,7 @@ import { executePlan } from "./execute";
 
 /**
  * The workspace's history file, which the web app serves at its site root. Resolved
- * from this file rather than the working directory; command.test.ts checks that it
- * exists.
+ * from this file rather than the working directory.
  */
 export const HISTORY_PATH = fileURLToPath(
   new URL(`../../../../data/${RESULTS_FILE}`, import.meta.url),
@@ -30,7 +30,7 @@ export const HISTORY_PATH = fileURLToPath(
 const DEFAULTS: SamplingOptions = {
   trialsPerStep: DEFAULT_PRESET.trialsPerStep,
   stepPercent: DEFAULT_PRESET.stepPercent,
-  concurrency: 10,
+  concurrency: DEFAULT_CONCURRENCY,
   maxTokens: 4096,
 };
 
@@ -49,7 +49,7 @@ const options = {
     Options.withAlias("m"),
     Options.optional,
     Options.withDescription(
-      `Comma-separated OpenRouter model IDs (vendor/model) or aliases; "${ALL_ALIASES}" selects every alias.`,
+      `Comma-separated OpenRouter model IDs (vendor/model) or saved names; "${ALL_ALIASES}" selects every saved model.`,
     ),
   ),
   trials: integerFlag("trials", TrialsPerStep, "a positive integer").pipe(
@@ -70,12 +70,14 @@ const options = {
   ),
   concurrency: integerFlag("concurrency", PositiveInt, "a positive integer").pipe(
     Options.withDefault(DEFAULTS.concurrency),
-    Options.withDescription(`Maximum simultaneous samples (default: ${DEFAULTS.concurrency}).`),
+    Options.withDescription(
+      `Global request ceiling; concurrency adjusts to rate limits (default: ${DEFAULTS.concurrency}).`,
+    ),
   ),
   reasoning: Options.choice("reasoning", ReasoningMode.literals).pipe(
     Options.optional,
     Options.withDescription(
-      "Override reasoning mode (model IDs default to off; aliases keep their own).",
+      "Override reasoning mode (model IDs default to off; saved names keep their setting).",
     ),
   ),
   yes: Options.boolean("yes").pipe(
@@ -86,7 +88,7 @@ const options = {
     Options.withDescription("Print and validate the plan without credentials or provider calls."),
   ),
   list: Options.boolean("list").pipe(
-    Options.withDescription("List model aliases and exit without credentials."),
+    Options.withDescription("List saved models and their reasoning settings without credentials."),
   ),
 };
 
@@ -115,7 +117,7 @@ const benchCommand = Command.make("probabench", options, (flags) =>
         });
       }
       // Ctrl-C at the prompt quits it, which answers no.
-      const confirmed = yield* Prompt.confirm({ message: "Run this plan?", initial: false }).pipe(
+      const confirmed = yield* Prompt.confirm({ message: "Start sampling?", initial: false }).pipe(
         Effect.catchTag("QuitException", () => Effect.succeed(false)),
       );
       if (!confirmed) return yield* Console.log("Aborted.");

@@ -7,8 +7,8 @@ import { DEFAULT_SETTINGS } from "./settings";
 import "./setup.css";
 
 const heading = (job: Job | null): string => {
-  if (job === null) return "Set up a benchmark.";
-  return job.status === "running" ? "Benchmark in progress." : "Benchmark update.";
+  if (job === null) return "New benchmark";
+  return job.status === "running" ? "Benchmark progress" : "Benchmark results";
 };
 
 /**
@@ -55,7 +55,6 @@ export function RunSetup({
       <div className="dialog-content">
         <header className="dialog-heading">
           <div>
-            <p className="eyebrow">{job ? "Your run" : "A new run"}</p>
             <h2 id="setup-title">{heading(job)}</h2>
           </div>
           <button

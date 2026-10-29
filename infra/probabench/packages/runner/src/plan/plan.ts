@@ -15,7 +15,7 @@ export class InvalidOptions extends Data.TaggedError("InvalidOptions")<{
 export interface SamplingOptions {
   readonly trialsPerStep: number;
   readonly stepPercent: number;
-  /** Most samples in flight at once, within one probability point. */
+  /** Global request ceiling across all models and targets; scheduling adapts below it. */
   readonly concurrency: number;
   /** Output ceiling for series that reason. */
   readonly maxTokens: number;
@@ -60,7 +60,7 @@ export const describePlan = ({ series, options }: BenchPlan): string => {
   return [
     `Models (${series.length}):`,
     ...series.map((entry) => `  ${entry.modelSlug} · reasoning ${entry.reasoning}`),
-    `Sampling: ${options.trialsPerStep} trials × ${points} points (${options.stepPercent}% step), ${options.concurrency} at a time`,
+    `Sampling: ${options.trialsPerStep} trials × ${points} points (${options.stepPercent}% step), adaptive concurrency up to ${options.concurrency} across all models`,
     `Projected samples: ${samples}`,
   ].join("\n");
 };

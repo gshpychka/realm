@@ -18,13 +18,31 @@ interface ModelAlias extends Model {
   readonly alias: string;
 }
 
-/** Convenient starting points; any OpenRouter model ID also works. */
+/**
+ * Saved models, checked against OpenRouter's catalog on 2026-10-29.
+ * Versioned IDs keep comparisons attributable. Low reasoning leaves room for a
+ * visible reply on models that require thinking; callers can override the effort.
+ */
 export const MODEL_ALIASES: readonly [ModelAlias, ...ModelAlias[]] = [
-  { alias: "claude-haiku-4.5", slug: "anthropic/claude-haiku-4.5" },
-  { alias: "claude-sonnet-4.5", slug: "anthropic/claude-sonnet-4.5" },
-  { alias: "claude-sonnet-4.5-high", slug: "anthropic/claude-sonnet-4.5", reasoning: "high" },
-  { alias: "gpt-5-mini-low", slug: "openai/gpt-5-mini", reasoning: "low" },
-  { alias: "gemini-2.5-flash", slug: "google/gemini-2.5-flash" },
+  { alias: "claude-haiku-5.5-low", slug: "anthropic/claude-haiku-5.5", reasoning: "low" },
+  { alias: "claude-sonnet-5.5-low", slug: "anthropic/claude-sonnet-5.5", reasoning: "low" },
+  { alias: "claude-opus-5.5-low", slug: "anthropic/claude-opus-5.5", reasoning: "low" },
+  { alias: "claude-fable-5.1-low", slug: "anthropic/claude-fable-5.1", reasoning: "low" },
+  { alias: "gpt-6-astra-low", slug: "openai/gpt-6-astra", reasoning: "low" },
+  { alias: "gpt-6.1-sol-low", slug: "openai/gpt-6.1-sol", reasoning: "low" },
+  { alias: "gpt-6.1-terra-low", slug: "openai/gpt-6.1-terra", reasoning: "low" },
+  { alias: "gemini-4-argon-low", slug: "google/gemini-4-argon", reasoning: "low" },
+  { alias: "grok-4.7-low", slug: "x-ai/grok-4.7", reasoning: "low" },
+  { alias: "muse-wonder-low", slug: "meta/muse-wonder", reasoning: "low" },
+  {
+    alias: "deepseek-v4.1-flash-1017-low",
+    slug: "deepseek/deepseek-v4.1-flash-1017",
+    reasoning: "low",
+  },
+  { alias: "qwen3.8-max-0902-low", slug: "qwen/qwen3.8-max-0902", reasoning: "low" },
+  { alias: "kimi-k3.1-pro-low", slug: "moonshotai/kimi-k3.1-pro", reasoning: "low" },
+  { alias: "glm-5.3-low", slug: "z-ai/glm-5.3", reasoning: "low" },
+  { alias: "minimax-m3.1-flash-low", slug: "minimax/minimax-m3.1-flash", reasoning: "low" },
 ];
 
 /** An OpenRouter vendor/model ID, optionally with a :variant such as :free. */

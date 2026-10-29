@@ -6,5 +6,6 @@ export * from "./plan/bench-args";
 export * from "./plan/models";
 export * from "./plan/sampling";
 export * from "./progress/line";
+export * from "./results/evidence";
 export * from "./results/metrics";
 export * from "./results/schema";

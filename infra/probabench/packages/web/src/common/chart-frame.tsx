@@ -3,10 +3,14 @@ import "./chart-frame.css";
 
 // SVG presentation attributes accept var(), so base.css stays the only palette.
 const TICK = { fill: "var(--text-3)", fontSize: 12, fontFamily: "var(--mono)" } as const;
-const LABEL = { fill: "var(--muted)", fontSize: 11 } as const;
+const LABEL = {
+  fill: "var(--muted)",
+  fontSize: 11,
+  style: { textAnchor: "middle" },
+} as const;
 
 export const CHART = {
-  margin: { top: 24, right: 24, bottom: 30, left: 8 },
+  margin: { top: 24, right: 24, bottom: 30, left: 24 },
   grid: { stroke: "var(--line)", strokeDasharray: "2 5", vertical: false },
   xAxis: { stroke: "var(--border-strong)", tickLine: false, tick: TICK, tickMargin: 12 },
   yAxis: { axisLine: false, tickLine: false, tick: TICK, tickMargin: 10 },

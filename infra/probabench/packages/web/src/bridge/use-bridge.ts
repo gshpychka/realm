@@ -14,7 +14,7 @@ export type Connection =
 const POLL_MS = 1_000;
 
 /** A failed poll keeps the last status, so a running job stays visible while the bridge is away. */
-export const nextConnection = (previous: Connection, status: BridgeStatus | null): Connection =>
+const nextConnection = (previous: Connection, status: BridgeStatus | null): Connection =>
   status !== null
     ? { kind: "local", status, reconnecting: false }
     : previous.kind === "local"

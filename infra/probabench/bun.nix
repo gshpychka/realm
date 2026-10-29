@@ -153,10 +153,6 @@
     url = "https://registry.npmjs.org/@effect-atom/atom/-/atom-0.6.0.tgz";
     hash = "sha512-OBYPUwFgmgy8F4wqXkygPWWZ1lHfNa2Oj1O433UOTCCU7jLqhP5zJoyGF5dgdE5xj3cKGrPMYWqH+xKG06dtvw==";
   };
-  "@effect/ai-openrouter@0.11.0" = fetchurl {
-    url = "https://registry.npmjs.org/@effect/ai-openrouter/-/ai-openrouter-0.11.0.tgz";
-    hash = "sha512-JHoWIS6kNM2kErQwImRM2+rro+6J6P67P82Hn6YYtJsnM25ipYu+r27N7/GvJ6uQx9oxAXkK2LriWUAx0nxtug==";
-  };
   "@effect/ai@0.36.0" = fetchurl {
     url = "https://registry.npmjs.org/@effect/ai/-/ai-0.36.0.tgz";
     hash = "sha512-GDYSedxjEAvEovZr6x+ry1n1Mp0mWBLoMzPJGxxnLC3qjyLsIJ89Cvfr4+YijQ6et0osusHxeULzrFFSnLYJJA==";

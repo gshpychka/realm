@@ -18,8 +18,8 @@ export const Point = Schema.Struct({
 export type Point = typeof Point.Type;
 
 /**
- * Canonical Date.toISOString() form, so string order is chronological: the web
- * history sorts runs with localeCompare.
+ * Canonical Date.toISOString() form, so timestamps and UTC collection days sort
+ * chronologically in the evidence projection.
  */
 const IsoTimestamp = Schema.String.pipe(
   Schema.filter(
@@ -38,13 +38,13 @@ const IsoTimestamp = Schema.String.pipe(
 export const seriesLabel = (modelSlug: string, reasoning: ReasoningMode): string =>
   reasoning === "off" ? modelSlug : `${modelSlug} [reasoning=${reasoning}]`;
 
-/** One immutable run: a model series sampled over its full probability grid. */
+/** Internal collection record: a model sampled over its full probability grid. */
 export const Run = Schema.Struct({
   /** Unique in the history; a series keeps every earlier run. */
   id: Schema.NonEmptyTrimmedString,
   /**
-   * Series key, always seriesLabel(modelSlug, reasoning): every view groups, colours
-   * and hides runs by it. Never sent to the API.
+   * Series key, always seriesLabel(modelSlug, reasoning): views group, colour and
+   * filter the combined model evidence by it. Never sent to the API.
    */
   model: Schema.String,
   /** OpenRouter model ID sent to the API. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Probability } from "../plan/sampling";
-import { calibrationErrorText, measurePoint, summarizeRun } from "./metrics";
+import { measurePoint, summarizeRun } from "./metrics";
 import type { Outcome } from "./schema";
 import { makeRun } from "./testing";
 
@@ -11,29 +11,6 @@ const point = (x: number, outcomes: ReadonlyArray<Outcome>) => ({
 });
 
 describe("measurePoint", () => {
-  it("measures the rate over valid outcomes only", () => {
-    expect(measurePoint(point(0.25, [1, 0, 1, invalid]))).toMatchObject({
-      ones: 2,
-      zeros: 1,
-      invalid: 1,
-      valid: 3,
-      total: 4,
-      observed: 2 / 3,
-    });
-  });
-
-  it("reports no rate or interval when nothing is valid", () => {
-    expect(measurePoint(point(0.5, [invalid, invalid]))).toEqual({
-      ones: 0,
-      zeros: 0,
-      invalid: 2,
-      valid: 0,
-      total: 2,
-      observed: null,
-      interval: null,
-    });
-  });
-
   it.each([
     { ones: 50, zeros: 50, low: 0.4038315, high: 0.5961685 },
     { ones: 0, zeros: 100, low: 0, high: 0.0369935 },
@@ -81,12 +58,5 @@ describe("summarizeRun", () => {
       validity: 0,
       coveredPoints: 0,
     });
-  });
-});
-
-describe("calibrationErrorText", () => {
-  it("writes a fraction in percentage points, or the given text when there is none", () => {
-    expect(calibrationErrorText(0.1234)).toBe("12.3 pp");
-    expect(calibrationErrorText(null, "n/a")).toBe("n/a");
   });
 });

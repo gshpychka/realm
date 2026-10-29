@@ -110,19 +110,6 @@ body:has(.run-dialog[open]) {
 }
 
 /* SetupForm */
-.dialog-intro {
-  font-size: 13px;
-  line-height: 1.9;
-  color: var(--text-3);
-  margin: 17px 0 25px;
-  max-width: 490px;
-
-  @media (max-width: 650px) {
-    font-size: 12px;
-    line-height: 1.7;
-    margin: 12px 0 20px;
-  }
-}
 .setup-fields {
   display: contents;
 }

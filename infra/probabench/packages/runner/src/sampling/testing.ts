@@ -18,42 +18,50 @@ interface ChatRequest {
  */
 export const chatEndpoint = ({
   unauthorized = [],
+  reply,
 }: {
   readonly unauthorized?: readonly string[];
+  readonly reply?: (
+    body: Readonly<Record<string, unknown>>,
+    index: number,
+  ) => Effect.Effect<Response | undefined>;
 } = {}) => {
   const requests: ChatRequest[] = [];
   const layer = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         if (request.body._tag !== "Uint8Array") throw new Error("Expected JSON request body");
         const body = JSON.parse(new TextDecoder().decode(request.body.body)) as Record<
           string,
           unknown
         >;
         requests.push({ url: request.url, headers: request.headers, body });
-        const response = unauthorized.includes(String(body.model))
-          ? new Response(JSON.stringify({ error: { code: 401, message: "No auth" } }), {
-              status: 401,
-              headers: { "content-type": "application/json" },
-            })
-          : new Response(
-              JSON.stringify({
-                id: "chatcmpl-test",
-                object: "chat.completion",
-                created: 1,
-                model: body.model,
-                choices: [
-                  {
-                    index: 0,
-                    message: { role: "assistant", content: "1" },
-                    finish_reason: "stop",
-                  },
-                ],
-                usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
-              }),
-              { headers: { "content-type": "application/json" } },
-            );
+        const custom = yield* reply?.(body, requests.length) ?? Effect.succeed(undefined);
+        const response =
+          custom ??
+          (unauthorized.includes(String(body.model))
+            ? new Response(JSON.stringify({ error: { code: 401, message: "No auth" } }), {
+                status: 401,
+                headers: { "content-type": "application/json" },
+              })
+            : new Response(
+                JSON.stringify({
+                  id: "chatcmpl-test",
+                  object: "chat.completion",
+                  created: 1,
+                  model: body.model,
+                  choices: [
+                    {
+                      index: 0,
+                      message: { role: "assistant", content: "1" },
+                      finish_reason: "stop",
+                    },
+                  ],
+                  usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
+                }),
+                { headers: { "content-type": "application/json" } },
+              ));
         return HttpClientResponse.fromWeb(request, response);
       }),
     ),
@@ -61,8 +69,6 @@ export const chatEndpoint = ({
   return { requests, layer };
 };
 
-/** Runs with OPENROUTER_API_KEY set to `key`, or unset whatever the real environment holds. */
-export const withApiKey = (key?: string) =>
-  Effect.withConfigProvider(
-    ConfigProvider.fromMap(new Map(key === undefined ? [] : [["OPENROUTER_API_KEY", key]])),
-  );
+/** Supplies a mock key without reading the real environment. */
+export const withApiKey = (key: string) =>
+  Effect.withConfigProvider(ConfigProvider.fromMap(new Map([["OPENROUTER_API_KEY", key]])));

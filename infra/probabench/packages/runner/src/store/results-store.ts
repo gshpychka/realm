@@ -17,6 +17,8 @@ const ResultsFile = Schema.parseJson(Results, { space: 2 });
 // would be dropped from the only copy of the history.
 const decode = Schema.decode(ResultsFile, { onExcessProperty: "error" });
 const encode = Schema.encode(ResultsFile);
+// A completed model's read/modify/rename must finish before another model reads.
+const writer = Effect.unsafeMakeSemaphore(1);
 
 /** The document at `path`; a missing file reads as empty history. */
 const read = (fs: FileSystem.FileSystem, path: string) =>
@@ -69,4 +71,4 @@ export const appendRun = (
     Effect.flatMap(read(fs, path), (results) =>
       write(fs, path, { ...results, runs: [...results.runs, run] }),
     ),
-  );
+  ).pipe(writer.withPermits(1));

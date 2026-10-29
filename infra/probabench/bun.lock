@@ -24,7 +24,6 @@
       "version": "0.0.0",
       "dependencies": {
         "@effect/ai": "0.36.0",
-        "@effect/ai-openrouter": "^0.11.0",
         "@effect/cli": "^0.75.2",
         "@effect/platform": "0.96.2",
         "@effect/platform-node": "^0.107.0",
@@ -64,9 +63,6 @@
         "vite": "^8.1.0",
       },
     },
-  },
-  "patchedDependencies": {
-    "@distilled.cloud/aws@1.0.0-rc.15": "patches/@distilled.cloud%2Faws@1.0.0-rc.15.patch",
   },
   "packages": {
     "@alchemy.run/cloudflare-runtime": ["@alchemy.run/cloudflare-runtime@2.0.0-beta.83", "", { "dependencies": { "@alchemy.run/node-utils": "2.0.0-beta.83", "@cloudflare/unenv-preset": "^2.16.1", "@puppeteer/browsers": "^3.2.0", "capnp-es": "^0.0.16", "magic-string": "^0.30.21", "mime": "^4.0.7", "sharp": "^0.35.3", "unenv": "^2.0.0-rc.24", "workerd": "1.20261002.1", "yauzl": "^3.4.0" }, "peerDependencies": { "@distilled.cloud/cloudflare": "1.0.0-rc.15", "@effect/platform-bun": "^4.0.0", "@effect/platform-node": "^4.0.0", "effect": "^4.0.0", "rolldown": "1.2.5", "vite": "^7.0.0 || ^8.0.0" }, "optionalPeers": ["@effect/platform-bun", "@effect/platform-node", "rolldown", "vite"] }, "sha512-tchwc16KccR3Q8fmEZSqJcXRPJ0mV0Y3LEu7VbdE6R3e0VqKFNnz5xYiCfQWUAahB+QtJDtTu3/nkjOajE3ggQ=="],
@@ -140,8 +136,6 @@
     "@effect-atom/atom-react": ["@effect-atom/atom-react@0.6.0", "", { "dependencies": { "@effect-atom/atom": "^0.6.0" }, "peerDependencies": { "effect": "^3.19", "react": ">=18 <20", "scheduler": "*" } }, "sha512-KLS8W7wXlN/vZOydgA2DfsT+g1I+h/8jozQtvM5uxOA9OH2qNM+tGjv4W0jbLwM0yfqJMc18bYYUAGlGtmCSqA=="],
 
     "@effect/ai": ["@effect/ai@0.36.0", "", { "dependencies": { "find-my-way-ts": "0.1.6" }, "peerDependencies": { "@effect/experimental": "^0.60.0", "@effect/platform": "^0.96.1", "@effect/rpc": "^0.75.1", "effect": "^3.21.3" } }, "sha512-GDYSedxjEAvEovZr6x+ry1n1Mp0mWBLoMzPJGxxnLC3qjyLsIJ89Cvfr4+YijQ6et0osusHxeULzrFFSnLYJJA=="],
-
-    "@effect/ai-openrouter": ["@effect/ai-openrouter@0.11.0", "", { "peerDependencies": { "@effect/ai": "^0.36.0", "@effect/experimental": "^0.60.0", "@effect/platform": "^0.96.1", "effect": "^3.21.3" } }, "sha512-JHoWIS6kNM2kErQwImRM2+rro+6J6P67P82Hn6YYtJsnM25ipYu+r27N7/GvJ6uQx9oxAXkK2LriWUAx0nxtug=="],
 
     "@effect/cli": ["@effect/cli@0.75.2", "", { "dependencies": { "ini": "4.1.3", "toml": "3.0.0", "yaml": "2.9.0" }, "peerDependencies": { "@effect/platform": "^0.96.1", "@effect/printer": "^0.49.0", "@effect/printer-ansi": "^0.49.0", "effect": "^3.21.2" } }, "sha512-+cMn/ZtFB+jEvgB6phrTT6XyPkIUnmX4G0nUSln7yj3lwyiHQ578Iwr8nHeU1CKEtlh4Xt+mYc0yiT912xu7YA=="],
 

@@ -2,6 +2,9 @@
 // what a plan costs.
 import * as Schema from "effect/Schema";
 
+/** Adaptive scheduling stays below this shared CLI / browser request ceiling. */
+export const DEFAULT_CONCURRENCY = 256;
+
 /** A target probability as a fraction in [0, 1]. */
 export const Probability = Schema.Number.pipe(Schema.between(0, 1), Schema.brand("Probability"));
 export type Probability = typeof Probability.Type;
@@ -38,15 +41,15 @@ export const planBudget = (
 
 const STANDARD = {
   label: "Standard",
-  description: "A closer look",
+  description: "50 answers at 10% steps",
   trialsPerStep: 50,
   stepPercent: 10,
 } as const;
 
 export const SAMPLING_PRESETS = [
-  { label: "Quick", description: "Find the shape", trialsPerStep: 10, stepPercent: 25 },
+  { label: "Quick", description: "10 answers at 25% steps", trialsPerStep: 10, stepPercent: 25 },
   STANDARD,
-  { label: "Thorough", description: "More evidence", trialsPerStep: 100, stepPercent: 5 },
+  { label: "Thorough", description: "100 answers at 5% steps", trialsPerStep: 100, stepPercent: 5 },
 ] as const;
 export type SamplingPreset = (typeof SAMPLING_PRESETS)[number];
 

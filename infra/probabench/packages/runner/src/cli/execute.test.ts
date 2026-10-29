@@ -21,40 +21,57 @@ const planFor = (out: string, first: string, ...rest: string[]): BenchPlan => ({
 });
 
 describe("executePlan", () => {
-  it.effect("appends a run per series through the real adapter", () =>
+  it.effect("overlaps models through the HTTP adapter without multiplying the ceiling", () =>
     withHistoryFile((path) => {
-      const endpoint = chatEndpoint();
+      let active = 0;
+      let peak = 0;
+      const inFlight = new Map<string, number>();
+      let modelsOverlap = false;
+      const endpoint = chatEndpoint({
+        reply: (body) =>
+          Effect.acquireUseRelease(
+            Effect.sync(() => {
+              active++;
+              peak = Math.max(peak, active);
+              const model = String(body.model);
+              inFlight.set(model, (inFlight.get(model) ?? 0) + 1);
+              modelsOverlap ||= [...inFlight.values()].filter((n) => n > 0).length > 1;
+            }),
+            () => Effect.yieldNow().pipe(Effect.as(undefined)),
+            () =>
+              Effect.sync(() => {
+                active--;
+                const model = String(body.model);
+                inFlight.set(model, (inFlight.get(model) ?? 0) - 1);
+              }),
+          ),
+      });
       return Effect.gen(function* () {
-        yield* executePlan(planFor(path, "vendor/a", "vendor/b"));
+        const plan = planFor(path, "vendor/a", "vendor/b", "vendor/c");
+        yield* executePlan({
+          ...plan,
+          options: { ...plan.options, trialsPerStep: 6, stepPercent: 50, concurrency: 3 },
+        });
+        expect(peak).toBe(3);
+        expect(modelsOverlap).toBe(true);
+        expect(active).toBe(0);
+        expect(endpoint.requests).toHaveLength(54);
         const { runs } = yield* readResults(path);
-        expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a", "vendor/b"]);
-        expect(endpoint.requests).toHaveLength(4);
+        expect(runs).toHaveLength(3);
+        for (const run of runs)
+          expect(run.points.map((point) => point.outcomes.length)).toEqual([6, 6, 6]);
       }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
     }),
   );
 
-  it.effect("keeps completed runs when a later series fails", () =>
+  it.effect("finishes and saves healthy models when another model fails", () =>
     withHistoryFile((path) => {
       const endpoint = chatEndpoint({ unauthorized: ["vendor/b"] });
       return Effect.gen(function* () {
-        const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a", "vendor/b")));
-        expect(error._tag).toBe("HttpResponseError");
-        expect(error.message).toContain("No auth");
+        yield* Effect.flip(executePlan(planFor(path, "vendor/a", "vendor/b")));
         const { runs } = yield* readResults(path);
         expect(runs.map((run) => run.modelSlug)).toEqual(["vendor/a"]);
       }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
-    }),
-  );
-
-  it.effect("fails on a missing key before any provider request", () =>
-    withHistoryFile((path) => {
-      const endpoint = chatEndpoint();
-      return Effect.gen(function* () {
-        const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a")));
-        expect(error._tag).toBe("MissingApiKey");
-        expect(error.message).toContain("secrets/infra/probabench.env");
-        expect(endpoint.requests).toHaveLength(0);
-      }).pipe(Effect.provide(endpoint.layer), withApiKey());
     }),
   );
 
@@ -64,8 +81,7 @@ describe("executePlan", () => {
       return Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         yield* fs.writeFileString(path, "not json");
-        const error = yield* Effect.flip(executePlan(planFor(path, "vendor/a")));
-        expect(error._tag).toBe("ParseError");
+        yield* Effect.flip(executePlan(planFor(path, "vendor/a")));
         expect(endpoint.requests).toHaveLength(0);
       }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
     }),

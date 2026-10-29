@@ -1,8 +1,6 @@
-// One series' calibration sweep: at each probability on the grid, ask the model
-// for trialsPerStep bits and record every reply.
+// One model's observations across the probability grid. Targets are interleaved
+// through the shared scheduler, and every reply keeps its target and trial index.
 import { randomUUID } from "node:crypto";
-import * as LanguageModel from "@effect/ai/LanguageModel";
-import type * as Prompt from "@effect/ai/Prompt";
 import {
   formatPointProgress,
   type Outcome,
@@ -16,7 +14,9 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import type { SamplingOptions } from "../plan/plan";
 import type { ModelSeries } from "../plan/series";
+import { OpenRouterClient, type TextMessage } from "./openrouter";
 import { type ProviderFailure, withProviderRetry } from "./retry";
+import { RequestScheduler } from "./scheduler";
 
 /** Bounds each provider attempt, response decoding included, so a stalled request cannot hang a run. */
 const ATTEMPT_TIMEOUT = "2 minutes";
@@ -24,7 +24,7 @@ const ATTEMPT_TIMEOUT = "2 minutes";
 const SYSTEM_PROMPT =
   "You are a random bit generator. On each call you output exactly one character — the digit 1 or the digit 0 — and nothing else: no words, no punctuation, no explanation.";
 
-const prompt = (x: Probability): Prompt.RawInput => [
+const prompt = (x: Probability): readonly TextMessage[] => [
   { role: "system", content: SYSTEM_PROMPT },
   { role: "user", content: `Output 1 with probability ${Math.round(x * 100)}%, otherwise 0.` },
 ];
@@ -37,44 +37,56 @@ const parseOutcome = (reply: string): Outcome => {
   return { invalidText: reply };
 };
 
-/**
- * One bit requested at probability x. Never sets temperature, top_p or top_k: the
- * model's native sampling is what is measured. The provided LanguageModel fixes the
- * series' slug and reasoning. An unparseable reply is an Outcome, not an error.
- */
-const sampleBit = (
-  x: Probability,
-): Effect.Effect<Outcome, ProviderFailure, LanguageModel.LanguageModel> =>
-  LanguageModel.generateText({ prompt: prompt(x) }).pipe(
-    Effect.timeout(ATTEMPT_TIMEOUT),
-    withProviderRetry,
-    Effect.map((response) => parseOutcome(response.text)),
-  );
-
 /** Samples the series' whole grid into a Run, printing a progress line per finished point. */
 export const sweep = (
   series: ModelSeries,
-  options: Omit<SamplingOptions, "maxTokens">,
-): Effect.Effect<Run, ProviderFailure, LanguageModel.LanguageModel> =>
+  options: SamplingOptions,
+): Effect.Effect<Run, ProviderFailure, OpenRouterClient | RequestScheduler> =>
   Effect.gen(function* () {
+    const client = yield* OpenRouterClient;
+    const scheduler = yield* RequestScheduler;
+    const sampleBit = (x: Probability) =>
+      scheduler
+        .request(
+          series.modelSlug,
+          client
+            .complete(series, options.maxTokens, prompt(x))
+            .pipe(Effect.timeout(ATTEMPT_TIMEOUT)),
+        )
+        .pipe(withProviderRetry, Effect.map(parseOutcome));
     const startedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
     const grid = probabilityGrid(options.stepPercent);
-    const points = yield* Effect.forEach(grid, (x, index) =>
-      Effect.replicateEffect(sampleBit(x), options.trialsPerStep, {
-        concurrency: options.concurrency,
-      }).pipe(
-        Effect.map((outcomes): Point => ({ x, outcomes })),
-        Effect.tap((point) =>
-          Console.log(
-            formatPointProgress({
-              model: series.model,
-              point,
-              completed: index + 1,
-              total: grid.length,
-            }),
-          ),
-        ),
-      ),
+    const points = grid.map((x) => ({
+      x,
+      outcomes: Array<Outcome>(options.trialsPerStep),
+    })) satisfies Point[];
+    const received = grid.map(() => 0);
+    let completed = 0;
+    // Interleave targets, keeping the original trial order in the saved observations.
+    // Workers are bounded independently of the number of samples in the plan.
+    function* samples() {
+      for (let trial = 0; trial < options.trialsPerStep; trial++) {
+        for (let target = 0; target < points.length; target++) yield { trial, target };
+      }
+    }
+    yield* Effect.forEach(
+      samples(),
+      ({ trial, target }) => {
+        const point = points[target];
+        if (!point) return Effect.dieMessage("Missing sampling target");
+        return sampleBit(point.x).pipe(
+          Effect.flatMap((outcome) => {
+            point.outcomes[trial] = outcome;
+            received[target] = (received[target] ?? 0) + 1;
+            if (received[target] !== options.trialsPerStep) return Effect.void;
+            completed++;
+            return Console.log(
+              formatPointProgress({ model: series.model, point, completed, total: grid.length }),
+            );
+          }),
+        );
+      },
+      { concurrency: options.concurrency, discard: true },
     );
     return {
       id: randomUUID(),

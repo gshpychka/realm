@@ -58,8 +58,8 @@ export const selectSeries = (tokens: readonly string[], mode?: ReasoningMode): S
 
 export const describeAliases = (): string =>
   [
-    "OpenRouter model aliases (or pass any OpenRouter model ID):",
+    "Saved models (or pass any OpenRouter model ID):",
     ...MODEL_ALIASES.map((model) => `  ${model.alias} → ${toSeries(model).model}`),
-    `  ${ALL_ALIASES} → every alias`,
+    `  ${ALL_ALIASES} → all ${MODEL_ALIASES.length} saved model configurations`,
     `Use --reasoning ${ReasoningMode.literals.join("|")} to override the selected models' reasoning mode.`,
   ].join("\n");

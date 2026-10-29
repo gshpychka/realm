@@ -6,7 +6,7 @@ import { RESULTS_FILE, Results } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 
 /** The history, decoded against the Results contract. */
-export const fetchResults = HttpClient.get(`/${RESULTS_FILE}`).pipe(
+const fetchResults = HttpClient.get(`/${RESULTS_FILE}`).pipe(
   Effect.flatMap(HttpClientResponse.filterStatusOk),
   Effect.flatMap(HttpClientResponse.schemaBodyJson(Results)),
   Effect.scoped,

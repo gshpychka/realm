@@ -1,6 +1,4 @@
 // The runner's flags for one benchmark, which the dev bridge spawns it with.
-// runner/src/cli/command.test.ts parses them, so renaming a runner flag fails
-// there rather than in a browser run.
 import type { ReasoningMode } from "./models";
 
 export const benchArgs = (request: {

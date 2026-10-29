@@ -59,7 +59,7 @@ service is a host decision in `machines/`. `lib.bayGuestImage` builds a standalo
 Bay guest image. Bay, Dura, and Pituitary source, modules, and issues live in Realm.
 
 [ProbaBench](infra/probabench) benchmarks how accurately language models follow
-requested sampling probabilities. Its CLI, results notebook and Cloudflare
+requested sampling probabilities. Its CLI, results page and Cloudflare
 Alchemy deployment live under `infra/probabench`; use `nix develop .#infra` to
 work on it.
 

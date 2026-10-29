@@ -1,18 +1,17 @@
 import { useState } from "react";
 import type { Job } from "../bridge/protocol";
 import type { Bridge } from "../bridge/use-bridge";
-import { time } from "../common/format";
 import { FormError } from "./FormError";
 
-const UNSAVED = "An unfinished run is not saved. Earlier runs remain in history.";
+const UNSAVED = "Incomplete measurements were not saved. Earlier results are unchanged.";
 
 const OUTCOME = {
   completed: {
-    title: "Run saved to history",
-    detail: "Earlier runs remain in history.",
+    title: "Samples saved",
+    detail: "",
   },
-  cancelled: { title: "Run cancelled", detail: UNSAVED },
-  failed: { title: "Run stopped", detail: UNSAVED },
+  cancelled: { title: "Sampling cancelled", detail: UNSAVED },
+  failed: { title: "Sampling stopped", detail: UNSAVED },
 } as const satisfies Record<Exclude<Job["status"], "running">, { title: string; detail: string }>;
 
 const describe = (job: Job, cancelling: boolean) => {
@@ -20,8 +19,8 @@ const describe = (job: Job, cancelling: boolean) => {
   return {
     title: cancelling ? "Stopping the benchmark…" : "Sampling in progress",
     detail: job.progress
-      ? `${job.progress.completed} of ${job.progress.total} probability targets sampled.`
-      : "Preparing the model and sampling plan.",
+      ? `${job.progress.completed} of ${job.progress.total} probabilities complete.`
+      : "Starting…",
   };
 };
 
@@ -56,8 +55,7 @@ export function JobProgress({
       <div className="job-status" role="status">
         <span className={`status-dot ${running ? "pulse" : ""}`} />
         <strong>{title}</strong>
-        <p>{detail}</p>
-        <span className="muted">Started {time(job.startedAt)} UTC</span>
+        {detail ? <p>{detail}</p> : null}
         {reconnecting ? (
           <span className="muted">The dev bridge is not answering. Reconnecting…</span>
         ) : null}
@@ -75,7 +73,7 @@ export function JobProgress({
         {running ? (
           <>
             <button type="button" className="button secondary" onClick={onClose}>
-              Keep running in background
+              Hide progress
             </button>
             <button
               type="button"
@@ -85,7 +83,7 @@ export function JobProgress({
                 void cancel();
               }}
             >
-              {cancelling ? "Cancelling…" : "Cancel run"}
+              {cancelling ? "Stopping…" : "Stop sampling"}
             </button>
           </>
         ) : (
@@ -94,7 +92,7 @@ export function JobProgress({
               View results <span aria-hidden="true">↗</span>
             </button>
             <button type="button" className="text-button" onClick={onSetUpAnother}>
-              Set up another
+              Collect more samples
             </button>
           </>
         )}

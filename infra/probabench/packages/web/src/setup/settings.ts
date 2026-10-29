@@ -1,6 +1,7 @@
 // The setup form's model: what it edits, what a new benchmark starts from, and the
 // preset its sampling matches.
 import {
+  DEFAULT_CONCURRENCY,
   DEFAULT_PRESET,
   MODEL_ALIASES,
   type ReasoningMode,
@@ -24,8 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   model: MODEL_ALIASES[0].alias,
   trialsPerStep: DEFAULT_PRESET.trialsPerStep,
   stepPercent: DEFAULT_PRESET.stepPercent,
-  // Gentler than the CLI default.
-  concurrency: 5,
+  concurrency: DEFAULT_CONCURRENCY,
   reasoning: undefined,
   custom: false,
 };

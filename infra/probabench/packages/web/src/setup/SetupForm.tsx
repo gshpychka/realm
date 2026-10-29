@@ -88,173 +88,172 @@ export function SetupForm({
   };
 
   return (
-    <>
-      <p className="dialog-intro">
-        Choose a model and a sample budget. Every completed run is saved alongside earlier runs.
-      </p>
-      <form
-        onSubmit={(event) => {
-          void submit(event);
-        }}
-      >
-        {/* Locks every setting while a run is starting; display: contents keeps the layout. */}
-        <fieldset className="setup-fields" disabled={bridge.pending}>
-          <label className="field-label" htmlFor="benchmark-model">
-            Model <span>OpenRouter model ID or starter alias</span>
-          </label>
-          <input
-            id="benchmark-model"
-            className="model-input"
-            type="text"
-            list="starter-models"
-            value={model}
-            onChange={(event) => onChange({ model: event.target.value })}
-            placeholder="anthropic/claude-haiku-4.5"
-            required
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <datalist id="starter-models">
-            {MODEL_ALIASES.map((alias) => (
-              <option
-                key={alias.alias}
-                value={alias.alias}
-                label={seriesLabel(alias.slug, alias.reasoning ?? "off")}
-              />
+    <form
+      onSubmit={(event) => {
+        void submit(event);
+      }}
+    >
+      {/* Locks every setting while a run is starting; display: contents keeps the layout. */}
+      <fieldset className="setup-fields" disabled={bridge.pending}>
+        <label className="field-label" htmlFor="benchmark-model">
+          Model <span>OpenRouter model ID or saved model</span>
+        </label>
+        <input
+          id="benchmark-model"
+          className="model-input"
+          type="text"
+          list="starter-models"
+          value={model}
+          onChange={(event) => onChange({ model: event.target.value })}
+          placeholder={MODEL_ALIASES[0].slug}
+          required
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <datalist id="starter-models">
+          {MODEL_ALIASES.map((alias) => (
+            <option
+              key={alias.alias}
+              value={alias.alias}
+              label={seriesLabel(alias.slug, alias.reasoning ?? "off")}
+            />
+          ))}
+          {[...new Set(modelSuggestions)]
+            .filter(
+              (slug) => !MODEL_ALIASES.some((alias) => alias.alias === slug || alias.slug === slug),
+            )
+            .map((slug) => (
+              <option key={slug} value={slug} />
             ))}
-            {[...new Set(modelSuggestions)]
-              .filter((slug) => !MODEL_ALIASES.some((alias) => alias.alias === slug))
-              .map((slug) => (
-                <option key={slug} value={slug} />
-              ))}
-          </datalist>
-          <fieldset className="preset-fieldset">
-            <legend className="field-label">Sample budget</legend>
-            <div className="preset-grid">
-              {SAMPLING_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  aria-pressed={selectedPreset === preset}
-                  className="preset"
-                  onClick={() =>
-                    onChange({
-                      trialsPerStep: preset.trialsPerStep,
-                      stepPercent: preset.stepPercent,
-                      custom: false,
-                    })
-                  }
-                >
-                  <strong>{preset.label}</strong>
-                  <span>{preset.description}</span>
-                  <small>{count(planBudget(preset).samples)} samples</small>
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="text-button tiny setup-custom"
-              aria-expanded={custom}
-              aria-controls="custom-sampling"
-              onClick={() => onChange({ custom: !custom })}
-            >
-              Custom budget
-              <span className="expand-sign" aria-hidden="true">
-                +
-              </span>
-            </button>
-          </fieldset>
-          {custom ? (
-            <div className="form-grid" id="custom-sampling">
-              <NumberField
-                id="benchmark-trials"
-                label="Samples / target"
-                value={trialsPerStep}
-                max={BROWSER_LIMITS.trialsPerStep}
-                onChange={(value) => onChange({ trialsPerStep: value })}
-              />
-              <NumberField
-                id="benchmark-step"
-                label="Target step"
-                unit="%"
-                value={stepPercent}
-                max={100}
-                onChange={(value) => onChange({ stepPercent: value })}
-              />
-            </div>
-          ) : null}
-          <details className="advanced">
-            <summary>
-              Advanced settings{" "}
-              <span className="expand-sign" aria-hidden="true">
-                +
-              </span>
-              <span>Concurrency & reasoning</span>
-            </summary>
-            <div className="form-grid">
-              <NumberField
-                id="benchmark-concurrency"
-                label="Concurrent requests"
-                value={concurrency}
-                max={BROWSER_LIMITS.concurrency}
-                onChange={(value) => onChange({ concurrency: value })}
-              />
-              <label className="field-label" htmlFor="benchmark-reasoning">
-                Reasoning
-                <select
-                  id="benchmark-reasoning"
-                  value={reasoning ?? ""}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    onChange({ reasoning: Schema.is(ReasoningMode)(value) ? value : undefined });
-                  }}
-                >
-                  <option value="">Default</option>
-                  {ReasoningMode.literals.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {mode}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <p className="helper">
-              Default keeps an alias’s own reasoning mode and turns reasoning off for a model ID.
-            </p>
-          </details>
-        </fieldset>
-        <div className="budget" aria-live="polite">
-          <div className="budget-total">
-            <strong>{count(budget.samples)}</strong>
-            <span>planned samples</span>
+        </datalist>
+        <fieldset className="preset-fieldset">
+          <legend className="field-label">Sample budget</legend>
+          <div className="preset-grid">
+            {SAMPLING_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                aria-pressed={selectedPreset === preset}
+                className="preset"
+                onClick={() =>
+                  onChange({
+                    trialsPerStep: preset.trialsPerStep,
+                    stepPercent: preset.stepPercent,
+                    custom: false,
+                  })
+                }
+              >
+                <strong>{preset.label}</strong>
+                <span>{preset.description}</span>
+                <small>{count(planBudget(preset).samples)} samples</small>
+              </button>
+            ))}
           </div>
-          <span className="budget-times">=</span>
-          <p>
-            {count(budget.points)} targets × {count(trialsPerStep)} samples
-          </p>
-        </div>
-        <FormError message={validationError} />
-        {local && !local.configured ? (
-          <div className="environment-note">
-            <span className="status-dot" />
-            <div>
-              <strong>Connect your OpenRouter key</strong>
-              <p>
-                This dev server has no <code>OPENROUTER_API_KEY</code>. Restart it with{" "}
-                <code>bun run dev</code>, which decrypts <code>secrets/infra/probabench.env</code>.
-              </p>
-            </div>
+          <button
+            type="button"
+            className="text-button tiny setup-custom"
+            aria-expanded={custom}
+            aria-controls="custom-sampling"
+            onClick={() => onChange({ custom: !custom })}
+          >
+            Custom budget
+            <span className="expand-sign" aria-hidden="true">
+              +
+            </span>
+          </button>
+        </fieldset>
+        {custom ? (
+          <div className="form-grid" id="custom-sampling">
+            <NumberField
+              id="benchmark-trials"
+              label="Answers per probability"
+              value={trialsPerStep}
+              max={BROWSER_LIMITS.trialsPerStep}
+              onChange={(value) => onChange({ trialsPerStep: value })}
+            />
+            <NumberField
+              id="benchmark-step"
+              label="Probability step"
+              unit="%"
+              value={stepPercent}
+              max={100}
+              onChange={(value) => onChange({ stepPercent: value })}
+            />
           </div>
         ) : null}
-        <FormError message={startError} />
-        <div className="setup-submit">
-          <p>Your key stays on the dev server. OpenRouter charges for generated tokens.</p>
-          <button type="submit" className="button primary" disabled={!canSubmit}>
-            {submitLabel(connection.kind, bridge.pending)}
-            <span aria-hidden="true">↗</span>
-          </button>
+        <details className="advanced">
+          <summary>
+            Advanced settings{" "}
+            <span className="expand-sign" aria-hidden="true">
+              +
+            </span>
+            <span>Concurrency & reasoning</span>
+          </summary>
+          <div className="form-grid">
+            <NumberField
+              id="benchmark-concurrency"
+              label="Concurrency limit"
+              value={concurrency}
+              max={BROWSER_LIMITS.concurrency}
+              onChange={(value) => onChange({ concurrency: value })}
+            />
+            <label className="field-label" htmlFor="benchmark-reasoning">
+              Reasoning
+              <select
+                id="benchmark-reasoning"
+                value={reasoning ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  onChange({ reasoning: Schema.is(ReasoningMode)(value) ? value : undefined });
+                }}
+              >
+                <option value="">Default</option>
+                {ReasoningMode.literals.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {mode}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="helper">
+            Concurrency adjusts to OpenRouter’s limits, up to this ceiling. Default reasoning keeps
+            a saved model’s setting. For a full model ID, choose an effort if it requires reasoning;
+            otherwise the default is off.
+          </p>
+        </details>
+      </fieldset>
+      <div className="budget" aria-live="polite">
+        <div className="budget-total">
+          <strong>{count(budget.samples)}</strong>
+          <span>planned samples</span>
         </div>
-      </form>
-    </>
+        <span className="budget-times">=</span>
+        <p>
+          {count(budget.points)} targets × {count(trialsPerStep)} samples
+        </p>
+      </div>
+      <FormError message={validationError} />
+      {local && !local.configured ? (
+        <div className="environment-note">
+          <span className="status-dot" />
+          <div>
+            <strong>Connect your OpenRouter key</strong>
+            <p>
+              This dev server has no <code>OPENROUTER_API_KEY</code>. Restart it with{" "}
+              <code>bun run dev</code>, which decrypts <code>secrets/infra/probabench.env</code>.
+            </p>
+          </div>
+        </div>
+      ) : null}
+      <FormError message={startError} />
+      <div className="setup-submit">
+        <p>Your key stays on the dev server. OpenRouter charges for generated tokens.</p>
+        <button type="submit" className="button primary" disabled={!canSubmit}>
+          {submitLabel(connection.kind, bridge.pending)}
+          <span aria-hidden="true">↗</span>
+        </button>
+      </div>
+    </form>
   );
 }

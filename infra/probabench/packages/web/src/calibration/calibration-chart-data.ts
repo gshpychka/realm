@@ -1,5 +1,5 @@
-// Each selected run becomes one line of measured points on its own target grid.
-import { measurePoint, type Point, type PointMeasurement, type Run } from "@probabench/domain";
+// Each model's pooled evidence becomes a line on its own measured target grid.
+import type { EvidencePoint, ModelEvidence, PointMeasurement } from "@probabench/domain";
 import { type ModelStyle, styleOf } from "../common/palette";
 
 export interface CalibrationPoint extends PointMeasurement {
@@ -9,17 +9,16 @@ export interface CalibrationPoint extends PointMeasurement {
 }
 
 export interface CalibrationSeries {
-  readonly run: Run;
+  readonly model: string;
   readonly style: ModelStyle;
-  /** Only this run's targets, so another run's grid never breaks this line. */
+  /** Only this model's targets, so another model's grid never breaks this line. */
   readonly points: readonly CalibrationPoint[];
 }
 
-const measure = (point: Point): CalibrationPoint => {
-  const measured = measurePoint(point);
-  const { observed, interval } = measured;
+const measure = (point: EvidencePoint): CalibrationPoint => {
+  const { observed, interval } = point;
   return {
-    ...measured,
+    ...point,
     x: point.x,
     errorBar:
       observed !== null && interval !== null
@@ -29,11 +28,11 @@ const measure = (point: Point): CalibrationPoint => {
 };
 
 export const buildCalibrationSeries = (
-  runs: readonly Run[],
+  evidence: readonly ModelEvidence[],
   styles: ReadonlyMap<string, ModelStyle>,
 ): CalibrationSeries[] =>
-  runs.map((run) => ({
-    run,
-    style: styleOf(styles, run.model),
-    points: run.points.map(measure),
+  evidence.map((item) => ({
+    model: item.model,
+    style: styleOf(styles, item.model),
+    points: item.points.map(measure),
   }));

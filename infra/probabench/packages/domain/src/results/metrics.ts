@@ -29,17 +29,29 @@ export interface PointMeasurement {
   readonly interval: readonly [number, number] | null;
 }
 
-export const measurePoint = ({ outcomes }: Point): PointMeasurement => {
-  const ones = outcomes.filter((outcome) => outcome === 1).length;
-  const zeros = outcomes.filter((outcome) => outcome === 0).length;
+export const measureCounts = ({
+  ones,
+  zeros,
+  invalid,
+}: Pick<PointMeasurement, "ones" | "zeros" | "invalid">): PointMeasurement => {
   const valid = ones + zeros;
-  const counts = { ones, zeros, invalid: outcomes.length - valid, valid, total: outcomes.length };
+  const counts = { ones, zeros, invalid, valid, total: valid + invalid };
   return valid === 0
     ? { ...counts, observed: null, interval: null }
     : { ...counts, observed: ones / valid, interval: wilson95(ones, valid) };
 };
 
-export interface RunSummary {
+export const measurePoint = ({ outcomes }: Point): PointMeasurement => {
+  let ones = 0;
+  let zeros = 0;
+  for (const outcome of outcomes) {
+    if (outcome === 1) ones++;
+    else if (outcome === 0) zeros++;
+  }
+  return measureCounts({ ones, zeros, invalid: outcomes.length - ones - zeros });
+};
+
+export interface MeasurementSummary {
   /**
    * Mean absolute calibration error over the points with a valid outcome, as a
    * fraction. Sampling noise biases each point's error upward, so even a calibrated
@@ -56,13 +68,14 @@ export interface RunSummary {
 }
 
 /**
- * Summarize a run without hiding failures. Each covered point has equal weight,
+ * Summarize measurements without hiding failures. Each covered point has equal weight,
  * so higher validity at one target cannot dominate the mean. All-invalid points
  * are left out of the error and show up in coveredPoints instead. Finite-sample
- * noise remains; compare runs together with coverage and validity.
+ * noise remains; compare models together with coverage and validity.
  */
-export const summarizeRun = (run: Run): RunSummary => {
-  const measured = run.points.map((point) => ({ x: point.x, ...measurePoint(point) }));
+export const summarizeMeasurements = (
+  measured: readonly (PointMeasurement & { readonly x: number })[],
+): MeasurementSummary => {
   const errors = measured.flatMap(({ x, observed }) =>
     observed === null ? [] : [Math.abs(observed - x)],
   );
@@ -73,12 +86,15 @@ export const summarizeRun = (run: Run): RunSummary => {
       errors.length === 0 ? null : errors.reduce((sum, error) => sum + error, 0) / errors.length,
     valid,
     total,
-    // A decoded Run has at least one point with trialsPerStep ≥ 1 outcomes, so total ≥ 1.
-    validity: valid / total,
+    validity: total === 0 ? 0 : valid / total,
     coveredPoints: errors.length,
-    totalPoints: run.points.length,
+    totalPoints: measured.length,
   };
 };
+
+/** The runner's summary of one saved storage record. */
+export const summarizeRun = (run: Pick<Run, "points">): MeasurementSummary =>
+  summarizeMeasurements(run.points.map((point) => ({ x: point.x, ...measurePoint(point) })));
 
 /** A calibration error, given as a fraction, in percentage points; `empty` when there is none. */
 export const calibrationErrorText = (value: number | null, empty = "—"): string =>

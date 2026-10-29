@@ -1,18 +1,20 @@
-import { measurePoint, type Run } from "@probabench/domain";
-import { count, observedText, percent, timestamp } from "./format";
+import type { ModelEvidence } from "@probabench/domain";
+import { count, observedText, percent } from "./format";
 import "./Measurements.css";
 
-const HEADINGS = ["Target", "Observed", "95% interval", "Ones / valid", "Invalid"];
+const HEADINGS = ["Requested", "Observed", "95% CI", "1s / valid replies", "Invalid"];
 
-/** A run's measurement at every target, as an accessible table. */
-export function Measurements({ run }: { run: Run }) {
+/** A model's pooled measurements at every target, as an accessible table. */
+export function Measurements({ evidence }: { evidence: ModelEvidence }) {
   return (
-    // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll wide measurement tables.
-    <section className="table-scroll" tabIndex={0} aria-label={`Measurements for ${run.model}`}>
+    <section
+      className="table-scroll"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to scroll wide measurement tables.
+      tabIndex={0}
+      aria-label={`Measurements for ${evidence.model}`}
+    >
       <table className="measurement-table">
-        <caption className="sr-only">
-          Measured sampling frequencies for {run.model}, {timestamp(run.startedAt)}
-        </caption>
+        <caption className="sr-only">Combined sampling frequencies for {evidence.model}</caption>
         <thead>
           <tr>
             {HEADINGS.map((heading) => (
@@ -23,8 +25,8 @@ export function Measurements({ run }: { run: Run }) {
           </tr>
         </thead>
         <tbody>
-          {run.points.map((point) => {
-            const { observed, interval, ones, valid, invalid, total } = measurePoint(point);
+          {evidence.points.map((point) => {
+            const { observed, interval, ones, valid, invalid, total } = point;
             return (
               <tr key={point.x}>
                 <th scope="row">{percent(point.x, 0)}</th>

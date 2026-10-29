@@ -1,40 +1,38 @@
 import { Result, useAtomRefresh, useAtomValue } from "@effect-atom/atom-react";
-import type { Run } from "@probabench/domain";
+import { collectEvidence, evidenceHistory, type Run } from "@probabench/domain";
 import * as Option from "effect/Option";
 import { useEffect, useMemo, useState } from "react";
 import { useBridge } from "../bridge/use-bridge";
 import { CalibrationPage } from "../calibration/CalibrationPage";
-import { PANEL_ID, useNotebookView } from "../common/notebook-view";
 import { modelStyles } from "../common/palette";
+import { PANEL_ID, useResultsView } from "../common/results-view";
 import { HistoryPage } from "../history/HistoryPage";
 import { MethodPage } from "../method/MethodPage";
 import { RunSetup } from "../setup/RunSetup";
-import { EmptyNotebook } from "./EmptyNotebook";
-import { Masthead } from "./Masthead";
-import { NotebookTabs } from "./NotebookTabs";
+import { EmptyResults } from "./EmptyResults";
+import { ResultsTabs } from "./ResultsTabs";
 import { resultsAtom } from "./results";
 import { SiteHeader } from "./SiteHeader";
 import "./app.css";
 
 const NO_RUNS: readonly Run[] = [];
 
-function NotebookLoading() {
+function ResultsLoading() {
   return (
-    <div className="notebook-loading" role="status">
+    <div className="results-loading" role="status">
       <span className="loading-line" />
-      <p>Opening the notebook…</p>
-      <span className="loading-detail">Reading the saved runs.</span>
+      <p>Loading results…</p>
     </div>
   );
 }
 
-function NotebookError({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
+function ResultsError({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
   return (
-    <section className="notebook-error" role="alert">
+    <section className="results-error" role="alert">
       <span className="state-symbol" aria-hidden="true">
         !
       </span>
-      <h2>The notebook couldn’t be read.</h2>
+      <h2>Couldn’t load results.</h2>
       <p>Results could not be fetched or did not pass validation. Try loading them again.</p>
       <button type="button" className="button secondary" disabled={retrying} onClick={onRetry}>
         Try again <span aria-hidden="true">↻</span>
@@ -54,12 +52,17 @@ export function App() {
   useEffect(() => {
     if (finishedJobId !== null) refresh();
   }, [finishedJobId, refresh]);
-  const [view, update] = useNotebookView();
+  const [view, update] = useResultsView();
   const [setupOpen, setSetupOpen] = useState(false);
   // Result.value falls back to the last success, so a failed refresh keeps the runs on screen.
   const results = Option.getOrUndefined(Result.value(result));
   const runs = results?.runs ?? NO_RUNS;
   const styles = useMemo(() => modelStyles(runs), [runs]);
+  const evidence = useMemo(
+    () => collectEvidence(runs, view.tab === "history" ? view.through : null),
+    [runs, view.tab, view.through],
+  );
+  const history = useMemo(() => evidenceHistory(runs), [runs]);
 
   // The published site is read-only: only the dev server can run benchmarks.
   const openSetup = bridge.connection.kind === "published" ? undefined : () => setSetupOpen(true);
@@ -67,27 +70,35 @@ export function App() {
     if (view.tab === "method") return <MethodPage />;
     if (results === undefined)
       return Result.isFailure(result) ? (
-        <NotebookError retrying={result.waiting} onRetry={refresh} />
+        <ResultsError retrying={result.waiting} onRetry={refresh} />
       ) : (
-        <NotebookLoading />
+        <ResultsLoading />
       );
     if (runs.length === 0)
-      return <EmptyNotebook onNew={openSetup} onMethod={() => update({ tab: "method" })} />;
+      return <EmptyResults onNew={openSetup} onMethod={() => update({ tab: "method" })} />;
     if (view.tab === "history")
-      return <HistoryPage runs={runs} styles={styles} view={view} update={update} />;
-    return <CalibrationPage runs={runs} styles={styles} view={view} update={update} />;
+      return (
+        <HistoryPage
+          evidence={evidence}
+          history={history}
+          styles={styles}
+          view={view}
+          update={update}
+        />
+      );
+    return <CalibrationPage evidence={evidence} styles={styles} view={view} update={update} />;
   };
 
   return (
-    <div className="notebook">
+    <div className="results">
       <a className="skip-link" href={`#${PANEL_ID}`}>
-        Skip to notebook
+        Skip to results
       </a>
       <SiteHeader connection={bridge.connection} onOpenSetup={openSetup} />
       <main>
-        <Masthead runs={runs} />
-        <NotebookTabs runCount={runs.length} view={view} update={update} />
-        <div id={PANEL_ID} className="notebook-panel" tabIndex={-1}>
+        <h1 className="sr-only">ProbaBench results</h1>
+        <ResultsTabs view={view} update={update} />
+        <div id={PANEL_ID} className="results-panel" tabIndex={-1}>
           {panel()}
         </div>
       </main>
@@ -99,7 +110,7 @@ export function App() {
           modelSuggestions={runs.map((run) => run.modelSlug)}
           onViewResults={() => {
             setSetupOpen(false);
-            update({ tab: "history", runId: null, hidden: [] });
+            update({ tab: "calibration", model: null, through: null, hidden: [] });
             document.getElementById(PANEL_ID)?.focus();
           }}
         />

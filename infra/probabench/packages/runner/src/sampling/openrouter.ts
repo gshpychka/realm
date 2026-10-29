@@ -1,12 +1,16 @@
-// OpenRouter as the sampling LanguageModel: one client built from the API key,
-// and per series a model layer that fixes its slug, reasoning and output ceiling.
-import type * as LanguageModel from "@effect/ai/LanguageModel";
-import * as OpenRouterClient from "@effect/ai-openrouter/OpenRouterClient";
-import * as OpenRouterLanguageModel from "@effect/ai-openrouter/OpenRouterLanguageModel";
+// OpenRouter's single-turn text endpoint. Decode the answer we measure; reasoning
+// metadata is opaque and its provider-specific formats do not affect the sample.
+import * as AiError from "@effect/ai/AiError";
+import * as HttpBody from "@effect/platform/HttpBody";
 import * as HttpClient from "@effect/platform/HttpClient";
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest";
+import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
 import * as Config from "effect/Config";
+import * as Context from "effect/Context";
 import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import type { ModelSeries } from "../plan/series";
 
 export class MissingApiKey extends Data.TaggedError("MissingApiKey") {
@@ -15,54 +19,72 @@ export class MissingApiKey extends Data.TaggedError("MissingApiKey") {
   }
 }
 
-/**
- * Output ceiling with reasoning off: room for one bit. Not lower, because OpenAI's
- * Responses API, which serves some OpenRouter routes, rejects a max_tokens below 16
- * and so would fail every sample. A model that cannot turn reasoning off may still
- * spend this budget thinking and reply with nothing, which records as invalid.
- */
+export interface TextMessage {
+  readonly role: "system" | "user";
+  readonly content: string;
+}
+
+export class OpenRouterClient extends Context.Tag("probabench/OpenRouterClient")<
+  OpenRouterClient,
+  {
+    readonly complete: (
+      series: ModelSeries,
+      maxTokens: number,
+      messages: readonly TextMessage[],
+    ) => Effect.Effect<string, AiError.AiError>;
+  }
+>() {}
+
+// Some OpenAI routes require at least 16 tokens. Empty output (including an
+// exhausted reasoning budget) is still an observation and is counted as invalid.
 const NO_REASONING_MAX_TOKENS = 16;
 
-// The adapter's generated reasoning type only knows effort and summary. The
-// client sends config as JSON without encoding it, so extending the type here
-// still puts OpenRouter's documented `enabled` flag on the wire.
-type Reasoning = NonNullable<OpenRouterLanguageModel.Config.Service["reasoning"]> & {
-  readonly enabled?: boolean;
-};
+const Completion = Schema.Struct({
+  choices: Schema.NonEmptyArray(
+    Schema.Struct({
+      message: Schema.Struct({ content: Schema.optionalWith(Schema.String, { nullable: true }) }),
+    }),
+  ),
+});
 
-type ModelConfig = Omit<OpenRouterLanguageModel.Config.Service, "model" | "reasoning"> & {
-  readonly reasoning: Reasoning;
-};
-
-/** The provider's default sampling, an explicit reasoning mode and a bounded output. */
-const modelConfig = ({ reasoning }: ModelSeries, maxTokens: number): ModelConfig =>
-  reasoning === "off"
-    ? { max_tokens: NO_REASONING_MAX_TOKENS, reasoning: { enabled: false } }
-    : { max_tokens: maxTokens, reasoning: { effort: reasoning } };
-
-/**
- * The client every series' model shares; building it reads the key from the environment.
- *
- * The adapter decodes a 400, 401, 429 or 500 into an HttpResponseError without
- * OpenRouter's error body, so the printed failure would not say why, for example
- * that a model ID is unknown. Failing every non-2xx in the HTTP client instead sends
- * it through HttpResponseError.fromResponseError, which keeps the status and
- * Retry-After and appends the body to the message.
- */
-export const openrouterClientLayer: Layer.Layer<
-  OpenRouterClient.OpenRouterClient,
-  MissingApiKey,
-  HttpClient.HttpClient
-> = OpenRouterClient.layerConfig({
-  apiKey: Config.redacted(Config.nonEmptyString("OPENROUTER_API_KEY")),
-  transformClient: HttpClient.filterStatusOk,
-}).pipe(Layer.mapError(() => new MissingApiKey()));
-
-export const openrouterModelLayer = (
-  series: ModelSeries,
-  maxTokens: number,
-): Layer.Layer<LanguageModel.LanguageModel, never, OpenRouterClient.OpenRouterClient> =>
-  OpenRouterLanguageModel.layer({
-    model: series.modelSlug,
-    config: modelConfig(series, maxTokens),
-  });
+/** Share authentication and preserve HTTP status, headers and error bodies for scheduling. */
+export const openrouterClientLayer = Layer.effect(
+  OpenRouterClient,
+  Effect.gen(function* () {
+    const key = yield* Config.redacted(Config.nonEmptyString("OPENROUTER_API_KEY")).pipe(
+      Effect.mapError(() => new MissingApiKey()),
+    );
+    const client = (yield* HttpClient.HttpClient).pipe(
+      HttpClient.mapRequest(HttpClientRequest.bearerToken(key)),
+      HttpClient.filterStatusOk,
+    );
+    const origin = { module: "OpenRouterClient", method: "complete" };
+    return OpenRouterClient.of({
+      complete: (series, maxTokens, messages) => {
+        const request = HttpClientRequest.post("https://openrouter.ai/api/v1/chat/completions", {
+          body: HttpBody.unsafeJson({
+            model: series.modelSlug,
+            messages,
+            stream: false,
+            max_tokens: series.reasoning === "off" ? NO_REASONING_MAX_TOKENS : maxTokens,
+            reasoning:
+              series.reasoning === "off"
+                ? { enabled: false, exclude: true }
+                : { effort: series.reasoning, exclude: true },
+          }),
+        }).pipe(HttpClientRequest.acceptJson);
+        return client.execute(request).pipe(
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(Completion)),
+          Effect.map((response) => response.choices[0].message.content ?? ""),
+          Effect.catchTags({
+            RequestError: (error) =>
+              AiError.HttpRequestError.fromRequestError({ ...origin, error }),
+            ResponseError: (error) =>
+              AiError.HttpResponseError.fromResponseError({ ...origin, error }),
+            ParseError: (error) => AiError.MalformedOutput.fromParseError({ ...origin, error }),
+          }),
+        );
+      },
+    });
+  }),
+);

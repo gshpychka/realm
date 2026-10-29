@@ -27,19 +27,9 @@
   white-space: nowrap;
   background: transparent;
 }
-.interval-toggle > span {
-  font-size: 14px;
-
-  @media (max-width: 650px) {
-    font-size: 13px;
-  }
-}
 .interval-toggle[aria-pressed="true"] {
   color: var(--text-2);
   background: var(--raised);
-}
-.interval-toggle[aria-pressed="true"] > span {
-  color: var(--accent);
 }
 .calibration-plot {
   height: 390px;
@@ -60,10 +50,6 @@
   @media (max-width: 650px) {
     gap: 8px;
   }
-}
-.calibration-caption .mono {
-  font-size: 11px;
-  color: var(--muted);
 }
 .reference-key {
   display: flex;
@@ -108,11 +94,11 @@
 }
 .model-item {
   border-bottom: 1px solid var(--line);
-  padding: 17px 0;
+  padding: 8px 0;
 }
 .model-toggle {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   width: 100%;
   min-height: 44px;
@@ -146,47 +132,27 @@
   flex-direction: column;
   gap: 7px;
   min-width: 0;
+  flex: 1;
 
   @media (max-width: 650px) {
     flex: 1;
   }
 }
+.model-metric-label {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 4px 0 12px;
+}
+.model-score {
+  font: 12px / 1.5 var(--mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
 .model-toggle strong {
   font-size: 13px;
   overflow-wrap: anywhere;
   font-weight: 500;
-}
-.model-replies {
-  color: var(--muted);
-  font-size: 12px;
-}
-.run-select {
-  display: block;
-  margin: 9px 0 0 29px;
-}
-.run-select select {
-  width: 100%;
-  min-height: 40px;
-  font: 12px / 1.6 var(--mono);
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  color: var(--text-3);
-  cursor: pointer;
-  text-overflow: ellipsis;
-
-  @media (max-width: 650px) {
-    font-size: 16px;
-    min-height: 44px;
-  }
-}
-.panel-note {
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--muted);
-  margin-top: 18px;
-  max-width: 390px;
 }
 
 /* Measurements */
@@ -207,7 +173,7 @@
     gap: 10px;
   }
 }
-.measurements-panel > header > h3 {
+.measurements-panel > header > h2 {
   font: 400 var(--title-sm) / 1.2 var(--serif);
   letter-spacing: -0.4px;
 
@@ -215,19 +181,13 @@
     max-width: 210px;
   }
 }
-.measurements-panel > header .tag {
-  @media (max-width: 650px) {
-    margin-top: 4px;
-    white-space: nowrap;
-  }
-}
 .measurement-empty {
   padding: 24px 0;
 }
-.measurement-run {
+.measurement-model {
   border-bottom: 1px solid var(--line);
 }
-.measurement-run > summary {
+.measurement-model > summary {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -240,10 +200,10 @@
     gap: 8px;
   }
 }
-.measurement-run[open] > summary {
+.measurement-model[open] > summary {
   border-bottom: 1px solid var(--line);
 }
-.measurement-run > summary strong {
+.measurement-model > summary strong {
   min-width: 0;
   overflow-wrap: anywhere;
   font-weight: 500;
@@ -255,17 +215,8 @@
   }
 }
 /* This summary centres its items. */
-.measurement-run > summary .color-dot {
+.measurement-model > summary .color-dot {
   margin-top: 0;
-}
-.measurement-date {
-  color: var(--muted);
-  font: 11px / 1.6 var(--mono);
-  margin-left: auto;
-
-  @media (max-width: 1100px) {
-    display: none;
-  }
 }
 .measurement-error {
   display: flex;
@@ -273,7 +224,7 @@
   gap: 7px;
   font: 13px / 1.5 var(--mono);
   white-space: nowrap;
-  margin-left: 20px;
+  margin-left: auto;
 
   @media (max-width: 1100px) {
     margin-left: auto;
@@ -289,7 +240,7 @@
   font: 11px / 1.6 var(--mono);
   color: var(--muted);
 }
-.measurement-run .expand-sign {
+.measurement-model .expand-sign {
   margin-left: 16px;
   font-size: 17px;
 
@@ -298,27 +249,11 @@
     font-size: 15px;
   }
 }
-/* 18px + the cells' 12px lines the first column up with .measurement-foot's 30px. */
-.measurement-run > .table-scroll {
+/* Align the table with the model heading. */
+.measurement-model > .table-scroll {
   padding: 0 18px;
 
   @media (max-width: 650px) {
     padding: 0 8px;
-  }
-}
-.measurement-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 17px 30px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.6;
-
-  @media (max-width: 650px) {
-    padding: 14px 18px;
-    font-size: 11px;
   }
 }

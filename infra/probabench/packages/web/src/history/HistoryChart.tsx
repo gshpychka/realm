@@ -1,9 +1,10 @@
-import { calibrationErrorText, type Run } from "@probabench/domain";
-import { useId, useMemo } from "react";
+import { calibrationErrorText, type EvidenceCheckpoint } from "@probabench/domain";
+import { useMemo } from "react";
 import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   type TooltipContentProps,
@@ -11,14 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { CHART, PlotEmpty } from "../common/chart-frame";
-import {
-  modelName,
-  NO_VALID_REPLIES,
-  percent,
-  samplingText,
-  shortId,
-  timestamp,
-} from "../common/format";
+import { date, modelName, NO_VALID_REPLIES } from "../common/format";
 import { type ModelStyle, styleOf } from "../common/palette";
 import { buildHistoryChartModel, type HistoryPoint } from "./history-chart-data";
 
@@ -39,61 +33,52 @@ function HistoryTooltip({
   return (
     <div className="chart-tooltip">
       <p className="tooltip-heading">
-        <time dateTime={first.run.startedAt}>{timestamp(first.run.startedAt)}</time>
+        Through <time dateTime={first.day}>{date(first.day)}</time>
       </p>
-      {atTime.map(({ run, summary }) => (
-        <div key={run.id} className="tooltip-series">
+      {atTime.map(({ model, summary }) => (
+        <div key={model} className="tooltip-series">
           <p className="tooltip-model">
-            <span className="color-dot" style={{ background: styleOf(styles, run.model).color }} />
-            <strong>{modelName(run.model)}</strong>
+            <span className="color-dot" style={{ background: styleOf(styles, model).color }} />
+            <strong>{modelName(model)}</strong>
           </p>
           <div className="tooltip-value">
             {calibrationErrorText(summary.meanCalibrationError, NO_VALID_REPLIES)}
-            <span>mean calibration error</span>
+            <span>mean absolute error</span>
           </div>
-          <p className="muted">
-            {percent(summary.validity)} valid · {summary.coveredPoints}/{summary.totalPoints}{" "}
-            targets covered
-          </p>
-          <p className="muted">{samplingText(run)}</p>
-          <p className="muted">
-            reasoning {run.reasoning} · run {shortId(run.id)}
-          </p>
         </div>
       ))}
     </div>
   );
 }
 
-/** The plotted y value. Module scope keeps its identity stable for Recharts. */
 const meanError = (point: HistoryPoint) => point.summary.meanCalibrationError;
 
-const emptyPlot = (points: readonly HistoryPoint[]) => {
-  if (points.length === 0)
-    return { title: "No runs shown.", detail: "Show a model from the legend." };
-  if (points.every((point) => meanError(point) === null))
-    return {
-      title: "No calibration errors to plot.",
-      detail: "These runs contain no valid replies. Their outcomes remain in the history list.",
-    };
-  return null;
-};
-
 export function HistoryChart({
-  runs,
+  history,
   styles,
+  through,
+  onInspect,
 }: {
-  runs: readonly Run[];
+  history: readonly EvidenceCheckpoint[];
   styles: ReadonlyMap<string, ModelStyle>;
+  through: string | null;
+  onInspect: (point: EvidenceCheckpoint) => void;
 }) {
-  const descriptionId = useId();
   const { points, series, domain, yMax, tickFormat } = useMemo(
-    () => buildHistoryChartModel(runs, styles),
-    [runs, styles],
+    () => buildHistoryChartModel(history, styles),
+    [history, styles],
   );
-  const empty = emptyPlot(points);
+  const empty =
+    points.length === 0
+      ? { title: "No models shown.", detail: "Show a model from the legend." }
+      : points.every((point) => meanError(point) === null)
+        ? {
+            title: "No valid answers yet.",
+            detail: "See the measurement tables for the replies received.",
+          }
+        : null;
   return (
-    <figure aria-label="Calibration error over time" aria-describedby={descriptionId}>
+    <figure aria-label="Mean absolute error over time">
       <div className="plot">
         <ResponsiveContainer>
           <LineChart margin={CHART.margin}>
@@ -104,40 +89,88 @@ export function HistoryChart({
               type="number"
               scale="time"
               domain={domain}
+              ticks={[...new Set(points.map((point) => point.timestamp))]}
+              interval="preserveStartEnd"
               tickFormatter={(value: number) => tickFormat.format(value)}
-              minTickGap={35}
-              label={{ ...CHART.xLabel, value: "Run start (UTC)" }}
+              minTickGap={40}
+              label={{ ...CHART.xLabel, value: "Date" }}
             />
             <YAxis
               {...CHART.yAxis}
               domain={[0, yMax]}
+              ticks={Array.from({ length: 6 }, (_, index) => (index * yMax) / 5)}
               tickFormatter={(value: number) => `${Math.round(value * 100)}`}
               width={56}
               label={{
                 ...CHART.label,
-                value: "Calibration error (pp)",
+                value: "Mean absolute error (pp)",
                 angle: -90,
                 position: "insideLeft",
                 offset: -4,
               }}
             />
             <Tooltip
-              // Keep null entries: a run with no valid replies must still open its tooltip.
               filterNull={false}
               cursor={CHART.cursor}
               content={({ active, label }) => (
                 <HistoryTooltip active={active} label={label} points={points} styles={styles} />
               )}
             />
+            {through ? (
+              <ReferenceLine
+                x={Date.parse(`${through}T00:00:00.000Z`)}
+                stroke={CHART.reference}
+                strokeDasharray="4 5"
+              />
+            ) : null}
             {series.map(({ model, style, points: line }) => (
               <Line
                 key={model}
                 data={line}
                 dataKey={meanError}
+                name={model}
                 stroke={style.color}
                 strokeDasharray={style.dash}
                 strokeWidth={2}
-                dot={{ r: 4, strokeWidth: 2, fill: CHART.surface }}
+                dot={(props) => {
+                  const { cx, cy, payload } = props;
+                  const point = payload as HistoryPoint;
+                  if (
+                    cx === undefined ||
+                    cy === undefined ||
+                    point.summary.meanCalibrationError === null
+                  )
+                    return <g key={point.day} />;
+                  const label = `${modelName(model)}, through ${date(point.day)}, mean error ${calibrationErrorText(point.summary.meanCalibrationError)}`;
+                  return (
+                    // biome-ignore lint/a11y/useSemanticElements: SVG chart markers need SVG geometry and cannot contain an HTML button.
+                    <g
+                      key={point.day}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={label}
+                      className="history-point"
+                      onClick={() => onInspect(point)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onInspect(point);
+                        }
+                      }}
+                    >
+                      <circle cx={cx} cy={cy} r={12} fill="transparent" />
+                      <circle
+                        className="history-point-marker"
+                        cx={cx}
+                        cy={cy}
+                        r={4}
+                        stroke={style.color}
+                        strokeWidth={2}
+                        fill={CHART.surface}
+                      />
+                    </g>
+                  );
+                }}
                 activeDot={false}
                 isAnimationActive={false}
               />
@@ -146,10 +179,6 @@ export function HistoryChart({
         </ResponsiveContainer>
         {empty ? <PlotEmpty {...empty} /> : null}
       </div>
-      <figcaption id={descriptionId} className="chart-description">
-        Mean calibration error per saved run, in percentage points; lower is better. Runs with no
-        valid replies leave gaps.
-      </figcaption>
     </figure>
   );
 }

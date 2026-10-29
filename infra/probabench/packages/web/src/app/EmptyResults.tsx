@@ -1,4 +1,4 @@
-export function EmptyNotebook({
+export function EmptyResults({
   onNew,
   onMethod,
 }: {
@@ -7,12 +7,9 @@ export function EmptyNotebook({
   onMethod: () => void;
 }) {
   return (
-    <section className="card empty-notebook">
-      <h2>Start with one model.</h2>
-      <p>
-        Choose a model, collect its samples, and see how closely it follows the probabilities you
-        ask for. Each run becomes part of the history.
-      </p>
+    <section className="card empty-results">
+      <h2>No results yet</h2>
+      <p>Run a benchmark to collect answers for the graph.</p>
       <div className="empty-actions">
         {onNew ? (
           <button type="button" className="button primary" onClick={onNew}>
