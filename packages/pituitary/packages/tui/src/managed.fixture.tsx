@@ -1,10 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createCliRenderer } from "@opentui/core";
-import { createRoot, extend } from "@opentui/react";
+import { createRoot } from "@opentui/react";
 import { type ConversationClient, connectConversation } from "@realm/dura/client";
 import type { RunDetail } from "@realm/dura/types";
 import { serveConversationFixture } from "../../../../dura/src/conversation.fixture.ts";
-import { OptInText } from "./components/text.ts";
 import { ManagedWorkspace } from "./managed.tsx";
 import { type ManagedView, RELOAD_UI, readManagedView, writeManagedView } from "./ui-state.ts";
 
@@ -265,7 +264,6 @@ const runtime = {
 };
 let current: ConversationClient = await runtime.connect("run-team", saved?.control ?? true, selected);
 const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });
-extend({ text: OptInText });
 const root = createRoot(renderer);
 let capture: (() => ManagedView) | undefined;
 let closing = false;

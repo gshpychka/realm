@@ -56,6 +56,10 @@ Over SSH, use the login screen's copy shortcut (`ctrl+x`) for the full URL. tmux
 must allow application clipboard writes: `set -s set-clipboard on` (Realm configures
 this). For manual selection in Ghostty, hold `shift` while dragging, then use `cmd+c`.
 
+Drag to select and copy conversation text, including warnings, errors, queued
+messages, and task results. Controls, keyboard hints, and decorative marks stay
+outside the selection.
+
 Standard extension dialogs, notifications, status text, widgets, commands, and prompt
 completions appear in Pituitary. Extensions that render custom stock-terminal
 components need Pi's interactive screen; that rendering API is outside Pi RPC.

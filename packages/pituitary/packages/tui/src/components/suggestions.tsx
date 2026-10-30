@@ -33,6 +33,7 @@ export function Suggestions({ items, index, rows = ROWS }: SuggestionsProps) {
             backgroundColor={chosen ? palette.rule : undefined}
           >
             <text
+              selectable={false}
               fg={chosen ? theme.assistant : theme.tool}
               width={width}
               flexShrink={0}
@@ -42,14 +43,14 @@ export function Suggestions({ items, index, rows = ROWS }: SuggestionsProps) {
               {item.label}
             </text>
             {item.detail ? (
-              <text fg={theme.dim} truncate wrapMode="none" flexShrink={1}>
+              <text selectable={false} fg={theme.dim} truncate wrapMode="none" flexShrink={1}>
                 {item.detail}
               </text>
             ) : null}
           </box>
         );
       })}
-      <text fg={theme.dim} truncate wrapMode="none">
+      <text selectable={false} fg={theme.dim} truncate wrapMode="none">
         tab completes · ↑↓ choose{items.length > shown ? ` · ${index + 1} of ${items.length}` : ""}
       </text>
     </box>

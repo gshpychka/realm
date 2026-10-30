@@ -28,17 +28,22 @@ export function Queue({
     <box flexDirection="column" flexShrink={0} paddingLeft={1} paddingRight={1}>
       {shown.map((row, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: queued messages are identified by position
-        <text key={index} fg={theme.dim} truncate wrapMode="none">
-          <span fg={theme.tool}>{row.kind}</span> {row.text.replace(/\s+/g, " ")}
-        </text>
+        <box key={index} flexDirection="row" flexShrink={0}>
+          <text selectable={false} fg={theme.tool} flexShrink={0} wrapMode="none">
+            {row.kind}{" "}
+          </text>
+          <text fg={theme.dim} flexShrink={1} truncate wrapMode="none">
+            {row.text.replace(/\s+/g, " ")}
+          </text>
+        </box>
       ))}
       {hidden > 0 && (rows > 1 || !hint) ? (
-        <text fg={theme.dim} truncate wrapMode="none">
+        <text selectable={false} fg={theme.dim} truncate wrapMode="none">
           … {counted(hidden, "queued message")}
         </text>
       ) : null}
       {hint ? (
-        <text fg={theme.dim} truncate wrapMode="none">
+        <text selectable={false} fg={theme.dim} truncate wrapMode="none">
           {rows === 1 ? `${messages.length} queued · ` : ""}
           {hint}
         </text>

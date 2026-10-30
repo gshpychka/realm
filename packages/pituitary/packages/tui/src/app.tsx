@@ -806,7 +806,7 @@ export function App({
             <PiWidgets widgets={piUI.widgets} placement="aboveEditor" />
             {readonly ? (
               <box paddingLeft={1} paddingTop={1} height={2}>
-                <text fg={theme.dim} truncate wrapMode="none">
+                <text selectable={false} fg={theme.dim} truncate wrapMode="none">
                   {shownHint ||
                     `${archived ? "Archived · read only" : "Observing · alt+i join"} · ${keyHint(keymap, "app.message.copy")} copy · / commands · ${keyHint(keymap, "app.exit")} close`}
                 </text>

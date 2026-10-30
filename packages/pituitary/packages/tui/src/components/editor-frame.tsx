@@ -69,7 +69,7 @@ export function EditorFrame({ signal, rows, note, confirm, mark, children }: Edi
       flexShrink={0}
     >
       <box width={MARK_COLS} flexShrink={0} overflow="hidden">
-        <text fg={mark.tone} wrapMode="none">
+        <text fg={mark.tone} wrapMode="none" selectable={false}>
           {mark.label}
         </text>
       </box>

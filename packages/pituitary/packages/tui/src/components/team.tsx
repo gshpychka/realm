@@ -146,17 +146,17 @@ function TaskCard({
         if (event.button === 0) open();
       }}
     >
-      <text truncate wrapMode="none" fg={selected ? theme.assistant : palette.muted}>
+      <text selectable={false} truncate wrapMode="none" fg={selected ? theme.assistant : palette.muted}>
         {selected ? "› " : "  "}
         {task.role ?? "solo"}
         <span fg={theme.dim}> · {plain(task.objective).split("\n")[0] || "Conversation"}</span>
       </text>
-      <text truncate wrapMode="none" fg={tone(task)}>
+      <text selectable={false} truncate wrapMode="none" fg={tone(task)}>
         {" "}
         {state}
       </text>
       {!compact && resultBadges(detail, task) ? (
-        <text fg={theme.dim} truncate wrapMode="none">
+        <text selectable={false} fg={theme.dim} truncate wrapMode="none">
           {" "}
           {resultBadges(detail, task)}
         </text>
@@ -189,21 +189,21 @@ export function TeamHeader({
       paddingRight={1}
       backgroundColor={palette.bar}
     >
-      <text fg={theme.dim} onMouseDown={back}>
+      <text selectable={false} fg={theme.dim} onMouseDown={back}>
         {team.canBack ? "‹ back · " : ""}
       </text>
-      <text flexGrow={1} fg={theme.assistant} truncate wrapMode="none" onMouseDown={tasks}>
+      <text selectable={false} flexGrow={1} fg={theme.assistant} truncate wrapMode="none" onMouseDown={tasks}>
         {team.detail.run.name} · {task?.role ?? "solo"}
         <span fg={theme.dim}> · {task ? taskState(team.detail, task) : "connecting"}</span>
       </text>
-      <text fg={questions.length ? theme.tool : theme.dim} onMouseDown={attention}>
+      <text selectable={false} fg={questions.length ? theme.tool : theme.dim} onMouseDown={attention}>
         {questions.length ? `${questions.length} need you · ` : ""}
       </text>
-      <text fg={theme.dim} onMouseDown={tasks}>
+      <text selectable={false} fg={theme.dim} onMouseDown={tasks}>
         tasks
       </text>
       {task?.reportId ? (
-        <text fg={task.status === "accepted" ? theme.ok : theme.tool} onMouseDown={result}>
+        <text selectable={false} fg={task.status === "accepted" ? theme.ok : theme.tool} onMouseDown={result}>
           {" "}
           · result
         </text>
@@ -252,7 +252,7 @@ export function TeamCards({
     >
       {wide ? (
         <box paddingLeft={1} paddingTop={1} flexShrink={0}>
-          <text fg={theme.dim}>
+          <text selectable={false} fg={theme.dim}>
             WORK · {live}/{team.detail.run.limits.maxLiveAttempts} active · {remaining}m left
           </text>
         </box>
@@ -283,7 +283,9 @@ export function TeamCards({
       )}
       {wide ? (
         <box paddingLeft={1} paddingTop={1} flexShrink={0}>
-          <text fg={theme.dim}>ctrl+k tasks · ctrl+q attention</text>
+          <text selectable={false} fg={theme.dim}>
+            ctrl+k tasks · ctrl+q attention
+          </text>
         </box>
       ) : null}
     </box>
@@ -396,9 +398,18 @@ export function TaskResult({
             </text>
             {verification.checks.map((check) => (
               <box key={check.name} flexDirection="column" flexShrink={0}>
-                <text fg={check.status === "passed" ? theme.ok : theme.error}>
-                  {check.status === "passed" ? "✓" : "!"} {plain(check.name)} · {check.status}
-                </text>
+                <box flexDirection="row" flexShrink={0}>
+                  <text
+                    selectable={false}
+                    flexShrink={0}
+                    fg={check.status === "passed" ? theme.ok : theme.error}
+                  >
+                    {check.status === "passed" ? "✓" : "!"}{" "}
+                  </text>
+                  <text fg={check.status === "passed" ? theme.ok : theme.error}>
+                    {plain(check.name)} · {check.status}
+                  </text>
+                </box>
                 {check.status !== "passed" && check.output ? (
                   <text fg={theme.dim}>{plain(check.output)}</text>
                 ) : null}
@@ -420,7 +431,7 @@ export function TaskResult({
           </text>
         ) : null}
       </scrollbox>
-      <text fg={theme.dim}>
+      <text selectable={false} fg={theme.dim}>
         {canIntegrate ? "i integrate · " : ""}
         {canApply ? "a apply · " : ""}r retry · e revise · {report ? "c copy · " : ""}esc back
       </text>

@@ -126,17 +126,17 @@ function Title({
       }}
     >
       {open ? (
-        <text fg={frame} flexShrink={0}>
+        <text selectable={false} fg={frame} flexShrink={0}>
           ╭{" "}
         </text>
       ) : null}
-      <text fg={selected ? theme.user : theme.dim} wrapMode="none" truncate flexShrink={1}>
+      <text selectable={false} fg={selected ? theme.user : theme.dim} wrapMode="none" truncate flexShrink={1}>
         {open ? "▾" : "▸"} {icon} {summary(work)}
       </text>
       {open ? (
         <>
           <box flexGrow={1} minWidth={2} height={1} marginLeft={1} border={["top"]} borderColor={frame} />
-          <text fg={frame} flexShrink={0}>
+          <text selectable={false} fg={frame} flexShrink={0}>
             ╮
           </text>
         </>
@@ -213,11 +213,11 @@ function StepView({ step, whole, thinking }: { step: Step; whole: boolean; think
   switch (step.kind) {
     case "thinking":
       return thinking ? (
-        <text fg={theme.thinking} selectable>
+        <text fg={theme.thinking}>
           <i>{step.text}</i>
         </text>
       ) : (
-        <text fg={theme.thinking}>
+        <text selectable={false} fg={theme.thinking}>
           {glyphs.thinking} thinking…
           <KeyHint action="app.thinking.toggle" />
         </text>

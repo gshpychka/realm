@@ -1,8 +1,7 @@
 import { createCliRenderer } from "@opentui/core";
-import { createRoot, extend } from "@opentui/react";
+import { createRoot } from "@opentui/react";
 import { type ConversationClient, Runtime } from "@realm/dura/client";
 import type { DuraOptions } from "./cli.ts";
-import { OptInText } from "./components/text.ts";
 import { attachCommand, openLog } from "./config.ts";
 import { ManagedWorkspace } from "./managed.tsx";
 import { prewarm } from "./nvim/engine.ts";
@@ -31,7 +30,6 @@ export async function runDura(options: DuraOptions): Promise<void> {
   prewarm();
   const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });
   mark("renderer");
-  extend({ text: OptInText });
   const root = createRoot(renderer);
   renderer.once("frame", () => mark("first-frame"));
   let capture: (() => ManagedView) | undefined;

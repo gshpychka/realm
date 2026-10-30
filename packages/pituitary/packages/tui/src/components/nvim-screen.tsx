@@ -109,7 +109,7 @@ export function NvimScreen({ frame, selectable }: { frame: Frame; selectable: bo
         <ScreenRow key={index} runs={runs} colors={frame.colors} selectable={selectable} />
       ))}
       {frame.cmdline ? (
-        <text {...styleOf({}, frame.colors)} wrapMode="none" truncate flexShrink={0}>
+        <text {...styleOf({}, frame.colors)} wrapMode="none" truncate flexShrink={0} selectable={false}>
           {frame.cmdline.text}
         </text>
       ) : null}

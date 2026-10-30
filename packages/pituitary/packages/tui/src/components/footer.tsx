@@ -445,7 +445,7 @@ function FooterRow({ row, bar, onCard }: { row: Row; bar: string; onCard: (event
 function Runs({ segs, onMouseDown }: { segs: readonly Seg[]; onMouseDown?: (event: MouseEvent) => void }) {
   if (segs.length === 0) return null;
   return (
-    <text flexShrink={0} wrapMode="none" onMouseDown={onMouseDown}>
+    <text flexShrink={0} wrapMode="none" onMouseDown={onMouseDown} selectable={false}>
       {segs.map((seg, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: a row's runs are drawn in order and never move
         <Run key={index} seg={seg} />

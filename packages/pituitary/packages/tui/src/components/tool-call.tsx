@@ -28,12 +28,21 @@ export const ToolCall = memo(function ToolCall({ tool, expanded }: ToolCallProps
   const elapsed = took(tool);
   return (
     <box flexDirection="column">
-      <text selectable>
-        <span fg={state.colour}>{tool.streaming !== undefined ? "…" : state.glyph} </span>
-        <span fg={theme.tool}>{icon ? `${glyphs[icon]} ${title}` : title}</span>
-        <span fg={theme.assistant}> {detail}</span>
-        {elapsed ? <span fg={theme.dim}> · {elapsed}</span> : null}
-      </text>
+      <box flexDirection="row">
+        <text selectable={false} fg={state.colour} flexShrink={0}>
+          {tool.streaming !== undefined ? "…" : state.glyph}{" "}
+        </text>
+        {icon ? (
+          <text selectable={false} fg={theme.tool} flexShrink={0}>
+            {glyphs[icon]}{" "}
+          </text>
+        ) : null}
+        <text>
+          <span fg={theme.tool}>{title}</span>
+          <span fg={theme.assistant}> {detail}</span>
+          {elapsed ? <span fg={theme.dim}> · {elapsed}</span> : null}
+        </text>
+      </box>
       <box flexDirection="column" paddingLeft={2}>
         <Body tool={tool} expanded={expanded} />
       </box>
@@ -69,7 +78,7 @@ function Drawn({ details, tool, expanded }: { details: Details } & ToolCallProps
     case "diff":
       return <Diff diff={details.diff} expanded={expanded} />;
     case "tasks":
-      return <Tasks tasks={details.tasks} selectable />;
+      return <Tasks tasks={details.tasks} />;
     case "subagent":
       return <Subagent agent={details} />;
     case "search":
@@ -77,11 +86,7 @@ function Drawn({ details, tool, expanded }: { details: Details } & ToolCallProps
     case "answers":
       return <Answers answers={details.answers} />;
     case "cancelled":
-      return (
-        <text fg={theme.dim} selectable>
-          cancelled
-        </text>
-      );
+      return <text fg={theme.dim}>cancelled</text>;
     case "plan":
       return <Markdown content={details.plan} />;
     default:
@@ -108,23 +113,17 @@ function Output({ tool, expanded }: ToolCallProps) {
     <box flexDirection="column">
       {tail ? more : null}
       {lines.length > 0 ? (
-        <text fg={tool.state === "error" ? theme.error : theme.dim} selectable>
-          {lines.join("\n")}
-        </text>
+        <text fg={tool.state === "error" ? theme.error : theme.dim}>{lines.join("\n")}</text>
       ) : null}
       {tail ? null : more}
-      {full ? (
-        <text fg={theme.dim} selectable>
-          full output: {full}
-        </text>
-      ) : null}
+      {full ? <text fg={theme.dim}>full output: {full}</text> : null}
     </box>
   );
 }
 
 function More({ count }: { count: number }) {
   return (
-    <text fg={theme.dim}>
+    <text selectable={false} fg={theme.dim}>
       … {counted(count, "more line")}
       <KeyHint action="app.tools.expand" />
     </text>
@@ -167,7 +166,7 @@ function Diff({ diff, expanded }: { diff: string; expanded: boolean }) {
   const hidden = all.length - lines.length;
   return (
     <box flexDirection="column">
-      <text selectable>
+      <text>
         {lines.map((line, index) => {
           const tone = DIFF_TONES.get(line.charAt(0)) ?? CONTEXT_TONE;
           return (
@@ -191,8 +190,8 @@ const TASK_MARK = {
   deleted: { glyph: "×", colour: theme.dim },
 } as const;
 
-/** The todo list; `selectable` where it is the todo call's own result. */
-export function Tasks({ tasks, selectable = false }: { tasks: readonly Task[]; selectable?: boolean }) {
+/** The todo list, with copyable labels and decorative status marks. */
+export function Tasks({ tasks }: { tasks: readonly Task[] }) {
   return (
     <box flexDirection="column">
       {tasks.flatMap((task) => {
@@ -200,9 +199,12 @@ export function Tasks({ tasks, selectable = false }: { tasks: readonly Task[]; s
         const mark = TASK_MARK[task.status] ?? TASK_MARK.pending;
         const label = task.status === "in_progress" && task.activeForm ? task.activeForm : task.subject;
         return [
-          <text key={String(task.id)} fg={mark.colour} selectable={selectable}>
-            {mark.glyph} {label}
-          </text>,
+          <box key={String(task.id)} flexDirection="row">
+            <text selectable={false} fg={mark.colour} flexShrink={0}>
+              {mark.glyph}{" "}
+            </text>
+            <text fg={mark.colour}>{label}</text>
+          </box>,
         ];
       })}
     </box>
@@ -220,25 +222,13 @@ function Subagent({ agent }: { agent: Extract<Details, { kind: "subagent" }> }) 
     .join(" · ");
   return (
     <box flexDirection="column">
-      <text fg={theme.assistant} selectable>
+      <text fg={theme.assistant}>
         {agent.name}
         {agent.description ? <span fg={theme.dim}>: {agent.description}</span> : null}
       </text>
-      {meta ? (
-        <text fg={theme.dim} selectable>
-          {meta}
-        </text>
-      ) : null}
-      {agent.activity === undefined ? null : (
-        <text fg={theme.dim} selectable>
-          {agent.activity}
-        </text>
-      )}
-      {agent.error === undefined ? null : (
-        <text fg={theme.error} selectable>
-          {agent.error}
-        </text>
-      )}
+      {meta ? <text fg={theme.dim}>{meta}</text> : null}
+      {agent.activity === undefined ? null : <text fg={theme.dim}>{agent.activity}</text>}
+      {agent.error === undefined ? null : <text fg={theme.error}>{agent.error}</text>}
     </box>
   );
 }
@@ -250,13 +240,9 @@ function Search({
 }: { search: Extract<Details, { kind: "search" }> } & ToolCallProps) {
   return (
     <box flexDirection="column">
-      <text fg={theme.dim} selectable>
-        {search.phase}
-      </text>
+      <text fg={theme.dim}>{search.phase}</text>
       {search.curatorUrl === undefined ? null : (
-        <text fg={palette.blue} selectable>
-          review the results at {search.curatorUrl}
-        </text>
+        <text fg={palette.blue}>review the results at {search.curatorUrl}</text>
       )}
       {tool.state === "running" ? null : <Output tool={tool} expanded={expanded} />}
     </box>
@@ -268,7 +254,7 @@ function Answers({ answers }: { answers: readonly Answer[] }) {
     <box flexDirection="column">
       {answers.map((item, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: answers are identified by position
-        <text key={index} selectable>
+        <text key={index}>
           <span fg={theme.dim}>{item.question ?? "?"} → </span>
           <span fg={theme.assistant}>{item.answer ?? ""}</span>
         </text>

@@ -123,11 +123,13 @@ export function Picker({
         move(direction === "up" ? -1 : 1);
       }}
     >
-      <text fg={theme.user} truncate wrapMode="none">
+      <text selectable={false} fg={theme.user} truncate wrapMode="none">
         {spec.title}
       </text>
       <box flexDirection="row">
-        <text fg={theme.dim}>filter </text>
+        <text selectable={false} fg={theme.dim}>
+          filter{" "}
+        </text>
         <input
           ref={input}
           focused
@@ -145,7 +147,11 @@ export function Picker({
           }}
         />
       </box>
-      {visible.length === 0 ? <text fg={theme.dim}>nothing matches</text> : null}
+      {visible.length === 0 ? (
+        <text selectable={false} fg={theme.dim}>
+          nothing matches
+        </text>
+      ) : null}
       {visible.map((item, offset) => {
         const chosen = top + offset === index;
         return (
@@ -161,10 +167,17 @@ export function Picker({
               }
             }}
           >
-            <text fg={chosen ? theme.assistant : theme.dim} width={2} flexShrink={0} wrapMode="none">
+            <text
+              selectable={false}
+              fg={chosen ? theme.assistant : theme.dim}
+              width={2}
+              flexShrink={0}
+              wrapMode="none"
+            >
               {chosen ? "▸ " : "  "}
             </text>
             <text
+              selectable={false}
               fg={item.current ? palette.yellow : theme.assistant}
               flexGrow={1}
               minWidth={0}
@@ -177,7 +190,7 @@ export function Picker({
           </box>
         );
       })}
-      <text fg={theme.dim} truncate wrapMode="none">
+      <text selectable={false} fg={theme.dim} truncate wrapMode="none">
         {width < 50
           ? `enter pick · esc close · ${shown.length} of ${spec.items.length}`
           : `${shown.length} of ${spec.items.length} · ↑↓ move · enter pick · esc close`}

@@ -1,10 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createCliRenderer } from "@opentui/core";
-import { createRoot, extend } from "@opentui/react";
+import { createRoot } from "@opentui/react";
 import { connectConversation } from "@realm/dura/client";
 import { serveConversationFixture } from "../../../../dura/src/conversation.fixture.ts";
 import { App } from "./app.tsx";
-import { OptInText } from "./components/text.ts";
 import { prewarm } from "./nvim/engine.ts";
 import * as profile from "./profile.ts";
 
@@ -52,7 +51,6 @@ profile.mark("agent-spawned");
 prewarm();
 const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });
 profile.mark("renderer");
-extend({ text: OptInText });
 const root = createRoot(renderer);
 renderer.once("frame", () => profile.mark("first-frame"));
 let closing = false;

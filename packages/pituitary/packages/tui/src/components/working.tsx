@@ -59,8 +59,9 @@ export function Working({ view, hint, closed, escapes }: WorkingProps) {
       <Busy
         text={
           hint ??
-          `${glyphs.retrying} retrying ${view.retry.attempt}${view.retry.maxAttempts ? `/${view.retry.maxAttempts}` : ""} in ${wait}s${escapes ? ` · ${escapes} cancels` : ""} · ${explain(view.retry.error).text}`
+          `${glyphs.retrying} retrying ${view.retry.attempt}${view.retry.maxAttempts ? `/${view.retry.maxAttempts}` : ""} in ${wait}s${escapes ? ` · ${escapes} cancels` : ""} · `
         }
+        error={hint ? undefined : explain(view.retry.error).text}
         tone={hint ? theme.dim : theme.error}
         tick={tick}
       />
@@ -91,7 +92,7 @@ export function Working({ view, hint, closed, escapes }: WorkingProps) {
 function Line({ text, tone = theme.dim }: { text: string; tone?: string }) {
   return (
     <box flexShrink={0} height={1} paddingLeft={1} paddingRight={1}>
-      <text fg={tone} truncate wrapMode="none">
+      <text selectable={false} fg={tone} truncate wrapMode="none">
         {text}
       </text>
     </box>
@@ -114,22 +115,30 @@ const DOING: Record<WorkingLine["kind"], string> = {
   operator: palette.yellow,
 };
 
-function Busy({ text, tone, tick }: { text: ReactNode; tone: string; tick: number }) {
+function Busy({ text, error, tone, tick }: { text: ReactNode; error?: string; tone: string; tick: number }) {
+  const line = (
+    <box flexDirection="row">
+      <text selectable={false} fg={tone} flexShrink={0} maxWidth="100%" truncate wrapMode="none" key={tick}>
+        {text}
+      </text>
+      {error ? (
+        <text fg={tone} truncate wrapMode="none">
+          {error}
+        </text>
+      ) : null}
+    </box>
+  );
   if (!useMascotTakes("working"))
     return (
       <box flexShrink={0} height={1} paddingLeft={1} paddingRight={1}>
-        <text fg={tone} truncate wrapMode="none" key={tick}>
-          {text}
-        </text>
+        {line}
       </box>
     );
   return (
     <box flexDirection="row" flexShrink={0} height={FIRE_ROWS} paddingLeft={1} paddingRight={1} gap={1}>
       <MascotSlot name="working" width={FIRE_COLS} height={FIRE_ROWS} />
       <box flexDirection="column" justifyContent="flex-end" flexGrow={1}>
-        <text fg={tone} truncate wrapMode="none" key={tick}>
-          {text}
-        </text>
+        {line}
       </box>
     </box>
   );

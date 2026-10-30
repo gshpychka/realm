@@ -15,7 +15,7 @@ import {
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
 import type { Action } from "../keymap.ts";
-import { KeyHint, keyHint, useKeymap } from "../keymap-context.tsx";
+import { keyHint, useKeyHint, useKeymap } from "../keymap-context.tsx";
 import { palette, theme } from "../theme.ts";
 import { type Item, type Reply, transcriptOf, type Work } from "../transcript.ts";
 import { turnLine } from "../working.ts";
@@ -32,7 +32,7 @@ const NOTICE = {
 function Marked({ mark, colour, children }: { mark: string; colour: string; children: ReactNode }) {
   return (
     <box flexDirection="column" flexShrink={0} paddingLeft={2}>
-      <text position="absolute" left={0} top={0} fg={colour} width={2}>
+      <text selectable={false} position="absolute" left={0} top={0} fg={colour} width={2}>
         {mark}
       </text>
       {children}
@@ -55,6 +55,7 @@ export interface Display {
 type Plain = Exclude<Item, Work | Reply>;
 
 const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; display: Display }) {
+  const expand = useKeyHint("app.tools.expand");
   switch (entry.kind) {
     case "user":
       return (
@@ -65,12 +66,10 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
           backgroundColor={palette.surface}
           paddingRight={1}
         >
-          <text fg={theme.user} flexShrink={0}>
+          <text selectable={false} fg={theme.user} flexShrink={0}>
             ▌{" "}
           </text>
-          <text fg={theme.assistant} selectable>
-            {entry.text}
-          </text>
+          <text fg={theme.assistant}>{entry.text}</text>
         </box>
       );
     case "custom":
@@ -86,13 +85,19 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
       return (
         <box flexDirection="column" flexShrink={0} marginTop={1}>
           <Marked mark={glyphs.summary} colour={theme.dim}>
-            <text fg={theme.dim}>
-              [{entry.of}]
-              {entry.tokensBefore === undefined
-                ? ""
-                : ` compacted from ${glyphs.tokens} ${entry.tokensBefore.toLocaleString("en")} tokens`}
-              {display.expanded ? null : <KeyHint action="app.tools.expand" />}
-            </text>
+            <box flexDirection="row">
+              <text fg={theme.dim}>
+                [{entry.of}]
+                {entry.tokensBefore === undefined
+                  ? ""
+                  : ` compacted from ${glyphs.tokens} ${entry.tokensBefore.toLocaleString("en")} tokens`}
+              </text>
+              {!display.expanded && expand ? (
+                <text selectable={false} fg={theme.dim} flexShrink={0} wrapMode="none">
+                  {` · ${expand}`}
+                </text>
+              ) : null}
+            </box>
             {display.expanded ? <Markdown content={entry.text} fg={theme.thinking} /> : null}
           </Marked>
         </box>
@@ -113,24 +118,21 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
  * it; when that rewords the error, ctrl+o shows the words it came in.
  */
 function Notice({ entry, expanded }: { entry: NoticeEntry; expanded: boolean }) {
+  const expand = useKeyHint("app.tools.expand");
   const { mark, colour } = NOTICE[entry.level];
   const { text, original } = entry.level === "info" ? { text: entry.text } : explain(entry.text);
   return (
     <box flexDirection="column" flexShrink={0} marginTop={1}>
       <Marked mark={mark} colour={colour}>
-        <text fg={colour}>
-          {text}
-          {original && !expanded ? (
-            <span fg={theme.dim}>
-              <KeyHint action="app.tools.expand" />
-            </span>
+        <box flexDirection="row">
+          <text fg={colour}>{text}</text>
+          {original && !expanded && expand ? (
+            <text selectable={false} fg={theme.dim} flexShrink={0} wrapMode="none">
+              {` · ${expand}`}
+            </text>
           ) : null}
-        </text>
-        {original && expanded ? (
-          <text fg={theme.dim} selectable>
-            {original}
-          </text>
-        ) : null}
+        </box>
+        {original && expanded ? <text fg={theme.dim}>{original}</text> : null}
       </Marked>
     </box>
   );
@@ -212,7 +214,7 @@ export function Welcome({
       paddingLeft={1}
       paddingRight={1}
     >
-      <text fg={theme.dim} flexShrink={0}>
+      <text selectable={false} fg={theme.dim} flexShrink={0}>
         {local ? "Ask pi something to get started." : "Ask this agent something to get started."}
       </text>
       <box flexDirection="column" flexShrink={0} marginTop={1}>
@@ -221,6 +223,7 @@ export function Welcome({
           .map(([keys, does]) => (
             <box key={keys} flexDirection="row" flexShrink={0} height={1}>
               <text
+                selectable={false}
                 fg={theme.tool}
                 width={Math.min(22, Math.floor((width - 2) / 2))}
                 flexShrink={0}
@@ -229,7 +232,7 @@ export function Welcome({
               >
                 {keys}
               </text>
-              <text fg={theme.dim} truncate wrapMode="none">
+              <text selectable={false} fg={theme.dim} truncate wrapMode="none">
                 {does}
               </text>
             </box>
@@ -452,7 +455,7 @@ export function Conversation({
       renderAfter={clearHistoryAnchor}
     >
       {earlier > 0 ? (
-        <text fg={theme.dim} flexShrink={0}>
+        <text selectable={false} fg={theme.dim} flexShrink={0}>
           … {earlier} earlier entr{earlier === 1 ? "y" : "ies"} · pgup at the top shows more
         </text>
       ) : null}

@@ -173,7 +173,7 @@ function Hint({ text }: { text: string }) {
   const clear = useKeyHint("app.clear");
   const cancel = interrupt ?? clear;
   return (
-    <text fg={theme.dim} truncate wrapMode="none">
+    <text fg={theme.dim} truncate wrapMode="none" selectable={false}>
       {text}
       {cancel ? ` · ${cancel} cancel` : ""}
     </text>
