@@ -6,9 +6,6 @@
 # mkfs.fat -F32 -n boot <disk>1 && mkswap -L swap <disk>2 && mkfs.ext4 -L nixos <disk>3
 # mount /dev/disk/by-label/nixos /mnt && mount -m /dev/disk/by-label/boot /mnt/boot
 # mkdir -p /mnt/etc/ssh && ssh-keygen -t ed25519 -N "" -f /mnt/etc/ssh/ssh_host_ed25519_key
-# mkdir -p /mnt/etc/secrets/initrd   # initrd LUKS-unlock keys (boot.nix)
-# ssh-keygen -t ed25519 -N "" -f /mnt/etc/secrets/initrd/ssh_host_ed25519_key
-# ssh-keygen -t rsa -N "" -f /mnt/etc/secrets/initrd/ssh_host_rsa_key
 # nix-shell -p ssh-to-age --run 'ssh-to-age -i /mnt/etc/ssh/ssh_host_ed25519_key.pub'   # → hoard_host
 # on eve: set .sops.yaml hoard_host
 #         nix shell nixpkgs#sops nixpkgs#gnupg -c find secrets -type f -exec sops updatekeys -y {} \;   # YubiKey plugged in

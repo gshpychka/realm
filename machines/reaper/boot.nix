@@ -30,6 +30,7 @@
       enable = true;
       pkiBundle = "/var/lib/sbctl";
       configurationLimit = 10;
+      bootCounting.initialTries = 3;
       # run once before rebuild:
       # sudo sbctl create-keys
       # run once after rebuild:

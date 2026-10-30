@@ -7,6 +7,9 @@
 }:
 let
   inherit (import ./disks.nix) arrayMembers;
+  encryptedDevices = arrayMembers // {
+    oasis = "/dev/disk/by-label/oasis-enc";
+  };
 
   deviceUnit = path: "${utils.escapeSystemdPath path}.device";
 
@@ -31,21 +34,6 @@ let
 in
 {
   boot = {
-    initrd = {
-      luks.devices = {
-        oasis = {
-          device = "/dev/disk/by-label/oasis-enc";
-          crypttabExtraOpts = [
-            "tpm2-device=auto"
-            "x-systemd.device-timeout=10s"
-          ];
-          allowDiscards = true;
-          bypassWorkqueues = true;
-        };
-      };
-      systemd.tpm2.enable = true;
-    };
-
     kernelParams = [
       # enable mq io schedulers
       "dm_mod.use_blk_mq=1"
@@ -71,11 +59,30 @@ in
     defaultSchedulerRotational = "bfq";
   };
 
-  environment.etc."crypttab".text = lib.concatLines (
-    lib.mapAttrsToList (name: device: "${name} ${device} - tpm2-device=auto,noauto") arrayMembers
-  );
+  environment.etc."crypttab".text =
+    let
+      # Root is unencrypted; this optional data disk is unlocked in stage 2.
+      # Never wait for a password at boot. Recover over normal SSH with:
+      # sudo cryptsetup open /dev/disk/by-label/oasis-enc oasis
+      # The unlocked device then triggers the mount automatically.
+      oasisOptions = lib.concatStringsSep "," [
+        "tpm2-device=auto"
+        "noauto"
+        "nofail"
+        "headless=yes"
+        "x-systemd.device-timeout=10s"
+        "discard"
+        "no-read-workqueue"
+        "no-write-workqueue"
+      ];
+    in
+    lib.concatLines (
+      [ "oasis ${encryptedDevices.oasis} - ${oasisOptions}" ]
+      ++ lib.mapAttrsToList (name: device: "${name} ${device} - tpm2-device=auto,noauto") arrayMembers
+    );
 
-  # Nothing unlocks these at boot, so each disk is unlocked here when its partition shows up.
+  # Device events unlock disks during boot or on a late enclosure connection.
+  # noauto keeps their arrival off the boot critical path.
   services.udev.extraRules = lib.concatLines (
     lib.mapAttrsToList (
       name: device:
@@ -91,7 +98,7 @@ in
         # start this unit; systemd escapes the dash in the instance name
         ''ENV{SYSTEMD_WANTS}+="systemd-cryptsetup@${utils.escapeSystemdPath name}.service"''
       ]
-    ) arrayMembers
+    ) encryptedDevices
   );
 
   fileSystems = {
@@ -136,6 +143,8 @@ in
         "noatime"
         "x-systemd.device-timeout=10s"
         "nofail"
+        # Like the array, mount whenever unlocking succeeds, including late arrivals.
+        "x-systemd.wanted-by=${deviceUnit config.fileSystems."/mnt/oasis".device}"
       ];
     };
   };
