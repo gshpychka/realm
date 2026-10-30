@@ -80,6 +80,16 @@ creation_rules:
         pgp:
           - *yubikey_alpha
           - *yubikey_nano
+  - path_regex: secrets/infra/probabench\.env$
+    key_groups:
+      - age:
+          - *eve_host
+          - *reaper_host
+          - *hoard_host
+          - *glib_op
+        pgp:
+          - *yubikey_alpha
+          - *yubikey_nano
   - path_regex: secrets/infra/.*
     key_groups:
       - age:
