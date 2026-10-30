@@ -3,16 +3,16 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { STACK_NAME } from "./history-token";
 
 /** The apex domain from modules/common/values.nix, exported by the infra shell. */
 const DomainName = Config.NonEmptyString("DOMAIN_NAME");
 
 export default Alchemy.Stack(
-  "ProbaBench",
+  STACK_NAME,
   {
     providers: Cloudflare.providers(),
-    // Deployment state lives in Cloudflare; local development needs no cloud login
-    // and must not bootstrap the account's remote state store.
+    // Alchemy uses local state for development and Cloudflare state for deployment.
     state: Layer.unwrap(
       Alchemy.AlchemyContext.useSync(({ dev }) =>
         dev ? Alchemy.localState() : Cloudflare.state(),
@@ -20,45 +20,44 @@ export default Alchemy.Stack(
     ),
   },
   Effect.gen(function* () {
-    // Without `main` the Worker is assets-only: every request, the SPA fallback
-    // included, is a static-asset request, which Cloudflare serves for free and
-    // outside the Workers request quota.
+    const writeToken = yield* Alchemy.Random("HistoryWriteToken");
+    const database = yield* Cloudflare.D1.Database("Results", {
+      migrations: "../service/migrations",
+    }).pipe(Alchemy.RemovalPolicy.retain());
+
     const site = yield* Cloudflare.Website.StaticSite("Web", {
       cwd: "../web",
       command: "bun run build",
       outdir: "dist",
-      // Vite imports the domain workspace directly. Include it in the build
-      // hash so schema-only changes cannot reuse an outdated frontend build.
-      // The history sits outside packages/web too, so it is named here, or a
-      // data-only change would reuse an outdated build. An explicit include
-      // leaves bun.lock out of the hash unless lockfile is set.
+      main: "../service/src/worker.ts",
+      env: {
+        DB: database,
+        HISTORY_WRITE_TOKEN: writeToken.text,
+      },
+      // Vite imports the domain workspace directly; include it in the build hash.
       memo: {
         include: [
           "**/*",
           "../domain/src/**",
           "../domain/package.json",
-          "../../data/results.json",
           "../../tsconfig.base.json",
           "../../package.json",
         ],
         lockfile: true,
       },
-      // Under `alchemy dev` this replaces the build, and the Worker stays a
-      // local stub: nothing is deployed and the zone is never read.
+      // Alchemy development starts the Vite server.
       dev: { command: "bun run dev" },
       // A Workers custom domain: Cloudflare creates its DNS record and certificate.
       domain: `probabench.${yield* DomainName}`,
-      // The custom domain is the only address: no workers.dev or preview URLs.
       workersDev: false,
       assets: {
+        runWorkerFirst: ["/api/*", "/results.json"],
         notFoundHandling: "single-page-application",
-        // In `_headers` syntax. The asset layer makes browsers revalidate every
-        // file by default, as index.html and results.json need; Vite's
-        // content-hashed bundles never change, so browsers may keep them.
+        // Vite's content-hashed assets can be cached indefinitely.
         headers: "/assets/*\n  Cache-Control: public, max-age=31536000, immutable",
       },
     });
 
-    return { url: site.url };
+    return { url: site.url, writeToken: writeToken.text };
   }),
 );

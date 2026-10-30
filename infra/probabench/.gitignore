@@ -2,7 +2,5 @@
 .alchemy/
 # Vite build output
 packages/web/dist/
-# results-store temp dir: present while a save runs, left behind if its writer is killed
-data/.probabench-*
-# Lease held while planning and checkpointing a benchmark
-data/results.json.lock/
+# Temporary local benchmark state
+.data/

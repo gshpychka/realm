@@ -9,10 +9,11 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { cli } from "./cli/command";
+import { cloudHistoryLayer } from "./store/cloud-history";
 
 /**
- * Node's FileSystem, Path and Terminal for the CLI and the history file, and an HTTP
- * client for OpenRouter. Listing aliases and dry runs never read the key.
+ * Node platform services support the terminal, local recovery file, OpenRouter
+ * requests and Cloudflare history uploads.
  */
 const MainLive = Layer.merge(NodeContext.layer, NodeHttpClient.layer);
 
@@ -24,6 +25,7 @@ NodeRuntime.runMain(
       ValidationError.isValidationError(error) ? Effect.void : Console.error(error.message),
     ),
     Effect.tapDefect(Effect.logError),
+    Effect.provide(cloudHistoryLayer),
     Effect.provide(MainLive),
   ),
   {

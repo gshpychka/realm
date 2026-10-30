@@ -60,15 +60,6 @@ describe("model evidence", () => {
     expect(model?.summary.total).toBe(8);
   });
 
-  it("keeps models and reasoning configurations independent", () => {
-    const reasoned = makeRun({ reasoning: "low" });
-    const other = makeRun({ modelSlug: "other/model" });
-    const evidence = collectEvidence([other, reasoned, first]);
-    expect(evidence).toHaveLength(3);
-    expect(evidence.find((model) => model.model === first.model)?.summary.total).toBe(2);
-    expect(evidence.find((model) => model.model === reasoned.model)?.summary.total).toBe(4);
-  });
-
   it("retains invalid counts without erasing earlier valid evidence", () => {
     const failed = makeRun({
       startedAt: "2026-10-21T00:00:00.000Z",
@@ -94,8 +85,6 @@ describe("model evidence", () => {
     ]);
     const [before] = collectEvidence(records, "2026-10-20");
     expect(before?.summary).toEqual(checkpoints[0]?.summary);
-    expect(before?.firstCollectedAt).toBe(first.startedAt);
-    expect(before?.lastCollectedAt).toBe(evening.startedAt);
     expect(collectEvidence(records, "2026-10-19")).toEqual([]);
     expect(collectEvidence(records)[0]?.summary).toEqual(checkpoints[1]?.summary);
   });

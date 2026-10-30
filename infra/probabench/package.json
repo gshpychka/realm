@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "postinstall": "bun2nix -o bun.nix",
-    "typecheck": "tsc -p packages/domain && tsc -p packages/runner && tsc -p packages/web && tsc -p packages/web/src && tsc -p packages/stack",
+    "typecheck": "tsc -p packages/domain && tsc -p packages/runner && tsc -p packages/web && tsc -p packages/web/src && tsc -p packages/service && tsc -p packages/stack",
+    "sync": "sops exec-env ../../secrets/infra/probabench.env 'bun packages/runner/src/main.ts --sync'",
     "test": "vitest run",
     "check": "bun run typecheck && bun run test && bun run build",
     "dev": "sops exec-env ../../secrets/infra/probabench.env 'bun run --cwd packages/web dev'",

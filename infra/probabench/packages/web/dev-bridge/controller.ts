@@ -17,7 +17,7 @@ export function createBenchController({
   configured,
   launch,
 }: {
-  /** Whether the dev server has the OpenRouter key. */
+  /** Whether the dev server has the sampling and history credentials. */
   readonly configured: boolean;
   /** Starts the runner with these flags; the key reaches it through the environment. */
   readonly launch: (args: readonly string[]) => ChildProcess;
@@ -38,7 +38,7 @@ export function createBenchController({
       if (!configured)
         return {
           error:
-            "OPENROUTER_API_KEY is not set. Start the page with bun run dev, which decrypts secrets/infra/probabench.env.",
+            "Set OPENROUTER_API_KEY in secrets/infra/probabench.env, then start the page with bun run dev.",
         };
       const child = launch([...benchArgs(request), "--yes"]);
       runner = child;

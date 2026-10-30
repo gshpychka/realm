@@ -3,12 +3,12 @@
 import { spawn } from "node:child_process";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
-import type { CostEstimate } from "@probabench/domain";
+import { type CostEstimate, HISTORY_ROUTES } from "@probabench/domain";
 import * as Effect from "effect/Effect";
 import * as Either from "effect/Either";
 import * as Schema from "effect/Schema";
 import type { Connect, Plugin } from "vite";
-import { previewCost } from "../../runner/src/plan/preview";
+import { previewCost, previewHistory } from "../../runner/src/plan/preview";
 import {
   BenchRequest,
   BRIDGE_ROUTES,
@@ -20,8 +20,7 @@ import { type BenchController, createBenchController } from "./controller";
 
 /**
  * The CLI entry the infra shell's probabench runs, spawned directly so a cancel's SIGTERM
- * reaches the runner rather than a wrapper. The runner appends to data/results.json, the
- * history the page reads back.
+ * reaches the runner rather than a wrapper. The runner uploads checkpoints to Cloudflare.
  */
 const RUNNER_ENTRY = fileURLToPath(new URL("../../runner/src/main.ts", import.meta.url));
 const MAX_BODY_BYTES = 4_096;
@@ -150,6 +149,30 @@ export function devBridgePlugin(): Plugin {
     name: "probabench-dev-bridge",
     apply: "serve",
     configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        if (request.url?.split("?")[0] !== HISTORY_ROUTES.results) return next();
+        if (request.method !== "GET" || !isLocalRequest(request)) {
+          response.writeHead(403).end();
+          return;
+        }
+        const after = Number(
+          new URL(request.url ?? "/", "http://localhost").searchParams.get("after") ?? "0",
+        );
+        if (!Number.isSafeInteger(after) || after < 0) {
+          send(response, 400, { error: "Invalid history cursor." });
+          return;
+        }
+        void Effect.runPromise(previewHistory(after)).then(
+          (history) => {
+            response.writeHead(200, {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store",
+            });
+            response.end(JSON.stringify(history));
+          },
+          () => send(response, 502, { error: "Could not load shared history." }),
+        );
+      });
       server.middlewares.use(bridgeMiddleware(processController()));
     },
   };

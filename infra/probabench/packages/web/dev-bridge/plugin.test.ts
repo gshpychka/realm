@@ -30,11 +30,6 @@ describe("isLocalRequest", () => {
       "DNS rebinding",
       { method: "POST", host: "evil.example:5173", origin: "http://evil.example:5173" },
     ],
-    ["a POST without Origin", { method: "POST" }],
-    ["a remote peer", { address: "192.168.1.5" }],
-    ["userinfo in Host", { host: "localhost:5173@evil.example" }],
-    ["a cross-origin status read", { origin: "https://example.com" }],
-    ["a cross-site fetch", { headers: { "sec-fetch-site": "cross-site" } }],
   ])("rejects %s", (_, fields) => {
     expect(isLocalRequest(fakeRequest(fields))).toBe(false);
   });

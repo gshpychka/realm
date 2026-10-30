@@ -10,8 +10,7 @@ import { devBridgePlugin } from "./dev-bridge/plugin";
 // cannot load that source.
 export default defineConfig({
   plugins: [react(), devBridgePlugin()],
-  // Vite serves the workspace's benchmark history, data/results.json, at /results.json.
-  publicDir: "../../data",
+  publicDir: false,
   // Effect, React and recharts form the one entry chunk (~0.9 MB minified).
   build: { chunkSizeWarningLimit: 1000 },
 });

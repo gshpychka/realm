@@ -35,6 +35,14 @@
         "@types/proper-lockfile": "^4.1.4",
       },
     },
+    "packages/service": {
+      "name": "@probabench/service",
+      "version": "0.0.0",
+      "dependencies": {
+        "@probabench/domain": "workspace:*",
+        "effect": "3.21.4",
+      },
+    },
     "packages/stack": {
       "name": "@probabench/stack",
       "version": "0.0.0",
@@ -412,6 +420,8 @@
     "@probabench/domain": ["@probabench/domain@workspace:packages/domain"],
 
     "@probabench/runner": ["@probabench/runner@workspace:packages/runner"],
+
+    "@probabench/service": ["@probabench/service@workspace:packages/service"],
 
     "@probabench/stack": ["@probabench/stack@workspace:packages/stack"],
 

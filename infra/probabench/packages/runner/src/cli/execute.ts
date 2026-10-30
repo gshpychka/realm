@@ -1,5 +1,5 @@
-// Replan under the history lease so concurrent invocations cannot reserve the
-// same daily slots. Provider errors keep other models working; storage errors stop all work.
+// Synchronize history and fill the daily deficits. Provider errors stop the affected
+// model; storage errors stop sampling and preserve received answers locally.
 import * as PlatformError from "@effect/platform/Error";
 import type * as FileSystem from "@effect/platform/FileSystem";
 import type * as HttpClient from "@effect/platform/HttpClient";
@@ -16,12 +16,12 @@ import { type MissingApiKey, openrouterClientLayer } from "../sampling/openroute
 import type { ProviderFailure } from "../sampling/retry";
 import { schedulerLayer } from "../sampling/scheduler";
 import { sweep } from "../sampling/sweep";
+import { CloudHistory, CloudHistoryError } from "../store/cloud-history";
 import {
   type HistoryError,
   type HistoryLockError,
   makeCheckpointer,
-  prepareHistory,
-  withHistoryLock,
+  withSharedHistory,
 } from "../store/results-store";
 
 export const executePlan = (
@@ -29,16 +29,16 @@ export const executePlan = (
 ): Effect.Effect<
   void,
   MissingApiKey | HistoryError | HistoryLockError | ProviderFailure,
-  FileSystem.FileSystem | HttpClient.HttpClient
+  FileSystem.FileSystem | HttpClient.HttpClient | CloudHistory
 > =>
-  withHistoryLock(
-    plan.out,
+  withSharedHistory(plan.out, (history, upload) =>
     Effect.gen(function* () {
-      const history = yield* prepareHistory(plan.out);
       const startedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
       const daily = planDaily(plan, history, startedAt);
       if (daily.remaining === 0) return yield* Console.log("Nothing to collect today.");
-      const save = makeCheckpointer(plan.out, plan.options, startedAt);
+      const cloud = yield* CloudHistory;
+      yield* cloud.checkWrite;
+      const save = makeCheckpointer(plan.out, plan.options, startedAt, upload);
       yield* withProgressDisplay(
         daily,
         plan.options.concurrency,
@@ -60,6 +60,7 @@ export const executePlan = (
                   progress.finished(series.model, result.left.message);
                   if (
                     PlatformError.isPlatformError(result.left) ||
+                    result.left instanceof CloudHistoryError ||
                     ParseResult.isParseError(result.left)
                   ) {
                     return yield* Effect.fail(result.left);

@@ -7,11 +7,19 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { DEFAULT_MAX_TOKENS } from "../sampling/request";
-import { HISTORY_PATH, readHistory } from "../store/results-store";
+import { CloudHistory, cloudHistoryLayer } from "../store/cloud-history";
+import { HISTORY_PATH, readSharedHistory } from "../store/results-store";
 import { estimateCost } from "./cost";
 import { planDaily } from "./daily";
 import { resolvePlan } from "./plan";
 import { splitModels } from "./series";
+
+/** Proxy the shared history through the local development server. */
+export const previewHistory = (after: number) =>
+  Effect.flatMap(CloudHistory, (cloud) => cloud.page(after)).pipe(
+    Effect.provide(cloudHistoryLayer),
+    Effect.provide(NodeHttpClient.layer),
+  );
 
 export const previewCost = (request: Parameters<typeof benchArgs>[0]) =>
   Effect.gen(function* () {
@@ -23,8 +31,11 @@ export const previewCost = (request: Parameters<typeof benchArgs>[0]) =>
     });
     const daily = planDaily(
       plan,
-      yield* readHistory(plan.out),
+      yield* readSharedHistory(plan.out),
       new Date(yield* Clock.currentTimeMillis).toISOString(),
     );
     return yield* estimateCost(daily, plan.options);
-  }).pipe(Effect.provide(Layer.merge(NodeFileSystem.layer, NodeHttpClient.layer)));
+  }).pipe(
+    Effect.provide(cloudHistoryLayer),
+    Effect.provide(Layer.merge(NodeFileSystem.layer, NodeHttpClient.layer)),
+  );

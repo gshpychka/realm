@@ -100,38 +100,6 @@ describe("executePlan", () => {
     ),
   );
 
-  it.effect("serializes competing invocations before calculating their daily deficits", () =>
-    withHistoryFile((path) =>
-      Effect.gen(function* () {
-        const started = yield* Deferred.make<void>();
-        const proceed = yield* Deferred.make<void>();
-        const endpoint = chatEndpoint({
-          reply: (_, index) =>
-            index === 1
-              ? Deferred.succeed(started, undefined).pipe(
-                  Effect.andThen(Deferred.await(proceed)),
-                  Effect.as(undefined),
-                )
-              : Effect.succeed(undefined),
-        });
-        yield* Effect.gen(function* () {
-          const plan = planFor(path, "vendor/a");
-          const first = yield* Effect.fork(executePlan(plan));
-          yield* Deferred.await(started);
-          const second = yield* Effect.fork(executePlan(plan));
-          yield* TestClock.adjust("1 second");
-          expect(endpoint.requests).toHaveLength(1);
-          yield* Deferred.succeed(proceed, undefined);
-          yield* Fiber.join(first);
-          yield* TestClock.adjust("1 second");
-          yield* Fiber.join(second);
-          expect(endpoint.requests).toHaveLength(2);
-          expect(collectEvidence((yield* readResults(path)).runs)[0]?.summary.total).toBe(2);
-        }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
-      }),
-    ),
-  );
-
   it.effect("overlaps models through the HTTP adapter without multiplying the ceiling", () =>
     withHistoryFile((path) => {
       let active = 0;
@@ -195,6 +163,7 @@ describe("executePlan", () => {
         yield* fs.writeFileString(path, "not json");
         yield* Effect.flip(executePlan(planFor(path, "vendor/a")));
         expect(endpoint.requests).toHaveLength(0);
+        expect(yield* fs.readFileString(path)).toBe("not json");
       }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
     }),
   );

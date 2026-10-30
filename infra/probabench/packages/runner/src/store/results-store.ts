@@ -1,5 +1,5 @@
 // Append immutable checkpoints, publishing each batch through an atomic snapshot.
-// Concurrent replies coalesce into one write and are acknowledged only after fsync.
+// Concurrent replies share a durable local write and a Cloudflare upload.
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,13 +23,14 @@ import type * as Scope from "effect/Scope";
 import * as lockfile from "proper-lockfile";
 import type { SamplingOptions } from "../plan/plan";
 import type { ModelSeries } from "../plan/series";
+import { CloudHistory, CloudHistoryError } from "./cloud-history";
 
 /** Resolve from the source file so CLI and dev server share history in any cwd. */
 export const HISTORY_PATH = fileURLToPath(
-  new URL(`../../../../data/${RESULTS_FILE}`, import.meta.url),
+  new URL(`../../../../.data/${RESULTS_FILE}`, import.meta.url),
 );
 
-export type HistoryError = PlatformError | ParseError;
+export type HistoryError = PlatformError | ParseError | CloudHistoryError;
 
 export class HistoryLockError extends Data.TaggedError("HistoryLockError")<{
   readonly message: string;
@@ -40,8 +41,7 @@ export class HistoryLockError extends Data.TaggedError("HistoryLockError")<{
 const emptyResults: Results = { runs: [] };
 /** Results as pretty-printed JSON: the history file's format. */
 const ResultsFile = Schema.parseJson(Results, { space: 2 });
-// Strict, because every save rewrites the whole file: a key the schema does not know
-// would be dropped from the only copy of the history.
+// Strict decoding protects additional fields from being dropped during a rewrite.
 const decode = Schema.decode(ResultsFile, { onExcessProperty: "error" });
 const encode = Schema.encode(ResultsFile);
 // A checkpoint's read/modify/rename must finish before another writer reads.
@@ -57,7 +57,7 @@ const read = (fs: FileSystem.FileSystem, path: string) =>
     ),
   );
 
-/** Read-only planning does not create files, acquire credentials or call the provider. */
+/** Read the local recovery file for planning and synchronization. */
 export const readHistory = (path: string) =>
   Effect.flatMap(FileSystem.FileSystem, (fs) => read(fs, path));
 
@@ -135,7 +135,7 @@ export const prepareHistory = (
     return history;
   });
 
-/** Append a batch without modifying any previous observation. */
+/** Append immutable observations to the local recovery file. */
 export const appendCheckpoints = (
   path: string,
   checkpoints: readonly Run[],
@@ -146,14 +146,76 @@ export const appendCheckpoints = (
     ),
   ).pipe(writer.withPermits(1));
 
+/** Merge immutable records by ID, rejecting conflicting contents. */
+export const mergeHistory = (local: Results, cloud: Results): Results => {
+  const runs = new Map(local.runs.map((run) => [run.id, run]));
+  for (const run of cloud.runs) {
+    const previous = runs.get(run.id);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(run))
+      throw new CloudHistoryError({ message: `Conflicting benchmark checkpoint: ${run.id}` });
+    runs.set(run.id, run);
+  }
+  return { runs: [...runs.values()] };
+};
+
+/** Planning consults the shared history, including unuploaded local recovery records. */
+export const readSharedHistory = (path: string) =>
+  Effect.gen(function* () {
+    const cloud = yield* CloudHistory;
+    const local = yield* readHistory(path);
+    const remote = yield* cloud.read;
+    return yield* Effect.try({
+      try: () => mergeHistory(local, remote),
+      catch: (error) => error as CloudHistoryError,
+    });
+  });
+
+/** Synchronize the recovery copy before sampling. */
+export const synchronizeHistory = (
+  path: string,
+  append: (runs: readonly Run[]) => Effect.Effect<void, CloudHistoryError>,
+) =>
+  Effect.gen(function* () {
+    const cloud = yield* CloudHistory;
+    const local = yield* prepareHistory(path);
+    const remote = yield* cloud.read;
+    yield* Effect.try({
+      try: () => mergeHistory(local, remote),
+      catch: (error) => error as CloudHistoryError,
+    });
+    const known = new Set(remote.runs.map((run) => run.id));
+    yield* append(local.runs.filter((run) => !known.has(run.id)));
+    const cached = new Set(local.runs.map((run) => run.id));
+    const missing = remote.runs.filter((run) => !cached.has(run.id));
+    if (missing.length > 0) yield* appendCheckpoints(path, missing);
+    return yield* readHistory(path);
+  });
+
+/** Hold the local file lease while synchronizing and collecting results. */
+export const withSharedHistory = <A, E, R>(
+  path: string,
+  use: (
+    history: Results,
+    upload: (runs: readonly Run[]) => Effect.Effect<void, CloudHistoryError>,
+  ) => Effect.Effect<A, E, R>,
+) =>
+  withHistoryLock(
+    path,
+    Effect.gen(function* () {
+      const cloud = yield* CloudHistory;
+      const history = yield* synchronizeHistory(path, cloud.append);
+      return yield* use(history, cloud.append);
+    }),
+  );
+
 /**
- * Saving a reply is uninterruptible. Replies received during another disk write
- * share its successor's write, rather than each rewriting the full history.
+ * Saving a reply is uninterruptible. Concurrent replies share a local write and upload.
  */
 export const makeCheckpointer = (
   path: string,
   options: Pick<SamplingOptions, "trialsPerStep" | "stepPercent">,
   startedAt: string,
+  upload: (runs: readonly Run[]) => Effect.Effect<void, CloudHistoryError> = () => Effect.void,
 ) => {
   interface Pending {
     readonly series: ModelSeries;
@@ -198,7 +260,11 @@ export const makeCheckpointer = (
                 .sort(([a], [b]) => a - b)
                 .map(([x, outcomes]) => ({ x, outcomes })),
             }));
-            const result = failure ?? (yield* Effect.exit(appendCheckpoints(path, checkpoints)));
+            const result = yield* Effect.exit(
+              appendCheckpoints(path, checkpoints).pipe(
+                Effect.andThen(failure ?? upload(checkpoints)),
+              ),
+            );
             if (Exit.isFailure(result)) failure = result;
             for (const sample of batch) yield* Deferred.done(sample.done, result);
           }),

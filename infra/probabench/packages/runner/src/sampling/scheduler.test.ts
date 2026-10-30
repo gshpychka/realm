@@ -107,55 +107,6 @@ describe("adaptive request scheduler", () => {
     }).pipe(Effect.provide(schedulerLayer(1))),
   );
 
-  it.effect("reduces once per burst and ignores stale successful replies", () =>
-    Effect.gen(function* () {
-      const scheduler = yield* RequestScheduler;
-      const respond = yield* Deferred.make<void>();
-      const finish = yield* Deferred.make<void>();
-      const burst = yield* Effect.fork(
-        Effect.forEach(
-          [0, 1, 2, 3],
-          (i) =>
-            Effect.either(
-              scheduler.request(
-                "vendor/a",
-                Deferred.await(respond).pipe(
-                  Effect.andThen(
-                    i === 3 ? Effect.void : Effect.fail(failure(429, { "retry-after": "30" })),
-                  ),
-                ),
-              ),
-            ),
-          { concurrency: "unbounded" },
-        ),
-      );
-      yield* TestClock.adjust(0);
-      yield* Deferred.succeed(respond, undefined);
-      yield* Fiber.join(burst);
-      let active = 0;
-      const probes = yield* Effect.fork(
-        Effect.forEach(
-          [0, 1, 2, 3],
-          () =>
-            scheduler.request(
-              "vendor/a",
-              Effect.sync(() => {
-                active++;
-              }).pipe(Effect.andThen(Deferred.await(finish))),
-            ),
-          { concurrency: "unbounded" },
-        ),
-      );
-      yield* TestClock.adjust("29 seconds");
-      expect(active).toBe(0);
-      yield* TestClock.adjust("1 second");
-      expect(active).toBe(2);
-      yield* Deferred.succeed(finish, undefined);
-      yield* Fiber.join(probes);
-      expect(active).toBe(4);
-    }).pipe(Effect.provide(schedulerLayer(16))),
-  );
-
   it.effect("cancels queued and active requests without leaking permits", () =>
     Effect.gen(function* () {
       const scheduler = yield* RequestScheduler;

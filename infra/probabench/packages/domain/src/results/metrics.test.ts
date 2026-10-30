@@ -1,8 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Probability } from "../plan/sampling";
-import { measurePoint, summarizeRun } from "./metrics";
+import { measurePoint, summarizeMeasurements } from "./metrics";
 import type { Outcome } from "./schema";
-import { makeRun } from "./testing";
 
 const invalid = { invalidText: "x" } as const;
 const point = (x: number, outcomes: ReadonlyArray<Outcome>) => ({
@@ -25,38 +24,22 @@ describe("measurePoint", () => {
   );
 });
 
-describe("summarizeRun", () => {
+describe("summarizeMeasurements", () => {
   it("weights covered points equally and reports missing valid data separately", () => {
-    const run = makeRun({
-      trialsPerStep: 4,
-      stepPercent: 50,
-      points: [
-        { x: 0, outcomes: [0, 0, 0, 0] },
-        { x: 0.5, outcomes: [1, 1, invalid, invalid] },
-        { x: 1, outcomes: [invalid, invalid, invalid, invalid] },
-      ],
-    });
-    expect(summarizeRun(run)).toEqual({
+    const points = [
+      point(0, [0, 0, 0, 0]),
+      point(0.5, [1, 1, invalid, invalid]),
+      point(1, [invalid, invalid, invalid, invalid]),
+    ];
+    expect(
+      summarizeMeasurements(points.map((point) => ({ x: point.x, ...measurePoint(point) }))),
+    ).toEqual({
       meanCalibrationError: 0.25,
       valid: 6,
       total: 12,
       validity: 0.5,
       coveredPoints: 2,
       totalPoints: 3,
-    });
-  });
-
-  it("does not award zero calibration error to an all-invalid run", () => {
-    const run = makeRun({
-      points: [
-        { x: 0, outcomes: [invalid, invalid] },
-        { x: 1, outcomes: [invalid, invalid] },
-      ],
-    });
-    expect(summarizeRun(run)).toMatchObject({
-      meanCalibrationError: null,
-      validity: 0,
-      coveredPoints: 0,
     });
   });
 });

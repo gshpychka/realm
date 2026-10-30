@@ -52,6 +52,17 @@ export function App() {
   useEffect(() => {
     if (finishedJobId !== null) refresh();
   }, [finishedJobId, refresh]);
+  useEffect(() => {
+    const update = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const interval = window.setInterval(update, 30_000);
+    window.addEventListener("focus", update);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", update);
+    };
+  }, [refresh]);
   const [view, update] = useResultsView();
   const [setupOpen, setSetupOpen] = useState(false);
   // Result.value falls back to the last success, so a failed refresh keeps the runs on screen.

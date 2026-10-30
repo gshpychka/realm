@@ -2,7 +2,7 @@
 
 Can language models sample the probabilities they are given? ProbaBench asks for
 `1` with probability `x`, repeats that request across a probability sweep, and
-plots the observed frequency. Every saved sample contributes to its model's evidence.
+plots the observed frequency.
 OpenRouter is the only provider. The Method tab explains the
 calibration error, the 95% Wilson intervals and their caveats.
 
@@ -13,7 +13,7 @@ From the Realm root:
 ```sh
 nix develop .#infra
 cd infra/probabench
-sops ../../secrets/infra/probabench.env  # once: OPENROUTER_API_KEY=<OpenRouter API key>
+sops ../../secrets/infra/probabench.env  # OPENROUTER_API_KEY and Cloudflare credentials
 bun install --frozen-lockfile
 bun run dev
 ```
@@ -28,8 +28,9 @@ Edits to the domain package or the bridge restart Vite; a running benchmark
 survives the restart.
 `bun run dev:alchemy` runs the same Vite server under Alchemy's dev runtime,
 with local state; it deploys nothing and needs no cloud login.
-`bun run build && bun run --cwd packages/web preview` serves the production
-build as published, without the dev bridge.
+The local page reads the shared Cloudflare history. Deploy the service first using
+the instructions below. The infra shell sets its address from `DOMAIN_NAME`;
+`PROBABENCH_URL` can specify a different HTTPS origin.
 
 ## CLI
 
@@ -89,12 +90,13 @@ live model pricing API. It needs no key and sends no sampling requests.
 `--trials` and `--step` default to the Standard preset, which the page's form
 also starts from: a daily total of 50 samples at each probability, every 10%. The CLI
 prints the plan and asks before running unless `--yes` is given; without a
-terminal it refuses. A completed daily target exits immediately, without confirmation
-or credentials. `--dry-run` stops after the plan and cost estimate.
+terminal it refuses. A completed daily target synchronizes history and exits
+without confirmation or an OpenRouter key. `--dry-run` reads shared history and
+stops after the plan and cost estimate.
 
 During sampling, an interactive terminal shows a live table with saved samples,
 active requests, retries, and each model’s status. Cooldowns count down in place.
-Progress counts answers only after they are saved, including invalid replies;
+Progress counts answers only after Cloudflare acknowledges them, including invalid replies;
 earlier samples reused toward today’s target are excluded from this invocation’s
 counts. Average throughput includes all elapsed time, including cooldowns. After
 30 seconds and five newly saved answers per unfinished model, ETA uses the longest
@@ -133,7 +135,8 @@ probabench --model grok-4.7-low --trials 100 --step 5   # fills the new probabil
 A lower trial target or a coarser grid never removes answers. A new day starts a
 new daily target while preserving the complete history. Checkpoints are saved as
 answers arrive, including partial probability grids. Stop with Ctrl-C and repeat
-the command to collect only the missing answers.
+the command to collect only the missing answers. The command reads the shared
+history before planning, so it can resume from another machine.
 
 Samples use the provider's default temperature, top_p and top_k. A reply may use
 16 output tokens with reasoning off, or `--max-tokens` (4096 by default) with it
@@ -156,14 +159,29 @@ holds also back off and retry; exhausted credits and other permanent errors stop
 that model. Other models finish and save their samples before the CLI reports failure.
 See [OpenRouter's limits](https://openrouter.ai/docs/api/reference/limits).
 
-## Evidence and history
+## Results storage
 
-`data/results.json` holds the raw observations and is their only source copy.
-The CLI appends immutable checkpoints whether started in a terminal or by the dev
-bridge. Each received answer is committed before its task completes. Concurrent
-replies can share a disk write; interruption waits for those commits to finish.
-Commit the file after collecting samples:
-`bun run deploy` publishes the working-tree copy, committed or not.
+Cloudflare D1 stores the complete history. Each checkpoint has a stable ID;
+uploading it again keeps one copy. A conflicting payload for an existing ID is
+rejected, and the batch is rolled back. The hosted page reads the database and
+refreshes while open. Deployments update the application independently of the data.
+
+The runner writes each received answer to `.data/results.json`, then uploads it.
+Progress advances after the upload succeeds. Uploads retry temporary errors;
+a persistent failure stops sampling. Answers already received are saved locally,
+and the next invocation uploads them before sending further sampling requests.
+Ctrl-C waits for checkpoint writes and uploads to finish.
+
+Each invocation merges local and remote history by checkpoint ID, uploads local
+records missing from D1, and downloads records missing locally.
+`.data/` holds temporary local state and is ignored by Git.
+
+Use `probabench --sync` to upload pending checkpoints and refresh the local copy
+without sampling. From `infra/probabench`, `bun run sync` loads the credentials
+through SOPS and performs the same operation.
+
+Cloudflare's [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/)
+supports recovery within the preceding 7 days on Free or 30 days on Paid.
 
 The results page combines all observations of a model with the same reasoning setting.
 At each target probability it pools the counts of ones, zeros and invalid replies,
@@ -186,23 +204,28 @@ The runner reads the final answer directly from OpenRouter's chat-completions
 response. It validates the answer fields and ignores reasoning metadata, whose
 provider-specific formats are unrelated to the measurement.
 
-Concurrent invocations share a file lease. The second waits for the first, then
+Local invocations share a file lease. The second waits for the first, then
 rechecks the saved totals before sending requests. The lease is released on exit;
 after a hard kill, a stale lease expires after 30 seconds. Each save atomically
-replaces the JSON snapshot through a temporary `.probabench-*` directory beside the history, and
-a process killed mid-save can leave it behind. Delete it: `bun run deploy`
-publishes everything in `data/`.
+replaces the local JSON snapshot through a temporary `.probabench-*` directory
+beside the history. A hard kill can leave a temporary directory behind; it can be deleted.
 
 ## Deploy
 
 ```sh
-# once: CLOUDFLARE_ACCOUNT_ID=<account ID> and CLOUDFLARE_API_TOKEN=<API token>
+# CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN
 sops ../../secrets/infra/probabench.env
 
 bun run plan
 bun run deploy    # publishes https://probabench.<domain>
-bun run destroy   # deletes the Worker, and with its domain the DNS record and certificate
+bun run destroy   # deletes the site; retains the results database
 ```
+
+Alchemy generates the upload token with `Random("HistoryWriteToken")`, preserves
+it in encrypted Cloudflare deployment state, and binds it as a Worker secret.
+The runner reads the deployed token from that state when uploading. SOPS supplies
+the Cloudflare account credentials and OpenRouter key. The browser reads results
+through the public API.
 
 The scripts read the token through `sops exec-env`. Give it these permissions,
 restricting Account Resources to the target account and Zone Resources to the
@@ -212,6 +235,7 @@ domain's zone:
 | --- | --- | --- |
 | Account | Workers Scripts | Edit |
 | Account | Secrets Store | Edit |
+| Account | D1 | Edit |
 | Zone | Workers Routes | Edit |
 | Zone | Zone | Read |
 
@@ -223,7 +247,9 @@ encryption key live in Cloudflare Secrets Store; Secrets Store Edit is required
 to create and bind those secrets. The state-store Worker uses a `workers.dev`
 address, so the account needs a Workers subdomain configured. Later deployments
 reuse the store, which is shared with other Alchemy stacks on the account.
-`bun run destroy` removes the ProbaBench site; the shared state store remains.
+`bun run destroy` removes the ProbaBench site. The results database is retained,
+as is the shared state store. Alchemy's retention policy removes the database
+from its state on destroy; record its ID before destroying if it must later be adopted.
 No AWS credentials or bootstrap are needed.
 
 The infra shell keeps Alchemy profiles and cached state-store credentials under
@@ -235,16 +261,14 @@ sops exec-env ../../secrets/infra/probabench.env 'bun run --cwd packages/stack a
 ```
 
 Local Alchemy development uses `.alchemy/` under `packages/stack` instead of the
-remote store. Benchmark history remains in `data/results.json`; it is separate
-from deployment state. See [Alchemy's state-store documentation](https://alchemy.run/state-store/).
+remote store. Benchmark history lives in its own D1 database. See
+[Alchemy's state-store documentation](https://alchemy.run/state-store/).
 
-`packages/stack/alchemy.run.ts` builds `packages/web` with the working-tree
-history and uploads it as an assets-only Cloudflare Worker, so the hosted site
-changes only on deploy. With no Worker code, every request is a static-asset
-request, which the Free plan serves at no charge and outside the Workers request
-quota. `probabench.<domain>` is a Workers custom domain: Cloudflare creates its
-DNS record and certificate. The infra shell exports the domain from
-`modules/common/values.nix` as `DOMAIN_NAME`.
+`packages/stack/alchemy.run.ts` provisions D1, applies the SQL schema, and deploys
+the service Worker with the web assets. The Worker handles `/results.json` and
+`/api/*`; Cloudflare's asset layer serves the frontend. `probabench.<domain>` is
+a Workers custom domain: Cloudflare creates its DNS record and certificate.
+The infra shell exports the domain from `modules/common/values.nix` as `DOMAIN_NAME`.
 
 ## Development
 
@@ -252,6 +276,7 @@ DNS record and certificate. The infra shell exports the domain from
 | --- | --- |
 | `packages/domain` | Results schema and metrics, run-plan vocabulary, the runner's flags and progress lines |
 | `packages/runner` | The OpenRouter CLI |
+| `packages/service` | The Cloudflare history API and D1 schema |
 | `packages/web` | The results UI, and `dev-bridge/`, the Vite plugin that runs the CLI |
 | `packages/stack` | The Alchemy stack |
 

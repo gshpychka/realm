@@ -19,7 +19,7 @@ import { planDaily } from "../plan/daily";
 import { InvalidOptions, resolvePlan, type SamplingOptions } from "../plan/plan";
 import { ALL_ALIASES, describeAliases, splitModels } from "../plan/series";
 import { DEFAULT_MAX_TOKENS } from "../sampling/request";
-import { HISTORY_PATH, readHistory } from "../store/results-store";
+import { HISTORY_PATH, readSharedHistory, withSharedHistory } from "../store/results-store";
 import { describeBriefing } from "./briefing";
 import { executePlan } from "./execute";
 
@@ -90,11 +90,20 @@ const options = {
   list: Options.boolean("list").pipe(
     Options.withDescription("List saved models and their reasoning settings without credentials."),
   ),
+  sync: Options.boolean("sync").pipe(
+    Options.withDescription("Upload local results and download shared history without sampling."),
+  ),
 };
 
 const benchCommand = Command.make("probabench", options, (flags) =>
   Effect.gen(function* () {
     if (flags.list) return yield* Console.log(describeAliases());
+    if (flags.sync)
+      return yield* withSharedHistory(HISTORY_PATH, (history) =>
+        Console.log(
+          `History synchronized: ${history.runs.reduce((total, record) => total + record.points.reduce((count, point) => count + point.outcomes.length, 0), 0).toLocaleString()} samples.`,
+        ),
+      );
     const plan = yield* resolvePlan({
       models: splitModels(Option.getOrElse(flags.model, () => "")),
       reasoning: Option.getOrUndefined(flags.reasoning),
@@ -108,14 +117,13 @@ const benchCommand = Command.make("probabench", options, (flags) =>
     });
     const daily = planDaily(
       plan,
-      yield* readHistory(plan.out),
+      yield* readSharedHistory(plan.out),
       new Date(yield* Clock.currentTimeMillis).toISOString(),
     );
     const estimate = yield* estimateCost(daily, plan.options);
     yield* Console.log(describeBriefing(plan, daily, estimate, process.stdout.columns || 80));
     if (flags.dryRun) return;
-    if (daily.remaining === 0) return yield* Console.log("Nothing to collect today.");
-    if (!flags.yes) {
+    if (daily.remaining > 0 && !flags.yes) {
       // The prompt needs a terminal on stdin; the dev bridge spawns the CLI with stdin ignored.
       if (process.stdin.isTTY !== true) {
         return yield* new InvalidOptions({

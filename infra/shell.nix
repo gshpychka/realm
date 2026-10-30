@@ -65,8 +65,7 @@ pkgs.mkShell {
     (sopsExecEnv "tf" "terraform.env" (lib.getExe terraform))
     (sopsExecEnv "tg" "terraform.env" (lib.getExe pkgs.terragrunt))
     alchemyAws
-    # the ProbaBench CLI with its OpenRouter key; it finds its history file from its
-    # own path, so it runs from any directory
+    # ProbaBench loads its sampling and history credentials through SOPS.
     (sopsExecEnv "probabench" "probabench.env"
       "${lib.getExe pkgs.bun} $REPO_ROOT/infra/probabench/packages/runner/src/main.ts"
     )

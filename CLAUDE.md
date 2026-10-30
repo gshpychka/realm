@@ -13,7 +13,7 @@ Personal Nix flake configuration for multiple machines (eve, harbor, reaper, hoa
 - `agents/` - Dura role declarations and their NixOS execution environments
 - `secrets/` - SOPS encrypted secrets
 - `tests/` - NixOS VM tests and declarative module/catalog checks, exposed as flake checks
-- `infra/` - Cloud infrastructure: Terraform units (GCP VM for buoy, Cloudflare DNS and tunnels, Tailscale, and `aws/`: reaper's Roles Anywhere trust anchor and the deploy role), the bootstrap GCE image under `infra/nixos/`, and Alchemy stacks: `link-sanitizer/` (Telegram bot on AWS Lambda), `probabench/` (probability benchmark runner and static results site on an assets-only Cloudflare Worker at `probabench.<domain>`)
+- `infra/` - Cloud infrastructure: Terraform units (GCP VM for buoy, Cloudflare DNS and tunnels, Tailscale, and `aws/`: reaper's Roles Anywhere trust anchor and the deploy role), the bootstrap GCE image under `infra/nixos/`, and Alchemy stacks: `link-sanitizer/` (Telegram bot on AWS Lambda), `probabench/` (probability benchmark runner, Cloudflare D1 history and results site at `probabench.<domain>`)
 - `scripts/` - Artifacts for devices outside the flake, one folder per device with a `runbook.md` as its deployment path: `mudi/` (GL.iNet travel router), `kodi/` (CoreELEC Kodi box) and `voice-pe/` (kitchen Home Assistant Voice PE firmware)
 
 ## Standards

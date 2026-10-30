@@ -1,5 +1,5 @@
 // Calibration metrics over the results contract.
-import type { Point, Run } from "./schema";
+import type { Point } from "./schema";
 
 /** Two-sided 95% standard-normal quantile. */
 const Z_95 = 1.959963984540054;
@@ -91,10 +91,6 @@ export const summarizeMeasurements = (
     totalPoints: measured.length,
   };
 };
-
-/** The runner's summary of one saved storage record. */
-export const summarizeRun = (run: Pick<Run, "points">): MeasurementSummary =>
-  summarizeMeasurements(run.points.map((point) => ({ x: point.x, ...measurePoint(point) })));
 
 /** A calibration error, given as a fraction, in percentage points; `empty` when there is none. */
 export const calibrationErrorText = (value: number | null, empty = "—"): string =>

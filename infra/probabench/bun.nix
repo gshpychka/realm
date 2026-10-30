@@ -719,6 +719,7 @@
   };
   "@probabench/domain" = copyPathToStore ./packages/domain;
   "@probabench/runner" = copyPathToStore ./packages/runner;
+  "@probabench/service" = copyPathToStore ./packages/service;
   "@probabench/stack" = copyPathToStore ./packages/stack;
   "@probabench/web" = copyPathToStore ./packages/web;
   "@puppeteer/browsers@3.2.6" = fetchurl {

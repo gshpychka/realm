@@ -8,5 +8,6 @@ export * from "./plan/models";
 export * from "./plan/sampling";
 export * from "./progress/samples";
 export * from "./results/evidence";
+export * from "./results/history";
 export * from "./results/metrics";
 export * from "./results/schema";
