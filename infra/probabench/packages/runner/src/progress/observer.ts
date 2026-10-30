@@ -14,6 +14,7 @@ export interface SamplingObserver {
   readonly scheduler: (read: () => SchedulerStatus) => void;
   readonly started: (model: string, retry: boolean) => void;
   readonly ended: (model: string) => void;
+  readonly received: (model: string, cost: number | null) => void;
   readonly saved: (model: string, invalid: boolean) => void;
   readonly finished: (model: string, error?: string) => void;
 }
@@ -26,6 +27,7 @@ export class SamplingProgress extends Context.Reference<SamplingProgress>()(
       scheduler: () => {},
       started: () => {},
       ended: () => {},
+      received: () => {},
       saved: () => {},
       finished: () => {},
     }),

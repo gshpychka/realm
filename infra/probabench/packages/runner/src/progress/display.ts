@@ -17,11 +17,30 @@ interface ModelProgress {
   active: number;
   retries: number;
   invalid: number;
+  cost: number;
+  pricedReplies: number;
+  missingCosts: number;
   finished: boolean;
   error: string | undefined;
 }
 
 const count = (n: number): string => n.toLocaleString("en-US");
+const dollars = (cost: number): string =>
+  cost.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+const spent = (cost: number, missing: number): string =>
+  missing > 0 ? (cost === 0 ? "--" : `≥${dollars(cost)}`) : dollars(cost);
+const projectedCost = (model: ModelProgress): number | null => {
+  const requests = model.entry.remaining;
+  if (requests === 0 || (model.pricedReplies === requests && model.missingCosts === 0))
+    return model.cost;
+  return model.pricedReplies >= 5 ? (model.cost * requests) / model.pricedReplies : null;
+};
+const estimated = (cost: number | null) => (cost === null ? "--" : dollars(cost));
 const duration = (seconds: number): string => {
   const total = Math.max(0, Math.ceil(seconds));
   if (total < 60) return `${total}s`;
@@ -54,6 +73,9 @@ export const withProgressDisplay = <A, E, R>(
         active: 0,
         retries: 0,
         invalid: 0,
+        cost: 0,
+        pricedReplies: 0,
+        missingCosts: 0,
         finished: entry.remaining === 0,
         error: undefined,
       }));
@@ -85,6 +107,15 @@ export const withProgressDisplay = <A, E, R>(
           const model = byModel.get(key);
           if (model) model.active--;
         },
+        received: (key, cost) => {
+          const model = byModel.get(key);
+          if (!model) return;
+          if (cost === null) model.missingCosts++;
+          else {
+            model.cost += cost;
+            model.pricedReplies++;
+          }
+        },
         saved: (key, invalid) => {
           const model = byModel.get(key);
           if (!model) return;
@@ -110,6 +141,8 @@ export const withProgressDisplay = <A, E, R>(
           let saved = 0,
             retries = 0,
             invalid = 0,
+            cost = 0,
+            missingCosts = 0,
             rate = 0,
             eta = 0;
           let canEstimate = elapsed >= 30;
@@ -121,6 +154,8 @@ export const withProgressDisplay = <A, E, R>(
             saved += model.saved;
             retries += model.retries;
             invalid += model.invalid;
+            cost += model.cost;
+            missingCosts += model.missingCosts;
             rate += modelRate;
             const own = admission.models.get(model.entry.series.modelSlug);
             const remaining = model.entry.remaining - model.saved;
@@ -173,12 +208,45 @@ export const withProgressDisplay = <A, E, R>(
               ? "No answers saved yet"
               : `Last save ${duration(Math.floor((now - lastSavedAt) / 1000))} ago`;
           const stats = `${rate.toFixed(1)}/s avg  Elapsed ${duration(Math.floor(elapsed))}  ETA ${etaText}`;
+          const costText = `Cost ${spent(cost, missingCosts)}`;
+          const projections = models.map(projectedCost);
+          const projectedTotal = projections.every((value) => value !== null)
+            ? projections.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+            : null;
+          const forecastText = `Est. total ${estimated(projectedTotal)}`;
+          const costWarning =
+            missingCosts > 0
+              ? `Cost missing for ${count(missingCosts)} ${missingCosts === 1 ? "reply" : "replies"}.`
+              : "";
 
           if (terminal) {
             const width = Math.max(20, (process.stderr.columns || 80) - 1);
             const height = process.stderr.rows || 24;
+            const stacked = width < 75;
+            const metrics = `Active ${admission.active}  Limit ${admission.limit}  Retries ${count(retries)}  Invalid ${count(invalid)}`;
+            const totals =
+              forecastText.length + metrics.length + 2 <= width
+                ? [`${forecastText}  ${metrics}`]
+                : [forecastText, metrics];
             const failures = models.filter((model) => model.error !== undefined);
-            const slots = Math.max(1, height - 9 - Math.min(1, failures.length));
+            const summary = `${outcome ?? "Sampling"} ${percent.toFixed(1)}%  ${count(saved)}/${count(daily.remaining)} saved`;
+            const heading =
+              summary.length + costText.length + 2 <= width
+                ? [`${summary}  ${costText}`]
+                : [summary, costText];
+            const slots = Math.max(
+              1,
+              Math.floor(
+                (height -
+                  9 -
+                  Math.min(1, failures.length) -
+                  (heading.length - 1) -
+                  (totals.length - 1) -
+                  (stacked ? 1 : 0) -
+                  (costWarning ? 1 : 0)) /
+                  (stacked ? 2 : 1),
+              ),
+            );
             const page = outcome ? 0 : Math.floor(elapsed / 10) % Math.ceil(models.length / slots);
             const visible = outcome ? models : models.slice(page * slots, (page + 1) * slots);
             const tallyWidth = Math.max(
@@ -187,29 +255,65 @@ export const withProgressDisplay = <A, E, R>(
                 (model) => `${count(model.entry.remaining)}/${count(model.entry.remaining)}`.length,
               ),
             );
-            const narrow = width < 65;
-            const nameWidth = Math.max(8, width - tallyWidth - (narrow ? 17 : 37));
+            const expanded = width >= 110;
+            const stateWidth = width < 65 ? 12 : 16;
+            const costWidth = Math.max(
+              10,
+              ...models.map((model) => spent(model.cost, model.missingCosts).length),
+            );
+            const estimateWidth = Math.max(
+              10,
+              ...projections.map((value) => estimated(value).length),
+            );
+            const nameWidth = Math.max(
+              8,
+              stacked
+                ? width
+                : width - tallyWidth - costWidth - estimateWidth - stateWidth - (expanded ? 24 : 8),
+            );
             const row = (
               name: string,
               tally: string,
               active: string,
               retry: string,
+              cost: string,
+              forecast: string,
               state: string,
             ) =>
-              narrow
-                ? `${clip(name, nameWidth).padEnd(nameWidth)}  ${tally.padStart(tallyWidth)}  ${clip(state, 13)}`
-                : `${name.padEnd(nameWidth)}  ${tally.padStart(tallyWidth)}  ${active.padStart(6)}  ${retry.padStart(6)}  ${state}`;
-            const barWidth = Math.max(4, Math.min(24, width - 48));
+              stacked
+                ? [
+                    clip(name, width),
+                    [
+                      tally.padStart(tallyWidth),
+                      cost.padStart(costWidth),
+                      forecast.padStart(estimateWidth),
+                      clip(state, stateWidth),
+                    ].join("  "),
+                  ].join("\n")
+                : [
+                    clip(name, nameWidth).padEnd(nameWidth),
+                    tally.padStart(tallyWidth),
+                    ...(expanded ? [active.padStart(6), retry.padStart(6)] : []),
+                    cost.padStart(costWidth),
+                    forecast.padStart(estimateWidth),
+                    clip(state, stateWidth),
+                  ].join("  ");
+            const barWidth = Math.min(24, width - (heading[0]?.length ?? 0) - 3);
             const filled = Math.floor(barWidth * Math.min(1, percent / 100));
             const lines = [
-              `${outcome ?? "Sampling"} ${percent.toFixed(1)}%  ${count(saved)}/${count(daily.remaining)} saved${width >= 65 ? ` [${"#".repeat(filled)}${"-".repeat(barWidth - filled)}]` : ""}`,
+              ...heading.map((line, i) =>
+                i === 0 && barWidth >= 4
+                  ? `${line} [${"#".repeat(filled)}${"-".repeat(barWidth - filled)}]`
+                  : line,
+              ),
               stats,
-              `Active ${admission.active}  Limit ${admission.limit}  Retries ${count(retries)}  Invalid ${count(invalid)}`,
+              ...totals,
               [wait, last].filter(Boolean).join("  "),
+              ...(costWarning ? [costWarning] : []),
               "",
-              row("Model", "Saved", "Active", "Retry", "State"),
+              row("Model", "Saved", "Active", "Retry", "Cost (USD)", "Est. total", "State"),
               ...visible.map((model) => {
-                const mode = narrow ? "" : ` (${model.entry.series.reasoning})`;
+                const mode = ` (${model.entry.series.reasoning})`;
                 const name =
                   clip(model.entry.series.modelSlug, Math.max(1, nameWidth - mode.length)) + mode;
                 return row(
@@ -217,6 +321,8 @@ export const withProgressDisplay = <A, E, R>(
                   `${count(model.saved)}/${count(model.entry.remaining)}`,
                   String(model.active),
                   String(model.retries),
+                  spent(model.cost, model.missingCosts),
+                  estimated(projectedCost(model)),
                   states.get(model) ?? "",
                 );
               }),
@@ -230,21 +336,24 @@ export const withProgressDisplay = <A, E, R>(
                     `${failures.length} failed: ${failures[0].entry.series.modelSlug} — ${stripVTControlCharacters(failures[0].error ?? "").split("\n")[0]}`,
                   ]
                 : []),
-            ].map((line) => line.slice(0, width));
+            ]
+              .flatMap((line) => line.split("\n"))
+              .map((line) => line.slice(0, width));
             if (drawnLines > 0) process.stderr.write(`\x1b[${drawnLines}A\r\x1b[0J`);
             process.stderr.write(`${lines.join("\n")}\n`);
             drawnLines = lines.length;
           } else {
             const details = now - lastDetailsAt >= 60_000 || outcome !== undefined;
             const lines = [
-              `${formatSampleProgress({ completed: saved, total: daily.remaining })} (${percent.toFixed(1)}%)  ${stats}  Active ${admission.active}  Limit ${admission.limit}  Retries ${retries}  Invalid ${invalid}${wait ? `  ${wait}` : ""}${outcome ? `  ${outcome}` : ""}`,
+              `${formatSampleProgress({ completed: saved, total: daily.remaining })} (${percent.toFixed(1)}%)  ${costText}  ${forecastText}  ${stats}  Active ${admission.active}  Limit ${admission.limit}  Retries ${retries}  Invalid ${invalid}${wait ? `  ${wait}` : ""}${outcome ? `  ${outcome}` : ""}`,
+              ...(costWarning ? [costWarning] : []),
             ];
             for (const model of models) {
               const key = model.entry.series.model;
               const finished = model.finished && !reported.has(key);
               if (details || finished) {
                 lines.push(
-                  `[${key}] ${model.saved}/${model.entry.remaining} saved  ${model.active} active  ${model.retries} retries  ${states.get(model)}`,
+                  `[${key}] ${model.saved}/${model.entry.remaining} saved  Cost ${spent(model.cost, model.missingCosts)}  Est. total ${estimated(projectedCost(model))}  ${model.active} active  ${model.retries} retries  ${states.get(model)}`,
                 );
                 if (model.finished) reported.add(key);
               }

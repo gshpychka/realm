@@ -56,13 +56,11 @@ export const sweep = <E, R>(
         // Once a reply arrives, commit it before honoring cancellation. The network
         // request and its retries remain interruptible and hold no storage lock.
         return Effect.uninterruptibleMask((restore) =>
-          restore(
-            scheduler
-              .request(series.modelSlug, attempt)
-              .pipe(withProviderRetry, Effect.map(parseOutcome)),
-          ).pipe(
-            Effect.flatMap((outcome) =>
-              save(point.x, outcome).pipe(
+          restore(scheduler.request(series.modelSlug, attempt).pipe(withProviderRetry)).pipe(
+            Effect.flatMap((reply) => {
+              progress.received(series.model, reply.cost);
+              const outcome = parseOutcome(reply.text);
+              return save(point.x, outcome).pipe(
                 Effect.andThen(
                   Effect.suspend(() => {
                     collected++;
@@ -70,8 +68,8 @@ export const sweep = <E, R>(
                     return Effect.void;
                   }),
                 ),
-              ),
-            ),
+              );
+            }),
           ),
         );
       },

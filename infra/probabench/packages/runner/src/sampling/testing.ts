@@ -58,7 +58,7 @@ export const chatEndpoint = ({
                       finish_reason: "stop",
                     },
                   ],
-                  usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
+                  usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11, cost: 0 },
                 }),
                 { headers: { "content-type": "application/json" } },
               ));

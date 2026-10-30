@@ -10,6 +10,7 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { ModelSeries } from "../plan/series";
 import { outputTokenLimit, type TextMessage } from "./request";
@@ -20,6 +21,11 @@ export class MissingApiKey extends Data.TaggedError("MissingApiKey") {
   }
 }
 
+export interface CompletionResult {
+  readonly text: string;
+  readonly cost: number | null;
+}
+
 export class OpenRouterClient extends Context.Tag("probabench/OpenRouterClient")<
   OpenRouterClient,
   {
@@ -27,17 +33,22 @@ export class OpenRouterClient extends Context.Tag("probabench/OpenRouterClient")
       series: ModelSeries,
       maxTokens: number,
       messages: readonly TextMessage[],
-    ) => Effect.Effect<string, AiError.AiError>;
+    ) => Effect.Effect<CompletionResult, AiError.AiError>;
   }
 >() {}
 
 const Completion = Schema.Struct({
+  usage: Schema.optional(Schema.Unknown),
   choices: Schema.NonEmptyArray(
     Schema.Struct({
       message: Schema.Struct({ content: Schema.optionalWith(Schema.String, { nullable: true }) }),
     }),
   ),
 });
+
+const decodeCost = Schema.decodeUnknownOption(
+  Schema.Struct({ cost: Schema.Number.pipe(Schema.finite(), Schema.nonNegative()) }),
+);
 
 /** Share authentication and preserve HTTP status, headers and error bodies for scheduling. */
 export const openrouterClientLayer = Layer.effect(
@@ -67,7 +78,13 @@ export const openrouterClientLayer = Layer.effect(
         }).pipe(HttpClientRequest.acceptJson);
         return client.execute(request).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(Completion)),
-          Effect.map((response) => response.choices[0].message.content ?? ""),
+          Effect.map((response): CompletionResult => {
+            const usage = decodeCost(response.usage);
+            return {
+              text: response.choices[0].message.content ?? "",
+              cost: Option.isSome(usage) ? usage.value.cost : null,
+            };
+          }),
           Effect.catchTags({
             RequestError: (error) =>
               AiError.HttpRequestError.fromRequestError({ ...origin, error }),

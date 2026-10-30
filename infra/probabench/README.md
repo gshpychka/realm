@@ -149,6 +149,19 @@ during cooldowns and accounts for any wait before requests can resume. Redirecte
 terminal control sequences: it prints totals every 10 seconds, per-model details
 every minute, and a final summary on completion, failure, or interruption.
 
+Progress shows the current invocation's total cost and a cost for each model,
+using the `usage.cost` charge returned by OpenRouter. Charges count when replies
+arrive, including invalid answers and answers whose checkpoint upload fails.
+No additional API calls are made to track costs. A missing charge shows `--`;
+if some charges are known, `≥` marks their subtotal. In-flight requests are not
+included until their replies arrive.
+
+After five priced replies from a model, Est. total projects its final cost using
+the average charge so far and the number of requests planned for this invocation.
+It updates with each reply. The overall projection appears once every selected
+model has enough data. Models with every planned request priced use their reported
+total. Both current costs and projections are rounded to the nearest cent.
+
 Before confirmation, the CLI shows one table of models, reasoning settings,
 missing requests, and estimated USD costs, followed by a total. Models whose daily
 targets are met are marked Already saved. The local page shows its estimate before

@@ -22,7 +22,9 @@ const twoSamples: SamplingOptions = {
 
 /** An endpoint whose every reply is the text `reply` produces. */
 const fakeModel = (reply: () => Effect.Effect<string>) =>
-  Layer.succeed(OpenRouterClient, { complete: () => Effect.suspend(reply) });
+  Layer.succeed(OpenRouterClient, {
+    complete: () => Effect.suspend(reply).pipe(Effect.map((text) => ({ text, cost: null }))),
+  });
 
 describe("sweep", () => {
   it.effect("attributes out-of-order answers to the probability requested", () =>

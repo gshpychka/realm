@@ -1,6 +1,7 @@
 import * as FileSystem from "@effect/platform/FileSystem";
 import { describe, expect, it } from "@effect/vitest";
 import { collectEvidence } from "@probabench/domain";
+import * as Console from "effect/Console";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -8,6 +9,7 @@ import * as TestClock from "effect/TestClock";
 import type { BenchPlan } from "../plan/plan";
 import type { ModelSeries } from "../plan/series";
 import { chatEndpoint, withApiKey } from "../sampling/testing";
+import { CloudHistory, CloudHistoryError } from "../store/cloud-history";
 import { readResults, withHistoryFile } from "../store/testing";
 import { executePlan } from "./execute";
 
@@ -25,6 +27,75 @@ const planFor = (out: string, first: string, ...rest: string[]): BenchPlan => ({
 });
 
 describe("executePlan", () => {
+  it.effect("projects observed charges and counts billed replies when uploads fail", () =>
+    withHistoryFile((path) =>
+      Effect.gen(function* () {
+        const paused = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        let aReplies = 0;
+        let bReplies = 0;
+        const endpoint = chatEndpoint({
+          reply: (body) => {
+            const a = body.model === "vendor/a";
+            const number = a ? ++aReplies : ++bReplies;
+            const response = Effect.succeed(
+              Response.json({
+                choices: [{ message: { content: a && number === 1 ? "invalid" : "1" } }],
+                usage: {
+                  cost: a ? (number <= 5 ? 0.012 : 0.024) : number === 10 ? "unavailable" : 0,
+                  cost_details: { upstream_inference_cost: 999 },
+                },
+              }),
+            );
+            return a && number === 6
+              ? Deferred.succeed(paused, undefined).pipe(
+                  Effect.andThen(Deferred.await(release)),
+                  Effect.andThen(response),
+                )
+              : response;
+          },
+        });
+        const output: string[] = [];
+        const console = yield* Console.consoleWith(Effect.succeed);
+        const capture = Console.withConsole({
+          ...console,
+          log: (...args: readonly unknown[]) =>
+            Effect.sync(() => {
+              output.push(args.join(" "));
+            }),
+        });
+        yield* Effect.gen(function* () {
+          const plan = planFor(path, "vendor/a", "vendor/b");
+          const fiber = yield* Effect.fork(
+            executePlan({ ...plan, options: { ...plan.options, trialsPerStep: 5 } }).pipe(capture),
+          );
+          yield* Deferred.await(paused);
+          yield* TestClock.adjust("1 minute");
+          expect(output.at(-1)).toContain("[vendor/a] 5/10 saved  Cost $0.06  Est. total $0.12");
+          yield* Deferred.succeed(release, undefined);
+          yield* Fiber.join(fiber);
+          const complete = output.at(-1) ?? "";
+          expect(complete).toContain("Cost ≥$0.18  Est. total $0.18");
+          expect(complete).toContain("[vendor/a] 10/10 saved  Cost $0.18  Est. total $0.18");
+          expect(complete).toContain("[vendor/b] 10/10 saved  Cost --  Est. total $0.00");
+          expect(complete).toContain("Cost missing for 1 reply.");
+          const cloud = yield* CloudHistory;
+          yield* Effect.flip(executePlan(planFor(`${path}.failure`, "vendor/a"))).pipe(
+            Effect.provideService(CloudHistory, {
+              ...cloud,
+              append: (runs) =>
+                runs.length > 0
+                  ? Effect.fail(new CloudHistoryError({ message: "Upload unavailable" }))
+                  : Effect.void,
+            }),
+            capture,
+          );
+          expect(output.at(-1)).toContain("[vendor/a] 0/2 saved  Cost $0.02  Est. total --");
+        }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
+      }),
+    ),
+  );
+
   it.effect("fills only missing daily slots while preserving earlier checkpoints", () =>
     withHistoryFile((path) => {
       const endpoint = chatEndpoint({
