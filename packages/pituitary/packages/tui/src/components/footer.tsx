@@ -21,6 +21,8 @@ export interface FooterProps {
   branch: string | null;
   /** The pull request opened from the branch, when GitHub has one. */
   pull?: PullRequest | null;
+  /** Whether replies to the model come at Fast mode's priority speed. */
+  fast?: boolean;
 }
 
 /** Context use at which the percentage warns, then alarms, as pi's own footer does. */
@@ -110,13 +112,13 @@ export interface Parts {
   branch: string | null;
   pull: PullRequest | null;
   name: string | null;
-  model: { mark: ProviderMark; name: string } | null;
+  model: { mark: ProviderMark; name: string; fast: boolean } | null;
   thinking: string | null;
   percent: number | null;
   cost: string | null;
 }
 
-export function footerParts({ state, stats, cwd, location, branch, pull }: FooterProps): Parts {
+export function footerParts({ state, stats, cwd, location, branch, pull, fast = false }: FooterProps): Parts {
   const thinking = state?.thinkingLevel && state.thinkingLevel !== "off" ? state.thinkingLevel : null;
   const percent = stats?.contextUsage?.percent ?? null;
   return {
@@ -125,7 +127,7 @@ export function footerParts({ state, stats, cwd, location, branch, pull }: Foote
     pull: branch && pull ? pull : null,
     name: state?.sessionName || null,
     model: state?.model
-      ? { mark: providerMark(state.model.provider), name: modelName(state.model.id) }
+      ? { mark: providerMark(state.model.provider), name: modelName(state.model.id), fast }
       : null,
     thinking,
     percent: percent === null ? null : Math.round(percent),
@@ -246,8 +248,8 @@ function figure(style: FooterStyle, text: string, tone: BudgetTone, rest: string
 }
 
 /**
- * The context percentage and the card, with the limits and cost behind it, then the model and
- * its thinking level, and the separator into the hearth.
+ * The context percentage and the card, with the limits and cost behind it, then the model, its
+ * Fast mode mark, and its thinking level, and the separator into the hearth.
  */
 function budget(p: Parts, style: FooterStyle, { thinking, open, hearth, nameRoom }: BudgetOptions): Seg[] {
   const c = style.palette;
@@ -273,6 +275,7 @@ function budget(p: Parts, style: FooterStyle, { thinking, open, hearth, nameRoom
     ? [
         { text: p.model.mark.glyph, fg: c.brandMark ? (p.model.mark.colour ?? c.textRight) : c.textRight },
         ...(name ? [{ text: ` ${name}`, fg: c.textRight, bold: c.bold }] : []),
+        ...(p.model.fast ? [{ text: ` ${glyphs.fast}`, fg: c.textRight }] : []),
         ...(thinking && p.thinking ? [{ text: ` ${glyphs.thinking} ${p.thinking}`, fg: c.dimRight }] : []),
       ]
     : [{ text: "connecting", fg: c.dimRight }];

@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import type { SessionStats } from "@pituitary/session";
 import { fakeSessionState } from "../../../session/src/session.fixture.ts";
 import { footerStyle, PALETTE_NAMES } from "../footer-style.ts";
-import { type FooterProps, footerParts, footerRows, type Seg } from "./footer.tsx";
+import { glyphs } from "../glyphs.ts";
+import { type FooterProps, footerParts, footerRows, type Parts, type Seg } from "./footer.tsx";
 
 const props: FooterProps = {
   state: fakeSessionState,
@@ -21,18 +22,31 @@ test("remote context and native model metadata stay truthful", () => {
 });
 test("footer bands fit compact and wide terminals for every palette", () => {
   for (const columns of [12, 24, 40, 80, 100, 148, 200])
-    for (const palette of PALETTE_NAMES) {
-      const rows = footerRows(
-        footerParts(props),
-        columns,
-        footerStyle({ PITUITARY_FOOTER_PALETTE: palette }),
-        false,
-      );
-      expect(rows.length).toBeLessThanOrEqual(2);
-      for (const row of rows)
-        expect(Bun.stringWidth(text(row.left) + text(row.right)) + row.hearth).toBeLessThanOrEqual(columns);
-    }
+    for (const palette of PALETTE_NAMES)
+      for (const fast of [false, true]) {
+        const rows = footerRows(
+          footerParts({ ...props, fast }),
+          columns,
+          footerStyle({ PITUITARY_FOOTER_PALETTE: palette }),
+          false,
+        );
+        expect(rows.length).toBeLessThanOrEqual(2);
+        for (const row of rows)
+          expect(Bun.stringWidth(text(row.left) + text(row.right)) + row.hearth).toBeLessThanOrEqual(columns);
+      }
 });
+test("Fast mode marks the model beside its name, and wherever the provider's mark still fits", () => {
+  const style = footerStyle({}),
+    fast = footerParts({ ...props, fast: true }),
+    right = (parts: Parts, columns: number) =>
+      text(footerRows(parts, columns, style, false).flatMap((row) => row.right));
+  expect(right(fast, 200)).toContain(`${fast.model?.name} ${glyphs.fast}`);
+  expect(right(footerParts(props), 200)).not.toContain(glyphs.fast);
+  for (let columns = 12; columns <= 200; columns++)
+    if (right(fast, columns).includes(fast.model?.mark.glyph ?? ""))
+      expect(right(fast, columns)).toContain(glyphs.fast);
+});
+
 test("the native cost card opens without inventing subscription limits", () => {
   const parts = footerParts(props),
     style = footerStyle({});

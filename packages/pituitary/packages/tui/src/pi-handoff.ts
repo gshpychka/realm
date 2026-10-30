@@ -1,18 +1,8 @@
 import { writeFileSync } from "node:fs";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-/** Loaded only for a deliberate terminal handoff; regular sessions need no companion extension. */
-export default function handoff(pi: {
-  on(
-    event: "session_start" | "session_shutdown",
-    handler: (
-      event: unknown,
-      context: {
-        ui: { setEditorText(text: string): void; notify(text: string, level: "info"): void };
-        sessionManager: { getSessionFile(): string | undefined };
-      },
-    ) => void,
-  ): void;
-}): void {
+/** Loaded only for a deliberate terminal handoff. */
+export default function handoff(pi: ExtensionAPI): void {
   const command = process.env.PITUITARY_HANDOFF;
   const result = process.env.PITUITARY_HANDOFF_RESULT;
   delete process.env.PITUITARY_HANDOFF;

@@ -857,6 +857,7 @@ export function App({
               location={workspace.local ? undefined : (workspace.label ?? "agent")}
               branch={branch}
               pull={pull}
+              fast={piUI.fast}
             />
           </box>
           <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />

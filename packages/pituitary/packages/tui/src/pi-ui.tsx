@@ -4,6 +4,7 @@ import { type RefObject, useEffect, useState } from "react";
 import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
 import type { EditorHandle } from "./components/editor.tsx";
 import type { PiUiPort, PiUiRequest } from "./pi.ts";
+import { FAST_STATUS } from "./pi-fast.ts";
 import { theme } from "./theme.ts";
 import type { SessionController } from "./use-session.ts";
 
@@ -19,10 +20,12 @@ export function usePiUI(
 ) {
   const [questions, setQuestions] = useState<{ request: Question; deadline?: number }[]>([]);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
+  const [fast, setFast] = useState(false);
   const [widgets, setWidgets] = useState<Record<string, Widget>>({});
   useEffect(() => {
     setQuestions([]);
     setStatuses({});
+    setFast(false);
     setWidgets({});
     return port?.onRequest((request) => {
       switch (request.method) {
@@ -30,7 +33,9 @@ export function usePiUI(
           notify(request.notifyType ?? "info", plain(request.message));
           break;
         case "setStatus":
-          setStatuses((current) => ({ ...current, [request.statusKey]: plain(request.statusText ?? "") }));
+          if (request.statusKey === FAST_STATUS) setFast(Boolean(request.statusText));
+          else
+            setStatuses((current) => ({ ...current, [request.statusKey]: plain(request.statusText ?? "") }));
           break;
         case "setWidget":
           setWidgets((current) => ({
@@ -118,6 +123,8 @@ export function usePiUI(
     dialogs,
     answer,
     statuses: Object.values(statuses).filter(Boolean),
+    /** Whether replies to the selected model come at Fast mode's priority speed. */
+    fast,
     widgets: Object.values(widgets),
   };
 }

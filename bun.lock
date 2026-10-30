@@ -68,6 +68,9 @@
         "@realm/dura": "workspace:*",
         "react": "^19.2.0",
       },
+      "devDependencies": {
+        "@earendil-works/pi-coding-agent": "1.4.0",
+      },
     },
   },
   "patchedDependencies": {

@@ -42,6 +42,11 @@ choose the OpenAI subscription provider offered by your Pi version and complete
 its browser sign-in. Then use `/model` to choose an available model. `/logout`
 disconnects a provider.
 
+With a ChatGPT subscription, `/fast` turns on [Fast mode](https://developers.openai.com/codex/speed):
+replies arrive about 1.5× faster and draw on your subscription at a higher rate. The
+footer marks the model with a bolt while Fast mode applies. Each conversation keeps
+its choice, resumed ones included; a new conversation starts at standard speed.
+
 Login and session selection temporarily open Pi's own screens on the current
 session. Close that screen with `ctrl+d` to return to Pituitary. Authentication,
 credential persistence, and token refresh remain upstream Pi responsibilities.

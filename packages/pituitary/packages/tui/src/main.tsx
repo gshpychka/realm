@@ -19,6 +19,7 @@ import { mark } from "./profile.ts";
 import { RELOAD_UI } from "./ui-state.ts";
 
 mark("modules");
+const FAST = fileURLToPath(new URL("./pi-fast.ts", import.meta.url));
 const argv = process.argv.slice(2);
 try {
   if (argv.includes("--help") || argv.includes("-h")) {
@@ -50,13 +51,15 @@ async function runPi(agent: PiCommand): Promise<void> {
   }
   const log = openLog();
   process.on("unhandledRejection", (reason) => log.write(`unhandled rejection: ${String(reason)}\n`));
+  // Conversations record their Fast mode choice, so every Pi that opens one carries the extension, handoff screens included.
+  const piArgs = [...agent.args, "--extension", FAST];
   const start = (args: readonly string[]) =>
     new PiConversation({
       command: agent.command,
       args,
       onStderr: (text) => log.write(text),
     });
-  let client = start(agent.args);
+  let client = start(piArgs);
   mark("agent-spawned");
   prewarm();
   const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });
@@ -139,14 +142,14 @@ async function runPi(agent: PiCommand): Promise<void> {
     let selected = carried;
     try {
       const extension = fileURLToPath(new URL("./pi-handoff.ts", import.meta.url));
-      spawnSync(agent.command, [...resumePiArgs(agent.args, carried), "--extension", extension], {
+      spawnSync(agent.command, [...resumePiArgs(piArgs, carried), "--extension", extension], {
         stdio: "inherit",
         env: { ...process.env, PITUITARY_HANDOFF: command, PITUITARY_HANDOFF_RESULT: result },
       });
       if (existsSync(result)) selected = readFileSync(result, "utf8").trim() || carried;
     } finally {
       rmSync(scratch, { recursive: true, force: true });
-      client = start(resumePiArgs(agent.args, selected));
+      client = start(resumePiArgs(piArgs, selected));
       renderer.resume();
       handoffActive = false;
       root = createRoot(renderer);

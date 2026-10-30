@@ -5,6 +5,7 @@ import { act, createRef } from "react";
 import { Dialog, type DialogResponse, GRACE_MS } from "./components/dialog.tsx";
 import type { EditorHandle } from "./components/editor.tsx";
 import type { PiUiPort, PiUiRequest, PiUiResponse } from "./pi.ts";
+import { FAST_STATUS } from "./pi-fast.ts";
 import { PiWidgets, usePiUI } from "./pi-ui.tsx";
 
 /** Exercise the frontend protocol without starting an agent or a model. */
@@ -229,6 +230,33 @@ test("Pi selects, inputs and editors route values while named widgets and status
     expect(app.state().statuses).toEqual([]);
     expect(app.state().widgets).toEqual([]);
     expect(app.captureCharFrame().trim()).toBe("");
+  } finally {
+    app.close();
+  }
+});
+
+test("Fast mode's status marks the footer's model and stays out of the extension status line", async () => {
+  const source = uiPort();
+  const app = await mount(source.port);
+  const fast = (statusText?: string) =>
+    app.change(() =>
+      source.emit({
+        type: "extension_ui_request",
+        id: `fast-${statusText}`,
+        method: "setStatus",
+        statusKey: FAST_STATUS,
+        ...(statusText ? { statusText } : {}),
+      }),
+    );
+  try {
+    await fast("fast");
+    expect(app.state().fast).toBe(true);
+    expect(app.state().statuses).toEqual([]);
+    await fast();
+    expect(app.state().fast).toBe(false);
+    await fast("fast");
+    await app.disconnect();
+    expect(app.state().fast).toBe(false);
   } finally {
     app.close();
   }

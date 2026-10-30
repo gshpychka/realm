@@ -8,7 +8,8 @@ behavior belongs in the product.
 ## Architecture
 
 Pituitary is the frontend for regular Pi and Dura. Plain `pituitary` starts the
-configured Pi executable over RPC, retaining its auth, settings, and extensions.
+configured Pi executable over RPC, retaining its auth, settings, and extensions, and
+loads Pituitary's own Pi extension for ChatGPT Fast mode (`packages/tui/src/pi-fast.ts`).
 `pituitary --dura RUN` uses Dura's pure connection client. Keep their lifecycle and
 configuration separate; share the interface through `ConversationLink`.
 
