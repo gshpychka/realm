@@ -1,6 +1,7 @@
 import * as Alchemist from "alchemy/Alchemist";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
+import * as References from "effect/References";
 
 export const STACK_NAME = "ProbaBench";
 
@@ -31,5 +32,6 @@ export const readHistoryWriteToken = (): Promise<string> =>
           ),
         ),
       ),
+      Effect.provideService(References.MinimumLogLevel, "Warn"),
     ),
   );
