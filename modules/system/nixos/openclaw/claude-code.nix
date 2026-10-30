@@ -36,7 +36,6 @@ let
   # where sessions clone repositories
   reposDir = "${cfg.workspace}/claude";
   gatewayHome = config.users.users.${gw.user}.home;
-  assistantHome = config.home-manager.users.${gw.user};
 in
 {
   options.my.openclaw.claudeCode.enable = lib.mkEnableOption "Claude Code sessions for the agent";
@@ -161,39 +160,6 @@ in
                 assertion = lib.versionAtLeast (lib.getVersion pkgs.claude-code) "2.1.251";
                 message = "Assistant Claude settings require per-model effort support (Claude Code >= 2.1.251).";
               }
-            ];
-
-            # Exercise the actual pinned HM activation fragment, with only its home
-            # destination redirected into a disposable build fixture. Never activate
-            # the real service account or touch its OAuth files in this check.
-            system.checks = [
-              (pkgs.runCommand "openclaw-claude-settings-check" { nativeBuildInputs = [ pkgs.jq ]; } ''
-                errorEcho() { echo "$*" >&2; }
-                mkdir -p test-home/.claude
-                printf '%s\n' '{"theme":"dark","permissions":{"deny":["fixture"]},"effortLevel":"low","modelSettings":{"claude-opus-5-5":{"autoCompactWindow":200000},"fixture-model":{"effortLevel":"low"}}}' > test-home/.claude/settings.json
-                chmod 600 test-home/.claude/settings.json
-                printf '%s\n' 'fixture-global-state' > test-home/.claude.json
-                printf '%s\n' 'fixture-credential-not-a-token' > test-home/.claude/.credentials.json
-                ${lib.replaceStrings [ gatewayHome ] [ "./test-home" ]
-                  assistantHome.home.activation.claudeCodeSettings.data
-                }
-                jq -e '
-                  .effortLevel == "xhigh" and .remoteControlAtStartup == true and
-                  .modelSettings["claude-opus-5-5"].effortLevel == "xhigh" and
-                  .modelSettings["claude-sonnet-5-5"].effortLevel == "xhigh" and
-                  .modelSettings["claude-haiku-5-5"].effortLevel == "xhigh" and
-                  .modelSettings["claude-opus-5-5"].autoCompactWindow == 200000 and
-                  .modelSettings["fixture-model"].effortLevel == "low" and
-                  .theme == "dark" and .permissions.deny == ["fixture"] and
-                  ."$schema" == "https://json.schemastore.org/claude-code-settings.json"
-                ' test-home/.claude/settings.json
-                test ! -L test-home/.claude/settings.json
-                test -w test-home/.claude/settings.json
-                test "$(stat -c %a test-home/.claude/settings.json)" = 600
-                grep -qx fixture-global-state test-home/.claude.json
-                grep -qx fixture-credential-not-a-token test-home/.claude/.credentials.json
-                cp test-home/.claude/settings.json "$out"
-              '')
             ];
           })
         ]

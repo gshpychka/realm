@@ -22,7 +22,7 @@ fmt:
 package:
     nix build ../..#pituitary --no-link
 
-# Build a home with every Pituitary option configured and inspect its wrapper.
+# Run the configured wrapper and check the environment and keybindings delivered to Pituitary.
 module:
     nix build ../..#checks.$(nix eval --impure --raw --expr builtins.currentSystem).pituitary-home-manager --no-link
 

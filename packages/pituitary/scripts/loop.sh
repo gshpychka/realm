@@ -46,7 +46,7 @@ gate e2e node --test --test-reporter=spec "e2e/**/*.test.ts"
 gate perf node --test --test-concurrency=1 --test-reporter=spec "e2e/**/*.perf.ts"
 # The package pins its installed dependencies by hash, so a changed bun.lock fails here first.
 gate package nix build "$realm_root#pituitary" --no-link
-# Evaluates the Home Manager module against a home with every option set.
+# Check the environment and keybindings delivered by the configured wrapper.
 gate module nix build "$realm_root#checks.$system.pituitary-home-manager" --no-link
 
 {
