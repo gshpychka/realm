@@ -34,7 +34,7 @@ export const previewCost = (request: Parameters<typeof benchArgs>[0]) =>
       yield* readSharedHistory(plan.out),
       new Date(yield* Clock.currentTimeMillis).toISOString(),
     );
-    return yield* estimateCost(daily, plan.options);
+    return yield* estimateCost(daily);
   }).pipe(
     Effect.provide(cloudHistoryLayer),
     Effect.provide(Layer.merge(NodeFileSystem.layer, NodeHttpClient.layer)),

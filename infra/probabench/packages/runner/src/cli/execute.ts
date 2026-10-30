@@ -9,7 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Either from "effect/Either";
 import * as ParseResult from "effect/ParseResult";
 import { planDaily } from "../plan/daily";
-import type { BenchPlan } from "../plan/plan";
+import { type BenchPlan, optionsFor } from "../plan/plan";
 import { withProgressDisplay } from "../progress/display";
 import { SamplingProgress } from "../progress/observer";
 import { type MissingApiKey, openrouterClientLayer } from "../sampling/openrouter";
@@ -38,7 +38,12 @@ export const executePlan = (
       if (daily.remaining === 0) return yield* Console.log("Nothing to collect today.");
       const cloud = yield* CloudHistory;
       yield* cloud.checkWrite;
-      const save = makeCheckpointer(plan.out, plan.options, startedAt, upload);
+      const save = makeCheckpointer(
+        plan.out,
+        (series) => optionsFor(plan, series),
+        startedAt,
+        upload,
+      );
       yield* withProgressDisplay(
         daily,
         plan.options.concurrency,
@@ -46,13 +51,13 @@ export const executePlan = (
           const progress = yield* SamplingProgress;
           const results = yield* Effect.forEach(
             daily.series,
-            ({ series, points, remaining }) =>
+            ({ series, options, points, remaining }) =>
               Effect.gen(function* () {
                 if (remaining === 0) {
                   return Either.right(0);
                 }
                 const result = yield* Effect.either(
-                  sweep(series, plan.options, points, (x, outcome) => save(series, x, outcome)),
+                  sweep(series, options, points, (x, outcome) => save(series, x, outcome)),
                 );
                 if (Either.isRight(result)) {
                   progress.finished(series.model);

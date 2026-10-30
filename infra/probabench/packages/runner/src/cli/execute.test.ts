@@ -100,7 +100,7 @@ describe("executePlan", () => {
     ),
   );
 
-  it.effect("overlaps models through the HTTP adapter without multiplying the ceiling", () =>
+  it.effect("resumes different model targets while sharing the concurrency ceiling", () =>
     withHistoryFile((path) => {
       let active = 0;
       let peak = 0;
@@ -127,19 +127,41 @@ describe("executePlan", () => {
       });
       return Effect.gen(function* () {
         const plan = planFor(path, "vendor/a", "vendor/b", "vendor/c");
-        yield* executePlan({
-          ...plan,
-          options: { ...plan.options, trialsPerStep: 6, stepPercent: 50, concurrency: 3 },
-        });
+        const modelOptions = new Map([
+          ["vendor/a", { trialsPerStep: 6, stepPercent: 50 }],
+          ["vendor/b", { trialsPerStep: 4, stepPercent: 25 }],
+          ["vendor/c", { trialsPerStep: 3, stepPercent: 100 }],
+        ]);
+        const mixed = { ...plan, options: { ...plan.options, concurrency: 3 }, modelOptions };
+        yield* executePlan(mixed);
         expect(peak).toBe(3);
         expect(modelsOverlap).toBe(true);
         expect(active).toBe(0);
-        expect(endpoint.requests).toHaveLength(54);
+        expect(endpoint.requests).toHaveLength(44);
         const { runs } = yield* readResults(path);
         const evidence = collectEvidence(runs);
         expect(evidence).toHaveLength(3);
-        for (const model of evidence)
-          expect(model.points.map((point) => point.total)).toEqual([6, 6, 6]);
+        const byModel = new Map(evidence.map((model) => [model.model, model]));
+        expect(byModel.get("vendor/a")?.points.map((point) => point.total)).toEqual([6, 6, 6]);
+        expect(byModel.get("vendor/b")?.points.map((point) => point.total)).toEqual([
+          4, 4, 4, 4, 4,
+        ]);
+        expect(byModel.get("vendor/c")?.points.map((point) => point.total)).toEqual([3, 3]);
+        yield* executePlan(mixed);
+        expect(endpoint.requests).toHaveLength(44);
+        modelOptions.set("vendor/b", { trialsPerStep: 5, stepPercent: 25 });
+        yield* executePlan(mixed);
+        expect(endpoint.requests).toHaveLength(49);
+        const updated = yield* readResults(path);
+        expect(updated.runs.slice(0, runs.length)).toEqual(runs);
+        expect(updated.runs.slice(runs.length).every((record) => record.model === "vendor/b")).toBe(
+          true,
+        );
+        expect(
+          collectEvidence(updated.runs)
+            .find((model) => model.model === "vendor/b")
+            ?.points.map((point) => point.total),
+        ).toEqual([5, 5, 5, 5, 5]);
       }).pipe(Effect.provide(endpoint.layer), withApiKey("sk-test"));
     }),
   );

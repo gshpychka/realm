@@ -38,6 +38,49 @@ The infra shell's `probabench` runs the CLI from any directory with the key
 decrypted:
 
 ```sh
+probabench          # interactive setup; restores the last used settings
+```
+
+From `infra/probabench`, `bun run bench` opens the same terminal interface.
+Use the arrow keys to move between models and settings. Enter activates a setting:
+arrows appear above and below its value, and Up/Down adjusts it. You can also type
+a value or reasoning mode. Enter applies the change; Esc discards it. Shift with
+Up/Down changes numbers by ten. Tab moves to the next setting or action.
+Space or Enter toggles a model's checkbox. The **Selected models** row applies
+reasoning, step size or trials to every selected model.
+
+The summary shows how many samples are already saved toward today's target and
+how many remain to collect. A model's detail line shows its own saved coverage;
+wide terminals also show Saved / target and To collect columns. These counts use
+the selected reasoning, probabilities and trial target. Saved samples above a
+probability's target, at other probabilities, or from other days do not fill its
+remaining slots.
+Starting from the TUI saves the complete configuration in `.data/config.json`,
+including deselected models' settings. The next interactive invocation loads it.
+On first use, all saved models are selected. Press `d` to restore all models,
+their default reasoning, 50 trials at 10% steps, concurrency 256 and the 4,096-token
+reasoning output limit. The restored settings are saved when you start sampling.
+
+| Key | Action |
+| --- | --- |
+| `a` / `n` | Select all / none |
+| `c` | Focus concurrency; Enter to edit |
+| `o` | Focus the output limit; Enter to edit |
+| `d` | Restore defaults |
+| `r` | Refresh OpenRouter prices |
+| `s` | Select Start benchmark; Enter to start |
+| `q` / Esc | Quit; Esc cancels an active edit |
+
+Costs update while editing without network requests. Prices are fetched on first
+use and saved to `.data/prices.json`; subsequent invocations reuse that file.
+Focus Refresh prices to see when they were fetched; Enter refreshes them.
+Press `r` to refresh directly. A failed refresh keeps the saved prices. The estimate includes reasoning
+tokens up to the output limit; it is not a spending cap.
+
+Explicit flags override saved values in the setup screen. For unattended sampling,
+pass `--yes`:
+
+```sh
 probabench --list   # saved models; any OpenRouter model ID works too
 probabench --model claude-haiku-5.5-off --dry-run
 probabench --model claude-opus-5.5-low,gemini-4-argon-low --yes
@@ -84,13 +127,14 @@ probabench --model meta/muse-wonder --reasoning minimal
 
 The list has 15 models: `--model all` targets 8,250 samples per day at Standard settings,
 or 750 with `--trials 10 --step 25`. Already saved answers count toward that total.
-`--dry-run` shows the missing requests and estimates their cost from OpenRouter’s
-live model pricing API. It needs no key and sends no sampling requests.
+`--dry-run` shows the missing requests and estimates their cost from the saved
+OpenRouter prices, fetching them if the cache is absent. It needs no OpenRouter
+key and sends no sampling requests.
 
 `--trials` and `--step` default to the Standard preset, which the page's form
 also starts from: a daily total of 50 samples at each probability, every 10%. The CLI
-prints the plan and asks before running unless `--yes` is given; without a
-terminal it refuses. A completed daily target synchronizes history and exits
+opens terminal setup unless `--yes` or `--dry-run` is given; without a
+terminal it requires `--yes`. A completed daily target synchronizes history and exits
 without confirmation or an OpenRouter key. `--dry-run` reads shared history and
 stops after the plan and cost estimate.
 
@@ -116,7 +160,8 @@ overhead. The range uses one output token through the configured output limit:
 of token-use scenarios, not a guaranteed spending cap. Provider routing, actual
 token counts, credit purchase fees and taxes can change the final charge. Missing
 or invalid prices are shown as unavailable rather than counted as free. If the
-pricing API is unavailable, sampling can still proceed after that is shown.
+pricing API is unavailable and no cache exists, sampling can still proceed after
+that is shown.
 
 ## Daily sampling and checkpoints
 

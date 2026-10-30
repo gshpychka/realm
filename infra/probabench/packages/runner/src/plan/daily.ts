@@ -1,11 +1,12 @@
 // A daily request is a desired total at each probability, not an instruction to
 // repeat that many calls. Raw saved replies, including invalid ones, fill slots.
 import { type Outcome, type Point, probabilityGrid, type Results } from "@probabench/domain";
-import type { BenchPlan } from "./plan";
+import { type BenchPlan, optionsFor, type SamplingOptions } from "./plan";
 import type { ModelSeries } from "./series";
 
 export interface DailySeries {
   readonly series: ModelSeries;
+  readonly options: SamplingOptions;
   readonly points: readonly Point[];
   readonly remaining: number;
 }
@@ -34,15 +35,17 @@ export const planDaily = (plan: BenchPlan, history: Results, startedAt: string):
     }
   }
   const series = plan.series.map((entry): DailySeries => {
-    const points = probabilityGrid(plan.options.stepPercent).map((x) => ({
+    const options = optionsFor(plan, entry);
+    const points = probabilityGrid(options.stepPercent).map((x) => ({
       x,
       outcomes: collected.get(entry.model)?.get(x) ?? [],
     }));
     return {
       series: entry,
+      options,
       points,
       remaining: points.reduce(
-        (sum, point) => sum + Math.max(0, plan.options.trialsPerStep - point.outcomes.length),
+        (sum, point) => sum + Math.max(0, options.trialsPerStep - point.outcomes.length),
         0,
       ),
     };

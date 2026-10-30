@@ -213,7 +213,9 @@ export const withSharedHistory = <A, E, R>(
  */
 export const makeCheckpointer = (
   path: string,
-  options: Pick<SamplingOptions, "trialsPerStep" | "stepPercent">,
+  options:
+    | Pick<SamplingOptions, "trialsPerStep" | "stepPercent">
+    | ((series: ModelSeries) => Pick<SamplingOptions, "trialsPerStep" | "stepPercent">),
   startedAt: string,
   upload: (runs: readonly Run[]) => Effect.Effect<void, CloudHistoryError> = () => Effect.void,
 ) => {
@@ -250,16 +252,19 @@ export const makeCheckpointer = (
               outcomes.push(sample.outcome);
               model.targets.set(sample.x, outcomes);
             }
-            const checkpoints: Run[] = [...models.values()].map(({ series, targets }) => ({
-              id: randomUUID(),
-              ...series,
-              trialsPerStep: options.trialsPerStep,
-              stepPercent: options.stepPercent,
-              startedAt,
-              points: [...targets]
-                .sort(([a], [b]) => a - b)
-                .map(([x, outcomes]) => ({ x, outcomes })),
-            }));
+            const checkpoints: Run[] = [...models.values()].map(({ series, targets }) => {
+              const sampling = typeof options === "function" ? options(series) : options;
+              return {
+                id: randomUUID(),
+                ...series,
+                trialsPerStep: sampling.trialsPerStep,
+                stepPercent: sampling.stepPercent,
+                startedAt,
+                points: [...targets]
+                  .sort(([a], [b]) => a - b)
+                  .map(([x, outcomes]) => ({ x, outcomes })),
+              };
+            });
             const result = yield* Effect.exit(
               appendCheckpoints(path, checkpoints).pipe(
                 Effect.andThen(failure ?? upload(checkpoints)),

@@ -24,9 +24,18 @@ export interface SamplingOptions {
 export interface BenchPlan {
   readonly series: NonEmptyReadonlyArray<ModelSeries>;
   readonly options: SamplingOptions;
+  readonly modelOptions?: ReadonlyMap<
+    string,
+    Pick<SamplingOptions, "trialsPerStep" | "stepPercent">
+  >;
   /** History file receiving durable partial checkpoints. */
   readonly out: string;
 }
+
+export const optionsFor = (plan: BenchPlan, series: ModelSeries): SamplingOptions => ({
+  ...plan.options,
+  ...plan.modelOptions?.get(series.model),
+});
 
 export const resolvePlan = (request: {
   /** Tokens from splitModels. */
