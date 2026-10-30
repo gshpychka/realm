@@ -322,7 +322,8 @@ class StoredSecrets:
         if not self.path or kind not in PROVIDER_TABLES:
             return None
         if kind not in self.cache:
-            # mode=ro: never writes; the app's -wal/-shm let it read current data
+            # mode=ro keeps the database read-only, but SQLite may create
+            # -wal/-shm beside it to read current data.
             uri = f"file:{urllib.parse.quote(self.path)}?mode=ro"
             try:
                 con = sqlite3.connect(uri, uri=True, timeout=30)

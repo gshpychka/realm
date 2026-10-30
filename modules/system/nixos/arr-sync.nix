@@ -540,6 +540,11 @@ in
             PrivateTmp = true;
             ProtectHome = true;
             ProtectSystem = "strict";
+            # Even mode=ro needs to create SQLite's -wal/-shm when the app has
+            # closed its last connection. Keep the database itself read-only;
+            # a fresh app may not have created it when this unit starts yet.
+            ReadWritePaths = lib.optional (t.database != null) (dirOf t.database);
+            ReadOnlyPaths = lib.optional (t.database != null) "-${t.database}";
           };
         }
       ) cfg.targets;
