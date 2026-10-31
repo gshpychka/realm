@@ -352,6 +352,14 @@ function direction(watts, enabled = true) {
   return Math.sign(watts);
 }
 
+// Only an explicit "on"/"off" is trusted. Missing, unknown, unavailable or any
+// other state is null: neither healthy nor failed.
+function flag(stateObj) {
+  if (stateObj?.state === "on") return true;
+  if (stateObj?.state === "off") return false;
+  return null;
+}
+
 function humanize(state) {
   const words = state.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -525,11 +533,14 @@ class VictronLiveCard extends HTMLElement {
     const entity = (key) => states[this._entities[key]];
     const value = (key, quantity) => numeric(entity(key), quantity);
 
-    const connected = entity("inverter_connected")?.state !== "off";
-    const gridPresent = entity("grid_present")?.state !== "off";
+    const connected = flag(entity("inverter_connected"));
+    const gridPresent = flag(entity("grid_present"));
 
     const gridPower = value("grid_power", "power");
-    this._set("gridTitle", gridPresent ? "Grid" : "Grid lost");
+    this._set(
+      "gridTitle",
+      gridPresent === true ? "Grid" : gridPresent === false ? "Grid lost" : "Grid unknown",
+    );
     this._set("gridPower", power(gridPower));
     this._set("gridVoltage", fixed(value("grid_voltage", "voltage"), 0, "V"));
     this._set("gridCurrent", current(value("grid_current", "current")));
@@ -542,7 +553,7 @@ class VictronLiveCard extends HTMLElement {
 
     const stateObj = entity("inverter_state");
     let inverterState = DASH;
-    if (!connected) {
+    if (connected === false) {
       inverterState = "Disconnected";
     } else if (stateObj && !isUnknownState(stateObj.state)) {
       // formatEntityState applies the integration's enum translations when it
@@ -551,6 +562,10 @@ class VictronLiveCard extends HTMLElement {
       inverterState = formatted === stateObj.state ? humanize(formatted) : formatted;
     }
     this._set("inverterState", inverterState);
+    // An unconfirmed connection keeps the state readout but drops the healthy blue.
+    this._fields
+      .get("inverterState")
+      .setAttribute("fill", connected === true ? COLOR.blue : COLOR.muted);
 
     const batteryPower = value("battery_power", "power");
     const batteryDirection = direction(batteryPower);
@@ -577,9 +592,10 @@ class VictronLiveCard extends HTMLElement {
     level.setAttribute("y", String(41 - fill));
     level.setAttribute("height", String(fill));
 
-    this._flow("grid", direction(gridPower, connected && gridPresent));
-    this._flow("loads", direction(loadsPower, connected));
-    this._flow("battery", direction(batteryPower, connected));
+    // Paths animate only on an explicit "on"; the readouts above stay as reported.
+    this._flow("grid", direction(gridPower, connected === true && gridPresent === true));
+    this._flow("loads", direction(loadsPower, connected === true));
+    this._flow("battery", direction(batteryPower, connected === true));
   }
 }
 

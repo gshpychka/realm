@@ -254,7 +254,11 @@ entities listed in its `DEFAULT_ENTITIES`; `entities:` overrides individual
 bindings and rejects unknown keys. Positive grid power is import and positive
 battery power is charging. Unknown, unavailable, non-finite or unrecognised-unit
 values render as an em dash and stop that path's animation; an unchanged
-`last_updated` is not treated as stale. Below 720px it switches to a stacked
+`last_updated` is not treated as stale. Paths animate only while the inverter
+connectivity sensor (and, for the grid path, the grid presence sensor) is
+explicitly `on`. A missing, unknown or unavailable flag stops the animation,
+titles the grid box "Grid unknown" and mutes the inverter state's colour, but
+every numeric readout still shows its reported value. Below 720px it switches to a stacked
 phone layout; reduced motion freezes the flow markers in place.
 
 `preStart` symlinks the immutable component directory to
@@ -267,7 +271,10 @@ for a month, so the Lovelace module resource carries `?v=` plus the first 12
 hex digits of the file's SHA-256. The resource and the `victron-live` dashboard
 are HA-owned storage, created and updated through HA's `lovelace/resources`
 and `lovelace/dashboards` APIs; update the resource's `?v=` whenever the card
-changes.
+changes. The symlink applies to this NixOS host only. On the current Home
+Assistant OS install, the card is a regular file under
+`/config/www/victron-live/`. Replace it atomically: copy to a temporary
+file in that directory, then rename it over the old file.
 
 Runtime credentials live under `/var/lib/private/home-assistant` with root-only
 access. `secrets.yaml` supplies `soundbar_api_key` and `yasno_address_guard` (the
