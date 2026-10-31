@@ -99,3 +99,48 @@ creation_rules:
         pgp:
           - *yubikey_alpha
           - *yubikey_nano
+  # Each host's ntfy notification credentials
+  - path_regex: secrets/notifications/eve\.yaml$
+    key_groups:
+      - age:
+          - *eve_host
+          - *buoy_host
+          - *glib_op
+        pgp:
+          - *yubikey_alpha
+          - *yubikey_nano
+  - path_regex: secrets/notifications/harbor\.yaml$
+    key_groups:
+      - age:
+          - *harbor_host
+          - *buoy_host
+          - *glib_op
+        pgp:
+          - *yubikey_alpha
+          - *yubikey_nano
+  - path_regex: secrets/notifications/reaper\.yaml$
+    key_groups:
+      - age:
+          - *reaper_host
+          - *buoy_host
+          - *glib_op
+        pgp:
+          - *yubikey_alpha
+          - *yubikey_nano
+  - path_regex: secrets/notifications/hoard\.yaml$
+    key_groups:
+      - age:
+          - *hoard_host
+          - *buoy_host
+          - *glib_op
+        pgp:
+          - *yubikey_alpha
+          - *yubikey_nano
+  - path_regex: secrets/notifications/buoy\.yaml$
+    key_groups:
+      - age:
+          - *buoy_host
+          - *glib_op
+        pgp:
+          - *yubikey_alpha
+          - *yubikey_nano
