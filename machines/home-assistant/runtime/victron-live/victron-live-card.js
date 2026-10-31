@@ -126,6 +126,10 @@ const LAYOUTS = Object.freeze({
   },
 });
 const NARROW_BELOW_PX = 720;
+// The card fills a panel view, which made the wide layout gigantic on desktop.
+// Only the inner card is capped (wide: 620x~534); the host keeps the full
+// width so the ResizeObserver still picks the layout from the available space.
+const MAX_CARD_WIDTH_PX = 620;
 
 // Flow particles move at a constant speed with constant spacing. Their motion
 // path extends under the boxes at both ends so short paths still read as flow.
@@ -445,6 +449,8 @@ class VictronLiveCard extends HTMLElement {
         :host { display: block; }
         ha-card, .card {
           display: block;
+          max-width: ${MAX_CARD_WIDTH_PX}px;
+          margin-inline: auto;
           overflow: hidden;
           background: ${COLOR.background};
           border-radius: var(--ha-card-border-radius, 12px);
