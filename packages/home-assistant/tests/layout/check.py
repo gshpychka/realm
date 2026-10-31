@@ -107,7 +107,7 @@ DOMAINS = {
     "weather",
 }
 TEST_CONCERNS = {"configuration", "layout", "mcp", "runtime", "templates", "updater"}
-RUNTIME_COMPONENTS = {"argonone", "backup", "yasno-address-guard"}
+RUNTIME_COMPONENTS = {"argonone", "backup", "victron-live", "yasno-address-guard"}
 
 
 def responsibility(base, local, root):

@@ -119,6 +119,11 @@
       mkdir -p /var/lib/hass/pyscript/apps /var/lib/hass/yasno-address-guard /var/lib/hass/media
       # The app source is immutable; its transaction/recovery journal is state.
       ln -sfn ${./runtime/yasno-address-guard} /var/lib/hass/pyscript/apps/yasno_address_guard
+      # HA registers /local/ only if www/ exists at startup; nixpkgs' Core patch
+      # lets it follow this store symlink. Other www/ entries are left alone.
+      # The dashboard and its versioned module resource are HA-owned storage.
+      mkdir -p /var/lib/hass/www
+      ln -sfn ${./runtime/victron-live} /var/lib/hass/www/victron-live
     '';
   };
 }
