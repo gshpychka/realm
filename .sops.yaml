@@ -69,8 +69,6 @@ creation_rules:
         pgp:
           - *yubikey_alpha
           - *yubikey_nano
-  # Secrets the OpenClaw agent decrypts itself with sops; hoard_host lets
-  # sops-nix deploy them to hoard as well.
   - path_regex: secrets/openclaw/.*
     key_groups:
       - age:
@@ -99,7 +97,6 @@ creation_rules:
         pgp:
           - *yubikey_alpha
           - *yubikey_nano
-  # Each host's ntfy notification credentials
   - path_regex: secrets/notifications/eve\.yaml$
     key_groups:
       - age:
