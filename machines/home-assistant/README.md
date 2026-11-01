@@ -260,13 +260,9 @@ The address stays in private configuration; the journal records only groups,
 official region/provider names, times and errors.
 
 The LaMetric TIME continuously shows the Kyiv air-alert level as an icon and the
-battery in one static frame, in LaMetric's maintained My Data DIY app. The text is
-the charge percent followed by the signed power in kW, units implicit, `+` while
-charging: `98-.6` is 98 % discharging 0.6 kW, `100+10` is 100 % charging 10 kW. Power
-uses 0.1 kW steps, 0.01 kW below 0.05 kW and a signed `0` under 5 W; `—` replaces
-an invalid value. Text beside the 8 px icon has 29 px; digits are 3 px with 1 px
-gaps ([community glyph table](https://gist.github.com/Tugzrida/ba9f3b364042923899d512597d16c751)),
-so the format stays within 7 glyphs and never scrolls. The
+battery as two pages of LaMetric's maintained My Data DIY app, each with the same
+icon and shown for 4 s: charge as `90%` (0–100) and power as `-550W` (`+` while
+charging, 10 W steps, `0W` at rest); `—` replaces an invalid value. The
 `lametric` integration only sends notifications, so `rest_command.lametric_time_status`
 pushes frames to the widget's local update endpoint. Of the widget's data sources
 (HTTP Poll, HTTP Push, MQTT Channel, MQTT Discovery, Web Socket), only HTTP Push

@@ -121,7 +121,7 @@ def audit_scope(hass, configuration):
         ("command_line",),
     )
     # rest_command renders with the calling action's data fields.
-    command_fields = {"lametric_time_status": {"icon", "text"}}
+    command_fields = {"lametric_time_status": {"icon", "charge_text", "power_text"}}
     for name, command in configuration.get("rest_command", {}).items():
         check(command, command_fields.get(name, set()), ("rest_command", name))
     expected = Counter(source for _, source in templates_in(configuration))
@@ -461,7 +461,8 @@ async def validate_templates(hass, config, contracts, literals, references):
         "print_error": None,
         "target_temperature": 22,
         "icon": "data:image/png;base64,fixture",
-        "text": "Fixture — +10W",
+        "charge_text": "—",
+        "power_text": "+10W",
     }
     exact = {
         "announcement": "Printer error. Check nozzle",
@@ -534,7 +535,8 @@ async def validate_templates(hass, config, contracts, literals, references):
         "gpt_ready": True,
         "lametric_frames": {
             "frames": [
-                {"icon": "data:image/png;base64,fixture", "text": "Fixture — +10W"}
+                {"icon": "data:image/png;base64,fixture", "text": "—", "duration": 4000},
+                {"icon": "data:image/png;base64,fixture", "text": "+10W", "duration": 4000},
             ]
         },
     }
