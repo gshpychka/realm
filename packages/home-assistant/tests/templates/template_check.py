@@ -120,10 +120,6 @@ def audit_scope(hass, configuration):
         {"value", "value_json", "this"},
         ("command_line",),
     )
-    # rest_command renders with the calling action's data fields.
-    command_fields = {"lametric_time_status": {"icon", "text"}}
-    for name, command in configuration.get("rest_command", {}).items():
-        check(command, command_fields.get(name, set()), ("rest_command", name))
     expected = Counter(source for _, source in templates_in(configuration))
     if audited != expected:
         raise ValueError("Template use outside the audited HA scopes")
@@ -311,7 +307,7 @@ async def validate_templates(hass, config, contracts, literals, references):
         ),
         "integer": "end_ts layer layers print_final_progress print_progress print_when progress",
         "list": "forecast next_hours",
-        "mapping": "gpt_request lametric_frames slots",
+        "mapping": "gpt_request slots",
         "nullable-text": "print_error",
         "number": "max_temp min_temp now_feels now_precip now_temp target_temperature temp_diff",
         "number-or-unknown": "fan_speed",
@@ -460,8 +456,6 @@ async def validate_templates(hass, config, contracts, literals, references):
         "eta": "18:00",
         "print_error": None,
         "target_temperature": 22,
-        "icon": "data:image/png;base64,fixture",
-        "text": "Fixture — +10W",
     }
     exact = {
         "announcement": "Printer error. Check nozzle",
@@ -532,11 +526,6 @@ async def validate_templates(hass, config, contracts, literals, references):
         "hvac_mode": "cool",
         "ac_ready": True,
         "gpt_ready": True,
-        "lametric_frames": {
-            "frames": [
-                {"icon": "data:image/png;base64,fixture", "text": "Fixture — +10W"}
-            ]
-        },
     }
     contains = {
         "city_power_off": [
