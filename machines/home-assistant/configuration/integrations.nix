@@ -40,6 +40,19 @@ in
           keep_alive = -1;
         };
       };
+      # LaMetric local API widget push to the TIME's My Data DIY widget; callers pass `icon` and `text`.
+      lametric_time_status = {
+        url = "!secret lametric_time_widget_url";
+        method = "post";
+        authentication = "basic";
+        username = "dev";
+        password = "!secret lametric_time_api_key";
+        # The TIME serves a self-signed certificate.
+        verify_ssl = false;
+        content_type = "application/json; charset=utf-8";
+        payload = templates.lametric_frames;
+        timeout = 5;
+      };
     };
     pyscript = {
       apps = {

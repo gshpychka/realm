@@ -93,8 +93,8 @@ accept nonempty ASCII identifiers and reject expression strings, filters, calls,
 indexing, invalid paths and reserved root names. They generate only dotted lookup
 syntax; more complex logic stays in semantic `.jinja` files.
 
-The 74 programs comprise five generated references and 69 authored programs under
-`configuration/<domain>/`, with one shared macro in `configuration/shared/` (70
+The 75 programs comprise five generated references and 70 authored programs under
+`configuration/<domain>/`, with one shared macro in `configuration/shared/` (71
 production files). `merge-template-domains.nix` rejects duplicate exports, and
 `template-files.nix` resolves file sources with `builtins.readFile` or emits a
 validated reference. Every resolved contract records its file/helper or reference
@@ -259,10 +259,32 @@ nine neutral entity IDs, their metadata and the live preferences, with rollback.
 The address stays in private configuration; the journal records only groups,
 official region/provider names, times and errors.
 
+The LaMetric TIME continuously shows the Kyiv air-alert level as an icon and the
+battery as `<charge>% <signed power>W` (positive while charging, rounded to
+10 W, `—` when unavailable) in LaMetric's maintained My Data DIY app. The
+`lametric` integration only sends notifications, so `rest_command.lametric_time_status`
+pushes frames to the widget's local update endpoint. The script and automations that
+drive it are HA-UI-owned and edited through HA, not Nix:
+`script.lametric_time_status` (config key `lametric_time_status`), and automations
+`lametric_time_alert` (alert sensor changes, HA start, TIME reconnect via
+`number.time_brightness`) and `lametric_time_power_refresh` (every 20 s). The
+UkraineAlarm red and yellow sensors are the API's `alertLevel` values on region 31's
+AIR alert, not separate areas
+([coordinator](https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/ukraine_alarm/coordinator.py)).
+Red wins; then any alert sensor outside `on`/`off` shows a grey `?`; then yellow;
+AIR without a level shows red; otherwise green. The DIY widget was activated once
+in the TIME's manual app mode, and its screensaver is disabled
+(`screensaver.enabled = false`) because LaMetric's screensaver can show only the
+clock; brightness, volume, the time window and other apps are unchanged. Rollback:
+delete the three UI items, remove the command, re-enable the screensaver through
+`PUT /api/v2/device/display`, and switch apps on the TIME.
+
 Runtime credentials live under `/var/lib/private/home-assistant` with root-only
-access. `secrets.yaml` supplies `soundbar_api_key` and `yasno_address_guard` (the
+access. `secrets.yaml` supplies `soundbar_api_key`, `yasno_address_guard` (the
 app configuration, including its address anchor, journal path and entity
-bindings). Systemd
+bindings), `lametric_time_api_key` (the TIME's local API key, also held by its
+LaMetric config entry) and `lametric_time_widget_url` (the TIME's local
+`/api/v2/widget/update/com.lametric.diy.devwidget/<widget id>` URL). Systemd
 passes the file to HA using `LoadCredential`. `ha-mcp.env` provides the MCP
 server's HA token, secret path and settings; `mosquitto-passwords` contains
 broker password hashes. HA and every MQTT client use ordinary broker credentials.

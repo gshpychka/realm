@@ -44,4 +44,9 @@
     file = "power/power-alarm.jinja";
     helpers = [ "shared/safe-fields.jinja" ];
   };
+  # rest_command sends the rendered JSON text; HA's native parser reads it as this mapping.
+  lametric_frames = {
+    output = "mapping";
+    file = "power/lametric-frames.jinja";
+  };
 }
