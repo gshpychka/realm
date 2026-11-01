@@ -263,7 +263,10 @@ The LaMetric TIME continuously shows the Kyiv air-alert level as an icon and the
 battery as `<charge>% <signed power>W` (positive while charging, rounded to
 10 W, `—` when unavailable) in LaMetric's maintained My Data DIY app. The
 `lametric` integration only sends notifications, so `rest_command.lametric_time_status`
-pushes frames to the widget's local update endpoint. The script and automations that
+pushes frames to the widget's local update endpoint. The widget consumes them only
+when its LaMetric-app settings select HTTP Push with the Predefined (LaMetric Format)
+data format; otherwise the device still answers 200 and the widget keeps its arrow
+and `0` placeholder. The local API neither reads nor sets these settings. The script and automations that
 drive it are HA-UI-owned and edited through HA, not Nix:
 `script.lametric_time_status` (config key `lametric_time_status`), and automations
 `lametric_time_alert` (alert sensor changes, HA start, TIME reconnect via
