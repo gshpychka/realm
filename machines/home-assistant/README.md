@@ -260,18 +260,25 @@ The address stays in private configuration; the journal records only groups,
 official region/provider names, times and errors.
 
 The LaMetric TIME continuously shows the Kyiv air-alert level as an icon and the
-battery as `<charge>% <signed power>W` (positive while charging, rounded to
-10 W, `—` when unavailable) in LaMetric's maintained My Data DIY app. The
+battery in one static frame, in LaMetric's maintained My Data DIY app. The text is
+the charge percent followed by the signed power in kW, units implicit, `+` while
+charging: `98-.6` is 98 % discharging 0.6 kW, `100+10` is 100 % charging 10 kW. Power
+uses 0.1 kW steps, 0.01 kW below 0.05 kW and a signed `0` under 5 W; `—` replaces
+an invalid value. Text beside the 8 px icon has 29 px; digits are 3 px with 1 px
+gaps ([community glyph table](https://gist.github.com/Tugzrida/ba9f3b364042923899d512597d16c751)),
+so the format stays within 7 glyphs and never scrolls. The
 `lametric` integration only sends notifications, so `rest_command.lametric_time_status`
 pushes frames to the widget's local update endpoint. Of the widget's data sources
 (HTTP Poll, HTTP Push, MQTT Channel, MQTT Discovery, Web Socket), only HTTP Push
 consumes them ([LaMetric](https://help.lametric.com/support/solutions/articles/6000268373-my-data-diy-no-code-capabilities-));
 the source is set in the LaMetric app, and the local API neither reads nor sets it.
-The device's 200 reply to an update does not show that the widget rendered it. The script and automations that
-drive it are HA-UI-owned and edited through HA, not Nix:
+The device's 200 reply to an update does not show that the widget rendered it; the
+widget here is set to HTTP Push. The script and automations that drive it are
+HA-UI-owned and edited through HA, not Nix:
 `script.lametric_time_status` (config key `lametric_time_status`), and automations
-`lametric_time_alert` (alert sensor changes, HA start, TIME reconnect via
-`number.time_brightness`) and `lametric_time_power_refresh` (every 20 s). The
+`automation.lametric_time_alert_and_reconnect_refresh` (config key
+`lametric_time_alert`; alert sensor changes, HA start, TIME reconnect via
+`number.time_brightness`) and `automation.lametric_time_power_refresh` (every 20 s). The
 UkraineAlarm red and yellow sensors are the API's `alertLevel` values on region 31's
 AIR alert, not separate areas
 ([coordinator](https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/ukraine_alarm/coordinator.py)).
