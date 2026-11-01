@@ -27,6 +27,28 @@ validation = load_module("validation")
 flow_contract = load_module("flow_contract")
 
 
+def live_preference(field):
+    """Current form value; HA's voluptuous_serialize nests the suggested value
+    under description.suggested_value, older/other serializers put it at top
+    level. Falsy values (False, 0) are real preferences. Returns None if absent;
+    raises if the form is ambiguous or not in a known shape."""
+    description = field.get("description")
+    if description is not None and not isinstance(description, dict):
+        raise RuntimeError("Unknown preferences form schema; refusing overwrite")
+    found = [
+        source["suggested_value"]
+        for source in (field, description or {})
+        if "suggested_value" in source
+    ]
+    if found:
+        if any(
+            value != found[0] or type(value) is not type(found[0]) for value in found
+        ):
+            raise RuntimeError("Conflicting live preferences; refusing overwrite")
+        return found[0]
+    return field.get("default")
+
+
 class Guard:
     def __init__(self, api, config, journal, save, now=None):
         self.api, self.config, self.journal, self.save = api, config, journal, save
@@ -147,7 +169,7 @@ class Guard:
                             "filter_probable",
                             "status_all_day_events",
                         ):
-                            value = field.get("suggested_value", field.get("default"))
+                            value = live_preference(field)
                             if value is None:
                                 raise RuntimeError(
                                     "Live preferences unavailable; refusing overwrite"
@@ -274,6 +296,18 @@ class Guard:
                 s["entity_id"]: s["state"]
                 for s in await self.api.http("GET", "/api/states")
             }
+            # The integration reports electricity "unknown" whenever no timed
+            # slot covers now and the day is not "no_outages" (coordinator
+            # current_state). Under official EmergencyShutdowns that is the
+            # correct value, so accept it only when this entry's own neutral
+            # status_today entity for the same group says emergency_shutdowns.
+            status_target = c["bindings"].get("status_today")
+            status_row = current.get(status_target, {}) if status_target else {}
+            emergency = (
+                status_row.get("unique_id") == prefix + "status_today"
+                and status_row.get("config_entry_id") == c["entry_id"]
+                and states.get(status_target) == "emergency_shutdowns"
+            )
             valid = True
             for key, target in c["bindings"].items():
                 row = current.get(target, {})
@@ -283,7 +317,10 @@ class Guard:
                 ):
                     valid = False
                     break
-                if key == "electricity" and states[target] not in ("normal", "outage"):
+                if key == "electricity" and not (
+                    states[target] in ("normal", "outage")
+                    or (emergency and states[target] == "unknown")
+                ):
                     valid = False
                     break
                 if key == "status_today" and states[target] not in (
