@@ -99,11 +99,17 @@ class InProcessAPI:
                 entry = self.hass.config_entries.async_get_entry(
                     self.config["entry_id"]
                 )
-                return (
-                    []
-                    if entry is None
-                    else [{"entry_id": entry.entry_id, "state": entry.state.value}]
-                )
+                if entry is None:
+                    return []
+                # Names the integration resolves at setup, options over data as
+                # in its own get_config_value.
+                names = {
+                    key: entry.options.get(key, entry.data.get(key))
+                    for key in ("region", "provider")
+                }
+                return [
+                    {"entry_id": entry.entry_id, "state": entry.state.value, **names}
+                ]
             flow = self.hass.config_entries.flow
             if method == "POST" and path == "/api/config/config_entries/flow":
                 if data != {

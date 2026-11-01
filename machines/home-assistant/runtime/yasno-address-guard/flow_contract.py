@@ -41,10 +41,12 @@ def next_input(response, settings, group):
     }
     if not set(payload).issubset(fields) or not required.issubset(payload):
         raise IncompatibleFlow("Integration form schema changed")
-    if step == "group":
-        field = next(f for f in response["data_schema"] if f["name"] == "group")
-        options = field.get("selector", {}).get("select", {}).get("options", [])
-        allowed = {o if isinstance(o, str) else o.get("value") for o in options}
-        if group not in allowed:
-            raise IncompatibleFlow("Candidate is not offered by integration")
+    # Region, provider and group are select fields over the integration's own
+    # official lookup; a value it does not offer must not be submitted.
+    for field in response["data_schema"]:
+        if field["name"] in payload and "select" in field.get("selector", {}):
+            options = field["selector"]["select"].get("options", [])
+            allowed = {o if isinstance(o, str) else o.get("value") for o in options}
+            if payload[field["name"]] not in allowed:
+                raise IncompatibleFlow("Candidate is not offered by integration")
     return payload

@@ -7,11 +7,51 @@ import importlib.util
 import json
 import os
 import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote, urlencode
 
 HERE = Path(__file__).parent
+OFFICIAL = "https://app.yasno.ua/api/blackout-service/public/shutdowns/"
+
+# Failed checks retry after 15 minutes, doubling up to this cap so a lasting
+# provider fault or fail-closed address mismatch cannot repeat every trigger.
+RETRY_CAP_MINUTES = 360
+
+# Quote and apostrophe styles fold to one character each. Nothing is removed,
+# so a missing quote, word or building suffix still fails the comparison.
+QUOTES = str.maketrans(
+    {"«": '"', "»": '"', "“": '"', "”": '"', "„": '"', "’": "'", "ʼ": "'", "‘": "'"}
+)
+
+# The same DSO was renamed from ПРАТ to ТОВ (2026-11). Only one of these leading
+# legal-form words is ignored in provider names; the remainder must match.
+LEGAL_FORMS = ("прат", "тов")
+
+# Leading street-type spellings that name the same street type. "пр." is absent
+# because it abbreviates проспект, провулок and проїзд alike.
+STREET_TYPES = {
+    "вул.": "вулиця",
+    "вулиця": "вулиця",
+    "просп.": "проспект",
+    "пр-т": "проспект",
+    "проспект": "проспект",
+    "пров.": "провулок",
+    "провулок": "провулок",
+    "бульв.": "бульвар",
+    "б-р": "бульвар",
+    "бульвар": "бульвар",
+    "пл.": "площа",
+    "площа": "площа",
+    "наб.": "набережна",
+    "набережна": "набережна",
+    "узв.": "узвіз",
+    "узвіз": "узвіз",
+    "шос.": "шосе",
+    "шосе": "шосе",
+}
 
 
 def load_module(name):
@@ -49,13 +89,66 @@ def live_preference(field):
     return field.get("default")
 
 
+def words(value):
+    """Case-, Unicode-form-, quote-style- and whitespace-insensitive tokens."""
+    if type(value) is not str:
+        raise ValueError("Malformed address name")
+    result = unicodedata.normalize("NFKC", value).translate(QUOTES).casefold().split()
+    if not result:
+        raise ValueError("Empty address name")
+    return result
+
+
+def provider_key(value):
+    result = words(value)
+    return result[1:] if result[0] in LEGAL_FORMS and len(result) > 1 else result
+
+
+def street_key(value):
+    result = words(value)
+    return [STREET_TYPES.get(result[0], result[0]), *result[1:]]
+
+
+def only(items, matches):
+    """The single official item naming the anchor; none or several fail closed."""
+    found = [item for item in items if matches(item)]
+    if len(found) != 1:
+        raise RuntimeError("Address anchor not matched exactly once")
+    return found[0]
+
+
+def official_items(value, name):
+    if not isinstance(value, list) or not all(
+        isinstance(item, dict)
+        and type(item.get("id")) is int
+        and item["id"] > 0
+        and type(item.get(name)) is str
+        for item in value
+    ):
+        raise ValueError("Malformed official address response")
+    return value
+
+
 class Guard:
     def __init__(self, api, config, journal, save, now=None):
         self.api, self.config, self.journal, self.save = api, config, journal, save
         self.now = now or datetime.now(timezone.utc)
+        # Official region/provider names for the reconfigure target, and whether
+        # the entry's stored names differ from them. Set by candidate().
+        self.target = None
+        self.rename = False
 
     def persist(self):
         self.save(self.journal)
+
+    def retry_later(self):
+        failures = self.journal.get("failures", 0) + 1
+        delay = min(15 * 2 ** (failures - 1), RETRY_CAP_MINUTES)
+        self.journal.update(
+            failures=failures,
+            next_check=(self.now + timedelta(minutes=delay)).isoformat(),
+        )
+        return delay
 
     async def notify(self, message):
         try:
@@ -98,54 +191,96 @@ class Guard:
             )
         return groups.pop()
 
+    async def official(self, path, **params):
+        query = "?" + urlencode(params, quote_via=quote) if params else ""
+        return await self.api.http("GET", OFFICIAL + path + query, external=True)
+
+    async def entry(self):
+        entries = await self.api.http("GET", "/api/config/config_entries/entry")
+        for entry in entries:
+            if entry["entry_id"] == self.config["entry_id"]:
+                return entry
+        raise RuntimeError("Yasno config entry missing")
+
+    def anchor(self):
+        # The human-verified address is the identity. Official numeric IDs are
+        # re-resolved from it on every check: Yasno rotates them, and a cached
+        # ID cannot be tied to the anchor without journaling the address.
+        value = self.config.get("address")
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"region", "provider", "street", "building"}
+            or not all(type(v) is str and v.strip() for v in value.values())
+        ):
+            raise ValueError("Address anchor missing or malformed")
+        return value
+
     async def candidate(self):
-        c = self.config
-        root = "https://app.yasno.ua/api/blackout-service/public/shutdowns/"
-        address = await self.api.http(
-            "GET",
-            root
-            + "addresses/v2/group?regionId="
-            + str(c["region_id"])
-            + "&dsoId="
-            + str(c["provider_id"])
-            + "&streetId="
-            + str(c["street_id"])
-            + "&houseId="
-            + str(c["house_id"]),
-            external=True,
+        want = self.anchor()
+        region = only(
+            official_items(await self.official("addresses/v2/regions"), "value"),
+            lambda r: words(r["value"]) == words(want["region"]),
+        )
+        dso = only(
+            official_items(region.get("dsos"), "name"),
+            lambda d: provider_key(d["name"]) == provider_key(want["provider"]),
+        )
+        ids = {"regionId": region["id"], "dsoId": dso["id"]}
+        # Search by the street name alone; results are then compared in full.
+        street_words = unicodedata.normalize("NFKC", want["street"]).split()
+        if words(want["street"])[0] in STREET_TYPES and len(street_words) > 1:
+            street_words = street_words[1:]
+        street = only(
+            official_items(
+                await self.official(
+                    "addresses/v2/streets", **ids, query=" ".join(street_words)
+                ),
+                "value",
+            ),
+            lambda s: street_key(s["value"]) == street_key(want["street"]),
+        )
+        house = only(
+            official_items(
+                await self.official(
+                    "addresses/v2/houses",
+                    **ids,
+                    streetId=street["id"],
+                    query=" ".join(want["building"].split()),
+                ),
+                "value",
+            ),
+            lambda h: words(h["value"]) == words(want["building"]),
+        )
+        address = await self.official(
+            "addresses/v2/group", **ids, streetId=street["id"], houseId=house["id"]
         )
         if (
-            type(address.get("group")) is not int
+            not isinstance(address, dict)
+            or type(address.get("group")) is not int
             or type(address.get("subgroup")) is not int
             or address["group"] <= 0
             or address["subgroup"] <= 0
         ):
             raise ValueError("Invalid official address response")
         group = str(address["group"]) + "." + str(address["subgroup"])
-        planned = await self.api.http(
-            "GET",
-            root
-            + "regions/"
-            + str(c["region_id"])
+        planned = await self.official(
+            "regions/"
+            + str(region["id"])
             + "/dsos/"
-            + str(c["provider_id"])
-            + "/planned-outages",
-            external=True,
+            + str(dso["id"])
+            + "/planned-outages"
         )
-        probable = await self.api.http(
-            "GET",
-            root
-            + "probable-outages?regionId="
-            + str(c["region_id"])
-            + "&dsoId="
-            + str(c["provider_id"]),
-            external=True,
-        )
+        probable = await self.official("probable-outages", **ids)
         api = SimpleNamespace(
-            group=group, region_id=c["region_id"], provider_id=c["provider_id"]
+            group=group, region_id=region["id"], provider_id=dso["id"]
         )
         validation.validate_planned(api, planned, self.now, require_available=True)
         validation.validate_probable(api, probable)
+        # The integration resolves its stored names exactly at setup, so a renamed
+        # provider needs a reconfigure even when the group is unchanged.
+        self.target = {"region": region["value"], "provider": dso["name"]}
+        entry = await self.entry()
+        self.rename = any(entry.get(k) != v for k, v in self.target.items())
         return group
 
     async def reconfigure(self, group):
@@ -158,6 +293,11 @@ class Guard:
                 {"handler": "yasno_outages", "entry_id": c["entry_id"]},
             )
             settings = dict(c["settings"])
+            # Without a resolved target (legacy rollback), keep the entry's names.
+            if self.target is None:
+                entry = await self.entry()
+                self.target = {k: entry[k] for k in ("region", "provider")}
+            settings.update(self.target)
             for _ in range(10):
                 flow_id = response.get("flow_id", flow_id)
                 # Preserve the user's current preferences from the live form.
@@ -216,6 +356,7 @@ class Guard:
             if (
                 entry
                 and entry.get("state") == "loaded"
+                and all(entry.get(k) == v for k, v in (self.target or {}).items())
                 and len(matched) == 9
                 and all(
                     states.get(r["entity_id"]) not in (None, "unavailable")
@@ -344,6 +485,10 @@ class Guard:
 
     async def rollback(self):
         tx = self.journal["pending"]
+        # A renamed provider's old name no longer resolves; restore the previous
+        # group under the official names recorded for the transaction.
+        if "provider" in tx:
+            self.target = {"region": tx["region"], "provider": tx["provider"]}
         await self.reconfigure(tx["previous_group"])
         await self.loaded(tx["previous_group"])
         await self.handover(tx["previous_group"])
@@ -356,9 +501,22 @@ class Guard:
         if j.get("pending"):
             if dry_run:
                 return {"status": "repair_pending", "writes": 0}
+            # Each rollback drives the integration's own official lookups, so
+            # retries after a failed rollback back off; crash recovery does not.
+            if (
+                not force_check
+                and j.get("failures")
+                and self.now < datetime.fromisoformat(j["next_check"])
+            ):
+                return {
+                    "status": "repair_required",
+                    "next_check": j["next_check"],
+                    "notification_failed": j.get("notification_failed", False),
+                }
             try:
                 await self.rollback()
             except Exception:
+                self.retry_later()
                 await self.notify(
                     "Yasno correction recovery could not complete. Existing references may be temporarily unavailable; manual repair is required. No unknown schedule is treated as an outage."
                 )
@@ -383,17 +541,16 @@ class Guard:
         try:
             previous_group = await self.group()
             group = await self.candidate()
+            change = group != previous_group or self.rename
             if dry_run:
                 return {
-                    "status": "validated_unchanged"
-                    if group == previous_group
-                    else "validated_change",
+                    "status": "validated_change" if change else "validated_unchanged",
                     "group": group,
                     "current_group": previous_group,
                     "checked_at": self.now.isoformat(),
                     "writes": 0,
                 }
-            if group != previous_group:
+            if change:
                 before = {r["entity_id"]: r for r in await self.registry()}
                 metadata = {
                     key: before[target]
@@ -403,6 +560,7 @@ class Guard:
                     "previous_group": previous_group,
                     "new_group": group,
                     "metadata": metadata,
+                    **(self.target or {}),
                 }
                 self.persist()
                 await self.reconfigure(group)
@@ -416,6 +574,7 @@ class Guard:
                 error=None,
                 notification_failed=False,
             )
+            j.pop("failures", None)
             self.persist()
             return {
                 "status": "verified",
@@ -432,10 +591,8 @@ class Guard:
                     recovered = True
                 except Exception:
                     pass
-            j.update(
-                error="official_lookup_validation_or_correction_failed",
-                next_check=(self.now + timedelta(minutes=15)).isoformat(),
-            )
+            delay = self.retry_later()
+            j["error"] = "official_lookup_validation_or_correction_failed"
             if not dry_run:
                 self.persist()
                 await self.notify(
@@ -445,7 +602,7 @@ class Guard:
                         if recovered
                         else "Last valid group retained in journal; check integration state before relying on schedules."
                     )
-                    + " Retry in 15 minutes; unknown schedule is not an outage."
+                    + f" Retry in {delay} minutes; unknown schedule is not an outage."
                 )
             return {
                 "status": "rolled_back"
