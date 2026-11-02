@@ -122,6 +122,7 @@ in
           trigger = "numeric_state";
         }
       ];
+      conditions = [ (state entities.binary_sensor.cityPower "off") ];
       actions = [
         (announce templates.battery_time_low { preannounce = true; })
       ];
