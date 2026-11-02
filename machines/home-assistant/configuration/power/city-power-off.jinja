@@ -30,7 +30,7 @@ No information about how long the outage will last.
 {% elif schedule == 'normal' and covered -%}
 This is not a scheduled outage.
 {% elif emergency -%}
-Yasno reports emergency shutdowns; no timed schedule or restoration estimate is available.
+this is an emergency outage
 {% elif schedule in ['outage', 'normal'] -%}
 The outage schedule does not cover the current time, so I cannot confirm whether this outage is scheduled.
 {% else -%}
