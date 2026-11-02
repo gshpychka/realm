@@ -15,6 +15,7 @@ let
 
   arrayMountPoint = config.fileSystems."/mnt/hoard".mountPoint;
   arrayMountUnit = "${utils.escapeSystemdPath arrayMountPoint}.mount";
+  notify = lib.getExe config.my.notifications.package;
   # Services whose data lives on the array. With the enclosure absent they are
   # skipped, and they start once the array mounts and stop if it goes away.
   arrayServices = [
@@ -188,11 +189,44 @@ in
         script = ''
           if ! ${pkgs.coreutils}/bin/touch ${unitConfig.ConditionPathIsMountPoint}/.health-check 2>/dev/null; then
             echo "Filesystem not healthy, rebooting"
+            ${notify} -p 5 -t rotating_light "${arrayMountPoint} is not writable, rebooting" \
+              "The array failed its write health check." || true
             ${pkgs.systemd}/bin/systemctl --no-block reboot
           fi
         '';
       };
+
+      # Reports and resets the kernel's per-device error counters, which hold
+      # the errors since the last notification.
+      btrfs-device-errors = {
+        description = "Notify about new btrfs device errors on the array";
+        unitConfig.ConditionPathIsMountPoint = arrayMountPoint;
+        onFailure = [ "notify-unit-failure@%n.service" ];
+        path = [ pkgs.btrfs-progs ];
+        serviceConfig.Type = "oneshot";
+        script = ''
+          # --check exits non-zero when any counter is non-zero
+          if ! stats=$(btrfs device stats --check ${arrayMountPoint}); then
+            grep --invert-match ' 0$' <<<"$stats" \
+              | ${notify} -p 4 -t warning "New btrfs errors on ${arrayMountPoint}"
+            btrfs device stats --reset ${arrayMountPoint} >/dev/null
+          fi
+        '';
+      };
+
+      # btrfs scrub exits 3 when it finds uncorrectable errors
+      "btrfs-scrub@".onFailure = [ "notify-unit-failure@%n.service" ];
     };
+
+  systemd.timers.btrfs-device-errors = {
+    wantedBy = [ arrayMountUnit ];
+    after = [ arrayMountUnit ];
+    partOf = [ arrayMountUnit ];
+    timerConfig = {
+      OnActiveSec = "1min";
+      OnUnitActiveSec = "15min";
+    };
+  };
 
   systemd.timers.reboot-if-hoard-is-borked =
     let
