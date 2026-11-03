@@ -534,10 +534,7 @@ async def validate_templates(hass, config, contracts, literals, references):
         "ac_ready": True,
         "gpt_ready": True,
         "lametric_frames": {
-            "frames": [
-                {"icon": "data:image/png;base64,fixture", "text": "—", "duration": 4000},
-                {"icon": "data:image/png;base64,fixture", "text": "+10W", "duration": 4000},
-            ]
+            "frames": [{"icon": "data:image/png;base64,fixture", "text": "— +10W"}]
         },
     }
     contains = {
