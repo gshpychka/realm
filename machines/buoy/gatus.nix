@@ -55,6 +55,8 @@ in
       storage = {
         type = "sqlite";
         path = "/var/lib/gatus/data.db";
+        # 7 days at one result per 30 s, kept per endpoint (Gatus defaults to 100)
+        maximum-number-of-results = 20160;
       };
       alerting.custom = {
         url = "https://api.telegram.org/bot\${TELEGRAM_BOT_TOKEN}/sendMessage";

@@ -27,6 +27,7 @@
     ./users.nix
     ./frontend.nix
     ./monitoring.nix
+    ./gatus-diagnostics.nix
     ./tautulli
     ./downloaders.nix
     ./media.nix
