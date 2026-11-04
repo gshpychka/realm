@@ -58,6 +58,7 @@
       extraGroups = [ "wheel" ];
       openssh.authorizedKeys.keys = [
         config.my.sshKeys.main
+        config.my.sshKeys.openclaw
       ];
     };
   };
