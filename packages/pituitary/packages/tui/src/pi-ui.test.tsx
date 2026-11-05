@@ -7,6 +7,7 @@ import type { EditorHandle } from "./components/editor.tsx";
 import type { PiUiPort, PiUiRequest, PiUiResponse } from "./pi.ts";
 import { FAST_STATUS } from "./pi-fast.ts";
 import { PiWidgets, usePiUI } from "./pi-ui.tsx";
+import { USAGE_STATUS, type UsageDisplay } from "./usage/types.ts";
 
 /** Exercise the frontend protocol without starting an agent or a model. */
 function uiPort(initial: PiUiRequest[] = []) {
@@ -79,6 +80,9 @@ async function mount(port?: PiUiPort) {
     },
     async disconnect() {
       await change(() => root.render(<Probe />));
+    },
+    async reconnect() {
+      await change(() => root.render(<Probe connection={port} />));
     },
     close() {
       act(() => flushSync(() => root.unmount()));
@@ -257,6 +261,51 @@ test("Fast mode's status marks the footer's model and stays out of the extension
     await fast("fast");
     await app.disconnect();
     expect(app.state().fast).toBe(false);
+  } finally {
+    app.close();
+  }
+});
+
+test("provider usage has a validated private UI projection and clears on disconnect", async () => {
+  const source = uiPort();
+  const app = await mount(source.port);
+  const usage: UsageDisplay = {
+    open: true,
+    report: {
+      provider: "anthropic",
+      auth: "subscription",
+      model: "test",
+      state: "ready",
+      metrics: [],
+      notes: [],
+    },
+  };
+  const emit = (statusText?: string) =>
+    app.change(() =>
+      source.emit({
+        type: "extension_ui_request",
+        id: "usage",
+        method: "setStatus",
+        statusKey: USAGE_STATUS,
+        statusText,
+      }),
+    );
+  try {
+    await emit(JSON.stringify(usage));
+    expect(app.state().usage).toEqual(usage);
+    expect(app.state().statuses).toEqual([]);
+    await emit("invalid json");
+    expect(app.state().usage).toBeUndefined();
+    expect(app.captureCharFrame()).not.toContain("invalid json");
+    await emit(JSON.stringify(usage));
+    await app.disconnect();
+    expect(app.state().usage).toBeUndefined();
+    await app.reconnect();
+    expect(app.state().usage).toEqual(usage);
+    await emit();
+    await app.disconnect();
+    await app.reconnect();
+    expect(app.state().usage).toBeUndefined();
   } finally {
     app.close();
   }

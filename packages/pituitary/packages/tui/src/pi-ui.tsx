@@ -7,10 +7,15 @@ import { glyphs } from "./glyphs.ts";
 import type { PiUiPort, PiUiRequest } from "./pi.ts";
 import { FAST_STATUS } from "./pi-fast.ts";
 import { theme } from "./theme.ts";
+import { decodeUsage } from "./usage/presentation.ts";
+import { USAGE_STATUS, type UsageDisplay } from "./usage/types.ts";
 import type { SessionController } from "./use-session.ts";
 
 type Question = Extract<PiUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
 type Widget = { lines: string[]; placement: "aboveEditor" | "belowEditor" };
+
+// A Pi connection outlives the React root replaced by /new.
+const usageDisplays = new WeakMap<PiUiPort, UsageDisplay>();
 
 function extensionStatus(key: string, text = ""): string {
   const status = plain(text);
@@ -33,13 +38,16 @@ export function usePiUI(
   const [questions, setQuestions] = useState<{ request: Question; deadline?: number }[]>([]);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [fast, setFast] = useState(false);
+  const [usage, setUsage] = useState<UsageDisplay>();
   const [widgets, setWidgets] = useState<Record<string, Widget>>({});
   useEffect(() => {
     setQuestions([]);
     setStatuses({});
     setFast(false);
+    setUsage(port ? usageDisplays.get(port) : undefined);
     setWidgets({});
-    return port?.onRequest((request) => {
+    if (!port) return;
+    return port.onRequest((request) => {
       switch (request.method) {
         case "notify":
           notify(request.notifyType ?? "info", plain(request.message));
@@ -48,7 +56,12 @@ export function usePiUI(
           // Extension counters belong in /automode status and /rewind.
           if (request.statusKey === "pi-automode" || request.statusKey === "rewind") break;
           if (request.statusKey === FAST_STATUS) setFast(Boolean(request.statusText));
-          else
+          else if (request.statusKey === USAGE_STATUS) {
+            const display = decodeUsage(request.statusText);
+            if (display) usageDisplays.set(port, display);
+            else usageDisplays.delete(port);
+            setUsage(display);
+          } else
             setStatuses((current) => ({
               ...current,
               [request.statusKey]: extensionStatus(request.statusKey, request.statusText),
@@ -142,6 +155,7 @@ export function usePiUI(
     statuses: Object.values(statuses).filter(Boolean),
     /** Whether replies to the selected model come at Fast mode's priority speed. */
     fast,
+    usage,
     widgets: Object.values(widgets),
   };
 }
