@@ -43,7 +43,11 @@ in
           pi-claude-agent-sdk
         ];
         # resource paths leave configDir/extensions to per-package config such as pi-automode's
-        extensions = [ "${./config/extensions}" ];
+        extensions = [
+          # pi-mcp-adapter's startup auto-disable cannot write store-owned settings.
+          "-builtin:mcp"
+          "${./config/extensions}"
+        ];
         prompts = [ "${./config/prompts}" ];
         themes = [ "${./config/themes}" ];
         # ctrl+P cycles through these
