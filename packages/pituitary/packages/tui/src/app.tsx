@@ -858,6 +858,10 @@ export function App({
               branch={branch}
               pull={pull}
               fast={piUI.fast}
+              usage={piUI.usage}
+              onUsageToggle={() => {
+                void link.prompt("/usage").catch((error) => session.notify("warning", String(error)));
+              }}
             />
           </box>
           <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />

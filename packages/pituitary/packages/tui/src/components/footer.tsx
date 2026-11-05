@@ -1,7 +1,7 @@
 import { type MouseEvent, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { SessionState, SessionStats } from "@pituitary/session";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FIREBOX, type FooterStyle, footerStyle } from "../footer-style.ts";
 import type { PullRequest, PullState } from "../github/pull-request.ts";
 import { type Glyph, glyphs } from "../glyphs.ts";
@@ -9,8 +9,10 @@ import { modelName } from "../model-names.ts";
 import { tilde } from "../place.ts";
 import { type ProviderMark, providerMark } from "../provider.ts";
 import { ellipsize, headCells, tailCells } from "../text-width.ts";
+import type { UsageDisplay } from "../usage/types.ts";
 import { Link } from "./link.tsx";
 import { MascotSlot } from "./mascot.tsx";
+import { UsagePanel } from "./provider-usage.tsx";
 
 export interface FooterProps {
   state: SessionState | null;
@@ -23,6 +25,8 @@ export interface FooterProps {
   pull?: PullRequest | null;
   /** Whether replies to the model come at Fast mode's priority speed. */
   fast?: boolean;
+  usage?: UsageDisplay;
+  onUsageToggle?(): void;
 }
 
 /** Context use at which the percentage warns, then alarms, as pi's own footer does. */
@@ -116,9 +120,19 @@ export interface Parts {
   thinking: string | null;
   percent: number | null;
   cost: string | null;
+  hasUsage: boolean;
 }
 
-export function footerParts({ state, stats, cwd, location, branch, pull, fast = false }: FooterProps): Parts {
+export function footerParts({
+  state,
+  stats,
+  cwd,
+  location,
+  branch,
+  pull,
+  fast = false,
+  usage,
+}: FooterProps): Parts {
   const thinking = state?.thinkingLevel && state.thinkingLevel !== "off" ? state.thinkingLevel : null;
   const percent = stats?.contextUsage?.percent ?? null;
   return {
@@ -132,6 +146,7 @@ export function footerParts({ state, stats, cwd, location, branch, pull, fast = 
     thinking,
     percent: percent === null ? null : Math.round(percent),
     cost: stats ? `$${stats.cost.toFixed(2)}` : null,
+    hasUsage: Boolean(usage),
   };
 }
 
@@ -254,10 +269,10 @@ function figure(style: FooterStyle, text: string, tone: BudgetTone, rest: string
 function budget(p: Parts, style: FooterStyle, { thinking, open, hearth, nameRoom }: BudgetOptions): Seg[] {
   const c = style.palette;
   const onCard: (Seg[] | null)[] = [
-    p.cost
+    p.cost || p.hasUsage
       ? [
           { text: glyphs.card, fg: open ? c.innerText : c.innerDim, ...(open ? { bold: true } : {}) },
-          ...(open ? [{ text: ` ${p.cost}`, fg: c.innerText }] : []),
+          ...(open && p.cost && !p.hasUsage ? [{ text: ` session ${p.cost}`, fg: c.innerText }] : []),
         ]
       : null,
   ];
@@ -395,19 +410,32 @@ const STYLE = footerStyle();
  * Where the session is, what answers it, how full its context is, and what it has cost, in bands
  * from the screen's edges inward, ending in the fire's hearth.
  *
- * The card shows the native usage ledger's cost when opened.
+ * The card separates provider limits from the session's estimated cost.
  */
 export function Footer(props: FooterProps) {
   const { width: columns } = useTerminalDimensions();
-  const [open, setOpen] = useState(false);
+  const [localOpen, setOpen] = useState(false);
+  const [now, setNow] = useState(Date.now);
+  const showUsage = Boolean(props.usage?.open);
+  useEffect(() => {
+    if (!showUsage) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [showUsage]);
+  const open = props.usage?.open ?? localOpen;
   const rows = footerRows(footerParts(props), columns, STYLE, open);
   const toggle = (event: MouseEvent) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    setOpen((was) => !was);
+    if (props.usage && props.onUsageToggle) props.onUsageToggle();
+    else setOpen((was) => !was);
   };
   return (
     <box flexDirection="column" flexShrink={0} backgroundColor={STYLE.palette.bar}>
+      {open && props.usage ? (
+        <UsagePanel report={props.usage.report} now={now} sessionCost={props.stats?.cost} />
+      ) : null}
       {rows.map((row, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows keep their order, top then bottom
         <FooterRow key={index} row={row} bar={STYLE.palette.bar} onCard={toggle} />

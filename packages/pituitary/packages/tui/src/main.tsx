@@ -18,7 +18,10 @@ import { mark } from "./profile.ts";
 import { RELOAD_UI } from "./ui-state.ts";
 
 mark("modules");
-const FAST = fileURLToPath(new URL("./pi-fast.ts", import.meta.url));
+const EXTENSIONS = ["./pi-fast.ts", "./pi-usage.ts"].flatMap((path) => [
+  "--extension",
+  fileURLToPath(new URL(path, import.meta.url)),
+]);
 const argv = process.argv.slice(2);
 try {
   if (argv.includes("--help") || argv.includes("-h")) {
@@ -50,8 +53,7 @@ async function runPi(agent: PiCommand): Promise<void> {
   }
   const log = openLog();
   process.on("unhandledRejection", (reason) => log.write(`unhandled rejection: ${String(reason)}\n`));
-  // Conversations record their Fast mode choice, so every Pi that opens one carries the extension, handoff screens included.
-  const piArgs = [...agent.args, "--extension", FAST];
+  const piArgs = [...agent.args, ...EXTENSIONS];
   const start = (args: readonly string[]) =>
     new PiConversation({
       command: agent.command,
