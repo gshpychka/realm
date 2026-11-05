@@ -58,6 +58,8 @@ export interface NoticeEntry {
   level: "info" | "warning" | "error";
   text: string;
   local?: boolean;
+  /** The key of the session message a local notice follows; one without leads the conversation. */
+  after?: string;
 }
 
 /** A native domain message with host attribution, such as an inter-agent inbox delivery. */
@@ -113,6 +115,8 @@ export interface SessionView {
   seq: number;
   /** Messages completed so far, which is what pi counts in `messageCount`. */
   messages: number;
+  /** The key of the latest message pi recorded. */
+  last: string | null;
   /** When the run in progress began, in milliseconds since the epoch, as this client saw it. */
   startedAt: number | null;
   /** The automatic retry pi is waiting to make, while it waits. */
@@ -132,8 +136,6 @@ export interface TurnSoFar {
   tools: number;
   /** How the latest reply ended, when not with a finished one. */
   outcome: Outcome | null;
-  /** The key of the latest message pi recorded. */
-  last: string | null;
 }
 
 export interface Retry {
@@ -152,6 +154,7 @@ export const emptySession: SessionView = {
   detail: null,
   seq: 0,
   messages: 0,
+  last: null,
   startedAt: null,
   retry: null,
   waitingSince: null,
@@ -191,27 +194,43 @@ function place(message: Message): string | null {
 /**
  * The conversation a stored session holds, as a view. A tool call with no result in
  * the session never finished, so it shows as interrupted. When `previous` is a view of
- * the same session, each turn summary it holds follows the message its turn ended on.
+ * the same session, each turn summary and local notice it holds follows the message it came after.
  */
 export function restore(
   messages: readonly unknown[],
   previous?: SessionView,
   live?: SessionSnapshot,
 ): SessionView {
-  const kept = new Map<string, TurnEntry>();
-  for (const entry of previous?.entries ?? [])
-    if (entry.kind === "turn" && entry.after !== undefined) kept.set(entry.after, entry);
-  let view = messages.reduce<SessionView>((state, message) => {
-    const next = reduce(reduce(state, { type: "message_start", message } as SessionEvent), {
-      type: "message_end",
-      message,
-    } as SessionEvent);
-    const key = place(message as Message);
-    const turn = key === null ? undefined : kept.get(key);
-    if (key === null || !turn) return next;
-    kept.delete(key);
-    return append(next, (id) => ({ ...turn, id }));
-  }, emptySession);
+  const following = new Map<string, Entry[]>();
+  const leading: NoticeEntry[] = [];
+  for (const entry of previous?.entries ?? []) {
+    if (entry.kind !== "turn" && !(entry.kind === "notice" && entry.local)) continue;
+    if (entry.after !== undefined) following.set(entry.after, [...(following.get(entry.after) ?? []), entry]);
+    else if (entry.kind === "notice") leading.push(entry);
+  }
+  // A view holding no message has yet to load the session, so its notices follow what loads.
+  const loading = previous?.last === null;
+  let view = messages.reduce<SessionView>(
+    (state, message) => {
+      const next = reduce(reduce(state, { type: "message_start", message } as SessionEvent), {
+        type: "message_end",
+        message,
+      } as SessionEvent);
+      const key = place(message as Message);
+      const kept = key === null ? undefined : following.get(key);
+      if (key === null || !kept) return next;
+      following.delete(key);
+      return appendAll(next, kept);
+    },
+    appendAll(emptySession, loading ? [] : leading),
+  );
+  if (loading) {
+    const { last } = view;
+    view = appendAll(
+      view,
+      leading.map((entry) => (last === null ? entry : { ...entry, after: last })),
+    );
+  }
   const pending = new Set(live?.pendingToolCalls);
   view = { ...view, entries: view.entries.map((entry) => interrupted(entry, pending)) };
   if (live?.state.isStreaming) {
@@ -242,8 +261,6 @@ export function restore(
     };
   }
   if (live?.queue) view = { ...view, queue: live.queue };
-  for (const entry of previous?.entries ?? [])
-    if (entry.kind === "notice" && entry.local) view = append(view, (id) => ({ ...entry, id }));
   return view;
 }
 
@@ -318,7 +335,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
         phase: "streaming",
         detail: null,
         startedAt: state.startedAt ?? now,
-        turn: state.startedAt === null ? { tools: 0, outcome: null, last: null } : state.turn,
+        turn: state.startedAt === null ? { tools: 0, outcome: null } : state.turn,
       };
 
     case "agent_end":
@@ -346,7 +363,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
         tools: turn.tools,
         endedAt: now,
         ...(turn.outcome === null ? {} : { outcome: turn.outcome }),
-        ...(turn.last === null ? {} : { after: turn.last }),
+        ...(state.last === null ? {} : { after: state.last }),
       }));
     }
 
@@ -369,7 +386,12 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
 
     case "message_end": {
       const message = event.message as Message;
-      const counted = { ...state, messages: state.messages + 1, turn: recorded(state.turn, message) };
+      const counted = {
+        ...state,
+        messages: state.messages + 1,
+        last: place(message),
+        turn: recorded(state.turn, message),
+      };
       if (message.role !== "assistant") return counted;
       const { finished, streaming } = state.output;
       const metered = state.running
@@ -465,10 +487,8 @@ const OUTCOMES = new Map<string, Outcome>([
 ]);
 
 function recorded(turn: TurnSoFar | null, message: Message): TurnSoFar | null {
-  if (!turn) return turn;
-  const last = place(message);
-  if (message.role !== "assistant") return { ...turn, last };
-  return { ...turn, last, outcome: OUTCOMES.get(message.stopReason ?? "") ?? null };
+  if (!turn || message.role !== "assistant") return turn;
+  return { ...turn, outcome: OUTCOMES.get(message.stopReason ?? "") ?? null };
 }
 
 function counting(state: SessionView): SessionView {
@@ -729,6 +749,11 @@ function append(state: SessionView, make: (id: string) => Entry): SessionView {
   return { ...state, seq, entries: [...state.entries, make(`e${seq}`)] };
 }
 
+/** The view with `entries` from another view appended, each under a new id. */
+function appendAll(state: SessionView, entries: readonly Entry[]): SessionView {
+  return entries.reduce((view, entry) => append(view, (id) => ({ ...entry, id })), state);
+}
+
 /** The conversation with a notice appended; an error also becomes the footer detail. */
 export function note(
   state: SessionView,
@@ -741,7 +766,7 @@ export function note(
     id,
     level,
     text,
-    ...(local ? { local: true } : {}),
+    ...(local ? { local: true, ...(state.last === null ? {} : { after: state.last }) } : {}),
   }));
   return level === "error" ? { ...next, detail: text } : next;
 }

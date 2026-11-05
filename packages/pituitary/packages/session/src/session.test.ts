@@ -710,15 +710,34 @@ describe("the turn's summary", () => {
   });
 });
 
-test("native snapshot refresh keeps client notices without duplicating provider errors", () => {
-  let view = restore([stored.user("continue"), stored.assistant({ text: "done" })]);
-  view = note(view, "info", "Local conversation details", true);
-  const next = restore([stored.user("continue"), stored.assistant({ text: "done" })], view);
-  expect(next.entries.filter((entry) => entry.kind === "notice")).toEqual([
-    expect.objectContaining({ text: "Local conversation details", local: true }),
-  ]);
-  const twice = restore([stored.assistant({ text: "done" })], next);
-  expect(twice.entries.filter((entry) => entry.kind === "notice")).toHaveLength(1);
+describe("a notice this client raised", () => {
+  const shape = (view: SessionView) =>
+    view.entries.map((entry) => (entry.kind === "notice" ? entry.text : entry.kind));
+
+  test("stays after the message it followed as later turns reload the session", () => {
+    const first = [stored.user("first"), stored.assistant({ text: "one" })];
+    const raised = note(restore(first), "warning", "careful", true);
+    const both = [...first, stored.user("second"), stored.assistant({ text: "two" })];
+    const reloaded = restore(both, raised);
+    expect(shape(reloaded)).toEqual(["user", "assistant", "careful", "user", "assistant"]);
+    expect(shape(restore(both, reloaded))).toEqual(shape(reloaded));
+    expect(shape(restore([stored.user("elsewhere")], raised))).toEqual(["user"]);
+  });
+
+  test("leads the conversation when raised before its first message", () => {
+    const events = [...userTurn("q"), ...assistantTurn({ text: "a" })];
+    const live = reduceAll(note(restore([]), "warning", "early", true), events);
+    const messages = events.flatMap((event) => (event.type === "message_end" ? [event.message] : []));
+    expect(shape(restore(messages, live))).toEqual(["early", "user", "assistant"]);
+  });
+
+  test("raised while the session loads, follows what loads and stays there", () => {
+    const history = [stored.user("q"), stored.assistant({ text: "a" })];
+    const loaded = restore(history, note(emptySession, "warning", "starting", true));
+    expect(shape(loaded)).toEqual(["user", "assistant", "starting"]);
+    const later = [...history, stored.user("r"), stored.assistant({ text: "b" })];
+    expect(shape(restore(later, loaded))).toEqual(["user", "assistant", "starting", "user", "assistant"]);
+  });
 });
 
 test("finalized text and thinking blocks keep their streamed paragraph separators", () => {
