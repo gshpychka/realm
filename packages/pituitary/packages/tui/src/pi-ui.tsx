@@ -3,6 +3,7 @@ import { plain } from "@pituitary/session";
 import { type RefObject, useEffect, useState } from "react";
 import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
 import type { EditorHandle } from "./components/editor.tsx";
+import { glyphs } from "./glyphs.ts";
 import type { PiUiPort, PiUiRequest } from "./pi.ts";
 import { FAST_STATUS } from "./pi-fast.ts";
 import { theme } from "./theme.ts";
@@ -10,6 +11,17 @@ import type { SessionController } from "./use-session.ts";
 
 type Question = Extract<PiUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
 type Widget = { lines: string[]; placement: "aboveEditor" | "belowEditor" };
+
+function extensionStatus(key: string, text = ""): string {
+  const status = plain(text);
+  if (key !== "pi-lens-lsp") return status;
+  return status.replace(/LSP Active: (.*?)(?= · |$)/, (_match, servers: string) =>
+    servers
+      .split(",")
+      .map((server) => (server.trim() === "typescript" ? glyphs.typescript : glyphs.lsp))
+      .join(" "),
+  );
+}
 
 /** Pi's extension UI stays at the frontend boundary, outside the conversation protocol. */
 export function usePiUI(
@@ -33,9 +45,14 @@ export function usePiUI(
           notify(request.notifyType ?? "info", plain(request.message));
           break;
         case "setStatus":
+          // Extension counters belong in /automode status and /rewind.
+          if (request.statusKey === "pi-automode" || request.statusKey === "rewind") break;
           if (request.statusKey === FAST_STATUS) setFast(Boolean(request.statusText));
           else
-            setStatuses((current) => ({ ...current, [request.statusKey]: plain(request.statusText ?? "") }));
+            setStatuses((current) => ({
+              ...current,
+              [request.statusKey]: extensionStatus(request.statusKey, request.statusText),
+            }));
           break;
         case "setWidget":
           setWidgets((current) => ({
