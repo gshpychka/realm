@@ -64,6 +64,50 @@ Standard extension dialogs, notifications, status text, widgets, commands, and p
 completions appear in Pituitary. Extensions that render custom stock-terminal
 components need Pi's interactive screen; that rendering API is outside Pi RPC.
 
+## Provider usage
+
+The footer's credit-card icon opens usage for the selected provider credential. Click
+it or use `/usage` to open the details; `/usage off` closes them and `/usage refresh`
+requests an update. Percentages mean **used**. The panel keeps the session's estimated
+model cost separate from provider-reported account usage.
+
+| Credential | Provider-reported data |
+| --- | --- |
+| ChatGPT subscription through Codex credentials (`openai-codex`) | Available usage windows and resets, plan, extra-credit balance, model-specific limits |
+| Sign in with ChatGPT (`openai`) | Usage-page link; this OAuth flow has no usage-read capability |
+| Claude subscription | Five-hour and weekly windows, model-specific limits, monthly extra usage and cap when exposed |
+| OpenAI / Claude API key | Limits and remaining requests/tokens from observed API response headers |
+| OpenRouter key | Key spend, spending cap and remaining allowance, applicable member/workspace budgets, BYOK usage and free-model quota when exposed |
+
+API response limits can be shared across models, projects, workspaces, or organizations;
+they are not a personal billing balance. OpenAI and Claude inference keys do not expose
+personal monthly spend or organization-imposed monetary caps here. OpenRouter's key
+endpoint exposes the budgets that apply to that key; account-wide credit totals stay
+outside this view. A credit balance alone does not establish credits spent.
+
+Automatic account queries run at most once a minute per conversation, with a
+15-second deadline, coalescing, and exponential failure backoff. Refresh respects
+provider retry delays. API response limits update only when Pi receives headers; opening
+the view never sends a paid inference probe. Dated observations remain visibly stale
+after a failed refresh, two minutes without an update, or a passed reset. Reset times
+do not imply a renewed allowance until the provider reports it.
+
+Pi owns authentication and token refresh. Usage data stays in memory, outside the
+conversation and model context. Subscription usage relies on internal endpoints that
+can change or deny access to a particular OAuth client; unavailable metrics and errors
+are explicit. Account queries use fixed provider endpoints and refuse redirects and
+custom provider hosts. Passive API-header observations also work with custom API hosts.
+This view belongs to regular Pituitary conversations; Dura attachments retain their
+host-owned credential boundary.
+
+Provider interfaces: [OpenAI rate limits](https://developers.openai.com/api/docs/guides/rate-limits),
+[Claude rate limits](https://platform.claude.com/docs/en/api/rate-limits),
+[OpenRouter key usage and budgets](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-key).
+The subscription adapters live in [`usage/providers.ts`](packages/tui/src/usage/providers.ts).
+OpenAI's [token-sharing usage gap](https://github.com/openai/codex/issues/54219) applies
+to Pi's current Sign in with ChatGPT flow. Pituitary links to the usage page without
+polling an endpoint that rejects that credential.
+
 ## Connect to Dura
 
 [Dura](../dura) is the durable harness. [Declare a team](../../agents), then run:

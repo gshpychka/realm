@@ -9,7 +9,8 @@ behavior belongs in the product.
 
 Pituitary is the frontend for regular Pi and Dura. Plain `pituitary` starts the
 configured Pi executable over RPC, retaining its auth, settings, and extensions, and
-loads Pituitary's own Pi extension for ChatGPT Fast mode (`packages/tui/src/pi-fast.ts`).
+loads Pituitary's Pi extensions for [ChatGPT Fast mode](packages/tui/src/pi-fast.ts)
+and [provider usage](packages/tui/src/pi-usage.ts).
 `pituitary --dura RUN` uses Dura's pure connection client. Keep their lifecycle and
 configuration separate; share the interface through `ConversationLink`.
 
@@ -28,6 +29,10 @@ Checks are expensive. Complete and review a coherent milestone before running it
 gates together. Rerun only gates affected by concrete failures. `just loop` runs the
 package's full batch and writes `artifacts/report.md`, per-gate logs, timings, and
 captured screens. Read those results before running more commands.
+
+Tests protect observable behavior, domain rules, and failure boundaries at the
+narrowest useful layer. Keep one-off upstream probes, implementation restatements,
+and duplicate coverage out of the suite.
 
 A UI change needs visual inspection. E2E captures write text, SVG, and PNG under
 `artifacts/screens`; inspect compact and wide states, attention, results, and reload.
