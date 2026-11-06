@@ -136,14 +136,11 @@ in
       # (assist_pipeline/pipeline/list). The Voice PEs' own pipeline selects
       # don't apply: the broker, not the satellite, runs the pipeline.
       pipeline = "01jmq3hbakt5r0e136vd886hy9";
-      # The owner's choice on 2026-10-17. On the frozen realistic set (48
-      # spoken cases x 2 passes, workspace report
-      # routing-realistic-retest-2026-10-16.md) Jev routed 96/96 correctly,
-      # p50/p95 357/495 ms; Decisions 92/96 with one unsafe home route, p95
-      # 4451 ms. On the earlier synthetic 100-case set Jev scored lower: 91/100
-      # with 5 unsafe home routes against Decisions' 95/100 and 3, and it sent
-      # 5 of 6 home+non-home mixes home (routing-100-benchmark-2026-10-16.md).
-      provider = "jev";
+      # Decisions, the existing backend on the broker's OpenAI key, explicitly
+      # chosen on 2026-11-06: Jev's OpenRouter calls fail with HTTP 402
+      # (insufficient credits), so every routed request failed. Decisions
+      # (gpt-6-luna) answered the same probe request.
+      provider = "decisions";
       # Diagnostic, not a speed fix: on 2026-10-16 23:01 two requests had no
       # Decisions answer within the default 4 s, and none logged an HTTP
       # response. Kept at 30 s for Jev until a new measurement or the owner
