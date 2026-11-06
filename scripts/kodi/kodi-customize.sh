@@ -11,6 +11,7 @@ SKIN=$ADDONS/skin.bingie/1080i
 PKC_MEDIA=$ADDONS/plugin.video.plexkodiconnect/resources/lib/plex_api/media.py
 WIDGETS_KODIDB=$ADDONS/script.bingie.widgets/resources/lib/helpers/kodidb.py
 GUISETTINGS=/storage/.kodi/userdata/guisettings.xml
+ADVANCEDSETTINGS=/storage/.kodi/userdata/advancedsettings.xml
 DATABASE=/storage/.kodi/userdata/Database
 
 # Kodi keeps the subtitle position per display mode; every mode whose GUI is
@@ -171,6 +172,15 @@ pkc_hdr() {
   [ -f "$PKC_MEDIA" ] || return 0
   if insert_before_python "$PKC_MEDIA" "videotracks.append(track)" "$HERE/snippets/pkc-hdr.py"; then
     log "PKC HDR details patched; restart Kodi to load it"
+  fi
+}
+
+# Kodi's advanced settings from snippets/advancedsettings-video.xml. Kodi reads
+# advancedsettings.xml once, at startup.
+advanced_settings() {
+  [ -f "$ADVANCEDSETTINGS" ] || printf '<advancedsettings>\n</advancedsettings>\n' >"$ADVANCEDSETTINGS"
+  if insert_before "$ADVANCEDSETTINGS" '</advancedsettings>' "$HERE/snippets/advancedsettings-video.xml"; then
+    log "advanced settings updated; restart Kodi to load them"
   fi
 }
 
@@ -438,6 +448,7 @@ install_overrides() {
   done
 }
 
+advanced_settings
 pkc_hdr
 bingie_widgets_streams
 if systemctl -q is-active kodi.service; then

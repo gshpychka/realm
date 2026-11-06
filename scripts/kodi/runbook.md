@@ -14,6 +14,9 @@ reapplies these at boot and after each Bingie, Bingie Widgets or PKC update:
   player-led Dolby Vision tuned for the S95C,
   and subtitles at a fixed spot in the bottom letterbox bar, the same in every
   display mode
+- Kodi's advanced settings from `snippets/advancedsettings-video.xml`: H.264
+  frames keep the decoder's timestamps, so H.264 video plays in sync with its
+  audio
 - InfoTagger 0.0.9, fetched by `deploy.sh` at its pinned commit, and the pin
   that keeps Skin Shortcuts at 2.1.0
 - hides the Bingie profile switcher at the top of the side menu
@@ -45,9 +48,10 @@ updates leave the current video running. Until then the previous layout stays
 loaded. Kodi's Video settings opens with its usual first setting focused;
 press Up to reach the HDR10+ mapping row above it.
 
-A running Kodi takes setting changes at once; the subtitle position per
-display mode, InfoTagger and the Skin Shortcuts pin land at the next boot
-(`ssh kodi reboot`). The table is the source of truth: a setting changed in
+A running Kodi takes setting changes at once; the advanced settings load at
+the next Kodi start (`ssh kodi systemctl restart kodi`), and the subtitle
+position per display mode, InfoTagger and the Skin Shortcuts pin land at the
+next boot (`ssh kodi reboot`). The table is the source of truth: a setting changed in
 Kodi's menus goes back to the table's value whenever the script runs. The OSD's
 HDR10+ conversion, dual-format priority and conversion preference are excluded
 from the table so the button's choice survives. After a

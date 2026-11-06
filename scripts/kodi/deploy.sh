@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Pushes kodi-customize to the kodi box and runs it. Run from eve:
 #   scripts/kodi/deploy.sh [host]
-# A running Kodi takes the settings at once; the subtitle position per display
-# mode, the Skin Shortcuts pin and the pinned add-ons land at the next boot.
+# A running Kodi takes the settings at once; the advanced settings load at the
+# next Kodi start, and the subtitle position per display mode, the Skin
+# Shortcuts pin and the pinned add-ons land at the next boot.
 set -euo pipefail
 
 HOST=${1:-kodi}
