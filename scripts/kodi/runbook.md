@@ -49,6 +49,9 @@ Deploy from eve:
 scripts/kodi/deploy.sh
 ```
 
+The deploy also writes the box's `authorized_keys` from
+`my.hosts.kodi.authorizedKeys` in `modules/common/hosts.nix`.
+
 Skin edits reload automatically once playback stops; deployments and add-on
 updates leave the current video running. Until then the previous layout stays
 loaded. Kodi's Video settings opens with its usual first setting focused;

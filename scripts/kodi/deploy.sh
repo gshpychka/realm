@@ -9,11 +9,16 @@ set -euo pipefail
 
 HOST=${1:-kodi}
 HERE=$(cd "$(dirname "$0")" && pwd)
+REPO=$(git -C "$HERE" rev-parse --show-toplevel)
 REMOTE=/storage/.config/kodi-customize
 UNITS=(kodi-customize.service kodi-customize.path)
 # InfoTagger 0.0.9, a release Kodi's repository lacks.
 INFOTAGGER_REPO=https://github.com/jurialmunkey/script.module.infotagger
 INFOTAGGER_COMMIT=c6272475996215648d19fd030dd12b3cadc1bd23
+
+# The box's authorized_keys, one per line, as my.hosts.kodi.authorizedKeys declares them.
+KEYS=$(nix eval --raw "$REPO#nixosConfigurations.reaper.config.my.hosts.kodi.authorizedKeys" \
+  --apply 'builtins.concatStringsSep "\n"')
 
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
@@ -31,6 +36,8 @@ for unit in "${UNITS[@]}"; do
 done
 ssh "$HOST" "mkdir -p /storage/.config/system.d/kodi.service.d &&
   cat > /storage/.config/system.d/kodi.service.d/memory.conf" <"$HERE/kodi-memory.conf"
+printf '%s\n' "$KEYS" | ssh "$HOST" "cat > /storage/.ssh/authorized_keys.new &&
+  mv /storage/.ssh/authorized_keys.new /storage/.ssh/authorized_keys"
 ssh "$HOST" "systemctl daemon-reload &&
   systemctl enable ${UNITS[*]} &&
   systemctl start kodi-customize.path &&

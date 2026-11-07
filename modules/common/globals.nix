@@ -35,6 +35,10 @@ in
             type = lib.types.str;
             description = "SSH public key for OpenClaw";
           };
+          reaper = lib.mkOption {
+            type = lib.types.str;
+            description = "SSH public key for reaper's main user, from reaper's TPM";
+          };
         };
       };
       description = "SSH public keys";
@@ -114,6 +118,7 @@ in
       homeassistant = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAC9nquQBUuHWrWJvuUJLuR2zfupJp+QtQlpck0n5J0J";
       gitlab = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH1ykR9CzbUNoPsyPqgs9OYIgUCRNOHj8KefPhYJv+qr";
       openclaw = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBJOrPEgiVddcT1t+mm+xsbDnfj+nl1PBQyxzk5rQjeqPG3nkgWp/l8pIYrZojckIIOHLNERy1zYLigKGYp5crcA= openclaw@hoard";
+      reaper = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFqXwvI0qOV2k+KQJgWzyfZRTHrbGO+sJwhFr1akYKYvhwwB3McX5shp+shcCWc7s5c++XpFIbl8K5liDiC3744= gshpychka@reaper";
     };
     my.nixbuildKeys = {
       eve = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP7jjV4iQfoCWZYWw2Q1bdsNg6PBc4U2SclLE2Wil0b9 nixbuild-eve@eve";

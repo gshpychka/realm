@@ -121,6 +121,11 @@
 
   my.acme.enable = true;
 
+  my.tpmSshKey = {
+    enable = true;
+    user = config.my.user;
+  };
+
   my.tailscale = {
     enable = true;
     magicDns = false;

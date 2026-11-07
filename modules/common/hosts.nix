@@ -51,6 +51,11 @@
               default = { };
               description = "Extra ssh_config keys merged into this host's Match block";
             };
+            authorizedKeys = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "Public keys that log in to this host, for a host whose deploy script writes its authorized_keys";
+            };
             voiceArea = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;
@@ -150,6 +155,11 @@
           ForwardAgent = false;
           SetEnv.TERM = "xterm-256color";
         };
+        authorizedKeys = with config.my.sshKeys; [
+          main
+          openclaw
+          reaper
+        ];
       };
       # GL.iNet Mudi travel router. 192.168.8.1 is its own LAN address,
       # reachable off-site through the 192.168.8.0/24 subnet route it advertises.
