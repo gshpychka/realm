@@ -79,9 +79,10 @@ in
           ui.hide-hostname = true;
           conditions = [ "[CONNECTED] == true" ];
           # Gatus sends one echo request per check, and the wan record lags a WAN failover by up to
-          # its 300 s TTL plus the 30 s DDNS update period; 12 checks (6 min) outlast both
+          # its 60 s TTL plus the 30 s DDNS update period; 6 checks (3 min) outlast that lag and
+          # runs of dropped packets
           # https://github.com/TwiN/gatus/blob/v5.38.0/client/client.go#L376
-          alerts = map (alert: alert // { failure-threshold = 12; }) (mkAlerts {
+          alerts = map (alert: alert // { failure-threshold = 6; }) (mkAlerts {
             triggered = "🔴 Інтернет зник.";
             resolved = "🟢 Інтернет знову є.";
           });
