@@ -1,0 +1,590 @@
+diff --git a/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp b/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp
+--- a/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp
++++ b/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp
+@@ -77,6 +77,21 @@
+          stream->m_format.m_dataFormat != AE_FMT_RAW;
+ }
+ 
++// A stream paused in sync resumes in sync: the sink streams on while the stream
++// is paused, so the stream's next sample plays right after the filler the sink
++// holds.
++void CActiveAE::ResumeStream(CActiveAEStream* stream)
++{
++  if (stream->m_paused)
++  {
++    if (stream->m_syncState == CAESyncInfo::AESyncState::SYNC_INSYNC)
++      stream->m_syncError.Flush(stream->GetErrorInterval());
++    else
++      stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
++  }
++  stream->m_paused = false;
++}
++
+ bool CActiveAE::IsRawMode() const
+ {
+   return m_mode == MODE_RAW;
+@@ -427,6 +442,17 @@
+           }
+           ConfigureLowLatency();
+           return;
++        case CActiveAEControlProtocol::PAUSESTREAM:
++          (*reinterpret_cast<CActiveAEStream**>(msg->data))->m_paused = true;
++          msg->Reply(CActiveAEControlProtocol::ACC);
++          return;
++        case CActiveAEControlProtocol::RESUMESTREAM:
++          // without a configured sink, nothing streamed while the stream was paused
++          (*reinterpret_cast<CActiveAEStream**>(msg->data))->m_syncState =
++              CAESyncInfo::AESyncState::SYNC_START;
++          (*reinterpret_cast<CActiveAEStream**>(msg->data))->m_paused = false;
++          msg->Reply(CActiveAEControlProtocol::ACC);
++          return;
+         default:
+           break;
+         }
+@@ -731,21 +757,23 @@
+         case CActiveAEControlProtocol::PAUSESTREAM:
+           CActiveAEStream *stream;
+           stream = *(CActiveAEStream**)msg->data;
+-          if (!stream->m_paused && IsOnlyNotRaw(stream))
++          // the audio a stream synced to a clock handed to the sink plays out,
++          // and the sink streams on
++          if (!stream->m_paused && !stream->m_pClock && IsOnlyNotRaw(stream))
+           {
+             FlushEngine();
+             streaming = false;
+             m_sink.m_controlPort.SendOutMessage(CSinkControlProtocol::STREAMING, &streaming, sizeof(bool));
+           }
+           stream->m_paused = true;
++          msg->Reply(CActiveAEControlProtocol::ACC);
+           return;
+         case CActiveAEControlProtocol::RESUMESTREAM:
+           stream = *(CActiveAEStream**)msg->data;
+-          if (stream->m_paused)
+-            stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
+-          stream->m_paused = false;
++          ResumeStream(stream);
+           streaming = true;
+           m_sink.m_controlPort.SendOutMessage(CSinkControlProtocol::STREAMING, &streaming, sizeof(bool));
++          msg->Reply(CActiveAEControlProtocol::ACC);
+           m_extTimeout = 0ms;
+           return;
+         case CActiveAEControlProtocol::FLUSHSTREAM:
+@@ -995,8 +1023,11 @@
+         case CActiveAEControlProtocol::RESUMESTREAM:
+           CActiveAEStream *stream;
+           stream = *(CActiveAEStream**)msg->data;
+-          stream->m_paused = false;
+-          stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
++          // an idle engine starved its unpaused streams
++          if (!stream->m_paused)
++            stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
++          ResumeStream(stream);
++          msg->Reply(CActiveAEControlProtocol::ACC);
+           m_state = AE_TOP_CONFIGURED_PLAY;
+           m_extTimeout = 0ms;
+           return;
+@@ -3661,13 +3692,12 @@
+ 
+ void CActiveAE::PauseStream(CActiveAEStream *stream, bool pause)
+ {
+-  //! @todo pause sink, needs api change
+-  if (pause)
+-    m_controlPort.SendOutMessage(CActiveAEControlProtocol::PAUSESTREAM,
+-                                   &stream, sizeof(CActiveAEStream*));
+-  else
+-    m_controlPort.SendOutMessage(CActiveAEControlProtocol::RESUMESTREAM,
+-                                   &stream, sizeof(CActiveAEStream*));
++  // returns once the engine hands no more of a paused stream to the sink
++  Message* reply;
++  if (m_controlPort.SendOutMessageSync(pause ? CActiveAEControlProtocol::PAUSESTREAM
++                                             : CActiveAEControlProtocol::RESUMESTREAM,
++                                       &reply, 1s, &stream, sizeof(CActiveAEStream*)))
++    reply->Release();
+ }
+ 
+ void CActiveAE::SetStreamAmplification(CActiveAEStream *stream, float amplify)
+diff --git a/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.h b/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.h
+--- a/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.h
++++ b/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.h
+@@ -322,6 +322,7 @@
+   CActiveAEStream* CreateStream(MsgStreamNew *streamMsg);
+   void DiscardStream(CActiveAEStream *stream);
+   void SFlushStream(CActiveAEStream *stream);
++  void ResumeStream(CActiveAEStream* stream);
+   void FlushEngine();
+   void ClearDiscardedBuffers();
+   void SStopSound(CActiveAESound *sound);
+diff --git a/xbmc/cores/VideoPlayer/AudioSinkAE.cpp b/xbmc/cores/VideoPlayer/AudioSinkAE.cpp
+--- a/xbmc/cores/VideoPlayer/AudioSinkAE.cpp
++++ b/xbmc/cores/VideoPlayer/AudioSinkAE.cpp
+@@ -17,6 +17,7 @@
+ #include "utils/XTimeUtils.h"
+ #include "utils/log.h"
+ 
++#include <algorithm>
+ #include <mutex>
+ 
+ extern "C"
+@@ -215,6 +216,18 @@
+   return delay * DVD_TIME_BASE;
+ }
+ 
++double CAudioSinkAE::GetOutputDelay()
++{
++  std::unique_lock lock(m_critSection);
++
++  if (!m_pAudioStream)
++    return DVD_NOPTS_VALUE;
++
++  // the stream's delay also covers its own cache, which plays only after it
++  return std::max(0.0, m_pAudioStream->GetDelay() - m_pAudioStream->GetCacheTime()) *
++         DVD_TIME_BASE;
++}
++
+ void CAudioSinkAE::Flush()
+ {
+   m_bAbort = true;
+diff --git a/xbmc/cores/VideoPlayer/AudioSinkAE.h b/xbmc/cores/VideoPlayer/AudioSinkAE.h
+--- a/xbmc/cores/VideoPlayer/AudioSinkAE.h
++++ b/xbmc/cores/VideoPlayer/AudioSinkAE.h
+@@ -45,6 +45,7 @@
+   double GetCacheTotal(); // returns total time a stream can buffer
+   double GetMaxDelay(); // returns total time of audio in AE for the stream
+   double GetDelay(); // returns the time it takes to play a packet if we add one at this time
++  double GetOutputDelay(); // returns the time the output takes to play the audio it holds, or DVD_NOPTS_VALUE
+   double GetSyncError();
+   void SetSyncErrorCorrection(double correction);
+ 
+diff --git a/xbmc/cores/VideoPlayer/DVDClock.cpp b/xbmc/cores/VideoPlayer/DVDClock.cpp
+--- a/xbmc/cores/VideoPlayer/DVDClock.cpp
++++ b/xbmc/cores/VideoPlayer/DVDClock.cpp
+@@ -97,6 +97,9 @@
+   std::unique_lock lock(m_systemsection);
+ 
+   m_pauseClock = 0;
++  m_stopAt = DVD_NOPTS_VALUE;
++  m_startAt = 0;
++  m_startSpeed = DVD_PLAYSPEED_NORMAL;
+   m_bReset = true;
+   m_paused = false;
+   m_speedAfterPause = DVD_PLAYSPEED_PAUSE;
+@@ -143,6 +146,8 @@
+ {
+   int64_t current = m_videoRefClock->GetTime(interpolated);
+ 
++  // SystemToPlaying applies a pending stop or start to state m_critSection guards
++  std::unique_lock clockLock(m_critSection);
+   std::unique_lock lock(m_systemsection);
+   absolute = SystemToAbsolute(current);
+ 
+@@ -170,7 +175,12 @@
+ 
+   if (pause && !m_paused)
+   {
+-    if (!m_pauseClock)
++    // a pending stop or start decides the speed the clock returns to
++    if (m_stopAt != DVD_NOPTS_VALUE)
++      m_speedAfterPause = DVD_PLAYSPEED_PAUSE;
++    else if (m_startAt)
++      m_speedAfterPause = m_startSpeed;
++    else if (!m_pauseClock)
+       m_speedAfterPause = m_systemFrequency * DVD_PLAYSPEED_NORMAL / m_systemUsed;
+     else
+       m_speedAfterPause = DVD_PLAYSPEED_PAUSE;
+@@ -195,11 +205,45 @@
+   }
+ }
+ 
++void CDVDClock::StopAt(double clock)
++{
++  std::unique_lock lock(m_critSection);
++
++  const double current = GetClock();
++  m_startAt = 0;
++  if (m_pauseClock)
++    return;
++
++  m_stopAt = std::max(clock, current);
++}
++
++double CDVDClock::GetStop()
++{
++  std::unique_lock lock(m_critSection);
++
++  const double clock = GetClock();
++  if (m_pauseClock)
++    return clock;
++
++  return m_stopAt;
++}
++
++bool CDVDClock::IsStopped()
++{
++  std::unique_lock lock(m_critSection);
++
++  GetClock();
++  return m_pauseClock != 0;
++}
++
+ void CDVDClock::SetSpeed(int iSpeed)
+ {
+   // this will sometimes be a little bit of due to rounding errors, ie clock might jump a bit when changing speed
+   std::unique_lock lock(m_critSection);
+ 
++  m_stopAt = DVD_NOPTS_VALUE;
++  m_startAt = 0;
++
+   if (m_paused)
+   {
+     m_speedAfterPause = iSpeed;
+@@ -213,10 +257,29 @@
+     return;
+   }
+ 
+-  int64_t current;
++  ApplySpeed(iSpeed, m_videoRefClock->GetTime());
++}
++
++void CDVDClock::SetSpeedAfter(int iSpeed, double delay)
++{
++  std::unique_lock lock(m_critSection);
++
++  if (!m_pauseClock || m_paused || iSpeed == DVD_PLAYSPEED_PAUSE)
++  {
++    SetSpeed(iSpeed);
++    return;
++  }
++
++  m_stopAt = DVD_NOPTS_VALUE;
++  m_startSpeed = iSpeed;
++  m_startAt = m_videoRefClock->GetTime() +
++              static_cast<int64_t>(std::max(delay, 1.0) / DVD_TIME_BASE * m_systemFrequency);
++}
++
++void CDVDClock::ApplySpeed(int iSpeed, int64_t current)
++{
+   int64_t newfreq = m_systemFrequency * DVD_PLAYSPEED_NORMAL / iSpeed;
+ 
+-  current = m_videoRefClock->GetTime();
+   if (m_pauseClock)
+   {
+     m_startClock += current - m_pauseClock;
+@@ -368,6 +431,24 @@
+     m_bReset = false;
+   }
+ 
++  if (m_pauseClock && m_startAt && system >= m_startAt)
++  {
++    ApplySpeed(m_startSpeed, m_startAt);
++    m_startAt = 0;
++  }
++
++  if (!m_pauseClock && m_stopAt != DVD_NOPTS_VALUE)
++  {
++    // system time at which the clock reaches the stop
++    const int64_t stopSystem = m_startClock - m_systemAdjust +
++                               static_cast<int64_t>((m_stopAt - m_iDisc) / DVD_TIME_BASE * m_systemUsed);
++    if (system >= stopSystem)
++    {
++      m_pauseClock = stopSystem;
++      m_stopAt = DVD_NOPTS_VALUE;
++    }
++  }
++
+   if (m_pauseClock)
+     current = m_pauseClock;
+   else
+diff --git a/xbmc/cores/VideoPlayer/DVDClock.h b/xbmc/cores/VideoPlayer/DVDClock.h
+--- a/xbmc/cores/VideoPlayer/DVDClock.h
++++ b/xbmc/cores/VideoPlayer/DVDClock.h
+@@ -54,16 +54,28 @@
+ 
+   void Pause(bool pause);
+   void Advance(double time);
++  /** Restarts the stopped clock at iSpeed once delay passed; a speed change before then cancels it. */
++  void SetSpeedAfter(int iSpeed, double delay);
++  /** Stops the clock once it reaches clock; a speed change before then cancels it. */
++  void StopAt(double clock);
++  /** Clock value the clock stands at or stops at, or DVD_NOPTS_VALUE while it runs without a stop. */
++  double GetStop();
++  /** Whether the clock stands still: paused, or at speed zero. */
++  bool IsStopped();
+ 
+ protected:
+   double SystemToAbsolute(int64_t system);
+   int64_t AbsoluteToSystem(double absolute);
+   double SystemToPlaying(int64_t system);
++  void ApplySpeed(int iSpeed, int64_t current);
+ 
+   CCriticalSection m_critSection;
+   int64_t m_systemUsed;
+   int64_t m_startClock;
+   int64_t m_pauseClock;
++  double m_stopAt;
++  int64_t m_startAt;
++  int m_startSpeed;
+   double m_iDisc;
+   bool m_bReset;
+   bool m_paused;
+diff --git a/xbmc/cores/VideoPlayer/DVDMessage.h b/xbmc/cores/VideoPlayer/DVDMessage.h
+--- a/xbmc/cores/VideoPlayer/DVDMessage.h
++++ b/xbmc/cores/VideoPlayer/DVDMessage.h
+@@ -10,6 +10,8 @@
+ 
+ #include "FileItem.h"
+ #include "cores/IPlayer.h"
++#include "cores/VideoPlayer/Interface/TimingConstants.h"
++#include "threads/Event.h"
+ 
+ #include <atomic>
+ #include <string.h>
+@@ -261,6 +263,17 @@
+ 
+ };
+ 
++// A speed change for the audio player that it acknowledges once its output
++// applied it, with the time that output takes to play the audio it holds.
++class CDVDMsgAudioOutputSpeed : public CDVDMsgInt
++{
++public:
++  explicit CDVDMsgAudioOutputSpeed(int speed) : CDVDMsgInt(PLAYER_SETSPEED, speed) {}
++
++  double m_outputDelay = DVD_NOPTS_VALUE;
++  CEvent m_applied;
++};
++
+ class CDVDMsgOpenFile : public CDVDMsg
+ {
+ public:
+diff --git a/xbmc/cores/VideoPlayer/IVideoPlayer.h b/xbmc/cores/VideoPlayer/IVideoPlayer.h
+--- a/xbmc/cores/VideoPlayer/IVideoPlayer.h
++++ b/xbmc/cores/VideoPlayer/IVideoPlayer.h
+@@ -9,6 +9,7 @@
+ #pragma once
+ 
+ #include "DVDClock.h"
++#include "cores/VideoPlayer/Interface/TimingConstants.h"
+ 
+ #include <string>
+ #include <utility>
+@@ -110,6 +111,16 @@
+   bool OpenStream(CDVDStreamInfo hints) override = 0;
+   void CloseStream(bool bWaitForBuffers) override = 0;
+   virtual void SetSpeed(int speed) = 0;
++  /*!
++   * Sets the speed and returns once the audio output applied it, with the time
++   * the output then takes to play the audio it holds, in DVD time units, or
++   * DVD_NOPTS_VALUE when the output reports none in time.
++   */
++  virtual double SetOutputSpeed(int speed)
++  {
++    SetSpeed(speed);
++    return DVD_NOPTS_VALUE;
++  }
+   virtual void Flush(bool sync) = 0;
+   bool AcceptsData() const override = 0;
+   virtual bool HasData() const = 0;
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayer.cpp b/xbmc/cores/VideoPlayer/VideoPlayer.cpp
+--- a/xbmc/cores/VideoPlayer/VideoPlayer.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayer.cpp
+@@ -3925,11 +3925,39 @@
+         m_SpeedState.rewindTargetPts = DVD_NOPTS_VALUE;
+       }
+ 
++      const auto audioPlays = [this](int playSpeed)
++      { return m_processInfo->IsTempoAllowed(static_cast<float>(playSpeed) / DVD_PLAYSPEED_NORMAL); };
++      const bool pausing = speed == DVD_PLAYSPEED_PAUSE && audioPlays(m_playSpeed);
++      const bool resuming = m_playSpeed == DVD_PLAYSPEED_PAUSE && audioPlays(speed);
+       m_playSpeed = speed;
+ 
+       m_caching = CACHESTATE_DONE;
+-      m_clock.SetSpeed(speed);
+-      m_VideoPlayerAudio->SetSpeed(speed);
++      // While audio plays in sync, the clock stops where the audio handed to the
++      // output ends and restarts as the first resumed sample plays.
++      if ((pausing || resuming) && m_CurrentAudio.id >= 0 &&
++          m_CurrentAudio.syncState == IDVDStreamPlayer::SYNC_INSYNC)
++      {
++        const double outputDelay = m_VideoPlayerAudio->SetOutputSpeed(speed);
++        if (outputDelay == DVD_NOPTS_VALUE)
++        {
++          CLog::Log(LOGWARNING, "CVideoPlayer - audio output reported no delay for speed {}", speed);
++          m_clock.SetSpeed(speed);
++        }
++        else
++        {
++          CLog::Log(LOGDEBUG, "CVideoPlayer - clock {} in {:.1f} ms with the audio output",
++                    pausing ? "stops" : "starts", outputDelay / 1000.0);
++          if (pausing)
++            m_clock.StopAt(m_clock.GetClock() + outputDelay);
++          else
++            m_clock.SetSpeedAfter(speed, outputDelay);
++        }
++      }
++      else
++      {
++        m_clock.SetSpeed(speed);
++        m_VideoPlayerAudio->SetSpeed(speed);
++      }
+       m_VideoPlayerVideo->SetSpeed(speed);
+       m_streamPlayerSpeed = speed;
+     }
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp b/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
+--- a/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
+@@ -572,12 +572,15 @@
+       double speed = std::static_pointer_cast<CDVDMsgInt>(pMsg)->m_value;
+       CLog::Log(LOGDEBUG, LOGAUDIO, "CVideoPlayerAudio - CDVDMsg::PLAYER_SETSPEED: {:f} last: {:d}", speed, m_speed);
+ 
++      double outputDelay = DVD_NOPTS_VALUE;
+       if (m_processInfo.IsTempoAllowed(static_cast<float>(speed)/DVD_PLAYSPEED_NORMAL))
+       {
+         if (speed != m_speed)
+         {
+           if (m_syncState == IDVDStreamPlayer::SYNC_INSYNC)
+           {
++            // the filler the output plays before the first resumed sample
++            outputDelay = m_audioSink.GetOutputDelay();
+             m_audioSink.Resume();
+             m_stalled = false;
+           }
+@@ -586,8 +589,16 @@
+       else
+       {
+         m_audioSink.Pause();
++        // the audio the output plays before it runs dry
++        outputDelay = m_audioSink.GetOutputDelay();
+       }
+       m_speed = (int)speed;
++
++      if (auto output = std::dynamic_pointer_cast<CDVDMsgAudioOutputSpeed>(pMsg))
++      {
++        output->m_outputDelay = outputDelay;
++        output->m_applied.Set();
++      }
+     }
+     else if (pMsg->IsType(CDVDMsg::GENERAL_STREAMCHANGE))
+     {
+@@ -971,6 +982,23 @@
+     m_speed = speed;
+ }
+ 
++double CVideoPlayerAudio::SetOutputSpeed(int speed)
++{
++  if (!m_messageQueue.IsInited())
++  {
++    m_speed = speed;
++    return DVD_NOPTS_VALUE;
++  }
++
++  auto msg = std::make_shared<CDVDMsgAudioOutputSpeed>(speed);
++  m_messageQueue.Put(msg, 1);
++  // the audio thread takes messages between packets
++  if (!msg->m_applied.Wait(200ms))
++    return DVD_NOPTS_VALUE;
++
++  return msg->m_outputDelay;
++}
++
+ void CVideoPlayerAudio::Flush(bool sync)
+ {
+   m_messageQueue.Flush();
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerAudio.h b/xbmc/cores/VideoPlayer/VideoPlayerAudio.h
+--- a/xbmc/cores/VideoPlayer/VideoPlayerAudio.h
++++ b/xbmc/cores/VideoPlayer/VideoPlayerAudio.h
+@@ -53,6 +53,7 @@
+   bool HasConfiguredSink() { return m_audioSink.HasStream(); }
+ 
+   void SetSpeed(int speed) override;
++  double SetOutputSpeed(int speed) override;
+   void Flush(bool sync) override;
+ 
+   // waits until all available data has been rendered
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
+--- a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
+@@ -414,8 +414,10 @@
+           continue;
+         }
+       }
+-      // don't ask for a new frame if we can't deliver it to renderer
++      // don't ask for a new frame if we can't deliver it to renderer; the clock
++      // can run on for a while after a pause request
+       else if ((m_speed != DVD_PLAYSPEED_PAUSE ||
++                !m_pClock->IsStopped() ||
+                 m_processInfo.IsFrameAdvance() ||
+                 m_syncState != IDVDStreamPlayer::SYNC_INSYNC) && !m_paused)
+       {
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
+@@ -170,9 +170,14 @@
+                     int queuedSize,
+                     int queueSkip)
+ {
+-  if (dataCacheCore.IsPausedPlayback()) return;
++  // A frame handed over while the clock stands still is due.
++  if (dvdClock.IsStopped()) return;
+ 
++  // The requested speed reads zero before the clock stops, and the clock runs
++  // at normal speed until then.
+   double speed = static_cast<double>(std::abs(dataCacheCore.GetSpeed()));
++  if (speed == 0.0)
++    speed = 1.0;
+ 
+   if (!guiLayer && speed == 1.0)
+     presentPts -= VsyncPhaseOffset(presentPts, presentFrameTime, dvdClock.GetClock(),
+@@ -1853,27 +1858,20 @@
+   m_presentframetime = m_Queue[m_presentsource].duration;
+ }
+ 
+-bool inline CRenderManager::Paused(bool paused, double clock)
+-{
+-  // for pause, check for frame advance
+-  bool check = paused ? (clock == m_previousPauseClock) : paused;
+-
+-  m_previousPauseClock = clock;
+-
+-  return check;
+-}
+-
+ void CRenderManager::PrepareNextRender()
+ {
+   if (!m_showVideo && !m_forceNext) return;
+ 
+   double renderPts = m_dvdClock.GetClock();
+ 
+-  float speed = m_dataCacheCore.GetSpeed();
+-  bool paused = Paused((speed == 0.0f), renderPts);
+-
+-  if (paused) return;
++  // A frame past where the clock stands or stops waits for the clock to move;
++  // a frame step moves it.
++  const SPresent& next = m_Queue[m_queued.front()];
++  const double stop = m_dvdClock.GetStop();
++  if (!m_forceNext && stop != DVD_NOPTS_VALUE && next.pts - next.duration / 2 > stop)
++    return;
+ 
++  float speed = m_dataCacheCore.GetSpeed();
+   bool playing = (speed == 1.0f);
+   SetPresentSource(); // get next frame
+ 
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.h b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.h
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.h
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.h
+@@ -211,7 +211,6 @@
+ 
+   void SetPresentSource();
+   void DiscardBufferLocked();
+-  bool Paused(bool paused, double clock);
+   void PrepareNextRender();
+   bool IsPresenting();
+   bool IsGuiLayer();
+@@ -312,7 +311,6 @@
+   bool m_presentstarted = false;
+   int m_presentsource = 0;
+   double m_presentframetime = 0;
+-  double m_previousPauseClock = DVD_NOPTS_VALUE;
+   std::atomic_uint m_presentWaiters{0};
+   XbmcThreads::ConditionVariable m_presentevent;
+   CEvent m_flushEvent;

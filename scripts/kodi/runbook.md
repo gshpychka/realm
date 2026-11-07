@@ -155,6 +155,13 @@ in `cpm/patches/`, one directory per package:
   against the display by a few milliseconds, so a target near a vsync falls on
   alternating sides of it, and the display shows two frames at one vsync and
   none at the next
+- `kodi/local-videoplayer-pause-with-audio.patch` pauses and resumes picture
+  and sound together. On pause, Kodi's clock stops where the audio already
+  handed to the output ends, about 0.3 s after the press with passthrough; on
+  resume it restarts once the output has played the filler it holds, so the
+  first resumed sample and the next frame start together. ActiveAE plays out
+  that audio, keeps the output streaming while paused and resumes the stream in
+  sync, and the renderer holds every frame past where the clock stops
 - `kodi/local-aml-decoder-timeout-paused.patch` suspends the Amlogic
   decoder's 6 s stall timeout while playback is paused. Paused playback holds the
   decoder's output buffers, and the timeout restarts the decoder at a later
