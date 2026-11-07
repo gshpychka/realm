@@ -115,6 +115,11 @@ an override restores the global default, every applicable mode transition
 works in both directions, and switching between files leaves HDR/SDR colors,
 playback state and unrelated video settings correct.
 
+## Debugging
+
+`debug/README.md` collects facts for investigating playback, A/V sync, memory
+and crashes on the box, and `debug/` holds the tools it describes.
+
 ## CoreELEC build
 
 The box runs CPM's CoreELEC fork with Kodi 22, built from source. CPM's Kodi
