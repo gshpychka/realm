@@ -1,0 +1,80 @@
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp b/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
+--- a/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
+@@ -506,18 +506,14 @@
+       m_syncState = IDVDStreamPlayer::SYNC_INSYNC;
+       m_syncTimer.Set(3000ms);
+ 
+-      // LAV-style: Sync passthrough codec's internal clock to RESYNC pts
+-      // This is the KEY fix for video switch A/V desync
++      // Passthrough frames keep their stream timestamps, so each plays at its own time.
+       if (m_pAudioCodec && m_pAudioCodec->NeedPassthrough())
+       {
+         ResetPassthroughClockSyncDebugState();
+         CDVDAudioCodecPassthrough* passthroughCodec =
+             dynamic_cast<CDVDAudioCodecPassthrough*>(m_pAudioCodec.get());
+         if (passthroughCodec)
+-        {
+           passthroughCodec->ResetLavSyncState();
+-          passthroughCodec->SyncToResyncPts(pts + delay);
+-        }
+       }
+       else
+       {
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Audio/DVDAudioCodecPassthrough.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Audio/DVDAudioCodecPassthrough.cpp
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Audio/DVDAudioCodecPassthrough.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Audio/DVDAudioCodecPassthrough.cpp
+@@ -962,29 +962,6 @@
+   CLog::Log(LOGDEBUG, "CDVDAudioCodecPassthrough::ResetLavSyncState - Internal clock reset, will resync");
+ }
+ 
+-void CDVDAudioCodecPassthrough::SyncToResyncPts(double pts)
+-{
+-  // VideoPlayer::Sync() sends RESYNC with a coordinated A/V clock value.
+-  // We trust this value and use it directly for our internal clock.
+-  // This is the KEY fix for video switch A/V desync.
+-
+-  if (IsValidClockPts(pts))
+-  {
+-    m_internalClock = pts;
+-    m_needsResync = false;
+-    m_jitterTracker.Reset();
+-    ResetPassthroughDebugState();
+-    ResetPassthroughStartupState(pts + PASSTHROUGH_RESYNC_JITTER_HOLDOFF);
+-
+-    CLog::Log(LOGDEBUG, "CDVDAudioCodecPassthrough::SyncToResyncPts - Internal clock set to RESYNC pts {:.3f}s",
+-              pts / DVD_TIME_BASE);
+-  }
+-  else
+-  {
+-    CLog::Log(LOGDEBUG, "CDVDAudioCodecPassthrough::SyncToResyncPts - Invalid pts, ignoring");
+-  }
+-}
+-
+ int CDVDAudioCodecPassthrough::GetBufferSize()
+ {
+   return (int)m_parser.GetBufferSize();
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Audio/DVDAudioCodecPassthrough.h b/xbmc/cores/VideoPlayer/DVDCodecs/Audio/DVDAudioCodecPassthrough.h
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Audio/DVDAudioCodecPassthrough.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Audio/DVDAudioCodecPassthrough.h
+@@ -47,7 +47,6 @@
+ 
+   // LAV-style sync methods for VideoPlayerAudio integration
+   void ResetLavSyncState();
+-  void SyncToResyncPts(double pts);
+ 
+   void OnSettingChanged(const std::shared_ptr<const CSetting>& setting) override;
+ 
+@@ -226,12 +225,6 @@
+   static constexpr double TRUEHD_CORRECTION_COOLDOWN_RAW = 100000.0; // 100ms
+   static constexpr double TRUEHD_CORRECTION_COOLDOWN_IEC = 150000.0; // 150ms
+ 
+-  // After an explicit coordinated RESYNC from VideoPlayerAudio, trust that
+-  // clock for a short settling window so stale demuxer PTS values from a
+-  // display-reset reopen do not immediately trigger a large passthrough jitter
+-  // correction that undoes the resync.
+-  static constexpr double PASSTHROUGH_RESYNC_JITTER_HOLDOFF = 250000.0;  // 250ms
+-
+   // Runtime jitter threshold - set based on codec in Open()
+   double m_jitterThreshold{JITTER_THRESHOLD_DEFAULT};
+   double m_lastJitter{0.0};

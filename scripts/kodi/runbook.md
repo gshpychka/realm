@@ -162,6 +162,12 @@ in `cpm/patches/`, one directory per package:
   first resumed sample and the next frame start together. ActiveAE plays out
   that audio, keeps the output streaming while paused and resumes the stream in
   sync, and the renderer holds every frame past where the clock stops
+- `kodi/local-videoplayer-resync-keeps-passthrough-timestamps.patch` keeps the
+  stream timestamps of passthrough audio when playback starts or seeks. CPM's
+  passthrough codec restamps that audio with the clock's start time, which a
+  seek between keyframes sets up to a second before the audio's first sample,
+  so the audio plays early until a correction moves the clock back and freezes
+  the picture
 - `kodi/local-aml-decoder-timeout-paused.patch` suspends the Amlogic
   decoder's 6 s stall timeout while playback is paused. Paused playback holds the
   decoder's output buffers, and the timeout restarts the decoder at a later
