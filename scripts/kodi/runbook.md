@@ -138,6 +138,12 @@ in `cpm/patches/`, one directory per package:
   context, and Kodi's GUI renderer keeps its shaders, matrices and viewport as
   state both contexts share, so the worker's output comes out invisible or
   mirrored
+- `kodi/local-aml-h264-speed-keeps-decoder.patch` keeps the H.264 decoder's
+  stream across pause, resume and the speed changes of a seek, and reopens the
+  decoder for a seek while paused. A decoder reset restarts decoding at a later
+  keyframe, so the picture stalls behind the audio until Kodi's clock reaches
+  that keyframe, and a flush without a reopen leaves the decoder's pre-seek
+  pictures in place
 - `kodi/local-aml-decoder-timeout-paused.patch` suspends the Amlogic
   decoder's 6 s stall timeout while playback is paused. Paused playback holds the
   decoder's output buffers, and the timeout restarts the decoder at a later

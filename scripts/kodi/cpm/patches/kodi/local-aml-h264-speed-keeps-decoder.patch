@@ -1,0 +1,25 @@
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecAmlogic.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecAmlogic.cpp
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecAmlogic.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecAmlogic.cpp
+@@ -691,7 +691,9 @@
+ {
+   if (m_Codec->IsH264())
+   {
+-    if (m_dataCacheCore.GetSpeed() == 1.0f)
++    // trick play keeps the decoder across the seeks of its steps
++    const float speed = m_dataCacheCore.GetSpeed();
++    if (speed == 1.0f || speed == 0.0f)
+     {
+       // Cannot just do reset, needs fuller open and close to have correct pts.
+       m_Codec->CloseDecoder(true);
+@@ -766,10 +768,7 @@
+ void CDVDVideoCodecAmlogic::SetSpeed(int iSpeed)
+ {
+   if (m_Codec)
+-  {
+     m_Codec->SetSpeed(iSpeed);
+-    if (m_hints.codec == AV_CODEC_ID_H264) m_Codec->Reset();
+-  }
+ }
+ 
+ void CDVDVideoCodecAmlogic::FrameRateTracking(uint8_t *pData, int iSize, double dts, double pts)
