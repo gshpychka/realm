@@ -18,7 +18,9 @@ crashes. Deployment and the patch list live in `../runbook.md`.
   available.
 - Kodi listens for JSON-RPC on TCP port 9090; `rpc.py` below is a client.
   `Player.GetProperties` reports time 0 with nothing playing;
-  `Player.GetActivePlayers` returns `[]` then.
+  `Player.GetActivePlayers` returns `[]` then. `Player.Seek` takes
+  `{"time":{"hours":1,"minutes":3,"seconds":41}}` for a time and
+  `{"seconds":-30}` for a relative seek; JSON numbers carry no leading zeros.
 
 ## Logs and crashes
 
@@ -56,8 +58,8 @@ crashes. Deployment and the patch list live in `../runbook.md`.
   relative seek of a few seconds starts both together.
 - The A/V sync story in the log: `start sync of audio stream`, then
   `SyncStream - average error of …, start adjusting` until `below threshold`;
-  `CDVDClock::ErrorAdjust` lines move the clock and with it the picture.
-  `syncprobe.sh` collects them.
+  `CDVDClock::ErrorAdjust` lines move the clock and with it the picture. The
+  last `below threshold` line marks when sync settled.
 - PlexKodiConnect logs `Session key … still unknown! Skip playstate update`
   every 10 s during playback, and defers its scheduled full sync while video
   plays.
@@ -102,10 +104,6 @@ scp scripts/kodi/debug/* kodi:/storage/kodi-debug/
 
 - `rpc.py METHOD [PARAMS_JSON]` calls one JSON-RPC method and prints the result,
   e.g. `python3 rpc.py Player.GetProperties '{"playerid":1,"properties":["time"]}'`.
-  `syncprobe.sh` drives Kodi through it.
-- `syncprobe.sh seek|pause|open …` performs one playback action and prints the
-  audio sync events of the next 10 s, with a summary: when sync settled, how
-  many adjust cycles and clock corrections it took.
 - `heapstats.sh [INTERVAL]` prints malloc's in-use and claimed memory per arena,
   its separately mapped blocks and RSS.
 
