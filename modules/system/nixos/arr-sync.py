@@ -762,6 +762,15 @@ def plan_provider(api, plan, secrets, kind, spec, schemas, existing):
         if value is True and supported is False:
             plan.problems.append(f"{label}: {impl} does not support '{prop}'")
             continue
+        if kind == "downloadclient" and prop == "protocol":
+            # Lidarr returns protocol class names; keep its API value in PUTs
+            # when it already denotes the declared protocol.
+            protocol = {
+                "TorrentDownloadProtocol": "torrent",
+                "UsenetDownloadProtocol": "usenet",
+            }.get(desired[prop], desired[prop])
+            if protocol == value:
+                continue
         assign(desired, prop, value, prop)
 
     fields = {field["name"]: field for field in desired.get("fields", [])}

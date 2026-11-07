@@ -79,6 +79,38 @@ class PlanTest(unittest.TestCase):
         arr_sync.plan_providers(api, plan, stored or Stored(), kind, [spec])
         return plan
 
+    def test_download_protocol_names_compare_without_rewriting_the_api_value(self):
+        for implementation, protocol, api_protocol in [
+            ("QBittorrent", "torrent", "TorrentDownloadProtocol"),
+            ("Sabnzbd", "usenet", "UsenetDownloadProtocol"),
+            ("QBittorrent", "torrent", "torrent"),
+            ("Sabnzbd", "usenet", "usenet"),
+        ]:
+            with self.subTest(protocol=api_protocol):
+                resource = {
+                    "id": 1,
+                    "name": implementation,
+                    "implementation": implementation,
+                    "protocol": api_protocol,
+                    "priority": 1,
+                    "fields": [],
+                }
+                spec = {
+                    "name": implementation,
+                    "implementation": implementation,
+                    "properties": {"protocol": protocol, "priority": 1},
+                }
+                plan = self.plan("downloadclient", resource, [resource], spec)
+                self.assertEqual((plan.writes, plan.problems), ([], []))
+
+                spec["properties"]["priority"] = 2
+                (write,) = self.plan(
+                    "downloadclient", resource, [resource], spec
+                ).writes
+                self.assertEqual(write["body"]["priority"], 2)
+                self.assertEqual(write["body"]["protocol"], api_protocol)
+                self.assertNotIn("protocol", write["summary"])
+
     def test_a_live_secret_is_filled_when_empty_and_never_overwritten(self):
         spec = {
             "name": "Telegram",
