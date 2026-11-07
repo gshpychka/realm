@@ -1,9 +1,11 @@
 {
   config,
+  pkgs,
   ...
 }:
 let
   ntfyTopic = "buoy-status";
+  themePython = pkgs.python3.withPackages (p: [ p.pillow ]);
 
   # Gatus's ntfy provider writes its own message text, so ntfy alerts override the custom
   # provider's request with a plain-text publish. [ALERT_TRIGGERED_OR_RESOLVED] is substituted
@@ -48,9 +50,26 @@ in
 {
   services.gatus = {
     enable = true;
+    # Gatus embeds its static files into the binary. Brand those before Go
+    # builds it, so favicon, installable app and chart colors work without a
+    # second web server or browser-side patching.
+    package = pkgs.gatus.overrideAttrs (old: {
+      postPatch = (old.postPatch or "") + ''
+        ${themePython}/bin/python3 ${./gatus-brand.py} web/static ${./gatus-hoard.jpg}
+      '';
+    });
     environmentFile = config.sops.secrets.gatus-env.path;
     settings = {
-      ui.custom-css = builtins.readFile ./gatus-gruvbox.css;
+      ui = {
+        title = "Hoard · Status";
+        header = "Hoard";
+        description = "Service availability and response times across the realm.";
+        dashboard-heading = "Service status";
+        dashboard-subheading = "Availability and response times across the realm.";
+        logo = "/hoard.png";
+        dark-mode = true;
+        custom-css = builtins.readFile ./gatus-gruvbox.css;
+      };
       web.address = "127.0.0.1";
       storage = {
         type = "sqlite";

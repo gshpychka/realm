@@ -1,124 +1,133 @@
-/* Gruvbox Dark theme for Gatus */
-
-#global {
-  background-color: #282828 !important;
-  color: #ebdbb2 !important;
+/* Hoard / Gruvbox Dark. Both roots deliberately share a palette so an old
+   light-mode cookie cannot leave white controls, overlays or detail pages. */
+html:root, html:root.dark {
+  color-scheme: dark;
+  --background: 0 0% 15.686275%;
+  --foreground: 43.157895 58.762887% 80.980392%;
+  --card: 20 3.092784% 19.019608%;
+  --card-foreground: 43.157895 58.762887% 80.980392%;
+  --popover: 20 5.263158% 22.352941%;
+  --popover-foreground: 43.157895 58.762887% 80.980392%;
+  --primary: 26.986900 99.134199% 54.705882%;
+  --primary-foreground: 0 0% 15.686275%;
+  --secondary: 20 5.263158% 22.352941%;
+  --secondary-foreground: 40.384615 38.235294% 73.333333%;
+  --muted: 20 5.263158% 22.352941%;
+  --muted-foreground: 35 17.142857% 58.823529%;
+  --accent: 22.5 6.153846% 25.490196%;
+  --accent-foreground: 43.157895 58.762887% 80.980392%;
+  --destructive: 6.331658 96.135266% 59.411765%;
+  --destructive-foreground: 0 0% 15.686275%;
+  --border: 21.818182 7.382550% 29.215686%;
+  --input: 26.666667 9.677419% 36.470588%;
+  --ring: 26.986900 99.134199% 54.705882%;
+  --radius: 0.75rem;
+  --hoard-bg: #282828;
+  --hoard-panel: #32302f;
+  --hoard-border: #504945;
+  --hoard-text: #ebdbb2;
+  --hoard-muted: #a89984;
+  --hoard-orange: #fe8019;
+  --hoard-green: #b8bb26;
+  --hoard-red: #fb4934;
+  --hoard-yellow: #fabd2f;
+  --hoard-blue: #83a598;
 }
+html, body, #app, #global { min-height: 100%; background: var(--hoard-bg); }
+body { margin: 0; color: var(--hoard-text); font-family: "Aptos", "Segoe UI", "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+#global { min-height: 100svh; }
+#global > .relative { min-height: 100svh; display: flex; flex-direction: column; }
+#global main { flex: 1; }
+::selection { background: #665c54; color: #fbf1c7; }
+:focus-visible { outline: 2px solid var(--hoard-orange); outline-offset: 4px; }
+button, input, select { font: inherit; }
+button { touch-action: manipulation; }
+input::placeholder { color: #928374; }
+a { color: var(--hoard-blue); text-underline-offset: 0.2em; }
+a:hover { color: #8ec07c; }
 
-.dashboard-container {
-  background-color: #282828 !important;
+/* A quiet masthead, not a marketing hero. */
+#global header { background: #1d2021; border-color: var(--hoard-border); backdrop-filter: none; }
+#global .container { max-width: 1120px; }
+#global header .container { padding-top: 1.15rem; padding-bottom: 1.15rem; }
+#global header h1 { font-size: 1.25rem; font-weight: 650; letter-spacing: -0.035em; color: var(--hoard-text); }
+#global header img { border-radius: 0.7rem; }
+#global header .w-12 { width: 2.75rem; height: 2.75rem; }
+#global footer { display: none; } /* promotional footer and social links */
+.dashboard-container { background: var(--hoard-bg); }
+.dashboard-container > .container { padding-top: 2.75rem; padding-bottom: 2rem; }
+.dashboard-container h1.text-4xl { font-size: clamp(1.65rem, 3vw, 2.1rem); line-height: 1.2; font-weight: 600; letter-spacing: -0.045em; }
+.dashboard-container h1 + p { font-size: 0.9rem; line-height: 1.7; }
+.dashboard-container .grid.gap-3 { gap: 1rem; }
+
+/* Cards keep the data still: no scaling or deep drop shadows on hover. */
+.endpoint, .endpoint-group, .bg-card { background-color: var(--hoard-panel); border-color: var(--hoard-border); box-shadow: none; }
+.endpoint { border-radius: 0.75rem; transition: border-color 150ms ease; }
+.endpoint:hover { transform: none; box-shadow: none; border-color: #7c6f64 !important; }
+.endpoint-header, .endpoint-content { background: transparent; }
+.endpoint-header { padding: 1.2rem 1.2rem 0.25rem; }
+.endpoint-content { padding: 0.5rem 1.2rem 1.1rem; }
+.endpoint-header [role="link"] { font-size: 1rem; font-weight: 600; letter-spacing: -0.02em; }
+.endpoint-header [role="link"]:hover { color: var(--hoard-orange); }
+.endpoint-content .h-6, .endpoint-content .sm\:h-8 { height: 1.65rem; border-radius: 2px; }
+.endpoint-content .text-xs { font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.endpoint-group-header { background: #3c3836; }
+.endpoint-group-header:hover { background: #45403d; }
+.endpoint-group-content { background: var(--hoard-bg); }
+
+/* Controls, tooltip, refresh menu and detail pages use the same palette. */
+.dashboard-container .bg-card:has(#search-input) { padding: 0.85rem; border-radius: 0.75rem; background: #32302f; }
+input, select { color: var(--hoard-text); background-color: #282828; border-color: #665c54; }
+input:focus, select:focus { border-color: var(--hoard-orange); }
+input[type="text"], select { min-height: 44px; }
+select option { color: var(--hoard-text); background: #32302f; }
+#tooltip { background: #3c3836; border-color: #665c54; box-shadow: 0 8px 28px #0005; max-width: min(28rem, calc(100vw - 1rem)); }
+#settings { position: static; display: flex; justify-content: flex-end; max-width: 1120px; margin: 0 auto; padding: 0 1rem 2rem; animation: none; }
+#settings > div { background: #32302f; border-color: #665c54; backdrop-filter: none; box-shadow: 0 3px 12px #0003; border-radius: 0.6rem; }
+#settings button { min-height: 40px; }
+#settings button[aria-label*="mode"], #settings > div > .w-px { display: none; }
+#settings .bg-popover { background: #3c3836; }
+
+/* Gatus also uses literal utility colors outside its semantic tokens. */
+[class~="text-green-400"], [class~="text-green-500"], [class~="text-green-600"], [class~="text-green-700"], [class~="text-green-800"], [class~="dark:text-green-400"] { color: var(--hoard-green) !important; }
+[class~="bg-green-500"], [class~="bg-green-400"], .bg-success { background-color: #98971a !important; }
+[class~="bg-green-700"], [class~="hover:bg-green-700"]:hover { background-color: var(--hoard-green) !important; }
+[class~="bg-green-100"], [class~="dark:bg-green-900"] { background-color: #b8bb2618 !important; border-color: #98971a55; }
+[class~="text-red-400"], [class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"], [class~="text-red-800"], [class~="dark:text-red-400"] { color: var(--hoard-red) !important; }
+[class~="bg-red-400"], [class~="bg-red-500"], [class~="bg-red-600"] { background-color: #cc241d !important; }
+[class~="bg-red-700"], [class~="hover:bg-red-700"]:hover { background-color: var(--hoard-red) !important; }
+[class~="bg-red-100"], [class~="dark:bg-red-900"] { background-color: #fb493418 !important; }
+[class~="text-yellow-500"], [class~="text-yellow-600"], [class~="text-yellow-800"], [class~="dark:text-yellow-400"] { color: var(--hoard-yellow) !important; }
+[class~="bg-yellow-400"] { background-color: var(--hoard-yellow) !important; }
+[class~="bg-yellow-100"], [class~="dark:bg-yellow-900"] { background-color: #fabd2f18 !important; }
+[class~="text-blue-400"], [class~="text-blue-500"], [class~="text-blue-600"], [class~="text-blue-800"], [class~="dark:text-blue-400"] { color: var(--hoard-blue) !important; }
+[class~="bg-blue-100"], [class~="dark:bg-blue-900"] { background-color: #83a59818 !important; }
+[class~="bg-gray-200"], [class~="bg-gray-700"], [class~="dark:bg-gray-700"] { background-color: #504945 !important; }
+[class~="bg-gray-400"] { background-color: #a89984 !important; }
+[class~="text-gray-500"], [class~="text-gray-600"], [class~="text-gray-800"], [class~="dark:text-gray-400"] { color: var(--hoard-muted) !important; }
+[class~="border-gray-200"], [class~="dark:border-gray-700"] { border-color: #665c54 !important; }
+
+/* Badges are quieter than the history bars and retain AA-readable text. */
+.rounded-full.bg-green-500 { background-color: #b8bb2618 !important; color: var(--hoard-green) !important; border-color: #98971a55; }
+.rounded-full.bg-destructive { background-color: #fb493418 !important; color: var(--hoard-text) !important; border-color: #cc241d66; }
+.rounded-full.bg-yellow-500 { background-color: #fabd2f18 !important; color: var(--hoard-yellow) !important; border-color: #d7992155; }
+img[alt="Hoard logo"] { animation: none; filter: none; opacity: 0.8; }
+
+@media (min-width: 640px) and (max-width: 899px) {
+  .dashboard-container .grid.sm\:grid-cols-2 { grid-template-columns: 1fr; }
 }
-
-.endpoint,
-.endpoint-group {
-  background-color: #3c3836 !important;
-  border: 1px solid #504945 !important;
+@media (min-width: 900px) {
+  .dashboard-container .grid.lg\:grid-cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-
-.endpoint:hover,
-.endpoint-group:hover {
-  border-color: #665c54 !important;
+@media (max-width: 639px) {
+  #global .container { padding-left: 1rem; padding-right: 1rem; }
+  .dashboard-container > .container { padding-top: 1.75rem; }
+  .endpoint-header { padding: 1rem 1rem 0.25rem; }
+  .endpoint-content { padding: 0.5rem 1rem 1rem; }
+  .dashboard-container .bg-card:has(#search-input) { padding: 0.75rem; }
+  .dashboard-container > .container > .mb-6 > .flex { gap: 0.5rem; }
+  .dashboard-container h1 + p { max-width: 26ch; }
 }
-
-.endpoint-header,
-.endpoint-group-header {
-  background-color: #3c3836 !important;
-  color: #ebdbb2 !important;
-}
-
-.endpoint-content,
-.endpoint-group-content {
-  background-color: #3c3836 !important;
-  color: #d5c4a1 !important;
-}
-
-.announcement-container {
-  background-color: #3c3836 !important;
-  border: 1px solid #504945 !important;
-}
-
-.announcement-header {
-  background-color: #3c3836 !important;
-  color: #ebdbb2 !important;
-}
-
-.announcement-content {
-  background-color: #3c3836 !important;
-  color: #d5c4a1 !important;
-}
-
-/* Status bars - success */
-.bg-green-500 {
-  background-color: #98971a !important;
-}
-
-.bg-green-700 {
-  background-color: #b8bb26 !important;
-}
-
-/* Status bars - failure */
-.bg-red-500 {
-  background-color: #cc241d !important;
-}
-
-.bg-red-700 {
-  background-color: #fb4934 !important;
-}
-
-/* Empty slots */
-.bg-gray-200 {
-  background-color: #504945 !important;
-}
-
-.bg-gray-700 {
-  background-color: #504945 !important;
-}
-
-/* Text styling */
-.font-bold {
-  color: #ebdbb2 !important;
-}
-
-.font-medium {
-  color: #ebdbb2 !important;
-}
-
-.font-light {
-  color: #d5c4a1 !important;
-}
-
-.text-muted-foreground {
-  color: #a89984 !important;
-}
-
-/* Header */
-header {
-  background-color: #1d2021 !important;
-  border-color: #504945 !important;
-}
-
-/* Footer */
-footer {
-  background-color: #1d2021 !important;
-  border-color: #504945 !important;
-}
-
-/* Links */
-a {
-  color: #83a598 !important;
-}
-
-a:hover {
-  color: #8ec07c !important;
-}
-
-/* Cards */
-.bg-card {
-  background-color: #3c3836 !important;
-}
-
-/* Borders */
-.border-b,
-.border-t {
-  border-color: #504945 !important;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
