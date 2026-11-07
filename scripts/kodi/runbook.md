@@ -129,6 +129,10 @@ in `cpm/patches/`, one directory per package:
 - `kodi/local-window-close-message-flags.patch` reads a cross-thread window
   close's force and sound flags from the field the sender fills, so a forced
   close requested off the main thread completes
+- `kodi/local-jsonrpc-tcp-connections-lock.patch` guards the JSON-RPC TCP
+  server's connection list, which Kodi walks to send each notification while
+  the server thread adds and deletes connections, so a client disconnecting
+  during a notification leaves Kodi running
 - `kodi/local-render-osd-on-main-thread.patch` keeps the OSD and seek bar on
   Kodi's main thread. CPM's overlay worker renders them from a second GL
   context, and Kodi's GUI renderer keeps its shaders, matrices and viewport as

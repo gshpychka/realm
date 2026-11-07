@@ -1,0 +1,69 @@
+diff --git a/xbmc/network/TCPServer.cpp b/xbmc/network/TCPServer.cpp
+--- a/xbmc/network/TCPServer.cpp
++++ b/xbmc/network/TCPServer.cpp
+@@ -161,6 +161,7 @@
+               {
+                 // Replace the CTCPClient with a CWebSocketClient
+                 CWebSocketClient *websocketClient = new CWebSocketClient(websocket, *(m_connections[i]));
++                std::unique_lock lock(m_connectionsSection);
+                 delete m_connections[i];
+                 m_connections.erase(m_connections.begin() + i);
+                 m_connections.insert(m_connections.begin() + i, websocketClient);
+@@ -178,6 +179,7 @@
+           if (close)
+           {
+             CLog::Log(LOGINFO, "JSONRPC Server: Disconnection detected");
++            std::unique_lock lock(m_connectionsSection);
+             m_connections[i]->Disconnect();
+             delete m_connections[i];
+             m_connections.erase(m_connections.begin() + i);
+@@ -207,6 +209,7 @@
+           else
+           {
+             CLog::Log(LOGINFO, "JSONRPC Server: New connection added");
++            std::unique_lock lock(m_connectionsSection);
+             m_connections.push_back(newconnection);
+           }
+         }
+@@ -237,6 +240,7 @@
+                           const std::string& message,
+                           const CVariant& data)
+ {
++  std::unique_lock connectionsLock(m_connectionsSection);
+   if (m_connections.empty())
+     return;
+ 
+@@ -479,13 +483,16 @@
+ 
+ void CTCPServer::Deinitialize()
+ {
+-  for (unsigned int i = 0; i < m_connections.size(); i++)
+   {
+-    m_connections[i]->Disconnect();
+-    delete m_connections[i];
+-  }
++    std::unique_lock lock(m_connectionsSection);
++    for (unsigned int i = 0; i < m_connections.size(); i++)
++    {
++      m_connections[i]->Disconnect();
++      delete m_connections[i];
++    }
+ 
+-  m_connections.clear();
++    m_connections.clear();
++  }
+ 
+   for (unsigned int i = 0; i < m_servers.size(); i++)
+     closesocket(m_servers[i]);
+diff --git a/xbmc/network/TCPServer.h b/xbmc/network/TCPServer.h
+--- a/xbmc/network/TCPServer.h
++++ b/xbmc/network/TCPServer.h
+@@ -108,6 +108,8 @@
+     };
+ 
+     std::vector<CTCPClient*> m_connections;
++    // Guards changes to m_connections against Announce, which runs on another thread.
++    CCriticalSection m_connectionsSection;
+     std::vector<SOCKET> m_servers;
+     int m_port;
+     bool m_nonlocal;
