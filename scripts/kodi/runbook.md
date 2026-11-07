@@ -168,6 +168,11 @@ in `cpm/patches/`, one directory per package:
   seek between keyframes sets up to a second before the audio's first sample,
   so the audio plays early until a correction moves the clock back and freezes
   the picture
+- `kodi/local-videoplayer-retry-audio-renderer.patch` opens a video's audio
+  output once ActiveAE takes streams again, and the audio waits for it at the
+  frame it reached. ActiveAE refuses new streams while a display mode change
+  suspends it, as when a video starts during the refresh-rate switch, and a
+  refused audio output otherwise stays closed for the whole video
 - `kodi/local-aml-decoder-timeout-paused.patch` suspends the Amlogic
   decoder's 6 s stall timeout while playback is paused. Paused playback holds the
   decoder's output buffers, and the timeout restarts the decoder at a later

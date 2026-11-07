@@ -1,0 +1,36 @@
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp b/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
+--- a/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
+@@ -437,6 +437,14 @@
+     if (m_paused)
+       priority = 1;
+ 
++    // A decoded frame waiting for its renderer holds back the packets after it,
++    // and the renderer opens for it on a later attempt.
++    if (audioframe.nb_frames > audioframe.framesOut && !m_audioSink.HasStream())
++    {
++      priority = 1;
++      timeout = 200ms;
++    }
++
+     if (onlyPrioMsgs)
+     {
+       priority = 1;
+@@ -833,6 +841,17 @@
+   // Keep the decoded frame queued until playback is allowed to resume.
+   if (m_paused) return false;
+ 
++  // The engine refuses streams while it is suspended, as during a display mode
++  // change, so the renderer opens for the frame waiting to play once it takes them.
++  if (!m_audioSink.HasStream())
++  {
++    if (!m_audioSink.Create(audioframe, m_streaminfo.codec, m_synctype == SYNC_RESAMPLE))
++      return false;
++
++    if (m_syncState == IDVDStreamPlayer::SYNC_INSYNC && m_speed != DVD_PLAYSPEED_PAUSE)
++      m_audioSink.Resume();
++  }
++
+   // A/V sync correction
+   if (m_synctype == SYNC_DISCON)
+   {
