@@ -40,7 +40,9 @@ let
     "openai-api-key"
     "device-token"
     "home-assistant-token"
-  ];
+    openclawCredential
+  ]
+  ++ lib.optional jevClassifies openRouterKey;
   openclawCredential = "openclaw-secret";
   identityCredential = "identity";
   credential = name: "/run/credentials/voice-broker.service/${name}";
@@ -84,7 +86,7 @@ let
         The classifier (packages/voice-broker/src/voice_broker/routing.py)
         ${role}: `decisions`, OpenAI Decisions on the broker's OpenAI key; or
         `jev`, TypeSafe Jev through OpenRouter's System One API, on the
-        OpenRouter key of `openRouter.sopsFile`. One call per request either
+        OpenRouter key of `sopsFile`. One call per request either
         way; a failure never falls back to the other.
       '';
     };
@@ -121,7 +123,7 @@ in
 
     sopsFile = lib.mkOption {
       type = lib.types.path;
-      description = "SOPS file holding flat keys openai-api-key, device-token and home-assistant-token.";
+      description = "SOPS file holding flat keys openai-api-key, device-token, home-assistant-token and openclaw-secret (the gateway token), plus openrouter-api-key while a jev classifier runs.";
     };
 
     homeAssistant.url = lib.mkOption {
@@ -167,12 +169,6 @@ in
         Gated and parallel need homeAssistantDeviceId on every Voice PE. In
         every mode a consult is a turn of main (`overflow` below).
       '';
-    };
-
-    openRouter.sopsFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
-      default = null;
-      description = "SOPS file holding the flat key ${openRouterKey}, read only while a jev classifier runs.";
     };
 
     routing = classifierOptions [ "routing" ] "that gates each delegated request in gated mode" // {
@@ -370,10 +366,6 @@ in
             } model.";
           }
           {
-            assertion = !jevClassifies || cfg.openRouter.sopsFile != null;
-            message = "my.voice-broker's jev classifier runs on OpenRouter; set my.voice-broker.openRouter.sopsFile.";
-          }
-          {
             assertion = !cfg.homeAssistant.shadow.enable || parallel;
             message = "my.voice-broker.homeAssistant.shadow shadows parallel mode; gated mode's classifier is my.voice-broker.routing.";
           }
@@ -426,22 +418,15 @@ in
           };
         };
 
-        sops.secrets =
-          lib.listToAttrs (
-            map (
-              name:
-              lib.nameValuePair (sopsName name) {
-                inherit (cfg) sopsFile;
-                key = name;
-              }
-            ) credentialNames
-          )
-          // lib.optionalAttrs jevClassifies {
-            ${sopsName openRouterKey} = {
-              inherit (cfg.openRouter) sopsFile;
-              key = openRouterKey;
-            };
-          };
+        sops.secrets = lib.listToAttrs (
+          map (
+            name:
+            lib.nameValuePair (sopsName name) {
+              inherit (cfg) sopsFile;
+              key = name;
+            }
+          ) credentialNames
+        );
 
         # Static: loopback access to the OpenClaw gateway is granted per user.
         users.users.${user} = {
@@ -490,10 +475,6 @@ in
             ExecStart = "${lib.getExe pkgs.voice-broker} --config ${json.generate "voice-broker.json" cfg.settings}";
             LoadCredential =
               map (name: "${name}:${config.sops.secrets.${sopsName name}.path}") credentialNames
-              ++ [ "${openclawCredential}:${openclaw.gatewaySecretFile}" ]
-              ++ lib.optional jevClassifies "${openRouterKey}:${
-                config.sops.secrets.${sopsName openRouterKey}.path
-              }"
               ++ lib.optional (cfg.identityFile != null) "${identityCredential}:${cfg.identityFile}";
             # the identity while identityFile is missing; a LoadCredential= that
             # finds no file falls back to it (systemd.exec(5), SetCredential=).

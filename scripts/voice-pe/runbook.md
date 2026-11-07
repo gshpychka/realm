@@ -186,6 +186,12 @@ Hoard uses `my.voice-broker.mode = "gated"`: its classifier routes each request
 to Home Assistant or OpenClaw. The module refuses `"parallel"`, because OpenClaw
 consults can also act on the home (see "Consults and main's session" below).
 
+All broker secrets come from `secrets/hoard/voice-broker.yaml`: `openai-api-key`,
+`device-token`, `home-assistant-token`, `openclaw-secret` (the gateway token),
+and `openrouter-api-key` for the Jev classifier. If the gateway token changes,
+update both this file's `openclaw-secret` and `secrets/hoard/openclaw.yaml`'s
+`gateway-token`.
+
 The home-only integration has a dedicated OpenAI agent and Assist pipeline,
 named by `my.voice-broker.homeAssistant.pipeline`. The setup helper creates
 these independently of the broker mode. It copies speech recognition and

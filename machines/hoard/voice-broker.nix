@@ -127,9 +127,6 @@ in
     # (01m54bbk2zytrd5fqaxd7dee0s), created 2026-10-17 by voice-broker-ha-setup
     # (scripts/voice-pe/runbook.md).
     mode = "gated";
-    # the owner's OpenRouter key, encrypted to hoard_host as well
-    openRouter.sopsFile = ../../secrets/openclaw/openrouter.yaml;
-
     routing = {
       # "Remote" (conversation.chatgpt, an LLM agent that can ask which device
       # is meant), Home Assistant's preferred pipeline as of 2026-10-16
