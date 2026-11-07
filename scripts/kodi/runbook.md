@@ -118,7 +118,7 @@ playback state and unrelated video settings correct.
 ## Debugging
 
 `debug/README.md` collects facts for investigating playback, A/V sync, memory
-and crashes on the box, and `debug/` holds the tools it describes.
+and crashes on the box, next to a JSON-RPC client.
 
 ## CoreELEC build
 

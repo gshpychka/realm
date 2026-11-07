@@ -1,7 +1,7 @@
 # Debugging Kodi on the box
 
-Facts and tools for investigating the kodi box: playback, A/V sync, memory and
-crashes. Deployment and the patch list live in `../runbook.md`.
+Facts for investigating the kodi box: playback, A/V sync, memory and crashes.
+Deployment and the patch list live in `../runbook.md`.
 
 ## The box
 
@@ -37,8 +37,8 @@ crashes. Deployment and the patch list live in `../runbook.md`.
   low LWP's position among the crashed process's LWPs matches a thread name in
   the running Kodi's `/proc/$(pidof kodi.bin)/task/*/comm`.
 - gdb is installed and attaches to the running Kodi without debug symbols.
-  Calls need explicit casts, e.g. `call (int)malloc_trim(0)`. `heapstats.gdb`
-  shows the pattern.
+  Calls need explicit casts, e.g. `call (int)malloc_trim(0)`, and stop Kodi
+  for a fraction of a second.
 - `dd if=/proc/$(pidof kodi.bin)/mem bs=4096 skip=… count=…` reads Kodi's
   memory. While the heap grows, the top of `[heap]` in `/proc/<pid>/maps`
   holds the newest allocations, and `strings` on a dump of it often shows
@@ -70,8 +70,17 @@ crashes. Deployment and the patch list live in `../runbook.md`.
   (`filecache.memorysize`), CPM's video packet queue, which fills to 256 MB of
   data (about 75 s of a remux), and a 36 MB audio queue. Stopping playback frees
   them; glibc keeps the freed heap for the next playback, so RSS stays high.
-- RSS therefore says little about leaks. `heapstats.sh` reads what malloc holds
-  in use; compare samples with playback running and after it stops.
+- RSS therefore says little about leaks; malloc's own report does. In
+  `gdb -p $(pidof kodi.bin)`: `set $f = (void*)fopen("/tmp/mi.xml", "w")`,
+  `call (int)malloc_info(0, $f)`, `call (int)fclose($f)`, `detach`. Per arena
+  (`<heap nr=…>`), memory in use is `<system type="current">` minus the sizes
+  of `<total type="fast">` and `<total type="rest">`, and it counts the
+  arena's free top chunk too; `<total type="mmap">` covers blocks with a
+  mapping of their own. Compare samples with playback running and after it
+  stops.
+- A memory soak keeps a video playing and lists a Bingie widget every 10 s
+  (`Files.GetDirectory` on a `plugin://script.bingie.widgets/` path) from
+  transient units, sampling malloc's report every few minutes.
 - Kodi runs with `MALLOC_ARENA_MAX=2` (`../kodi-memory.conf`). Kodi runs every
   add-on script on a new thread, and without the cap each thread's arena keeps
   what its script freed.
@@ -93,22 +102,10 @@ crashes. Deployment and the patch list live in `../runbook.md`.
 - CPM's Kodi source: <https://github.com/cpm-code/xbmc> at the commit
   `cpm-code/CoreELEC` pins.
 
-## Tools
+## JSON-RPC client
 
-Copy them to the box, then run them there:
-
-```sh
-ssh kodi mkdir -p /storage/kodi-debug
-scp scripts/kodi/debug/* kodi:/storage/kodi-debug/
-```
-
-- `rpc.py METHOD [PARAMS_JSON]` calls one JSON-RPC method and prints the result,
-  e.g. `python3 rpc.py Player.GetProperties '{"playerid":1,"properties":["time"]}'`.
-- `heapstats.sh [INTERVAL]` prints malloc's in-use and claimed memory per arena,
-  its separately mapped blocks and RSS.
-
-`rm -r /storage/kodi-debug` removes them.
-
-A memory soak keeps a video playing and lists a Bingie widget every 10 s
-(`Files.GetDirectory` on a `plugin://script.bingie.widgets/` path) from
-transient units, with `heapstats.sh 300` logging alongside.
+`rpc.py METHOD [PARAMS_JSON]` calls one JSON-RPC method of the box's Kodi and
+prints the result. Copy it with `scp scripts/kodi/debug/rpc.py kodi:/storage/`
+and run it on the box, e.g.
+`python3 /storage/rpc.py Player.GetProperties '{"playerid":1,"properties":["time"]}'`;
+`rm /storage/rpc.py` removes it.
