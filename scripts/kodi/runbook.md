@@ -144,6 +144,11 @@ in `cpm/patches/`, one directory per package:
   keyframe, so the picture stalls behind the audio until Kodi's clock reaches
   that keyframe, and a flush without a reopen leaves the decoder's pre-seek
   pictures in place
+- `kodi/local-aml-video-file-lock.patch` closes the decoder's amlvideo device
+  only between ioctls. A seek on H.264 closes and reopens the decoder while
+  the render thread still queues frames, amlvideo admits one open file, and a
+  close during an ioctl leaves the device open for the reopen to fail on,
+  which blacks out the picture until playback stops
 - `kodi/local-aml-decoder-timeout-paused.patch` suspends the Amlogic
   decoder's 6 s stall timeout while playback is paused. Paused playback holds the
   decoder's output buffers, and the timeout restarts the decoder at a later

@@ -1,0 +1,76 @@
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/AMLCodec.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/AMLCodec.cpp
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/AMLCodec.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/AMLCodec.cpp
+@@ -2009,7 +2009,10 @@ bool CAMLCodec::OpenAmlVideo()
+     return false;
+   }
+ 
+-  m_amlVideoFile = amlVideoFile;
++  {
++    std::scoped_lock lock(m_ioControlMutex);
++    m_amlVideoFile = amlVideoFile;
++  }
+   m_defaultVfmMap = GetVfmMap("default");
+   m_dvblpathVfmMap = GetVfmMap("dvblpath");
+ 
+@@ -2090,12 +2093,14 @@ void CAMLCodec::CloseDecoder(bool restart)
+ 
+ void CAMLCodec::CloseAmlVideo()
+ {
+-  m_amlVideoFile.reset();
++  // amlvideo admits one open file; with no ioctl in flight the reset closes it.
++  {
++    std::scoped_lock lock(m_ioControlMutex);
++    m_amlVideoFile.reset();
++  }
+ 
+   SetVfmMap("default", m_defaultVfmMap);
+   SetVfmMap("dvblpath", m_dvblpathVfmMap);
+-
+-  m_amlVideoFile = nullptr;
+ }
+ 
+ void CAMLCodec::Reset()
+@@ -2286,8 +2291,6 @@ void CAMLCodec::SetPollDevice(int dev)
+ 
+ int CAMLCodec::ReleaseFrame(const uint32_t index, bool drop)
+ {
+-  if (!m_amlVideoFile) return 0;
+-
+   int ret;
+   auto vbuf = v4l2_buffer();
+   vbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+@@ -2301,6 +2304,7 @@ int CAMLCodec::ReleaseFrame(const uint32_t index, bool drop)
+ 
+   {
+     std::scoped_lock lock(m_ioControlMutex);
++    if (!m_amlVideoFile) return 0;
+     ret = (m_amlVideoFile->IOControl(VIDIOC_QBUF, &vbuf) < 0) ? errno : 0;
+   }
+ 
+@@ -2377,13 +2381,12 @@ void CAMLCodec::InvalidatePlaybackBufferLevelCache()
+ 
+ bool CAMLCodec::TryDequeueCaptureBuffer(v4l2_buffer& vbuf)
+ {
+-  if (!m_amlVideoFile) return false;
+-
+   vbuf = v4l2_buffer();
+   vbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+   vbuf.memory = V4L2_MEMORY_MMAP;
+ 
+   std::scoped_lock lock(m_ioControlMutex);
++  if (!m_amlVideoFile) return false;
+   if (m_amlVideoFile->IOControl(VIDIOC_DQBUF, &vbuf) < 0)
+   {
+     const int err = errno;
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/AMLCodec.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/AMLCodec.h
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/AMLCodec.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/AMLCodec.h
+@@ -369,5 +369,6 @@ private:
+   float            m_minimum_buffer_level{0.0f};
+ 
+   mutable std::mutex m_bufferLevelMutex;
++  // Guards m_amlVideoFile and every ioctl on it.
+   std::mutex       m_ioControlMutex;
+ };
+\ No newline at end of file
