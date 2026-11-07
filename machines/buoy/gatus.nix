@@ -69,6 +69,10 @@ in
       postPatch = (old.postPatch or "") + ''
         ${themePython}/bin/python3 ${./gatus-brand.py} web/static ${./gatus-hoard.jpg} ${themeRevision}
       '';
+      postCheck = (old.postCheck or "") + ''
+        go test ./api -run Badge
+        go test ./web -run TestEmbed
+      '';
     });
     environmentFile = config.sops.secrets.gatus-env.path;
     settings = {

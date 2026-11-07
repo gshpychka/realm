@@ -12,7 +12,32 @@ from pathlib import Path
 from PIL import Image
 
 
+def brand_badges(source: Path) -> None:
+    # Detail-page metrics are server-rendered SVG images, not CSS elements.
+    # Preserve their values and thresholds while matching the rest of the UI.
+    path = source / "api" / "badge.go"
+    go = path.read_text()
+    replacements = {
+        '"#40cc11"': '"#b8bb26"',
+        '"#94cc11"': '"#8ec07c"',
+        '"#ccd311"': '"#fabd2f"',
+        '"#ccb311"': '"#d79921"',
+        '"#cc8111"': '"#fe8019"',
+        '"#c7130a"': '"#fb4934"',
+        '<path fill="#555"': '<path fill="#504945"',
+        '<g fill="#fff" text-anchor=': '<g fill="#ebdbb2" text-anchor=',
+        '<text x="%d" y="14">\n      %s': '<text x="%d" y="14" fill="#1d2021">\n      %s',
+        'stop-opacity=".1"': 'stop-opacity="0"',
+        'fill-opacity=".3"': 'fill-opacity="0"',
+    }
+    for old, new in replacements.items():
+        assert old in go, f"upstream SVG badge anchor changed: {old}"
+        go = go.replace(old, new)
+    path.write_text(go)
+
+
 def brand(static: Path, image: Path, revision: str) -> None:
+    brand_badges(static.parent.parent)
     icon = Image.open(image).convert("RGB")
     for name, size in {
         "hoard.png": 192,
