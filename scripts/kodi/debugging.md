@@ -1,7 +1,7 @@
 # Debugging Kodi on the box
 
 Facts for investigating the kodi box: playback, A/V sync, memory and crashes.
-Deployment and the patch list live in `../runbook.md`.
+Deployment and the patch list live in `runbook.md`.
 
 ## The box
 
@@ -16,7 +16,10 @@ Deployment and the patch list live in `../runbook.md`.
   `--time-style`, and there is no `timeout` or `setsid`. A job outlives the
   SSH session as a transient unit: `systemd-run --unit=NAME …`. Python 3 is
   available.
-- Kodi listens for JSON-RPC on TCP port 9090; `rpc.py` below is a client.
+- Kodi answers JSON-RPC on TCP port 9090, e.g. on the box
+  `printf %s '{"jsonrpc":"2.0","id":1,"method":"Player.GetActivePlayers"}' | nc -w 3 127.0.0.1 9090`,
+  as `cpm/flash.sh` does. Kodi's notifications arrive on the same connection,
+  so a client picks its reply out by `id`.
   `Player.GetProperties` reports time 0 with nothing playing;
   `Player.GetActivePlayers` returns `[]` then. `Player.Seek` takes
   `{"time":{"hours":1,"minutes":3,"seconds":41}}` for a time and
@@ -81,9 +84,9 @@ Deployment and the patch list live in `../runbook.md`.
 - A memory soak keeps a video playing and lists a Bingie widget every 10 s
   (`Files.GetDirectory` on a `plugin://script.bingie.widgets/` path) from
   transient units, sampling malloc's report every few minutes.
-- Kodi runs with `MALLOC_ARENA_MAX=2` (`../kodi-memory.conf`). Kodi runs every
-  add-on script on a new thread, and without the cap each thread's arena keeps
-  what its script freed.
+- Kodi runs with `MALLOC_ARENA_MAX=2` (`system.d/kodi.service.d/memory.conf`).
+  Kodi runs every add-on script on a new thread, and without the cap each
+  thread's arena keeps what its script freed.
 - An add-on's Python objects are visible from inside it: a temporary thread in
   its service that logs `collections.Counter(type(o).__name__ for o in
   gc.get_objects())` each minute shows what grows. Restart Kodi to load it, and
@@ -91,21 +94,13 @@ Deployment and the patch list live in `../runbook.md`.
 
 ## Building and patching
 
-- `../cpm/build.sh` takes 2 to 3 minutes for a Kodi-only change. It applies
-  `../cpm/patches/kodi/*.patch` in file name order, so a patch is made against
+- `cpm/build.sh` takes 2 to 3 minutes for a Kodi-only change. It applies
+  `cpm/patches/kodi/*.patch` in file name order, so a patch is made against
   the tree with the earlier patches applied; `patch` accepts line offsets.
 - The tree it built is in its work directory, under
   `build.CoreELEC-Amlogic-ng.aarch64-22/build/kodi-<commit>/`. Grep there to
   confirm a patch landed.
-- `../cpm/flash.sh` writes a 1.4 GB backup per flash, and the images in the
+- `cpm/flash.sh` writes a 1.4 GB backup per flash, and the images in the
   work directory's `target/` belong to root (the build runs in Docker).
 - CPM's Kodi source: <https://github.com/cpm-code/xbmc> at the commit
   `cpm-code/CoreELEC` pins.
-
-## JSON-RPC client
-
-`rpc.py METHOD [PARAMS_JSON]` calls one JSON-RPC method of the box's Kodi and
-prints the result. Copy it with `scp scripts/kodi/debug/rpc.py kodi:/storage/`
-and run it on the box, e.g.
-`python3 /storage/rpc.py Player.GetProperties '{"playerid":1,"properties":["time"]}'`;
-`rm /storage/rpc.py` removes it.

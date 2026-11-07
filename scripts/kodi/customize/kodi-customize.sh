@@ -384,7 +384,7 @@ settings_file() {
 # A running Kodi takes the settings over JSON-RPC and saves them when it exits.
 # The per-display-mode subtitle position waits for the next boot.
 settings_live() {
-  if ! out=$(kodi_settings | python3 "$HERE/kodi-settings-rpc.py" 2>&1); then
+  if ! out=$(kodi_settings | python3 "$HERE/kodi-apply-settings.py" 2>&1); then
     log "Kodi JSON-RPC failed, settings apply at the next boot: $out"
     status=1
     return 0

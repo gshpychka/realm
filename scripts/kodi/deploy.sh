@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Pushes kodi-customize to the kodi box and runs it. Run from eve:
+# Installs customize/ and system.d/ on the kodi box and runs kodi-customize.
+# Run from eve:
 #   scripts/kodi/deploy.sh [host]
 # A running Kodi takes the settings at once; the advanced settings and the
 # memory settings load at the next Kodi start, and the subtitle position per
@@ -29,13 +30,10 @@ mkdir "$STAGE/addons"
 git -C "$STAGE/repo" archive --prefix=script.module.infotagger/ FETCH_HEAD addon.xml icon.png resources |
   tar -C "$STAGE/addons" -xf -
 
-tar -cf - -C "$HERE" kodi-customize.sh kodi-settings-rpc.py kodi-hdr10plus.py kodi-reload-skin.py skin-overrides snippets -C "$STAGE" addons |
+tar -cf - -C "$HERE/customize" . -C "$STAGE" addons |
   ssh "$HOST" "rm -rf $REMOTE && mkdir $REMOTE && tar -C $REMOTE -xf -"
-for unit in "${UNITS[@]}"; do
-  ssh "$HOST" "cat > /storage/.config/system.d/$unit" <"$HERE/$unit"
-done
-ssh "$HOST" "mkdir -p /storage/.config/system.d/kodi.service.d &&
-  cat > /storage/.config/system.d/kodi.service.d/memory.conf" <"$HERE/kodi-memory.conf"
+# system.d/ merges into the box's user units
+tar -cf - -C "$HERE" system.d | ssh "$HOST" "tar -C /storage/.config -xf -"
 printf '%s\n' "$KEYS" | ssh "$HOST" "cat > /storage/.ssh/authorized_keys.new &&
   mv /storage/.ssh/authorized_keys.new /storage/.ssh/authorized_keys"
 ssh "$HOST" "systemctl daemon-reload &&

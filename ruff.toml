@@ -13,6 +13,6 @@ select = [
 
 [lint.per-file-ignores]
 # spliced into PlexKodiConnect's track loop, where stream and track are locals
-"scripts/kodi/snippets/pkc-hdr.py" = ["F821"]
+"scripts/kodi/customize/snippets/pkc-hdr.py" = ["F821"]
 # spliced into Bingie's widget code before set_stream_details, where stream_details is a local
-"scripts/kodi/snippets/bingie-widgets-streams.py" = ["F821"]
+"scripts/kodi/customize/snippets/bingie-widgets-streams.py" = ["F821"]

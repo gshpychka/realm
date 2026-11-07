@@ -56,7 +56,10 @@ class Hdr10PlusPickerTests(unittest.TestCase):
                 notification=lambda *args, **kwargs: None,
             )
         )
-        source = Path(__file__).resolve().parents[1] / "scripts/kodi/kodi-hdr10plus.py"
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "scripts/kodi/customize/kodi-hdr10plus.py"
+        )
         spec = importlib.util.spec_from_file_location(
             "kodi_hdr10plus_test_target", source
         )

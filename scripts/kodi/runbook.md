@@ -7,26 +7,29 @@ units.
 
 ## Customizations
 
-Kodi overwrites an addon's directory on every update, so `kodi-customize.sh`
-reapplies these at boot and after each Bingie, Bingie Widgets or PKC update:
+`deploy.sh` installs `customize/` on the box as `/storage/.config/kodi-customize`
+and `system.d/` into `/storage/.config/system.d`. Kodi overwrites an addon's
+directory on every update, so `customize/kodi-customize.sh` reapplies these at
+boot and after each Bingie, Bingie Widgets or PKC update:
 
 - Kodi's settings from the table in `kodi-customize.sh`, each with its reason:
   player-led Dolby Vision tuned for the S95C,
   and subtitles at a fixed spot in the bottom letterbox bar, the same in every
   display mode
-- Kodi's advanced settings from `snippets/advancedsettings-video.xml`: H.264
-  frames keep the decoder's timestamps, so H.264 video plays in sync with its
-  audio
-- Kodi's memory settings from `kodi-memory.conf`, a drop-in for its service:
-  two malloc arenas, so the memory each add-on script frees, such as a widget
-  refresh's, serves the next script and Kodi's memory stays flat
+- Kodi's advanced settings from `customize/snippets/advancedsettings-video.xml`:
+  H.264 frames keep the decoder's timestamps, so H.264 video plays in sync with
+  its audio
+- Kodi's memory settings from `system.d/kodi.service.d/memory.conf`, a drop-in
+  for its service: two malloc arenas, so the memory each add-on script frees,
+  such as a widget refresh's, serves the next script and Kodi's memory stays
+  flat
 - InfoTagger 0.0.9, fetched by `deploy.sh` at its pinned commit, and the pin
   that keeps Skin Shortcuts at 2.1.0
 - hides the Bingie profile switcher at the top of the side menu
-- installs every file in `skin-overrides/` into the skin, currently a
+- installs every file in `customize/skin-overrides/` into the skin, currently a
   Netflix-style PKC skip intro/credits button
 - shows the Dolby Vision profile and HDR10+ from Plex in Bingie's HDR badge,
-  e.g. "DV P8.1 · HDR10+" (`snippets/`)
+  e.g. "DV P8.1 · HDR10+" (`customize/snippets/`)
 - adds an **HDR10+ mapping** row at the top of the OSD's **Video settings**,
   showing the selected mode and actual playback processing type. The row stays
   visible and explains when HDR10+ is not detected. Hybrid files offer **Native HDR10+**,
@@ -38,7 +41,7 @@ reapplies these at boot and after each Bingie, Bingie Widgets or PKC update:
 - keeps an in-progress item's rating, year, HDR badges and plot on screen, with
   the progress bar under them
 - lists files without subtitles in Bingie's widgets, e.g. Continue Watching
-  (`snippets/`)
+  (`customize/snippets/`)
 - closes Bingie's startup mask when fullscreen video opens, so playback
   started during the startup intro, e.g. right after a Kodi restart, shows its
   OSD and dialogs
@@ -70,16 +73,16 @@ Library items get new HDR details when PKC next syncs them; to rewrite all of
 them, run PKC's repair sync:
 `ssh kodi 'kodi-send --action="RunPlugin(plugin://plugin.video.plexkodiconnect/?mode=repair)"'`.
 
-Removing a file from `skin-overrides/` does not remove the installed copy from
-the skin; delete it from `skin.bingie/1080i` as well.
+Removing a file from `customize/skin-overrides/` does not remove the installed
+copy from the skin; delete it from `skin.bingie/1080i` as well.
 
 If an addon release moves something a patch anchors on, the script logs
 `anchor not found` and leaves that file untouched; a setting that Kodi or
 CoreELEC renames is logged too: `ssh kodi journalctl -t kodi-customize`.
 
-To undo: disable both units, delete them and `/storage/.config/kodi-customize`,
-then reinstall Bingie, Bingie Widgets and PKC from their repositories to
-restore the original files. The settings stay until changed in Kodi.
+To undo: disable both units, delete them, the `kodi.service.d` drop-in and
+`/storage/.config/kodi-customize`, then reinstall Bingie, Bingie Widgets and
+PKC from their repositories to restore the original files. The settings stay until changed in Kodi.
 
 ## Follow-up: per-video HDR10+ mapping
 
@@ -106,8 +109,8 @@ Implementation scope: extend `CVideoSettings` and its comparison/default
 handling, add database persistence and migration in `CVideoDatabase`, expose
 the mode in `CGUIDialogVideoSettings`, and pass the resolved choice into CPM's
 Amlogic HDR policy before opening the decoder. Replace the global-setting
-writes in `kodi-hdr10plus.py` and the custom skin row with the native setting
-when that support lands. Keep build patches and deployment idempotent in this
+writes in `customize/kodi-hdr10plus.py` and the custom skin row with the native
+setting when that support lands. Keep build patches and deployment idempotent in this
 repo.
 
 Verify that two files remember different modes across Kodi restarts, clearing
@@ -117,8 +120,8 @@ playback state and unrelated video settings correct.
 
 ## Debugging
 
-`debug/README.md` collects facts for investigating playback, A/V sync, memory
-and crashes on the box, next to a JSON-RPC client.
+`debugging.md` collects facts for investigating playback, A/V sync, memory and
+crashes on the box.
 
 ## CoreELEC build
 
