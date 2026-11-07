@@ -281,6 +281,19 @@ bingie_hdr10plus_osd() {
   fi
 }
 
+# Bingie's startup mask (dialog 1103, z-order 999) stays open until a Home
+# widget takes focus, and its fullscreen video window covers every dialog, so
+# playback started during the startup intro would run without an OSD. The
+# intro plays windowed inside the mask, so fullscreen video always means
+# playback past it.
+bingie_startup_mask() {
+  if insert_before "$SKIN/VideoFullScreen.xml" '<onload condition="System.HasAlarm(preview_delay)">' \
+    "$HERE/snippets/bingie-startup-mask.xml"; then
+    log "Bingie startup mask closes with fullscreen video"
+    reload_skin=1
+  fi
+}
+
 # Bingie's progress-under-title mode (skin setting MovieDetailsHome) swaps an
 # in-progress item's details, plot and extra info for a progress row, and
 # slides the header down 130px into the gap. These edits keep the details for
@@ -465,6 +478,7 @@ if [ -d "$SKIN" ]; then
   bingie_hdr
   bingie_hdr10plus_osd
   bingie_progress
+  bingie_startup_mask
   install_overrides
 fi
 

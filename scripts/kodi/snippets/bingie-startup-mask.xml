@@ -1,0 +1,3 @@
+<!-- kodi-customize: close the startup mask -->
+<onload>ClearProperty(StartupMask,Home)</onload>
+<!-- kodi-customize: end -->

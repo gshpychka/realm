@@ -36,6 +36,9 @@ reapplies these at boot and after each Bingie, Bingie Widgets or PKC update:
   the progress bar under them
 - lists files without subtitles in Bingie's widgets, e.g. Continue Watching
   (`snippets/`)
+- closes Bingie's startup mask when fullscreen video opens, so playback
+  started during the startup intro, e.g. right after a Kodi restart, shows its
+  OSD and dialogs
 
 Deploy from eve:
 
