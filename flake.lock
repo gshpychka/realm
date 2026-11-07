@@ -300,7 +300,7 @@
       },
       "locked": {
         "lastModified": 1793005886,
-        "narHash": "sha256-bgiiEOo/w7R4IeAHwMnZsS3LOxvLT3SO3A+U6ur+5JE=",
+        "narHash": "sha256-gZD8QVfZU4d19WbpGU1d3a1N4iJ0w1b916b/V+P0+cc=",
         "owner": "NousResearch",
         "repo": "hermes-agent",
         "rev": "9b904dcc22c23fe8b82834339bbdd96495072e59",
