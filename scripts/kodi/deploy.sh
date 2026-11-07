@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Pushes kodi-customize to the kodi box and runs it. Run from eve:
 #   scripts/kodi/deploy.sh [host]
-# A running Kodi takes the settings at once; the advanced settings load at the
-# next Kodi start, and the subtitle position per display mode, the Skin
-# Shortcuts pin and the pinned add-ons land at the next boot.
+# A running Kodi takes the settings at once; the advanced settings and the
+# memory settings load at the next Kodi start, and the subtitle position per
+# display mode, the Skin Shortcuts pin and the pinned add-ons land at the next
+# boot.
 set -euo pipefail
 
 HOST=${1:-kodi}
@@ -28,6 +29,8 @@ tar -cf - -C "$HERE" kodi-customize.sh kodi-settings-rpc.py kodi-hdr10plus.py ko
 for unit in "${UNITS[@]}"; do
   ssh "$HOST" "cat > /storage/.config/system.d/$unit" <"$HERE/$unit"
 done
+ssh "$HOST" "mkdir -p /storage/.config/system.d/kodi.service.d &&
+  cat > /storage/.config/system.d/kodi.service.d/memory.conf" <"$HERE/kodi-memory.conf"
 ssh "$HOST" "systemctl daemon-reload &&
   systemctl enable ${UNITS[*]} &&
   systemctl start kodi-customize.path &&
