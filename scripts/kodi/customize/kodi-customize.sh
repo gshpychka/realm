@@ -462,9 +462,9 @@ EOF
 }
 
 # splash.png, Matrix-style rain from scripts/kodi/splash.py, as the boot splash
-# (CoreELEC's init shows /flash/oemsplash-1080.png ahead of its own) and as
-# Kodi's startup splash (Kodi shows special://home/media/splash.png ahead of
-# its own).
+# (CoreELEC's init shows /flash/oemsplash-1080.png in place of its own logo) and
+# as Kodi's startup splash (Kodi shows special://home/media/splash.png in place
+# of its own).
 install_splash() {
   for dst in /flash/oemsplash-1080.png /storage/.kodi/media/splash.png; do
     if [ -f "$dst" ] && [ "$(md5sum <"$HERE/splash.png")" = "$(md5sum <"$dst")" ]; then
