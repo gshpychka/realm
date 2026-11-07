@@ -29,6 +29,19 @@ Set `home-assistant-token`, `home-assistant-admin-mcp-path` and
 
 TPM SSH key provisioning is documented in `machines/hoard/hermes-ssh-key.nix`.
 
+## Claude Code
+
+Authenticate Claude Code as the service user:
+
+```sh
+ssh -t hoard sudo -iu hermes claude auth login
+ssh hoard sudo -iu hermes claude auth status
+```
+
+Hermes's bundled `claude-code` skill covers coding tasks through its terminal:
+`claude -p` for one-shot tasks and tmux for interactive sessions. Claude Code
+runs as `hermes`, with that user's files, GitHub access and Claude login.
+
 ## Activation
 
 ```sh
