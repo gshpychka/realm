@@ -173,6 +173,11 @@ in `cpm/patches/`, one directory per package:
   frame it reached. ActiveAE refuses new streams while a display mode change
   suspends it, as when a video starts during the refresh-rate switch, and a
   refused audio output otherwise stays closed for the whole video
+- `kodi/local-activeae-resync-after-display-reset.patch` restarts the audio
+  sync of every stream after a display mode change. ActiveAE closes the HDMI
+  output for the change, which drops the audio the output held, so a video
+  that starts during the switch otherwise plays its audio about 0.27 s early
+  for a second
 - `kodi/local-aml-decoder-timeout-paused.patch` suspends the Amlogic
   decoder's 6 s stall timeout while playback is paused. Paused playback holds the
   decoder's output buffers, and the timeout restarts the decoder at a later

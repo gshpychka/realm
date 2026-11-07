@@ -1,0 +1,13 @@
+diff --git a/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp b/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp
+--- a/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp
++++ b/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp
+@@ -964,6 +964,9 @@
+             ValidateOutputDevices(false);
+           }
+           Configure();
++          // the unconfigured sink dropped the audio it held
++          for (CActiveAEStream* stream : m_streams)
++            stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
+           if (!displayReset)
+             msg->Reply(CActiveAEControlProtocol::ACC);
+           if (!m_extError)
