@@ -12,6 +12,7 @@ in
     enable = true;
     settings = {
       approvals.mode = "off";
+      agent.service_tier = "fast";
       model = {
         provider = "openai-codex";
         default = "gpt-6.1-sol";
@@ -72,15 +73,6 @@ in
       installationId = 179633364;
       botUserId = 353816114;
       sopsFile = config.my.hermes-agent.sopsFile;
-    };
-  };
-
-  systemd.services = lib.mkIf service.enable {
-    hermes-agent.serviceConfig = {
-      TasksMax = 512;
-    };
-    hermes-backend.serviceConfig = {
-      TasksMax = 256;
     };
   };
 }
