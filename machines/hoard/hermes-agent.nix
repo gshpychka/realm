@@ -11,6 +11,8 @@ in
   services.hermes-agent = {
     enable = true;
     settings = {
+      updates.check = false;
+      timezone = config.time.timeZone;
       approvals.mode = "off";
       agent.service_tier = "fast";
       model = {
