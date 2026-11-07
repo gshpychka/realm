@@ -63,3 +63,31 @@ resource "cloudflare_dns_record" "spf_send" {
 resource "cloudflare_email_routing_dns" "this" {
   zone_id = var.cloudflare_zone_id
 }
+
+resource "cloudflare_dns_record" "wan" {
+  zone_id = var.cloudflare_zone_id
+  name    = "wan.${var.domain_name}"
+  type    = "A"
+  # RFC 5737 documentation address, in place only until the DDNS client's first update
+  content = "192.0.2.1"
+  proxied = false
+  # Cloudflare's minimum for unproxied records outside Enterprise plans
+  ttl     = 60
+  comment = "Home WAN address, kept current by harbor's DDNS client"
+
+  lifecycle {
+    # the DDNS client owns the address
+    ignore_changes = [content]
+  }
+}
+
+import {
+  to = cloudflare_dns_record.wan
+  id = "${nonsensitive(var.cloudflare_zone_id)}/${one(data.cloudflare_dns_records.wan.result).id}"
+}
+
+data "cloudflare_dns_records" "wan" {
+  zone_id = var.cloudflare_zone_id
+  type    = "A"
+  name    = { exact = "wan.${var.domain_name}" }
+}

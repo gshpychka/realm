@@ -30,12 +30,6 @@ with lib;
       domains = map (subdomain: "${subdomain}.${config.my.domain}") cfg.subdomains;
       provider.ipv6 = "none";
       updateCron = "@every 30s";
-      # Cloudflare's minimum for unproxied records outside Enterprise plans.
-      # The client applies it only to records it creates and keeps an existing record's TTL on
-      # update; an existing record's TTL is set with:
-      #   curl -X PATCH -H "Authorization: Bearer $TOKEN" --json '{"ttl":60}' \
-      #     https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID
-      ttl = 60;
     };
   };
 }
