@@ -102,15 +102,15 @@ scp scripts/kodi/debug/* kodi:/storage/kodi-debug/
 
 - `rpc.py METHOD [PARAMS_JSON]` calls one JSON-RPC method and prints the result,
   e.g. `python3 rpc.py Player.GetProperties '{"playerid":1,"properties":["time"]}'`.
-  Other tools import its `call`.
+  `syncprobe.sh` drives Kodi through it.
 - `syncprobe.sh seek|pause|open …` performs one playback action and prints the
   audio sync events of the next 10 s, with a summary: when sync settled, how
   many adjust cycles and clock corrections it took.
 - `heapstats.sh [INTERVAL]` prints malloc's in-use and claimed memory per arena,
   its separately mapped blocks and RSS.
-- `soak-playback.sh` keeps an episode playing, and `soak-widgets.sh` runs a
-  widget's add-on script every 10 s; run each as a transient unit, e.g.
-  `systemd-run --unit=soak-playback sh /storage/kodi-debug/soak-playback.sh`,
-  with `heapstats.sh 300` logging alongside.
 
 `rm -r /storage/kodi-debug` removes them.
+
+A memory soak keeps a video playing and lists a Bingie widget every 10 s
+(`Files.GetDirectory` on a `plugin://script.bingie.widgets/` path) from
+transient units, with `heapstats.sh 300` logging alongside.
