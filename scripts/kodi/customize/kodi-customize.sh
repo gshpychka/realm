@@ -470,11 +470,25 @@ install_splash() {
     if [ -f "$dst" ] && [ "$(md5sum <"$HERE/splash.png")" = "$(md5sum <"$dst")" ]; then
       continue
     fi
-    case $dst in /flash/*) mount -o remount,rw /flash ;; esac
-    mkdir -p "$(dirname "$dst")"
-    cp "$HERE/splash.png" "$dst"
-    case $dst in /flash/*) mount -o remount,ro /flash ;; esac
-    log "installed splash at $dst"
+    # /flash is read-only outside this write. Each step is an if condition,
+    # which set -e ignores, so a failure still remounts /flash read-only and
+    # the run goes on.
+    case $dst in /flash/*) flash=1 ;; *) flash=0 ;; esac
+    if [ "$flash" = 1 ] && ! mount -o remount,rw /flash; then
+      log "could not make /flash writable, splash not installed at $dst"
+      status=1
+      continue
+    fi
+    if mkdir -p "$(dirname "$dst")" && cp "$HERE/splash.png" "$dst"; then
+      log "installed splash at $dst"
+    else
+      log "could not install splash at $dst"
+      status=1
+    fi
+    if [ "$flash" = 1 ] && ! mount -o remount,ro /flash; then
+      log "could not return /flash to read-only"
+      status=1
+    fi
   done
 }
 
