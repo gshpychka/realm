@@ -1,0 +1,216 @@
+diff --git a/xbmc/GUIInfoManager.cpp b/xbmc/GUIInfoManager.cpp
+--- a/xbmc/GUIInfoManager.cpp
++++ b/xbmc/GUIInfoManager.cpp
+@@ -1176,7 +1176,7 @@ constexpr std::array<InfoMap, 10> player_times = {{
+ ///
+ /// -----------------------------------------------------------------------------
+ // clang-format off
+-constexpr std::array<InfoMap, 119> player_process = {{
++constexpr std::array<InfoMap, 123> player_process = {{
+     {"videodecoder",        PLAYER_PROCESS_VIDEODECODER},
+     {"deintmethod",         PLAYER_PROCESS_DEINTMETHOD},
+     {"pixformat",           PLAYER_PROCESS_PIXELFORMAT},
+@@ -1274,6 +1274,10 @@ constexpr std::array<InfoMap, 119> player_process = {{
+     {"video.dovi.l5.right.offset", PLAYER_PROCESS_VIDEO_DOVI_L5_RIGHT_OFFSET},
+     {"video.dovi.l5.top.offset", PLAYER_PROCESS_VIDEO_DOVI_L5_TOP_OFFSET},
+     {"video.dovi.l5.bottom.offset", PLAYER_PROCESS_VIDEO_DOVI_L5_BOTTOM_OFFSET},
++    {"video.hdr10plus.has.metadata", PLAYER_PROCESS_VIDEO_HDR10PLUS_HAS_METADATA},
++    {"video.hdr10plus.maxscl.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_MAXSCL_NITS},
++    {"video.hdr10plus.average.maxrgb.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_AVERAGE_MAXRGB_NITS},
++    {"video.hdr10plus.target.max.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_TARGET_MAX_NITS},
+     {"video.dovi.source.min.pq", PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MIN_PQ},
+     {"video.dovi.source.max.pq", PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MAX_PQ},
+     {"video.dovi.source.min.nits", PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MIN_NITS},
+diff --git a/xbmc/cores/DataCacheCore.cpp b/xbmc/cores/DataCacheCore.cpp
+--- a/xbmc/cores/DataCacheCore.cpp
++++ b/xbmc/cores/DataCacheCore.cpp
+@@ -417,6 +417,26 @@ DOVIFrameMetadata CDataCacheCore::GetVideoDoViFrameMetadata()
+   return {};
+ }
+ 
++void CDataCacheCore::SetVideoHdr10PlusFrameMetadata(HDR10PlusFrameMetadata value)
++{
++  std::lock_guard lock(m_videoPlayerSection);
++
++  uint64_t pts = value.pts;
++  m_playerVideoInfo.hdr10PlusFrameMetadataMap.insert(pts, std::move(value));
++}
++
++// The metadata of the frame on screen, or of the frame decoded nearest to it.
++HDR10PlusFrameMetadata CDataCacheCore::GetVideoHdr10PlusFrameMetadata()
++{
++  std::lock_guard lock(m_videoPlayerSection);
++
++  uint64_t pts = GetRenderPts();
++  auto frameMetadata = m_playerVideoInfo.hdr10PlusFrameMetadataMap.findOrLatest(pts);
++  if (frameMetadata != m_playerVideoInfo.hdr10PlusFrameMetadataMap.end())
++    return frameMetadata->second;
++  return {};
++}
++
+ void CDataCacheCore::SetVideoDoViStreamMetadata(DOVIStreamMetadata value)
+ {
+   std::lock_guard lock(m_videoPlayerSection);
+diff --git a/xbmc/cores/DataCacheCore.h b/xbmc/cores/DataCacheCore.h
+--- a/xbmc/cores/DataCacheCore.h
++++ b/xbmc/cores/DataCacheCore.h
+@@ -76,6 +76,8 @@ public:
+   AVColorTransferCharacteristic GetVideoColorTransferCharacteristic();
+   void SetVideoDoViFrameMetadata(DOVIFrameMetadata value);
+   DOVIFrameMetadata GetVideoDoViFrameMetadata();
++  void SetVideoHdr10PlusFrameMetadata(HDR10PlusFrameMetadata value);
++  HDR10PlusFrameMetadata GetVideoHdr10PlusFrameMetadata();
+   void SetVideoDoViStreamMetadata(DOVIStreamMetadata value);
+   DOVIStreamMetadata GetVideoDoViStreamMetadata();
+   void SetVideoDoViStreamInfo(DOVIStreamInfo value);
+@@ -306,6 +308,7 @@ protected:
+     AVColorPrimaries colorPrimaries = AVCOL_PRI_UNSPECIFIED;
+     AVColorTransferCharacteristic colorTransferCharacteristic = AVCOL_TRC_UNSPECIFIED;
+     AgedMap<uint64_t, DOVIFrameMetadata> doviFrameMetadataMap;
++    AgedMap<uint64_t, HDR10PlusFrameMetadata> hdr10PlusFrameMetadataMap;
+     DOVIStreamMetadata doviStreamMetadata = {};
+     DOVIStreamInfo doviStreamInfo = {};
+     DOVIStreamInfo sourceDoViStreamInfo = {};
+diff --git a/xbmc/cores/VideoPlayer/DVDStreamInfo.h b/xbmc/cores/VideoPlayer/DVDStreamInfo.h
+--- a/xbmc/cores/VideoPlayer/DVDStreamInfo.h
++++ b/xbmc/cores/VideoPlayer/DVDStreamInfo.h
+@@ -49,6 +49,19 @@ struct DOVIFrameMetadata
+   uint16_t level5_active_area_bottom_offset = 0;
+ };
+ 
++// A frame's HDR10+ (SMPTE ST 2094-40) luminance, from its first processing window.
++struct HDR10PlusFrameMetadata
++{
++  double pts;
++  bool has_metadata = false;
++  // Brightest of the frame's maxscl components, in 0.1 cd/m².
++  uint32_t maxscl = 0;
++  // In 0.1 cd/m².
++  uint32_t average_maxrgb = 0;
++  // In cd/m².
++  uint32_t targeted_system_display_maximum_luminance = 0;
++};
++
+ struct DOVIStreamMetadata
+ {
+   uint16_t source_min_pq = 0;
+diff --git a/xbmc/guilib/guiinfo/GUIInfoLabels.h b/xbmc/guilib/guiinfo/GUIInfoLabels.h
+--- a/xbmc/guilib/guiinfo/GUIInfoLabels.h
++++ b/xbmc/guilib/guiinfo/GUIInfoLabels.h
+@@ -893,6 +893,10 @@ constexpr uint32_t PLAYER_PROCESS_VIDEO_DOVI_L6_MIN_LUM       = 1747;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_DOVI_L6_MAX_LUM       = 1748;
+ // Keep existing GUI info ids stable; this new label uses the next free id.
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_SOURCE_DOVI_META_VERSION = 1787;
++constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_HAS_METADATA = 1788;
++constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_MAXSCL_NITS = 1789;
++constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_AVERAGE_MAXRGB_NITS = 1790;
++constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_TARGET_MAX_NITS = 1791;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_HAS_CLL           = 1749;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_MAX_CLL           = 1750;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_MAX_FALL          = 1751;
+diff --git a/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp b/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
+--- a/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
++++ b/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
+@@ -794,6 +794,20 @@ bool CPlayerGUIInfo::GetLabel(std::string& value,
+       value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoDoViFrameMetadata().level5_active_area_bottom_offset);
+       return true;
+ 
++    case PLAYER_PROCESS_VIDEO_HDR10PLUS_HAS_METADATA:
++      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().has_metadata);
++      return true;
++    // maxscl and average_maxrgb are in 0.1 cd/m².
++    case PLAYER_PROCESS_VIDEO_HDR10PLUS_MAXSCL_NITS:
++      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().maxscl / 10);
++      return true;
++    case PLAYER_PROCESS_VIDEO_HDR10PLUS_AVERAGE_MAXRGB_NITS:
++      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().average_maxrgb / 10);
++      return true;
++    case PLAYER_PROCESS_VIDEO_HDR10PLUS_TARGET_MAX_NITS:
++      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().targeted_system_display_maximum_luminance);
++      return true;
++
+     case PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MIN_PQ:
+       value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoDoViStreamMetadata().source_min_pq);
+       return true;
+diff --git a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cpp
+--- a/xbmc/utils/BitstreamConverter.cpp
++++ b/xbmc/utils/BitstreamConverter.cpp
+@@ -818,7 +818,7 @@ void CBitstreamConverter::ProcessHevcNalu(uint8_t* buf,
+       {
+         case HEVC_NAL_SEI_PREFIX:
+           ProcessSeiPrefixWrap(buf, size, &m_convertBuffer, offset, hdr10plus_meta,
+-                               convert_hdr10plus_meta);
++                               convert_hdr10plus_meta, pts);
+           break;
+         case HEVC_NAL_UNSPEC62:
+           if (!m_removeDovi && !convert_hdr10plus_meta)
+@@ -837,7 +837,7 @@ void CBitstreamConverter::ProcessHevcNalu(uint8_t* buf,
+       {
+         case HEVC_NAL_SEI_PREFIX:
+           ProcessSeiPrefixWrap(buf, size, &m_convertBuffer, offset, hdr10plus_meta,
+-                               convert_hdr10plus_meta);
++                               convert_hdr10plus_meta, pts);
+           break;
+         case HEVC_NAL_EOS_NUT:
+           if (eos_buf != nullptr && eos_size != nullptr)
+@@ -1438,14 +1438,14 @@ void CBitstreamConverter::UpdateHdrStaticMetadata() const {
+   m_dataCacheCore.SetVideoHDRStaticMetadataInfo(hdrStaticMetadataInfo);
+ }
+ 
+-void CBitstreamConverter::ProcessSeiPrefixWrap(uint8_t *buf, int32_t nal_size, uint8_t **poutbuf, uint32_t& poutbuf_size, Hdr10PlusMetadata& meta, bool& convert_hdr10plus_meta) {
++void CBitstreamConverter::ProcessSeiPrefixWrap(uint8_t *buf, int32_t nal_size, uint8_t **poutbuf, uint32_t& poutbuf_size, Hdr10PlusMetadata& meta, bool& convert_hdr10plus_meta, double pts) {
+ 
+   int int_poutbuf_size = poutbuf_size;
+-  ProcessSeiPrefix(buf, nal_size, poutbuf, &int_poutbuf_size, meta, convert_hdr10plus_meta);
++  ProcessSeiPrefix(buf, nal_size, poutbuf, &int_poutbuf_size, meta, convert_hdr10plus_meta, pts);
+   poutbuf_size = static_cast<uint32_t>(int_poutbuf_size);
+ }
+ 
+-void CBitstreamConverter::ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8_t **poutbuf, int *poutbuf_size, Hdr10PlusMetadata& meta, bool& convert_hdr10plus_meta) {
++void CBitstreamConverter::ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8_t **poutbuf, int *poutbuf_size, Hdr10PlusMetadata& meta, bool& convert_hdr10plus_meta, double pts) {
+ 
+   bool copy = true;
+ 
+@@ -1466,6 +1466,19 @@ void CBitstreamConverter::ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8
+ 
+   if (metadata.hdr10Plus) {
+ 
++    HDR10PlusFrameMetadata frameMetadata;
++    frameMetadata.pts = pts;
++    frameMetadata.has_metadata = true;
++    frameMetadata.targeted_system_display_maximum_luminance =
++        metadata.hdr10Plus->targeted_system_display_maximum_luminance;
++    if (!metadata.hdr10Plus->luminance.empty())
++    {
++      const auto& luminance = metadata.hdr10Plus->luminance.front();
++      frameMetadata.maxscl = *std::max_element(std::begin(luminance.maxscl), std::end(luminance.maxscl));
++      frameMetadata.average_maxrgb = luminance.average_maxrgb;
++    }
++    m_dataCacheCore.SetVideoHdr10PlusFrameMetadata(frameMetadata);
++
+     bool isDual = (m_initial_hdrType == StreamHdrType::HDR_TYPE_DOLBYVISION); // Original is DV and now also found HDR10+ so is dual.
+     bool considerAsHdr10Plus = (!isDual || m_dual_priority_Hdr10Plus || m_prefer_Hdr10Plus_conversion);
+ 
+@@ -1603,7 +1616,7 @@ bool CBitstreamConverter::BitstreamConvert(uint8_t* pData, int iSize, uint8_t **
+       switch (unit_type) {
+ 
+         case HEVC_NAL_SEI_PREFIX:
+-          ProcessSeiPrefix(buf, nal_size, poutbuf, poutbuf_size, hdr10plus_meta, convert_hdr10plus_meta);
++          ProcessSeiPrefix(buf, nal_size, poutbuf, poutbuf_size, hdr10plus_meta, convert_hdr10plus_meta, pts);
+           break;
+ 
+         case HEVC_NAL_UNSPEC62: // DoVi RPU
+diff --git a/xbmc/utils/BitstreamConverter.h b/xbmc/utils/BitstreamConverter.h
+--- a/xbmc/utils/BitstreamConverter.h
++++ b/xbmc/utils/BitstreamConverter.h
+@@ -227,8 +227,8 @@ protected:
+   void AddDoViRpuNaluWrap(const Hdr10PlusMetadata& meta, uint8_t **poutbuf, uint32_t& poutbuf_size, double pts);
+   void AddDoViRpuNalu(const Hdr10PlusMetadata& meta, uint8_t **poutbuf, int *poutbuf_size, double pts);
+ 
+-  void ProcessSeiPrefixWrap(uint8_t *buf, int32_t nal_size, uint8_t **poutbuf, uint32_t& poutbuf_size, Hdr10PlusMetadata& meta, bool& convert_hdr10plus_meta);
+-  void ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8_t **poutbuf, int *poutbuf_size, Hdr10PlusMetadata& meta, bool& convert_hdr10plus_meta);
++  void ProcessSeiPrefixWrap(uint8_t *buf, int32_t nal_size, uint8_t **poutbuf, uint32_t& poutbuf_size, Hdr10PlusMetadata& meta, bool& convert_hdr10plus_meta, double pts);
++  void ProcessSeiPrefix(uint8_t *buf, int32_t nal_size, uint8_t **poutbuf, int *poutbuf_size, Hdr10PlusMetadata& meta, bool& convert_hdr10plus_meta, double pts);
+ 
+   void ProcessDoViRpuWrap(uint8_t* buf, int32_t nal_size, uint8_t** poutbuf, uint32_t& poutbuf_size, double pts);
+   void ProcessDoViRpu(uint8_t* buf, int32_t nal_size, uint8_t** poutbuf, int* poutbuf_size, double pts);

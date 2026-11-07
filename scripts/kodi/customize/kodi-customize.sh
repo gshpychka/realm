@@ -55,7 +55,8 @@ coreelec.amlogic.dolbyvision.vsvdb.payload "4903885698A953"
 coreelec.amlogic.dolbyvision.hdr.inject true
 coreelec.amlogic.dolbyvision.hdr.payload "3421AA9B9619FC08488A0839133D4240B0040100CE04EA00"
 # HDR10+ conversion, dual-format priority and conversion preference belong to
-# the OSD button (kodi-hdr10plus.py), so boot/update runs preserve the choice.
+# the playback info panel's HDR10+ mapping button (kodi-hdr10plus.py), so
+# boot/update runs preserve the choice.
 # Subtitles sit at a fixed spot (manual alignment, 0) near the bottom of the
 # screen. Almost every film in the library has its letterbox bars baked into a
 # 16:9 frame, so Kodi's "bottom of video, outside" places them over the
@@ -232,58 +233,36 @@ bingie_hdr() {
   fi
 }
 
-# Remove an obsolete marked snippet without touching the surrounding skin.
-remove_block() {
-  file=$1 marker=$2
-  grep -qF "$marker" "$file" || return 0
-  if ! awk -v marker="$marker" '
-    index($0, marker) { inblock = 1 }
-    inblock { if (/kodi-customize: end/) inblock = 0; next }
-    { print }
-    END { exit inblock ? 2 : 0 }
-  ' "$file" >"$file.tmp.$$"; then
-    rm -f "$file.tmp.$$"
-    log "block in $file has no end marker, left untouched; restore the addon's file"
-    status=1
-    return 0
+# The playback info panel (skin-overrides/1080i/DialogPlayerProcessInfo.xml)
+# builds its rows from the includes and variables in this snippet.
+bingie_playback_info() {
+  if insert_before "$SKIN/IncludesVariables.xml" '<variable name="VideoHDRVar">' \
+    "$HERE/snippets/bingie-playback-info.xml"; then
+    log "Bingie playback info variables added"
+    reload_skin=1
   fi
-  mv "$file.tmp.$$" "$file"
-  log "removed obsolete HDR10+ OSD block from $file"
-  reload_skin=1
 }
 
-# DialogSettings.xml is shared by video, audio and other settings dialogs.
-# Put our row outside Kodi's generated list (id 5), which Kodi clears and
-# rebuilds, and show it only in Video settings. Up/down at the list's ends
-# reaches the row; other dialogs retain their navigation.
-bingie_hdr10plus_osd() {
-  for marker in \
-    '<!-- kodi-customize: HDR10+ OSD button -->' \
-    '<!-- kodi-customize: HDR10+ classic OSD -->' \
-    '<!-- kodi-customize: HDR10+ Bingie OSD -->'; do
-    remove_block "$SKIN/IncludesOSD.xml" "$marker"
-  done
-  for spec in \
-    'IncludesVariables.xml|<variable name="VideoHDRVar">|bingie-hdr10plus-variables.xml' \
-    'DialogSettings.xml|<!-- templates -->|bingie-hdr10plus-settings.xml'; do
-    file=${spec%%|*}
-    rest=${spec#*|}
-    anchor=${rest%%|*}
-    snippet=${rest#*|}
-    if insert_before "$SKIN/$file" "$anchor" "$HERE/snippets/$snippet"; then
-      log "HDR10+ OSD patched in $file ($snippet)"
-      reload_skin=1
-    fi
-  done
-  file="$SKIN/DialogSettings.xml"
-  range='/<control type="grouplist" id="5">/,/<\/control>/'
-  if sed -n "$range p" "$file" | grep -qE '<on(up|down)>5</on(up|down)>'; then
+# Bingie's OSD Video button (102) opens the playback info panel, and its
+# bookmarks (the chapter list), play-from-beginning and info buttons stay
+# hidden. The range ends at the layout's first </include>, after its top row.
+bingie_osd_buttons() {
+  file="$SKIN/IncludesOSD.xml"
+  range='/<include name="OSDButtons_Bingie_Layout">/,/<\/include>/'
+  if sed -n "$range p" "$file" | grep -qE 'ActivateWindow\(123\)|Skin\.HasSetting\(bingie_osd_buttons_(bookmarks|play_beginning|info)\)'; then
     sed -i \
-      -e "$range s#<onup>5</onup>#<onup condition=\"Window.IsActive(osdvideosettings)\">1090</onup><onup condition=\"!Window.IsActive(osdvideosettings)\">5</onup>#" \
-      -e "$range s#<ondown>5</ondown>#<ondown condition=\"Window.IsActive(osdvideosettings)\">1090</ondown><ondown condition=\"!Window.IsActive(osdvideosettings)\">5</ondown>#" \
+      -e "$range s#<onclick>ActivateWindow(123)</onclick>#<onclick>ActivateWindow(playerprocessinfo)</onclick>#" \
+      -e "$range s#<visible>Skin.HasSetting(bingie_osd_buttons_bookmarks)</visible>#<visible>false</visible>#" \
+      -e "$range s#<visible>Skin.HasSetting(bingie_osd_buttons_play_beginning)</visible>#<visible>false</visible>#" \
+      -e "$range s#<visible>Skin.HasSetting(bingie_osd_buttons_info)</visible>#<visible>false</visible>#" \
       "$file"
-    log "HDR10+ Video settings navigation patched"
+    log "Bingie OSD buttons patched"
     reload_skin=1
+  fi
+  # whether the Video button lacks the panel, i.e. the layout moved
+  if ! sed -n "$range p" "$file" | grep -qF '<onclick>ActivateWindow(playerprocessinfo)</onclick>'; then
+    log "Bingie OSD Video button not found, skin layout changed; update this script"
+    status=1
   fi
 }
 
@@ -497,7 +476,8 @@ fi
 if [ -d "$SKIN" ]; then
   hide_profile
   bingie_hdr
-  bingie_hdr10plus_osd
+  bingie_playback_info
+  bingie_osd_buttons
   bingie_subtitles_toggle
   bingie_progress
   bingie_startup_mask

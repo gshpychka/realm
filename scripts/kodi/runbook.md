@@ -27,21 +27,27 @@ boot and after each Bingie, Bingie Widgets or PKC update:
   that keeps Skin Shortcuts at 2.1.0
 - hides the Bingie profile switcher at the top of the side menu
 - installs every file in `customize/skin-overrides/` at the same path in the
-  skin: a Netflix-style PKC skip intro/credits button and the subtitles
-  toggle's icons
+  skin: a Netflix-style PKC skip intro/credits button, the subtitles toggle's
+  icons and the playback info panel
 - adds a subtitles toggle left of the subtitle settings button in the OSD: one
   press turns subtitles on or off, and its CC icon is struck through while
   they are off. It shows for videos that have subtitles
 - shows the Dolby Vision profile and HDR10+ from Plex in Bingie's HDR badge,
   e.g. "DV P8.1 · HDR10+" (`customize/snippets/`)
-- adds an **HDR10+ mapping** row at the top of the OSD's **Video settings**,
-  showing the selected mode and actual playback processing type. The row stays
-  visible and explains when HDR10+ is not detected. Hybrid files offer **Native HDR10+**,
-  **Original DoVi**, and **HDR10+ mapped to DoVi**; HDR10+-only files offer the
-  two applicable modes. A change stops and reopens the video at the
-  current position, restoring pause, audio and subtitle selection. The S95C
-  receives player-led DoVi as HDR10. The choice persists in Kodi's settings
-  across boots, deployments and add-on updates
+- turns the OSD's **Video** button into a playback info panel, after the one
+  in CPM's Estuary skin. Its **Player** tab shows playback, source and output
+  details; its **Dolby Vision · HDR** tab shows the Dolby Vision
+  configuration, the current frame's Dolby Vision L1 and HDR10+ brightness,
+  and the whole video's static metadata. Two buttons beside the tabs:
+  - **HDR10+ mapping**: hybrid files offer **Native HDR10+**, **Original
+    DoVi**, and **HDR10+ mapped to DoVi**; HDR10+-only files offer the two
+    applicable modes, and other files show it disabled. A change stops and
+    reopens the video at the current position, restoring pause, audio and
+    subtitle selection. The S95C receives player-led DoVi as HDR10. The choice
+    persists in Kodi's settings across boots, deployments and add-on updates
+  - **Video streams**: picks the video stream, for files with more than one
+- hides the OSD's bookmarks (the chapter list), play from beginning and info
+  buttons
 - keeps an in-progress item's rating, year, HDR badges and plot on screen, with
   the progress bar under them
 - lists files without subtitles in Bingie's widgets, e.g. Continue Watching
@@ -61,16 +67,15 @@ The deploy also writes the box's `authorized_keys` from
 
 Skin edits reload automatically once playback stops; deployments and add-on
 updates leave the current video running. Until then the previous layout stays
-loaded. Kodi's Video settings opens with its usual first setting focused;
-press Up to reach the HDR10+ mapping row above it.
+loaded.
 
 A running Kodi takes setting changes at once; the advanced settings and the
 memory settings load at the next Kodi start
 (`ssh kodi systemctl restart kodi`), and the subtitle position per display
 mode, InfoTagger and the Skin Shortcuts pin land at the next boot (`ssh kodi reboot`). The table is the source of truth: a setting changed in
-Kodi's menus goes back to the table's value whenever the script runs. The OSD's
-HDR10+ conversion, dual-format priority and conversion preference are excluded
-from the table so the button's choice survives. After a
+Kodi's menus goes back to the table's value whenever the script runs. HDR10+
+conversion, dual-format priority and conversion preference are excluded from
+the table so the HDR10+ mapping button's choice survives. After a
 PKC patch change, restart Kodi so PKC loads it
 (`ssh kodi systemctl restart kodi`).
 Library items get new HDR details when PKC next syncs them; to rewrite all of
@@ -105,16 +110,16 @@ Desired behavior:
 - Resolve the override for the current player without changing global HDR
   settings or another video's preference. Files without overrides retain the
   global default, including existing files after a database migration.
-- Keep the choice and actual processing status in the OSD's Video settings.
+- Keep the choice and actual processing status in the playback info panel.
   Changing mode during playback should preserve position, pause state, audio
   and subtitles if the decoder must reopen.
 
 Implementation scope: extend `CVideoSettings` and its comparison/default
 handling, add database persistence and migration in `CVideoDatabase`, expose
-the mode in `CGUIDialogVideoSettings`, and pass the resolved choice into CPM's
-Amlogic HDR policy before opening the decoder. Replace the global-setting
-writes in `customize/kodi-hdr10plus.py` and the custom skin row with the native
-setting when that support lands. Keep build patches and deployment idempotent in this
+the mode to the skin, and pass the resolved choice into CPM's Amlogic HDR
+policy before opening the decoder. Replace the global-setting writes in
+`customize/kodi-hdr10plus.py` with the native setting when that support
+lands. Keep build patches and deployment idempotent in this
 repo.
 
 Verify that two files remember different modes across Kodi restarts, clearing
@@ -198,6 +203,11 @@ in `cpm/patches/`, one directory per package:
   decoder's output buffers, and the timeout restarts the decoder at a later
   keyframe, so a pause after a frame step keeps the picture in sync with the
   audio
+- `kodi/local-hdr10plus-frame-metadata.patch` gives the skin the HDR10+
+  brightness of the frame on screen as `Player.Process(video.hdr10plus.*)`:
+  MaxSCL, average MaxRGB and the targeted display's peak. CPM parses every
+  frame's HDR10+ metadata and otherwise keeps it only to build Dolby Vision
+  metadata from it
 - `linux/local-amlvideo-qbuf-held-index.patch` makes the video driver move
   frames to the screen on a release only when it holds the released frame. A
   seek's decoder reset discards the frames the driver holds, and Kodi releases

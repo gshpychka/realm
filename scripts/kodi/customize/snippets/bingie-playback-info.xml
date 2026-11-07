@@ -1,0 +1,107 @@
+<!-- kodi-customize: playback info -->
+<!-- A label and its value in a column of the playback info panel. -->
+<include name="KodiCustomizeInfoRow">
+	<param name="visible" default="true"/>
+	<definition>
+		<control type="group">
+			<width>590</width>
+			<height>34</height>
+			<visible>$PARAM[visible]</visible>
+			<control type="label">
+				<width>220</width>
+				<height>34</height>
+				<font>Reg24</font>
+				<textcolor>darkgrey</textcolor>
+				<label>$PARAM[label]</label>
+			</control>
+			<control type="label">
+				<left>225</left>
+				<width>365</width>
+				<height>34</height>
+				<font>Reg24</font>
+				<textcolor>$INFO[Skin.String(GeneralTextColor)]</textcolor>
+				<label>$PARAM[value]</label>
+				<scroll>true</scroll>
+			</control>
+		</control>
+	</definition>
+</include>
+<include name="KodiCustomizeInfoHeader">
+	<definition>
+		<control type="label">
+			<width>590</width>
+			<height>44</height>
+			<font>Bold26</font>
+			<textcolor>$INFO[Skin.String(HeaderTextColor)]</textcolor>
+			<label>$PARAM[label]</label>
+		</control>
+	</definition>
+</include>
+<!-- StreamHdrType::HDR_TYPE_HDR10PLUS is 4. A literal + is parsed as AND. -->
+<variable name="KodiCustomizeHdr10PlusMode">
+	<value condition="!System.GetBool(coreelec.amlogic.dolbyvision.hdr10plus.convert)">Native HDR10+</value>
+	<value condition="System.GetBool(coreelec.amlogic.dolbyvision.hdr10plus.prefer.convert) | ![String.IsEqual(Player.Process(video.source.hdr.type),Dolby Vision) | String.IsEqual(Player.Process(video.source.additional.hdr.type),Dolby Vision)]">HDR10+ → DoVi</value>
+	<value>Original DoVi</value>
+</variable>
+<variable name="KodiCustomizeHdr10PlusButton">
+	<value condition="Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)">HDR10+ mapping · $VAR[KodiCustomizeHdr10PlusMode]</value>
+	<value>HDR10+ mapping · not detected</value>
+</variable>
+<variable name="KodiCustomizeSourceHdr">
+	<value condition="!Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),0)">$INFO[Player.Process(video.source.hdr.type)] · $INFO[Player.Process(video.source.additional.hdr.type)]</value>
+	<value>$INFO[Player.Process(video.source.hdr.type)]</value>
+</variable>
+<variable name="KodiCustomizeDoViEl">
+	<value condition="String.IsEqual(Player.Process(video.dovi.el.type),full)"> FEL</value>
+	<value condition="String.IsEqual(Player.Process(video.dovi.el.type),minimum)"> MEL</value>
+</variable>
+<variable name="KodiCustomizeSourceDoViEl">
+	<value condition="String.IsEqual(Player.Process(video.source.dovi.el.type),full)"> FEL</value>
+	<value condition="String.IsEqual(Player.Process(video.source.dovi.el.type),minimum)"> MEL</value>
+</variable>
+<variable name="KodiCustomizeDoViRpu">
+	<value condition="String.IsEqual(Player.Process(video.dovi.rpu.present),1)">[COLOR lightgreen]RPU[/COLOR]</value>
+	<value>[COLOR dimgrey]RPU[/COLOR]</value>
+</variable>
+<variable name="KodiCustomizeDoViBl">
+	<value condition="String.IsEqual(Player.Process(video.dovi.bl.present),1)">[COLOR lightgreen]BL[/COLOR]</value>
+	<value>[COLOR dimgrey]BL[/COLOR]</value>
+</variable>
+<variable name="KodiCustomizeDoViElPresent">
+	<value condition="String.IsEqual(Player.Process(video.dovi.el.present),1)">[COLOR lightgreen]EL[/COLOR]</value>
+	<value>[COLOR dimgrey]EL[/COLOR]</value>
+</variable>
+<!-- DOLBY_VISION_OUTPUT_MODE_IPT_TUNNEL is 1. -->
+<variable name="KodiCustomizeDoViTunnel">
+	<value condition="Integer.IsEqual(Player.Process(amlogic.vs10.mode.raw),1)">DV tunnel · </value>
+</variable>
+<variable name="KodiCustomizeAudioCodec">
+	<value condition="String.StartsWith(VideoPlayer.AudioCodec,dtshd_ma) | String.IsEqual(VideoPlayer.AudioCodec,dtsma)">DTS-HD Master Audio</value>
+	<value condition="String.IsEqual(VideoPlayer.AudioCodec,dtshd_hra)">DTS-HD High Resolution</value>
+	<value condition="String.IsEqual(VideoPlayer.AudioCodec,dca) | String.IsEqual(VideoPlayer.AudioCodec,dts)">DTS</value>
+	<value condition="String.StartsWith(VideoPlayer.AudioCodec,truehd)">Dolby TrueHD</value>
+	<value condition="String.StartsWith(VideoPlayer.AudioCodec,eac3)">Dolby Digital Plus</value>
+	<value condition="String.IsEqual(VideoPlayer.AudioCodec,ac3)">Dolby Digital</value>
+	<value condition="String.StartsWith(VideoPlayer.AudioCodec,pcm)">PCM</value>
+	<value>$INFO[VideoPlayer.AudioCodec]</value>
+</variable>
+<variable name="KodiCustomizeAudioChannels">
+	<value condition="Integer.IsEqual(VideoPlayer.AudioChannels,1)">mono</value>
+	<value condition="Integer.IsEqual(VideoPlayer.AudioChannels,2)">2.0</value>
+	<value condition="Integer.IsEqual(VideoPlayer.AudioChannels,3)">2.1</value>
+	<value condition="Integer.IsEqual(VideoPlayer.AudioChannels,6)">5.1</value>
+	<value condition="Integer.IsEqual(VideoPlayer.AudioChannels,7)">6.1</value>
+	<value condition="Integer.IsEqual(VideoPlayer.AudioChannels,8)">7.1</value>
+	<value>$INFO[VideoPlayer.AudioChannels,, ch]</value>
+</variable>
+<variable name="KodiCustomizeAudioObjects">
+	<value condition="!String.IsEmpty(Player.Process(audio.object.description))">$INFO[Player.Process(audio.object.description)]</value>
+	<value condition="String.EndsWith(VideoPlayer.AudioCodec,atmos)">Atmos</value>
+	<value condition="String.IsEqual(VideoPlayer.AudioCodec,dtshd_ma_x)">DTS:X</value>
+	<value condition="String.IsEqual(VideoPlayer.AudioCodec,dtshd_ma_x_imax)">IMAX Enhanced</value>
+</variable>
+<variable name="KodiCustomizeSubtitles">
+	<value condition="VideoPlayer.SubtitlesEnabled">$INFO[VideoPlayer.SubtitlesLanguage]$INFO[VideoPlayer.SubtitlesName, · ,]</value>
+	<value>[COLOR grey]$INFO[VideoPlayer.SubtitlesLanguage]$INFO[VideoPlayer.SubtitlesName, · ,] · off[/COLOR]</value>
+</variable>
+<!-- kodi-customize: end -->

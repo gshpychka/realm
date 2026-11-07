@@ -38,6 +38,6 @@ printf '%s\n' "$KEYS" | ssh "$HOST" "cat > /storage/.ssh/authorized_keys.new &&
   mv /storage/.ssh/authorized_keys.new /storage/.ssh/authorized_keys"
 ssh "$HOST" "systemctl daemon-reload &&
   systemctl enable ${UNITS[*]} &&
-  systemctl start kodi-customize.path &&
+  systemctl restart kodi-customize.path &&
   systemctl start kodi-customize.service &&
   journalctl -t kodi-customize --no-pager -n 5"

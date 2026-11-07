@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- kodi-customize: playback info panel, opened from the OSD's Video button.
+     Rows and variables come from snippets/bingie-playback-info.xml. -->
+<window>
+	<defaultcontrol always="true">5553</defaultcontrol>
+	<onload>ClearProperty(KodiCustomizeInfoTab,Home)</onload>
+	<animation effect="slide" start="0,-500" end="0,0" time="200">WindowOpen</animation>
+	<animation effect="slide" start="0,0" end="0,-500" time="200">WindowClose</animation>
+	<controls>
+		<control type="group">
+			<width>100%</width>
+			<height>470</height>
+			<control type="image">
+				<colordiffuse>$INFO[Skin.String(GeneralPanelsColor)]</colordiffuse>
+				<texture border="10">diffuse/panel.png</texture>
+			</control>
+			<control type="grouplist" id="5550">
+				<left>40</left>
+				<top>15</top>
+				<width>1840</width>
+				<height>60</height>
+				<orientation>horizontal</orientation>
+				<itemgap>10</itemgap>
+				<onup>Close</onup>
+				<ondown>Close</ondown>
+				<control type="button" id="5553">
+					<width>auto</width>
+					<height>60</height>
+					<textoffsetx>30</textoffsetx>
+					<font>Reg26</font>
+					<label>Player</label>
+					<onfocus>ClearProperty(KodiCustomizeInfoTab,Home)</onfocus>
+				</control>
+				<control type="button" id="5552">
+					<width>auto</width>
+					<height>60</height>
+					<textoffsetx>30</textoffsetx>
+					<font>Reg26</font>
+					<label>Dolby Vision · HDR</label>
+					<onfocus>SetProperty(KodiCustomizeInfoTab,hdr,Home)</onfocus>
+					<visible>String.IsEqual(Player.Process(video.dovi.has.config),1) | String.IsEqual(Player.Process(video.dovi.has.header),1) | String.IsEqual(Player.Process(video.hdr10plus.has.metadata),1) | String.IsEqual(Player.Process(video.hdr.has.cll),1) | String.IsEqual(Player.Process(video.hdr.has.mdcv),1)</visible>
+				</control>
+				<control type="button" id="5554">
+					<width>auto</width>
+					<height>60</height>
+					<textoffsetx>30</textoffsetx>
+					<font>Reg26</font>
+					<label>$VAR[KodiCustomizeHdr10PlusButton]</label>
+					<enable>Player.HasVideo + !VideoPlayer.Content(livetv) + [Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)]</enable>
+					<onclick>RunScript(/storage/.config/kodi-customize/kodi-hdr10plus.py)</onclick>
+				</control>
+				<control type="button" id="5555">
+					<width>auto</width>
+					<height>60</height>
+					<textoffsetx>30</textoffsetx>
+					<font>Reg26</font>
+					<label>Video streams · $INFO[VideoPlayer.VideoStreamCount]</label>
+					<enable>Integer.IsGreater(VideoPlayer.VideoStreamCount,1)</enable>
+					<onclick>RunScript(/storage/.config/kodi-customize/kodi-video-stream.py)</onclick>
+				</control>
+			</control>
+
+			<!-- Player tab -->
+			<control type="group">
+				<top>95</top>
+				<visible>!String.IsEqual(Window(Home).Property(KodiCustomizeInfoTab),hdr)</visible>
+				<control type="grouplist">
+					<left>50</left>
+					<width>590</width>
+					<include content="KodiCustomizeInfoHeader">
+						<param name="label" value="Playback"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Decoder"/>
+						<param name="value" value="$INFO[Player.Process(videodecoder)]$INFO[Player.Process(deintmethod), · ,]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Bitrate"/>
+						<param name="value" value="$INFO[Player.Process(video.live.mibit.rate),video ,]$INFO[Player.Process(audio.live.mibit.rate), · audio ,] Mb/s"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Cache"/>
+						<param name="value" value="$INFO[Player.CacheLevel,,%]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Queues"/>
+						<param name="value" value="$INFO[Player.Process(video.queue.level),video ,%]$INFO[Player.Process(audio.queue.level), · audio ,%]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Memory"/>
+						<param name="value" value="$INFO[System.Memory(used.percent)] ($INFO[System.Memory(used)] of $INFO[System.Memory(total)])"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="CPU"/>
+						<param name="value" value="$INFO[System.CpuAltUsage]$INFO[System.CpuFrequency, · ,]$INFO[System.CPUTemperature, · ,]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="GUI frame rate"/>
+						<param name="value" value="$INFO[System.FPS,, fps]"/>
+					</include>
+				</control>
+				<control type="grouplist">
+					<left>680</left>
+					<width>590</width>
+					<include content="KodiCustomizeInfoHeader">
+						<param name="label" value="Source"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="HDR"/>
+						<param name="value" value="$VAR[KodiCustomizeSourceHdr]"/>
+						<param name="visible" value="Player.HasVideo"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Video"/>
+						<param name="value" value="$INFO[VideoPlayer.VideoCodec]$INFO[Player.Process(video.width.raw), · ,x]$INFO[Player.Process(video.height.raw)]$INFO[Player.Process(videoscantype)]$INFO[VideoPlayer.VideoAspect, · ,]"/>
+						<param name="visible" value="Player.HasVideo"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Frames"/>
+						<param name="value" value="$INFO[Player.Process(videofps),, fps]$INFO[Player.Process(video.bit.depth), · ,-bit]"/>
+						<param name="visible" value="Player.HasVideo"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Colour"/>
+						<param name="value" value="$INFO[Player.Process(video.color.range)]$INFO[Player.Process(video.color.space), · ,]$INFO[Player.Process(video.color.primaries), · ,]$INFO[Player.Process(video.color.transfer.characteristic), · ,]"/>
+						<param name="visible" value="Player.HasVideo"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Audio"/>
+						<param name="value" value="$VAR[KodiCustomizeAudioCodec]$VAR[KodiCustomizeAudioChannels, ,]$VAR[KodiCustomizeAudioObjects, · ,]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Sampling"/>
+						<param name="value" value="$INFO[Player.Process(audio.sample.rate),, kHz]$INFO[Player.Process(audiobitspersample), · ,-bit]$INFO[VideoPlayer.AudioBitrate, · , kb/s]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Audio language"/>
+						<param name="value" value="$INFO[VideoPlayer.AudioLanguage]"/>
+						<param name="visible" value="!String.IsEmpty(VideoPlayer.AudioLanguage)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Subtitles"/>
+						<param name="value" value="$VAR[KodiCustomizeSubtitles]"/>
+						<param name="visible" value="VideoPlayer.HasSubtitles"/>
+					</include>
+				</control>
+				<control type="grouplist">
+					<left>1310</left>
+					<width>590</width>
+					<include content="KodiCustomizeInfoHeader">
+						<param name="label" value="Output"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Display mode"/>
+						<param name="value" value="$INFO[Player.Process(amlogic.displaymode)]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Signal"/>
+						<param name="value" value="$INFO[Player.Process(amlogic.eoft_gamut)]"/>
+						<param name="visible" value="Player.HasVideo"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Processed as"/>
+						<param name="value" value="$INFO[Player.Process(video.hdr.type)]"/>
+						<param name="visible" value="Player.HasVideo"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="HDR10+ mapping"/>
+						<param name="value" value="$VAR[KodiCustomizeHdr10PlusMode]"/>
+						<param name="visible" value="Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="DoVi profile"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.profile)].$INFO[Player.Process(video.dovi.bl.signal.compatibility)]$VAR[KodiCustomizeDoViEl]$INFO[Player.Process(video.dovi.meta.version), · ,]"/>
+						<param name="visible" value="String.Contains(Player.Process(video.hdr.type),dolby vision)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="VS10"/>
+						<param name="value" value="$INFO[Player.Process(amlogic.vs10.mode)]"/>
+						<param name="visible" value="Player.HasVideo + !Integer.IsEqual(Player.Process(amlogic.vs10.mode.raw),5)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Pixel format"/>
+						<param name="value" value="$VAR[KodiCustomizeDoViTunnel]$INFO[Player.Process(amlogic.pixformat)]"/>
+						<param name="visible" value="Player.HasVideo"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Decoder fps"/>
+						<param name="value" value="$INFO[Player.Process(amlogic.video.fps.info)][COLOR orange]$INFO[Player.Process(amlogic.video.fps.drop), → ,][/COLOR]"/>
+						<param name="visible" value="Player.HasVideo + Player.Process(videohwdecoder)"/>
+					</include>
+				</control>
+			</control>
+
+			<!-- Dolby Vision · HDR tab -->
+			<control type="group">
+				<top>95</top>
+				<visible>String.IsEqual(Window(Home).Property(KodiCustomizeInfoTab),hdr)</visible>
+				<control type="grouplist">
+					<left>50</left>
+					<width>590</width>
+					<include content="KodiCustomizeInfoHeader">
+						<param name="label" value="Dolby Vision"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Profile"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.profile)].$INFO[Player.Process(video.dovi.bl.signal.compatibility)]$VAR[KodiCustomizeDoViEl]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.config),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Source profile"/>
+						<param name="value" value="$INFO[Player.Process(video.source.dovi.profile)].$INFO[Player.Process(video.source.dovi.bl.signal.compatibility)]$VAR[KodiCustomizeSourceDoViEl]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.config),1) + !String.IsEqual(Player.Process(video.source.dovi.profile),0) + [!String.IsEqual(Player.Process(video.source.dovi.profile),Player.Process(video.dovi.profile)) | !String.IsEqual(Player.Process(video.source.dovi.el.type),Player.Process(video.dovi.el.type))]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Level"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.level)]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.config),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Layers"/>
+						<param name="value" value="$VAR[KodiCustomizeDoViRpu] · $VAR[KodiCustomizeDoViBl] · $VAR[KodiCustomizeDoViElPresent]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.config),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Metadata"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.meta.version)]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.config),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Source metadata"/>
+						<param name="value" value="$INFO[Player.Process(video.source.dovi.meta.version)]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.config),1) + !String.IsEmpty(Player.Process(video.source.dovi.meta.version)) + !String.IsEqual(Player.Process(video.source.dovi.meta.version),Player.Process(video.dovi.meta.version))"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Version"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.version.major)].$INFO[Player.Process(video.dovi.version.minor)]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.config),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Not in this video"/>
+						<param name="visible" value="!String.IsEqual(Player.Process(video.dovi.has.config),1)"/>
+					</include>
+				</control>
+				<control type="grouplist">
+					<left>680</left>
+					<width>590</width>
+					<include content="KodiCustomizeInfoHeader">
+						<param name="label" value="This frame"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="DoVi L1 min/max/avg"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.l1.min.nits)] · $INFO[Player.Process(video.dovi.l1.max.nits)] · $INFO[Player.Process(video.dovi.l1.avg.nits)] cd/m²"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.header),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="DoVi L1 in PQ"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.l1.min.pq)] · $INFO[Player.Process(video.dovi.l1.max.pq)] · $INFO[Player.Process(video.dovi.l1.avg.pq)] of 4095"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.header),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="HDR10+ max/avg"/>
+						<param name="value" value="$INFO[Player.Process(video.hdr10plus.maxscl.nits)] · $INFO[Player.Process(video.hdr10plus.average.maxrgb.nits)] cd/m²"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.hdr10plus.has.metadata),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="HDR10+ target"/>
+						<param name="value" value="$INFO[Player.Process(video.hdr10plus.target.max.nits),, cd/m²]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.hdr10plus.has.metadata),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="DoVi L5 active area"/>
+						<param name="value" value="left $INFO[Player.Process(video.dovi.l5.left.offset)] · right $INFO[Player.Process(video.dovi.l5.right.offset)] · top $INFO[Player.Process(video.dovi.l5.top.offset)] · bottom $INFO[Player.Process(video.dovi.l5.bottom.offset)]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.l5),1)"/>
+					</include>
+				</control>
+				<control type="grouplist">
+					<left>1310</left>
+					<width>590</width>
+					<include content="KodiCustomizeInfoHeader">
+						<param name="label" value="Whole video"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="DoVi source range"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.source.min.nits)] – $INFO[Player.Process(video.dovi.source.max.nits)] cd/m²"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.header),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="DoVi L6 MaxCLL/FALL"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.l6.max.cll)] · $INFO[Player.Process(video.dovi.l6.max.fall)] cd/m²"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.l6),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="DoVi L6 mastering"/>
+						<param name="value" value="$INFO[Player.Process(video.dovi.l6.min.lum)] – $INFO[Player.Process(video.dovi.l6.max.lum)] cd/m²"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.l6),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="MaxCLL/FALL"/>
+						<param name="value" value="$INFO[Player.Process(video.hdr.max.cll)] · $INFO[Player.Process(video.hdr.max.fall)] cd/m²"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.hdr.has.cll),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Mastering"/>
+						<param name="value" value="$INFO[Player.Process(video.hdr.min.lum)] – $INFO[Player.Process(video.hdr.max.lum)] cd/m²"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.hdr.has.mdcv),1)"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Primaries"/>
+						<param name="value" value="$INFO[Player.Process(video.hdr.colour.primaries)]"/>
+						<param name="visible" value="String.IsEqual(Player.Process(video.hdr.has.mdcv),1)"/>
+					</include>
+				</control>
+			</control>
+		</control>
+	</controls>
+</window>
