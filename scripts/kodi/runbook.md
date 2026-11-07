@@ -26,8 +26,12 @@ boot and after each Bingie, Bingie Widgets or PKC update:
 - InfoTagger 0.0.9, fetched by `deploy.sh` at its pinned commit, and the pin
   that keeps Skin Shortcuts at 2.1.0
 - hides the Bingie profile switcher at the top of the side menu
-- installs every file in `customize/skin-overrides/` into the skin, currently a
-  Netflix-style PKC skip intro/credits button
+- installs every file in `customize/skin-overrides/` at the same path in the
+  skin: a Netflix-style PKC skip intro/credits button and the subtitles
+  toggle's icons
+- adds a subtitles toggle left of the subtitle settings button in the OSD: one
+  press turns subtitles on or off, and its CC icon is struck through while
+  they are off. It shows for videos that have subtitles
 - shows the Dolby Vision profile and HDR10+ from Plex in Bingie's HDR badge,
   e.g. "DV P8.1 · HDR10+" (`customize/snippets/`)
 - adds an **HDR10+ mapping** row at the top of the OSD's **Video settings**,
@@ -74,7 +78,7 @@ them, run PKC's repair sync:
 `ssh kodi 'kodi-send --action="RunPlugin(plugin://plugin.video.plexkodiconnect/?mode=repair)"'`.
 
 Removing a file from `customize/skin-overrides/` does not remove the installed
-copy from the skin; delete it from `skin.bingie/1080i` as well.
+copy from the skin; delete it from `skin.bingie` as well.
 
 If an addon release moves something a patch anchors on, the script logs
 `anchor not found` and leaves that file untouched; a setting that Kodi or

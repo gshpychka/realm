@@ -7,7 +7,8 @@ set -eu
 
 HERE=$(dirname "$(readlink -f "$0")")
 ADDONS=/storage/.kodi/addons
-SKIN=$ADDONS/skin.bingie/1080i
+SKIN_ADDON=$ADDONS/skin.bingie
+SKIN=$SKIN_ADDON/1080i
 PKC_MEDIA=$ADDONS/plugin.video.plexkodiconnect/resources/lib/plex_api/media.py
 WIDGETS_KODIDB=$ADDONS/script.bingie.widgets/resources/lib/helpers/kodidb.py
 GUISETTINGS=/storage/.kodi/userdata/guisettings.xml
@@ -73,12 +74,13 @@ status=0
 reload_skin=0
 
 # Inserts SNIPPET before the single line of FILE containing ANCHOR, indented
-# like that line. A snippet starts with a unique marker line and ends with a
-# line containing "kodi-customize: end". If FILE already has the block, this
-# does nothing when it matches SNIPPET and replaces it otherwise. Returns 0
-# only when it changed FILE.
+# like that line; with SCOPE, before the first line containing ANCHOR from the
+# single line containing SCOPE on. A snippet starts with a unique marker line
+# and ends with a line containing "kodi-customize: end". If FILE already has
+# the block, this does nothing when it matches SNIPPET and replaces it
+# otherwise. Returns 0 only when it changed FILE.
 insert_before() {
-  file=$1 anchor=$2 snippet=$3
+  file=$1 anchor=$2 snippet=$3 scope=${4:-}
   marker=$(head -n 1 "$snippet")
   if grep -qF "$marker" "$file"; then
     current=$(awk -v marker="$marker" '
@@ -100,19 +102,23 @@ insert_before() {
     fi
     mv "$file.tmp.$$" "$file"
   fi
-  if [ "$(grep -cF "$anchor" "$file")" != 1 ]; then
+  # whether the anchor, or the scope it is searched from, is missing or repeated
+  if [ "$(grep -cF "${scope:-$anchor}" "$file")" != 1 ] || ! awk -v scope="$scope" -v anchor="$anchor" -v snippet="$snippet" '
+    scope == "" || index($0, scope) { armed = 1 }
+    armed && !done && index($0, anchor) {
+      match($0, /^[ \t]*/)
+      indent = substr($0, 1, RLENGTH)
+      while ((getline line < snippet) > 0) print (line == "" ? "" : indent line)
+      done = 1
+    }
+    { print }
+    END { exit done ? 0 : 2 }
+  ' "$file" >"$file.tmp.$$"; then
+    rm -f "$file.tmp.$$"
     log "anchor not unique or missing in $file, addon changed; update this script: $anchor"
     status=1
     return 1
   fi
-  awk -v anchor="$anchor" -v snippet="$snippet" '
-    index($0, anchor) {
-      match($0, /^[ \t]*/)
-      indent = substr($0, 1, RLENGTH)
-      while ((getline line < snippet) > 0) print (line == "" ? "" : indent line)
-    }
-    { print }
-  ' "$file" >"$file.tmp.$$"
   mv "$file.tmp.$$" "$file"
 }
 
@@ -294,6 +300,16 @@ bingie_startup_mask() {
   fi
 }
 
+# A one-press subtitles toggle in Bingie's OSD, beside its subtitle settings
+# button (104); the classic OSD in the same file has a button 104 of its own.
+bingie_subtitles_toggle() {
+  if insert_before "$SKIN/IncludesOSD.xml" '<control type="button" id="104">' \
+    "$HERE/snippets/bingie-subtitles-toggle.xml" '<include name="OSDButtons_Bingie_Layout">'; then
+    log "Bingie OSD subtitles toggle added"
+    reload_skin=1
+  fi
+}
+
 # Bingie's progress-under-title mode (skin setting MovieDetailsHome) swaps an
 # in-progress item's details, plot and extra info for a progress row, and
 # slides the header down 130px into the gap. These edits keep the details for
@@ -445,20 +461,25 @@ install_pinned_addons() {
   done
 }
 
-# Whole-window overrides, e.g. PlexKodiConnect's skip marker dialog. Kodi
-# resolves an addon's window XML in the active skin first, but only sees a new
-# file in the skin directory after a skin reload.
+# Files the skin gains or has replaced, at their path in skin-overrides/, e.g.
+# PlexKodiConnect's skip marker dialog. Kodi resolves an addon's window XML in
+# the active skin first, but only sees a new file in the skin directory after a
+# skin reload. Kodi looks up a texture missing from the skin's Textures.xbt in
+# its media/ directory.
 install_overrides() {
-  for src in "$HERE"/skin-overrides/*.xml; do
-    [ -f "$src" ] || continue
-    dst="$SKIN/$(basename "$src")"
+  while read -r src; do
+    rel=${src#"$HERE/skin-overrides/"}
+    dst="$SKIN_ADDON/$rel"
     if [ -f "$dst" ] && [ "$(md5sum <"$src")" = "$(md5sum <"$dst")" ]; then
       continue
     fi
+    mkdir -p "$(dirname "$dst")"
     cp "$src" "$dst"
-    log "installed $(basename "$src")"
+    log "installed $rel"
     reload_skin=1
-  done
+  done <<EOF
+$(find "$HERE/skin-overrides" -type f)
+EOF
 }
 
 advanced_settings
@@ -477,6 +498,7 @@ if [ -d "$SKIN" ]; then
   hide_profile
   bingie_hdr
   bingie_hdr10plus_osd
+  bingie_subtitles_toggle
   bingie_progress
   bingie_startup_mask
   install_overrides

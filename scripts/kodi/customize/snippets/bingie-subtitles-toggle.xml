@@ -1,0 +1,16 @@
+<!-- kodi-customize: subtitles toggle -->
+<control type="togglebutton" id="1104">
+	<description>Subtitles on/off</description>
+	<width>$PARAM[topsize]</width>
+	<height>$PARAM[topsize]</height>
+	<label/>
+	<font/>
+	<texturefocus colordiffuse="$INFO[Skin.String(OSDBingieButtonsFocusColor)]">kodi-customize/subtitles-on_fo.png</texturefocus>
+	<texturenofocus colordiffuse="$INFO[Skin.String(OSDBingieButtonsColor)]">kodi-customize/subtitles-on.png</texturenofocus>
+	<alttexturefocus colordiffuse="$INFO[Skin.String(OSDBingieButtonsFocusColor)]">kodi-customize/subtitles-off_fo.png</alttexturefocus>
+	<alttexturenofocus colordiffuse="$INFO[Skin.String(OSDBingieButtonsColor)]">kodi-customize/subtitles-off.png</alttexturenofocus>
+	<usealttexture>!VideoPlayer.SubtitlesEnabled</usealttexture>
+	<onclick>Action(ShowSubtitles)</onclick>
+	<visible>!Player.HasAudio + VideoPlayer.HasSubtitles</visible>
+</control>
+<!-- kodi-customize: end -->
