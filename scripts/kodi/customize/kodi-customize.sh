@@ -452,10 +452,15 @@ install_overrides() {
     if [ -f "$dst" ] && [ "$(md5sum <"$src")" = "$(md5sum <"$dst")" ]; then
       continue
     fi
-    mkdir -p "$(dirname "$dst")"
-    cp "$src" "$dst"
-    log "installed $rel"
-    reload_skin=1
+    # an if condition, which set -e ignores, so a failed copy leaves the
+    # remaining files and customizations to run
+    if mkdir -p "$(dirname "$dst")" && cp "$src" "$dst"; then
+      log "installed $rel"
+      reload_skin=1
+    else
+      log "could not install $rel"
+      status=1
+    fi
   done <<EOF
 $(find "$HERE/skin-overrides" -type f)
 EOF
