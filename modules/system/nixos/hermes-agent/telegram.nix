@@ -20,6 +20,7 @@ in
     my.hermes-agent.secrets = {
       TELEGRAM_BOT_TOKEN = "telegram-bot-token";
       TELEGRAM_ALLOWED_USERS = "telegram-owner-id";
+      TELEGRAM_HOME_CHANNEL = "telegram-owner-id";
     };
 
     services.hermes-agent.settings.platforms.telegram = {
