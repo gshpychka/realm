@@ -1,0 +1,177 @@
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.cpp
+@@ -34,6 +34,7 @@
+ 
+ #include <algorithm>
+ #include <chrono>
++#include <cmath>
+ #include <memory>
+ #include <mutex>
+ 
+@@ -101,8 +102,67 @@ const char* GetWaitMode(const WaitDebugInfo& waitDbg)
+   return "video";
+ }
+ 
++// Consecutive paced frames whose targets come within a quarter vsync period of
++// a vsync before the release target moves half a period; it outlasts the clock
++// corrections that follow a start or a seek.
++constexpr int VSYNC_NEAR_FRAMES = 8;
++
++// Time by which a frame's release target precedes its presentation time: half
++// a vsync period or none, switched once VSYNC_NEAR_FRAMES consecutive paced
++// frames have targets near a vsync. Kodi's clock jitters against the display,
++// so a target that close falls on alternating sides of the vsync, and the
++// display shows two frames at one vsync and none at the next.
++double VsyncPhaseOffset(double presentPts,
++                        double presentFrameTime,
++                        double clockPts,
++                        std::atomic<bool>& halfPeriodEarly,
++                        std::atomic<int>& framesNearVsync)
++{
++  int nextVsyncUs{0};
++  int periodUs{0};
++  if (!aml_get_vsync_timing_us(nextVsyncUs, periodUs))
++    return 0.0;
++
++  // A frame lasting whole vsync periods keeps its phase from frame to frame.
++  const double vsyncsPerFrame = std::round(presentFrameTime / periodUs);
++  if (vsyncsPerFrame < 1.0 ||
++      std::abs(presentFrameTime - vsyncsPerFrame * periodUs) > periodUs / 100.0)
++    return 0.0;
++
++  bool early = halfPeriodEarly.load();
++  const double offsetUs = early ? periodUs / 2.0 : 0.0;
++  const double waitUs = presentPts - offsetUs - clockPts;
++
++  // Only a frame paced to vsync, due within the window ClockAlignImpl paces, shows the phase.
++  if (waitUs <= 0.0 || waitUs > presentFrameTime * 3.0)
++    return offsetUs;
++
++  double targetAfterVsyncUs = std::fmod(waitUs - nextVsyncUs, periodUs);
++  if (targetAfterVsyncUs < 0.0)
++    targetAfterVsyncUs += periodUs;
++
++  if (std::min(targetAfterVsyncUs, periodUs - targetAfterVsyncUs) >= periodUs / 4.0)
++  {
++    framesNearVsync = 0;
++    return offsetUs;
++  }
++
++  if (++framesNearVsync < VSYNC_NEAR_FRAMES)
++    return offsetUs;
++
++  framesNearVsync = 0;
++  early = !early;
++  halfPeriodEarly = early;
++  logM(LOGDEBUG, "half period early:[{}] target after vsync:[{:.0f}] period:[{}]",
++                 early, targetAfterVsyncUs, periodUs);
++
++  return early ? periodUs / 2.0 : 0.0;
++}
++
+ void ClockAlignImpl(CDataCacheCore& dataCacheCore,
+                     CDVDClock& dvdClock,
++                    std::atomic<bool>& vsyncHalfPeriodEarly,
++                    std::atomic<int>& vsyncFramesNear,
+                     bool guiLayer,
+                     double presentPts,
+                     double presentFrameTime,
+@@ -114,6 +174,10 @@ void ClockAlignImpl(CDataCacheCore& dataCacheCore,
+ 
+   double speed = static_cast<double>(std::abs(dataCacheCore.GetSpeed()));
+ 
++  if (!guiLayer && speed == 1.0)
++    presentPts -= VsyncPhaseOffset(presentPts, presentFrameTime, dvdClock.GetClock(),
++                                   vsyncHalfPeriodEarly, vsyncFramesNear);
++
+   WaitDebugInfo waitDbg;
+ 
+   const auto WaitSlice = [&](double waitUs)
+@@ -990,6 +1054,8 @@ void CRenderManager::ClockAlign()
+ {
+   ClockAlignImpl(m_dataCacheCore,
+                  m_dvdClock,
++                 m_vsyncHalfPeriodEarly,
++                 m_vsyncFramesNear,
+                  !m_pRenderer || (m_pRenderer->IsGuiLayer() && !m_pRenderer->AlwaysVSyncAlign()),
+                  m_presentpts.load(std::memory_order_relaxed),
+                  m_presentframetime,
+@@ -1007,6 +1073,8 @@ void CRenderManager::ClockAlign(double presentPts,
+ {
+   ClockAlignImpl(m_dataCacheCore,
+                  m_dvdClock,
++                 m_vsyncHalfPeriodEarly,
++                 m_vsyncFramesNear,
+                  guiLayer,
+                  presentPts,
+                  presentFrameTime,
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.h b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.h
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.h
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/RenderManager.h
+@@ -301,6 +301,11 @@ protected:
+   // RenderUpdate) and from decode thread (GetRenderPts). std::atomic fixes the
+   // cross-thread data race and removes contended lock acquisition per frame.
+   std::atomic<double> m_presentpts{0.0};
++  // Whether video frames are released half a vsync period ahead of their
++  // presentation time.
++  std::atomic<bool> m_vsyncHalfPeriodEarly{false};
++  // Consecutive paced video frames with release targets near a vsync.
++  std::atomic<int> m_vsyncFramesNear{0};
+   EPRESENTSTEP m_presentstep = PRESENT_IDLE;
+   XbmcThreads::EndTime<> m_presentTimer;
+   bool m_forceNext = false;
+diff --git a/xbmc/utils/AMLUtils.cpp b/xbmc/utils/AMLUtils.cpp
+--- a/xbmc/utils/AMLUtils.cpp
++++ b/xbmc/utils/AMLUtils.cpp
+@@ -1989,6 +1989,39 @@ bool aml_get_time_to_next_vsync_us(int& timeToNextVsyncUs)
+   return true;
+ }
+ 
++bool aml_get_vsync_timing_us(int& timeToNextVsyncUs, int& vsyncPeriodUs)
++{
++  timeToNextVsyncUs = 0;
++  vsyncPeriodUs = 0;
++
++  int fbFd{-1};
++  std::string fbPath;
++  if (!GetFramebufferDevice(fbFd, fbPath))
++    return false;
++
++  fb_vsync_timing_request req{};
++  if (ioctl(fbFd, FBIO_GET_VSYNC_TIMING_64, &req) < 0)
++  {
++    logM(LOGERROR, "ioctl failed on {}: {}", fbPath, strerror(errno));
++    return false;
++  }
++
++  if (req.now_ts <= 0 || req.next_vsync_ts < req.now_ts)
++    return false;
++
++  int64_t periodNs = req.period_ns;
++  if (periodNs <= 0 && req.last_vsync_ts > 0)
++    periodNs = req.next_vsync_ts - req.last_vsync_ts;
++  if (periodNs <= 0)
++    return false;
++
++  timeToNextVsyncUs = static_cast<int>(std::min<int64_t>((req.next_vsync_ts - req.now_ts) / 1000,
++                                                         std::numeric_limits<int>::max()));
++  vsyncPeriodUs = static_cast<int>(periodNs / 1000);
++
++  return true;
++}
++
+ bool aml_get_time_until_vsync_phase_us(int afterVsyncUs, int& timeUntilPhaseUs)
+ {
+   constexpr int64_t NS_PER_US{1000};
+diff --git a/xbmc/utils/AMLUtils.h b/xbmc/utils/AMLUtils.h
+--- a/xbmc/utils/AMLUtils.h
++++ b/xbmc/utils/AMLUtils.h
+@@ -192,6 +192,7 @@ std::string aml_video_fps_drop();
+ void aml_pin_thread_to_core(unsigned int core_id);
+ void aml_wait(double waitUs);
+ bool aml_get_time_to_next_vsync_us(int& timeToNextVsyncUs);
++bool aml_get_vsync_timing_us(int& timeToNextVsyncUs, int& vsyncPeriodUs);
+ bool aml_get_time_until_vsync_phase_us(int afterVsyncUs, int& timeUntilPhaseUs);
+ bool aml_wait_until_next_vsync_window_us(int offsetUs, int& timeToNextVsyncUs);
+ bool aml_try_set_thread_nice(int niceLevel);

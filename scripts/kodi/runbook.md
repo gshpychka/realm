@@ -149,6 +149,12 @@ in `cpm/patches/`, one directory per package:
   the render thread still queues frames, amlvideo admits one open file, and a
   close during an ioctl leaves the device open for the reopen to fail on,
   which blacks out the picture until playback stops
+- `kodi/local-render-vsync-phase.patch` keeps each video frame's release
+  target a quarter vsync period or more from a vsync, moving the target half a
+  period once eight consecutive frames come closer. Kodi's clock jitters
+  against the display by a few milliseconds, so a target near a vsync falls on
+  alternating sides of it, and the display shows two frames at one vsync and
+  none at the next
 - `kodi/local-aml-decoder-timeout-paused.patch` suspends the Amlogic
   decoder's 6 s stall timeout while playback is paused. Paused playback holds the
   decoder's output buffers, and the timeout restarts the decoder at a later
