@@ -6,6 +6,18 @@
 let
   ntfyTopic = "buoy-status";
   themePython = pkgs.python3.withPackages (p: [ p.pillow ]);
+  # Cloudflare and browsers cache these stable asset paths for hours. Change
+  # every asset URL together whenever the UI package, theme or icon changes.
+  themeRevision = builtins.substring 0 12 (
+    builtins.hashString "sha256" (
+      builtins.concatStringsSep "\n" [
+        pkgs.gatus.version
+        (builtins.readFile ./gatus-gruvbox.css)
+        (builtins.readFile ./gatus-brand.py)
+        (builtins.hashFile "sha256" ./gatus-hoard.jpg)
+      ]
+    )
+  );
 
   # Gatus's ntfy provider writes its own message text, so ntfy alerts override the custom
   # provider's request with a plain-text publish. [ALERT_TRIGGERED_OR_RESOLVED] is substituted
@@ -55,7 +67,7 @@ in
     # second web server or browser-side patching.
     package = pkgs.gatus.overrideAttrs (old: {
       postPatch = (old.postPatch or "") + ''
-        ${themePython}/bin/python3 ${./gatus-brand.py} web/static ${./gatus-hoard.jpg}
+        ${themePython}/bin/python3 ${./gatus-brand.py} web/static ${./gatus-hoard.jpg} ${themeRevision}
       '';
     });
     environmentFile = config.sops.secrets.gatus-env.path;
@@ -66,7 +78,12 @@ in
         description = "Service availability and response times across the realm.";
         dashboard-heading = "Service status";
         dashboard-subheading = "Availability and response times across the realm.";
-        logo = "/hoard.png";
+        logo = "/hoard.png?v=${themeRevision}";
+        favicon = {
+          default = "/favicon.ico?v=${themeRevision}";
+          size16x16 = "/favicon-16x16.png?v=${themeRevision}";
+          size32x32 = "/favicon-32x32.png?v=${themeRevision}";
+        };
         dark-mode = true;
         custom-css = builtins.readFile ./gatus-gruvbox.css;
       };

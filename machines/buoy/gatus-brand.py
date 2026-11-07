@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image
 
 
-def brand(static: Path, image: Path) -> None:
+def brand(static: Path, image: Path, revision: str) -> None:
     icon = Image.open(image).convert("RGB")
     for name, size in {
         "hoard.png": 192,
@@ -41,7 +41,18 @@ def brand(static: Path, image: Path) -> None:
     index = static / "index.html"
     html = index.read_text()
     assert 'content="#f7f9fb"' in html, "upstream browser theme-color changed"
-    index.write_text(html.replace('content="#f7f9fb"', 'content="#282828"'))
+    html = html.replace('content="#f7f9fb"', 'content="#282828"')
+    for url in (
+        "/css/custom.css",
+        "/css/app.css",
+        "/js/app.js",
+        "/js/chunk-vendors.js",
+        "/apple-touch-icon.png",
+        "/manifest.json",
+    ):
+        assert f'"{url}"' in html, f"upstream static URL changed: {url}"
+        html = html.replace(f'"{url}"', f'"{url}?v={revision}"')
+    index.write_text(html)
 
     manifest = static / "manifest.json"
     data = json.loads(manifest.read_text())
@@ -53,6 +64,8 @@ def brand(static: Path, image: Path) -> None:
         theme_color="#282828",
         background_color="#282828",
     )
+    for entry in data["icons"]:
+        entry["src"] += f"?v={revision}"
     manifest.write_text(json.dumps(data, indent=2) + "\n")
 
     # Canvas charts cannot inherit CSS colors. Replace their actual literal
@@ -65,6 +78,8 @@ def brand(static: Path, image: Path) -> None:
     js = js.replace('alt:"Gatus"', 'alt:"Hoard"').replace(
         'alt:"Gatus logo"', 'alt:"Hoard logo"'
     )
+    assert "img/logo.svg" in js, "upstream loading logo URL changed"
+    js = js.replace("img/logo.svg", f"img/logo.svg?v={revision}")
     palette = {
         "rgb(96, 165, 250)": "rgb(131, 165, 152)",
         "rgb(59, 130, 246)": "rgb(131, 165, 152)",
@@ -92,4 +107,4 @@ def brand(static: Path, image: Path) -> None:
 
 
 if __name__ == "__main__":
-    brand(Path(sys.argv[1]), Path(sys.argv[2]))
+    brand(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3])
