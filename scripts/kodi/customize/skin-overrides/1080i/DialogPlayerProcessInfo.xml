@@ -4,12 +4,12 @@
 <window>
 	<defaultcontrol always="true">5553</defaultcontrol>
 	<onload>ClearProperty(KodiCustomizeInfoTab,Home)</onload>
-	<animation effect="slide" start="0,-500" end="0,0" time="200">WindowOpen</animation>
-	<animation effect="slide" start="0,0" end="0,-500" time="200">WindowClose</animation>
+	<animation effect="slide" start="0,-540" end="0,0" time="200">WindowOpen</animation>
+	<animation effect="slide" start="0,0" end="0,-540" time="200">WindowClose</animation>
 	<controls>
 		<control type="group">
 			<width>100%</width>
-			<height>500</height>
+			<height>540</height>
 			<control type="image">
 				<colordiffuse>$INFO[Skin.String(GeneralPanelsColor)]</colordiffuse>
 				<texture border="10">diffuse/panel.png</texture>
@@ -143,7 +143,7 @@
 					</include>
 					<include content="KodiCustomizeInfoRow">
 						<param name="label" value="Colour"/>
-						<param name="value" value="$INFO[Player.Process(video.color.range)]$INFO[Player.Process(video.color.space), · ,]$INFO[Player.Process(video.color.primaries), · ,]$INFO[Player.Process(video.color.transfer.characteristic), · ,]"/>
+						<param name="value" value="$INFO[Player.Process(video.color.primaries)]$INFO[Player.Process(video.color.transfer.characteristic), · ,]$INFO[Player.Process(video.color.range), · , range]"/>
 						<param name="visible" value="Player.HasVideo"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
@@ -270,12 +270,12 @@
 						<param name="label" value="This frame"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
-						<param name="label" value="DoVi L1 min/max/avg"/>
+						<param name="label" value="L1 min/max/avg"/>
 						<param name="value" value="$INFO[Player.Process(video.dovi.l1.min.nits)] · $INFO[Player.Process(video.dovi.l1.max.nits)] · $INFO[Player.Process(video.dovi.l1.avg.nits)] cd/m²"/>
 						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.header),1)"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
-						<param name="label" value="DoVi L1 in PQ"/>
+						<param name="label" value="L1 in PQ"/>
 						<param name="value" value="$INFO[Player.Process(video.dovi.l1.min.pq)] · $INFO[Player.Process(video.dovi.l1.max.pq)] · $INFO[Player.Process(video.dovi.l1.avg.pq)] of 4095"/>
 						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.header),1)"/>
 					</include>
@@ -290,7 +290,7 @@
 						<param name="visible" value="String.IsEqual(Player.Process(video.hdr10plus.has.metadata),1)"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
-						<param name="label" value="DoVi L5 active area"/>
+						<param name="label" value="L5 active area"/>
 						<param name="value" value="left $INFO[Player.Process(video.dovi.l5.left.offset)] · right $INFO[Player.Process(video.dovi.l5.right.offset)] · top $INFO[Player.Process(video.dovi.l5.top.offset)] · bottom $INFO[Player.Process(video.dovi.l5.bottom.offset)]"/>
 						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.l5),1)"/>
 					</include>
@@ -307,12 +307,12 @@
 						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.header),1)"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
-						<param name="label" value="DoVi L6 MaxCLL/FALL"/>
+						<param name="label" value="L6 MaxCLL/FALL"/>
 						<param name="value" value="$INFO[Player.Process(video.dovi.l6.max.cll)] · $INFO[Player.Process(video.dovi.l6.max.fall)] cd/m²"/>
 						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.l6),1)"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
-						<param name="label" value="DoVi L6 mastering"/>
+						<param name="label" value="L6 mastering"/>
 						<param name="value" value="$INFO[Player.Process(video.dovi.l6.min.lum)] – $INFO[Player.Process(video.dovi.l6.max.lum)] cd/m²"/>
 						<param name="visible" value="String.IsEqual(Player.Process(video.dovi.has.l6),1)"/>
 					</include>

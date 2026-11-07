@@ -218,9 +218,16 @@ in `cpm/patches/`, one directory per package:
   frame's HDR10+ metadata and otherwise keeps it only to build Dolby Vision
   metadata from it
 - `kodi/local-videoplayer-sync-labels.patch` gives the skin the A/V sync
-  error, `Player.Process(av.sync.error)`: audio minus video presentation time
-  in ms, averaged over 2 s, beyond the user's audio offset. It also gives the
-  frames dropped before rendering and skipped by the renderer since the
+  error, `Player.Process(av.sync.error)`: how far the audio runs ahead of the
+  playback clock, which the picture follows, in ms, averaged over 2 s. It is
+  ActiveAE's measure, which counts the output's real delay. Kodi's debug
+  overlay shows the audio player's own estimate as `a/c`, which with
+  passthrough can lag it by 0.2 s, and the renderer's hand-off to the display
+  as `v/c`, up to a frame ahead of the clock. The audio offset moves the
+  picture, so it leaves this error alone. `av.sync.error.abs` is its size,
+  for skin conditions, which read neither a leading + nor a negative number.
+  It also gives the frames dropped before rendering and skipped by the
+  renderer since the
   stream opened or seeked (`video.dropped.frames`, `video.skipped.frames`).
   Kodi otherwise shows these only in its player debug overlay
 - `kodi/local-system-cpu-total-label.patch` gives the skin the load of all

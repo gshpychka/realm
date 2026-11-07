@@ -58,14 +58,14 @@
 <!-- Audio ahead of the picture is positive. The player holds sync within a few
      ms, and audio 45 ms ahead is where viewers notice it (ITU-R BT.1359). -->
 <variable name="KodiCustomizeAVSync">
-	<value condition="String.IsEmpty(Player.Process(av.sync.error))">[COLOR grey]measured during playback[/COLOR]</value>
-	<value condition="Integer.IsGreater(Player.Process(av.sync.error),45) | Integer.IsLess(Player.Process(av.sync.error),-45)">[B][COLOR red]$INFO[Player.Process(av.sync.error)] ms[/COLOR][/B]$VAR[KodiCustomizeAVSyncDirection]</value>
-	<value condition="Integer.IsGreater(Player.Process(av.sync.error),20) | Integer.IsLess(Player.Process(av.sync.error),-20)">[B][COLOR orange]$INFO[Player.Process(av.sync.error)] ms[/COLOR][/B]$VAR[KodiCustomizeAVSyncDirection]</value>
-	<value>[B][COLOR lightgreen]$INFO[Player.Process(av.sync.error)] ms[/COLOR][/B]</value>
+	<value condition="String.IsEmpty(Player.Process(av.sync.error.abs))">[COLOR grey]measured during playback[/COLOR]</value>
+	<value condition="Integer.IsGreater(Player.Process(av.sync.error.abs),45)">[B][COLOR red]$INFO[Player.Process(av.sync.error.abs)] ms[/COLOR][/B]$VAR[KodiCustomizeAVSyncDirection]</value>
+	<value condition="Integer.IsGreater(Player.Process(av.sync.error.abs),20)">[B][COLOR orange]$INFO[Player.Process(av.sync.error.abs)] ms[/COLOR][/B]$VAR[KodiCustomizeAVSyncDirection]</value>
+	<value>[B][COLOR lightgreen]$INFO[Player.Process(av.sync.error.abs)] ms[/COLOR][/B]$VAR[KodiCustomizeAVSyncDirection]</value>
 </variable>
 <variable name="KodiCustomizeAVSyncDirection">
 	<value condition="Integer.IsGreater(Player.Process(av.sync.error),0)"> · audio ahead</value>
-	<value> · audio behind</value>
+	<value condition="String.StartsWith(Player.Process(av.sync.error),-)"> · audio behind</value>
 </variable>
 <!-- Counted since the video started or last seeked. -->
 <variable name="KodiCustomizeDroppedFrames">

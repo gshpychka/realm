@@ -66,6 +66,19 @@ Deployment and the patch list live in `runbook.md`.
 - PlexKodiConnect logs `Session key … still unknown! Skip playstate update`
   every 10 s during playback, and defers its scheduled full sync while video
   plays.
+- The playback info panel's A/V sync row is ActiveAE's audio-to-clock error.
+  Kodi's player debug overlay (action `playerdebug`) measures differently: its
+  `a/c` is the audio player's own position estimate, about 0.2 s behind with
+  passthrough at times, and its `v/c` is when the renderer hands a frame to
+  the display, up to a frame ahead of the clock.
+- Opening a file while another plays runs the old playback's Dolby Vision
+  teardown and the new one's setup at once. Once this ended Kodi's main
+  thread: the GUI froze and every JSON-RPC call hung. Stop playback and wait
+  for `Player.GetActivePlayers` to return `[]` before opening the next file.
+- Kodi's screenshots come out black on this box. The GUI layer is readable
+  from `/dev/fb0`: `virtual_size` in `/sys/class/graphics/fb0` gives the
+  double-buffered geometry, and each half is a BGRA frame of `stride` bytes per
+  line.
 
 ## Memory
 

@@ -6,15 +6,16 @@ diff --git a/xbmc/GUIInfoManager.cpp b/xbmc/GUIInfoManager.cpp
  /// -----------------------------------------------------------------------------
  // clang-format off
 -constexpr std::array<InfoMap, 123> player_process = {{
-+constexpr std::array<InfoMap, 126> player_process = {{
++constexpr std::array<InfoMap, 127> player_process = {{
      {"videodecoder",        PLAYER_PROCESS_VIDEODECODER},
      {"deintmethod",         PLAYER_PROCESS_DEINTMETHOD},
      {"pixformat",           PLAYER_PROCESS_PIXELFORMAT},
-@@ -1278,6 +1278,9 @@ constexpr std::array<InfoMap, 123> player_process = {{
+@@ -1278,6 +1278,10 @@ constexpr std::array<InfoMap, 123> player_process = {{
      {"video.hdr10plus.maxscl.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_MAXSCL_NITS},
      {"video.hdr10plus.average.maxrgb.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_AVERAGE_MAXRGB_NITS},
      {"video.hdr10plus.target.max.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_TARGET_MAX_NITS},
 +    {"av.sync.error", PLAYER_PROCESS_AV_SYNC_ERROR},
++    {"av.sync.error.abs", PLAYER_PROCESS_AV_SYNC_ERROR_ABS},
 +    {"video.dropped.frames", PLAYER_PROCESS_VIDEO_DROPPED_FRAMES},
 +    {"video.skipped.frames", PLAYER_PROCESS_VIDEO_SKIPPED_FRAMES},
      {"video.dovi.source.min.pq", PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MIN_PQ},
@@ -81,8 +82,8 @@ diff --git a/xbmc/cores/DataCacheCore.h b/xbmc/cores/DataCacheCore.h
    DOVIFrameMetadata GetVideoDoViFrameMetadata();
    void SetVideoHdr10PlusFrameMetadata(HDR10PlusFrameMetadata value);
    HDR10PlusFrameMetadata GetVideoHdr10PlusFrameMetadata();
-+  // Audio minus video presentation time in seconds, beyond the user's audio
-+  // offset, while playing at normal speed.
++  // How far the audio runs ahead of the playback clock, which the picture
++  // follows, in seconds, while playing at normal speed.
 +  void SetAVSyncError(std::optional<double> seconds);
 +  std::optional<double> GetAVSyncError();
 +  // Frames dropped before rendering and skipped by the renderer since the
@@ -104,6 +105,18 @@ diff --git a/xbmc/cores/DataCacheCore.h b/xbmc/cores/DataCacheCore.h
      DOVIStreamMetadata doviStreamMetadata = {};
      DOVIStreamInfo doviStreamInfo = {};
      DOVIStreamInfo sourceDoViStreamInfo = {};
+diff --git a/xbmc/cores/VideoPlayer/IVideoPlayer.h b/xbmc/cores/VideoPlayer/IVideoPlayer.h
+--- a/xbmc/cores/VideoPlayer/IVideoPlayer.h
++++ b/xbmc/cores/VideoPlayer/IVideoPlayer.h
+@@ -135,6 +135,8 @@ public:
+   virtual int GetAudioChannels() = 0;
+   virtual double GetCurrentPts() = 0;
+   virtual double GetCurrentPacketDelay() = 0;
++  // How far the audio leaving the output runs ahead of the clock.
++  virtual double GetSyncError() = 0;
+   bool IsStalled() const override = 0;
+   virtual bool IsPassthrough() const = 0;
+   virtual float GetDynamicRangeAmplification() const = 0;
 diff --git a/xbmc/cores/VideoPlayer/VideoPlayer.cpp b/xbmc/cores/VideoPlayer/VideoPlayer.cpp
 --- a/xbmc/cores/VideoPlayer/VideoPlayer.cpp
 +++ b/xbmc/cores/VideoPlayer/VideoPlayer.cpp
@@ -123,7 +136,7 @@ diff --git a/xbmc/cores/VideoPlayer/VideoPlayer.cpp b/xbmc/cores/VideoPlayer/Vid
  
      // make sure we run subtitle process here
      m_VideoPlayerSubtitle->UpdatePlaybackPosition(
-@@ -5995,6 +5997,30 @@ int CalculateCurrentChapter(
+@@ -5995,6 +5997,31 @@ int CalculateCurrentChapter(
  }
  } // namespace
  
@@ -133,17 +146,18 @@ diff --git a/xbmc/cores/VideoPlayer/VideoPlayer.cpp b/xbmc/cores/VideoPlayer/Vid
 +    return;
 +  m_avSyncTimer.Set(100ms);
 +
-+  const double apts = m_VideoPlayerAudio->GetCurrentPts();
-+  const double vpts = m_VideoPlayerVideo->GetCurrentPts();
-+  if (m_playSpeed != DVD_PLAYSPEED_NORMAL || apts == DVD_NOPTS_VALUE || vpts == DVD_NOPTS_VALUE)
++  if (m_playSpeed != DVD_PLAYSPEED_NORMAL || !m_VideoPlayerAudio->IsInited())
 +  {
 +    m_avSyncSamples.clear();
 +    CServiceBroker::GetDataCacheCore().SetAVSyncError({});
 +    return;
 +  }
 +
-+  // The user's audio offset presents each frame that many ms late on purpose.
-+  m_avSyncSamples.push_back(apts - vpts - m_renderManager.GetDelay() * 1000.0);
++  // The picture shows each frame when the clock reaches it, so the audio's
++  // distance from the clock is the A/V error. ActiveAE's measure counts the
++  // output's real delay; with passthrough the audio player's own position
++  // estimate lags it.
++  m_avSyncSamples.push_back(m_VideoPlayerAudio->GetSyncError());
 +  if (m_avSyncSamples.size() > AV_SYNC_SAMPLES)
 +    m_avSyncSamples.pop_front();
 +  const double sum = std::accumulate(m_avSyncSamples.begin(), m_avSyncSamples.end(), 0.0);
@@ -183,6 +197,41 @@ diff --git a/xbmc/cores/VideoPlayer/VideoPlayer.h b/xbmc/cores/VideoPlayer/Video
 +  XbmcThreads::EndTime<> m_avSyncTimer;
 +  std::deque<double> m_avSyncSamples;
  };
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp b/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
+--- a/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerAudio.cpp
+@@ -390,6 +390,7 @@ void CVideoPlayerAudio::UpdatePlayerInfo()
+   info.info2       = std::move(info2);
+   info.pts         = m_audioSink.GetPlayingPts();
+   info.packetDelay = m_audioSink.GetDelay();
++  info.syncError   = m_audioSink.GetSyncError();
+   info.passthrough = m_pAudioCodec && m_pAudioCodec->NeedPassthrough();
+ 
+   {
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerAudio.h b/xbmc/cores/VideoPlayer/VideoPlayerAudio.h
+--- a/xbmc/cores/VideoPlayer/VideoPlayerAudio.h
++++ b/xbmc/cores/VideoPlayer/VideoPlayerAudio.h
+@@ -92,6 +92,12 @@ public:
+     return m_info.packetDelay;
+   }
+ 
++  double GetSyncError() override
++  {
++    std::lock_guard lock(m_info_section);
++    return m_info.syncError;
++  }
++
+   bool IsStalled() const override { return m_stalled; }
+   bool IsPassthrough() const override;
+ 
+@@ -149,6 +155,7 @@ protected:
+     std::string info2;
+     double pts = DVD_NOPTS_VALUE;
+     double packetDelay = 0.0;
++    double syncError = 0.0;
+     bool passthrough = false;
+   };
+ 
 diff --git a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
 --- a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
 +++ b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
@@ -198,28 +247,37 @@ diff --git a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp b/xbmc/cores/VideoPlaye
 diff --git a/xbmc/guilib/guiinfo/GUIInfoLabels.h b/xbmc/guilib/guiinfo/GUIInfoLabels.h
 --- a/xbmc/guilib/guiinfo/GUIInfoLabels.h
 +++ b/xbmc/guilib/guiinfo/GUIInfoLabels.h
-@@ -898,6 +898,9 @@ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_HAS_METADATA = 1788;
+@@ -898,6 +898,10 @@ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_HAS_METADATA = 1788;
  constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_MAXSCL_NITS = 1789;
  constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_AVERAGE_MAXRGB_NITS = 1790;
  constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_TARGET_MAX_NITS = 1791;
 +constexpr uint32_t PLAYER_PROCESS_AV_SYNC_ERROR = 1792;
 +constexpr uint32_t PLAYER_PROCESS_VIDEO_DROPPED_FRAMES = 1793;
 +constexpr uint32_t PLAYER_PROCESS_VIDEO_SKIPPED_FRAMES = 1794;
++constexpr uint32_t PLAYER_PROCESS_AV_SYNC_ERROR_ABS = 1796;
  constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_HAS_CLL           = 1749;
  constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_MAX_CLL           = 1750;
  constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_MAX_FALL          = 1751;
 diff --git a/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp b/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
 --- a/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
 +++ b/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
-@@ -808,6 +808,20 @@ bool CPlayerGUIInfo::GetLabel(std::string& value,
+@@ -808,6 +808,28 @@ bool CPlayerGUIInfo::GetLabel(std::string& value,
        value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().targeted_system_display_maximum_luminance);
        return true;
  
-+    // In ms, signed; empty while paused, seeking or missing a stream.
++    // In whole ms, negative when the audio is behind; empty while paused,
++    // seeking or missing a stream. Integer conditions read neither a leading
++    // + nor a negative literal, so the size has a label of its own.
 +    case PLAYER_PROCESS_AV_SYNC_ERROR:
++    case PLAYER_PROCESS_AV_SYNC_ERROR_ABS:
 +    {
 +      const auto error = CServiceBroker::GetDataCacheCore().GetAVSyncError();
-+      value = error ? StringUtils::Format("{:+.0f}", *error * 1000.0) : "";
++      if (!error)
++        value.clear();
++      else if (info.GetInfo() == PLAYER_PROCESS_AV_SYNC_ERROR)
++        value = StringUtils::Format("{:.0f}", *error * 1000.0);
++      else
++        value = StringUtils::Format("{:.0f}", std::abs(*error) * 1000.0);
 +      return true;
 +    }
 +    case PLAYER_PROCESS_VIDEO_DROPPED_FRAMES:
