@@ -26,6 +26,14 @@
 		</control>
 	</definition>
 </include>
+<include name="KodiCustomizeInfoButton">
+	<definition>
+		<width>auto</width>
+		<height>60</height>
+		<textoffsetx>20</textoffsetx>
+		<font>Reg24</font>
+	</definition>
+</include>
 <include name="KodiCustomizeInfoHeader">
 	<definition>
 		<control type="label">
@@ -44,8 +52,25 @@
 	<value>Original DoVi</value>
 </variable>
 <variable name="KodiCustomizeHdr10PlusButton">
-	<value condition="Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)">HDR10+ mapping · $VAR[KodiCustomizeHdr10PlusMode]</value>
-	<value>HDR10+ mapping · not detected</value>
+	<value condition="Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)">HDR10+ · $VAR[KodiCustomizeHdr10PlusMode]</value>
+	<value>HDR10+ · not detected</value>
+</variable>
+<!-- Audio ahead of the picture is positive. The player holds sync within a few
+     ms, and audio 45 ms ahead is where viewers notice it (ITU-R BT.1359). -->
+<variable name="KodiCustomizeAVSync">
+	<value condition="String.IsEmpty(Player.Process(av.sync.error))">[COLOR grey]measured during playback[/COLOR]</value>
+	<value condition="Integer.IsGreater(Player.Process(av.sync.error),45) | Integer.IsLess(Player.Process(av.sync.error),-45)">[B][COLOR red]$INFO[Player.Process(av.sync.error)] ms[/COLOR][/B]$VAR[KodiCustomizeAVSyncDirection]</value>
+	<value condition="Integer.IsGreater(Player.Process(av.sync.error),20) | Integer.IsLess(Player.Process(av.sync.error),-20)">[B][COLOR orange]$INFO[Player.Process(av.sync.error)] ms[/COLOR][/B]$VAR[KodiCustomizeAVSyncDirection]</value>
+	<value>[B][COLOR lightgreen]$INFO[Player.Process(av.sync.error)] ms[/COLOR][/B]</value>
+</variable>
+<variable name="KodiCustomizeAVSyncDirection">
+	<value condition="Integer.IsGreater(Player.Process(av.sync.error),0)"> · audio ahead</value>
+	<value> · audio behind</value>
+</variable>
+<!-- Counted since the video started or last seeked. -->
+<variable name="KodiCustomizeDroppedFrames">
+	<value condition="Integer.IsGreater(Player.Process(video.dropped.frames),0) | Integer.IsGreater(Player.Process(video.skipped.frames),0)">[B][COLOR red]$INFO[Player.Process(video.dropped.frames)] dropped · $INFO[Player.Process(video.skipped.frames)] skipped[/COLOR][/B]</value>
+	<value>[B][COLOR lightgreen]none[/COLOR][/B]</value>
 </variable>
 <variable name="KodiCustomizeSourceHdr">
 	<value condition="!Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),0)">$INFO[Player.Process(video.source.hdr.type)] · $INFO[Player.Process(video.source.additional.hdr.type)]</value>

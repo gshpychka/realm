@@ -1,0 +1,45 @@
+diff --git a/xbmc/GUIInfoManager.cpp b/xbmc/GUIInfoManager.cpp
+--- a/xbmc/GUIInfoManager.cpp
++++ b/xbmc/GUIInfoManager.cpp
+@@ -2088,7 +2088,7 @@ constexpr std::array<InfoMap, 10> weather = {{
+ ///     <p>
+ ///   }
+ // clang-format off
+-constexpr std::array<InfoMap, 77> system_labels = {{
++constexpr std::array<InfoMap, 78> system_labels = {{
+     {"hasnetwork",              SYSTEM_ETHERNET_LINK_ACTIVE},
+     {"hasmediadvd",             SYSTEM_MEDIA_DVD},
+     {"hasmediaaudiocd",         SYSTEM_MEDIA_AUDIO_CD},
+@@ -2165,6 +2165,7 @@ constexpr std::array<InfoMap, 77> system_labels = {{
+     {"supportedhdrtypes",       SYSTEM_SUPPORTED_HDR_TYPES},
+     {"isscreensaverinhibited",  SYSTEM_IS_SCREENSAVER_INHIBITED},
+     {"cpualtusage",             SYSTEM_CPU_ALT_USAGE},
++    {"cputotalusage",           SYSTEM_CPU_TOTAL_USAGE},
+ }};
+ // clang-format on
+ 
+diff --git a/xbmc/guilib/guiinfo/GUIInfoLabels.h b/xbmc/guilib/guiinfo/GUIInfoLabels.h
+--- a/xbmc/guilib/guiinfo/GUIInfoLabels.h
++++ b/xbmc/guilib/guiinfo/GUIInfoLabels.h
+@@ -849,6 +849,7 @@ constexpr uint32_t VIDEOPLAYER_AUDIO_LANG_EX         = 1708;
+ constexpr uint32_t VIDEOPLAYER_AUDIO_NAME            = 1709;
+ 
+ constexpr uint32_t SYSTEM_CPU_ALT_USAGE              = 1710;
++constexpr uint32_t SYSTEM_CPU_TOTAL_USAGE            = 1795;
+ 
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_DOVI_HAS_CONFIG                     = 1711;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_DOVI_VERSION_MAJOR                  = 1712;
+diff --git a/xbmc/guilib/guiinfo/SystemGUIInfo.cpp b/xbmc/guilib/guiinfo/SystemGUIInfo.cpp
+--- a/xbmc/guilib/guiinfo/SystemGUIInfo.cpp
++++ b/xbmc/guilib/guiinfo/SystemGUIInfo.cpp
+@@ -163,6 +163,10 @@ bool CSystemGUIInfo::GetLabel(std::string& value,
+     case SYSTEM_CPU_ALT_USAGE:
+       value = GetSystemHeatInfo(info.GetInfo());
+       return true;
++    // All cores' load as one percentage.
++    case SYSTEM_CPU_TOTAL_USAGE:
++      value = StringUtils::Format("{}%", CServiceBroker::GetCPUInfo()->GetUsedPercentage());
++      return true;
+     case SYSTEM_VIDEO_ENCODER_INFO:
+     case NETWORK_IP_ADDRESS:
+     case NETWORK_MAC_ADDRESS:

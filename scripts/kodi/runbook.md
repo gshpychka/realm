@@ -18,7 +18,7 @@ boot and after each Bingie, Bingie Widgets or PKC update:
   display mode
 - Kodi's advanced settings from `customize/snippets/advancedsettings-video.xml`:
   H.264 frames keep the decoder's timestamps, so H.264 video plays in sync with
-  its audio
+  its audio, and the audio offset moves 10 ms per press
 - Kodi's memory settings from `system.d/kodi.service.d/memory.conf`, a drop-in
   for its service: two malloc arenas, so the memory each add-on script frees,
   such as a widget refresh's, serves the next script and Kodi's memory stays
@@ -38,19 +38,24 @@ boot and after each Bingie, Bingie Widgets or PKC update:
 - shows the Dolby Vision profile and HDR10+ from Plex in Bingie's HDR badge,
   e.g. "DV P8.1 · HDR10+" (`customize/snippets/`)
 - turns the OSD's **Video** button into a playback info panel, after the one
-  in CPM's Estuary skin. Its **Player** tab shows playback, source and output
-  details; its **Dolby Vision · HDR** tab shows the Dolby Vision
-  configuration, the current frame's Dolby Vision L1 and HDR10+ brightness,
-  and the whole video's static metadata. Two buttons beside the tabs:
+  in CPM's Estuary skin. Its **Player** tab leads with the A/V sync error and
+  the dropped frames, coloured green, orange or red, then shows playback,
+  source and output details; its **Dolby Vision · HDR** tab shows the Dolby
+  Vision configuration, the current frame's Dolby Vision L1 and HDR10+
+  brightness, and the whole video's static metadata. Buttons beside the tabs:
+  - **Audio offset**: Kodi's slider, 10 ms per press; **Replay 10 s** closes
+    the panel and plays the last 10 s again to judge lip sync
+  - **Audio stream** and **Video stream**: pick the stream, for files with
+    more than one
   - **HDR10+ mapping**: hybrid files offer **Native HDR10+**, **Original
     DoVi**, and **HDR10+ mapped to DoVi**; HDR10+-only files offer the two
     applicable modes, and other files show it disabled. A change stops and
     reopens the video at the current position, restoring pause, audio and
     subtitle selection. The S95C receives player-led DoVi as HDR10. The choice
     persists in Kodi's settings across boots, deployments and add-on updates
-  - **Video stream**: picks the video stream, for files with more than one
-- hides the OSD's bookmarks (the chapter list), play from beginning and info
-  buttons
+- hides the OSD's exit, audio settings, bookmarks (the chapter list), play
+  from beginning and info buttons, which leaves the subtitles toggle, the
+  subtitle settings and the playback info panel
 - keeps an in-progress item's rating, year, HDR badges and plot on screen, with
   the progress bar under them
 - lists files without subtitles in Bingie's widgets, e.g. Continue Watching
@@ -212,6 +217,15 @@ in `cpm/patches/`, one directory per package:
   MaxSCL, average MaxRGB and the targeted display's peak. CPM parses every
   frame's HDR10+ metadata and otherwise keeps it only to build Dolby Vision
   metadata from it
+- `kodi/local-videoplayer-sync-labels.patch` gives the skin the A/V sync
+  error, `Player.Process(av.sync.error)`: audio minus video presentation time
+  in ms, averaged over 2 s, beyond the user's audio offset. It also gives the
+  frames dropped before rendering and skipped by the renderer since the
+  stream opened or seeked (`video.dropped.frames`, `video.skipped.frames`).
+  Kodi otherwise shows these only in its player debug overlay
+- `kodi/local-system-cpu-total-label.patch` gives the skin the load of all
+  CPU cores as one percentage, `System.CpuTotalUsage`. `System.CpuUsage`
+  lists each core
 - `linux/local-amlvideo-qbuf-held-index.patch` makes the video driver move
   frames to the screen on a release only when it holds the released frame. A
   seek's decoder reset discards the frames the driver holds, and Kodi releases

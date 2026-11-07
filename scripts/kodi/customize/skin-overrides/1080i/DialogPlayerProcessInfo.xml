@@ -9,7 +9,7 @@
 	<controls>
 		<control type="group">
 			<width>100%</width>
-			<height>470</height>
+			<height>500</height>
 			<control type="image">
 				<colordiffuse>$INFO[Skin.String(GeneralPanelsColor)]</colordiffuse>
 				<texture border="10">diffuse/panel.png</texture>
@@ -24,39 +24,48 @@
 				<onup>Close</onup>
 				<ondown>Close</ondown>
 				<control type="button" id="5553">
-					<width>auto</width>
-					<height>60</height>
-					<textoffsetx>30</textoffsetx>
-					<font>Reg26</font>
+					<include content="KodiCustomizeInfoButton"/>
 					<label>Player</label>
 					<onfocus>ClearProperty(KodiCustomizeInfoTab,Home)</onfocus>
 				</control>
 				<control type="button" id="5552">
-					<width>auto</width>
-					<height>60</height>
-					<textoffsetx>30</textoffsetx>
-					<font>Reg26</font>
+					<include content="KodiCustomizeInfoButton"/>
 					<label>Dolby Vision · HDR</label>
 					<onfocus>SetProperty(KodiCustomizeInfoTab,hdr,Home)</onfocus>
 					<visible>String.IsEqual(Player.Process(video.dovi.has.config),1) | String.IsEqual(Player.Process(video.dovi.has.header),1) | String.IsEqual(Player.Process(video.hdr10plus.has.metadata),1) | String.IsEqual(Player.Process(video.hdr.has.cll),1) | String.IsEqual(Player.Process(video.hdr.has.mdcv),1)</visible>
 				</control>
+				<!-- Kodi's audio offset slider: left and right move it, back returns here. -->
+				<control type="button" id="5556">
+					<include content="KodiCustomizeInfoButton"/>
+					<label>Audio offset · $INFO[Player.AudioDelay]</label>
+					<onclick>Action(AudioDelay)</onclick>
+				</control>
+				<!-- Plays the last 10 s again without the panel and the OSD, to judge lip sync. -->
+				<control type="button" id="5557">
+					<include content="KodiCustomizeInfoButton"/>
+					<label>Replay 10 s</label>
+					<enable>Player.SeekEnabled</enable>
+					<onclick>Dialog.Close(playerprocessinfo)</onclick>
+					<onclick>Dialog.Close(videoosd)</onclick>
+					<onclick>Seek(-10)</onclick>
+				</control>
+				<control type="button" id="5558">
+					<include content="KodiCustomizeInfoButton"/>
+					<label>Audio stream</label>
+					<enable>Integer.IsGreater(VideoPlayer.AudioStreamCount,1)</enable>
+					<onclick>RunScript(/storage/.config/kodi-customize/kodi-select-stream.py,audio)</onclick>
+				</control>
+				<control type="button" id="5555">
+					<include content="KodiCustomizeInfoButton"/>
+					<label>Video stream</label>
+					<enable>Integer.IsGreater(VideoPlayer.VideoStreamCount,1)</enable>
+					<onclick>RunScript(/storage/.config/kodi-customize/kodi-select-stream.py,video)</onclick>
+				</control>
 				<control type="button" id="5554">
-					<width>auto</width>
-					<height>60</height>
-					<textoffsetx>30</textoffsetx>
-					<font>Reg26</font>
+					<include content="KodiCustomizeInfoButton"/>
 					<label>$VAR[KodiCustomizeHdr10PlusButton]</label>
 					<enable>Player.HasVideo + !VideoPlayer.Content(livetv) + [Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)]</enable>
 					<onclick>RunScript(/storage/.config/kodi-customize/kodi-hdr10plus.py)</onclick>
-				</control>
-				<control type="button" id="5555">
-					<width>auto</width>
-					<height>60</height>
-					<textoffsetx>30</textoffsetx>
-					<font>Reg26</font>
-					<label>Video stream</label>
-					<enable>Integer.IsGreater(VideoPlayer.VideoStreamCount,1)</enable>
-					<onclick>RunScript(/storage/.config/kodi-customize/kodi-video-stream.py)</onclick>
 				</control>
 			</control>
 
@@ -69,6 +78,18 @@
 					<width>590</width>
 					<include content="KodiCustomizeInfoHeader">
 						<param name="label" value="Playback"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="A/V sync"/>
+						<param name="value" value="$VAR[KodiCustomizeAVSync]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Dropped frames"/>
+						<param name="value" value="$VAR[KodiCustomizeDroppedFrames]"/>
+					</include>
+					<include content="KodiCustomizeInfoRow">
+						<param name="label" value="Audio offset"/>
+						<param name="value" value="$INFO[Player.AudioDelay]"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
 						<param name="label" value="Decoder"/>
@@ -92,7 +113,7 @@
 					</include>
 					<include content="KodiCustomizeInfoRow">
 						<param name="label" value="CPU"/>
-						<param name="value" value="$INFO[System.CpuAltUsage]$INFO[System.CpuFrequency, · ,]$INFO[System.CPUTemperature, · ,]"/>
+						<param name="value" value="$INFO[System.CpuTotalUsage]"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
 						<param name="label" value="GUI frame rate"/>

@@ -1,0 +1,234 @@
+diff --git a/xbmc/GUIInfoManager.cpp b/xbmc/GUIInfoManager.cpp
+--- a/xbmc/GUIInfoManager.cpp
++++ b/xbmc/GUIInfoManager.cpp
+@@ -1176,7 +1176,7 @@ constexpr std::array<InfoMap, 10> player_times = {{
+ ///
+ /// -----------------------------------------------------------------------------
+ // clang-format off
+-constexpr std::array<InfoMap, 123> player_process = {{
++constexpr std::array<InfoMap, 126> player_process = {{
+     {"videodecoder",        PLAYER_PROCESS_VIDEODECODER},
+     {"deintmethod",         PLAYER_PROCESS_DEINTMETHOD},
+     {"pixformat",           PLAYER_PROCESS_PIXELFORMAT},
+@@ -1278,6 +1278,9 @@ constexpr std::array<InfoMap, 123> player_process = {{
+     {"video.hdr10plus.maxscl.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_MAXSCL_NITS},
+     {"video.hdr10plus.average.maxrgb.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_AVERAGE_MAXRGB_NITS},
+     {"video.hdr10plus.target.max.nits", PLAYER_PROCESS_VIDEO_HDR10PLUS_TARGET_MAX_NITS},
++    {"av.sync.error", PLAYER_PROCESS_AV_SYNC_ERROR},
++    {"video.dropped.frames", PLAYER_PROCESS_VIDEO_DROPPED_FRAMES},
++    {"video.skipped.frames", PLAYER_PROCESS_VIDEO_SKIPPED_FRAMES},
+     {"video.dovi.source.min.pq", PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MIN_PQ},
+     {"video.dovi.source.max.pq", PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MAX_PQ},
+     {"video.dovi.source.min.nits", PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MIN_NITS},
+diff --git a/xbmc/cores/DataCacheCore.cpp b/xbmc/cores/DataCacheCore.cpp
+--- a/xbmc/cores/DataCacheCore.cpp
++++ b/xbmc/cores/DataCacheCore.cpp
+@@ -437,6 +437,42 @@ HDR10PlusFrameMetadata CDataCacheCore::GetVideoHdr10PlusFrameMetadata()
+   return {};
+ }
+ 
++void CDataCacheCore::SetAVSyncError(std::optional<double> seconds)
++{
++  std::lock_guard lock(m_videoPlayerSection);
++  m_playerVideoInfo.avSyncError = seconds;
++}
++
++std::optional<double> CDataCacheCore::GetAVSyncError()
++{
++  std::lock_guard lock(m_videoPlayerSection);
++  return m_playerVideoInfo.avSyncError;
++}
++
++void CDataCacheCore::SetVideoDroppedFrames(int frames)
++{
++  std::lock_guard lock(m_videoPlayerSection);
++  m_playerVideoInfo.droppedFrames = frames;
++}
++
++int CDataCacheCore::GetVideoDroppedFrames()
++{
++  std::lock_guard lock(m_videoPlayerSection);
++  return m_playerVideoInfo.droppedFrames;
++}
++
++void CDataCacheCore::SetVideoSkippedFrames(int frames)
++{
++  std::lock_guard lock(m_videoPlayerSection);
++  m_playerVideoInfo.skippedFrames = frames;
++}
++
++int CDataCacheCore::GetVideoSkippedFrames()
++{
++  std::lock_guard lock(m_videoPlayerSection);
++  return m_playerVideoInfo.skippedFrames;
++}
++
+ void CDataCacheCore::SetVideoDoViStreamMetadata(DOVIStreamMetadata value)
+ {
+   std::lock_guard lock(m_videoPlayerSection);
+diff --git a/xbmc/cores/DataCacheCore.h b/xbmc/cores/DataCacheCore.h
+--- a/xbmc/cores/DataCacheCore.h
++++ b/xbmc/cores/DataCacheCore.h
+@@ -18,6 +18,7 @@
+ #include <atomic>
+ #include <chrono>
+ #include <cstdint>
++#include <optional>
+ #include <string>
+ #include <vector>
+ 
+@@ -78,6 +79,16 @@ public:
+   DOVIFrameMetadata GetVideoDoViFrameMetadata();
+   void SetVideoHdr10PlusFrameMetadata(HDR10PlusFrameMetadata value);
+   HDR10PlusFrameMetadata GetVideoHdr10PlusFrameMetadata();
++  // Audio minus video presentation time in seconds, beyond the user's audio
++  // offset, while playing at normal speed.
++  void SetAVSyncError(std::optional<double> seconds);
++  std::optional<double> GetAVSyncError();
++  // Frames dropped before rendering and skipped by the renderer since the
++  // video stream opened or flushed.
++  void SetVideoDroppedFrames(int frames);
++  int GetVideoDroppedFrames();
++  void SetVideoSkippedFrames(int frames);
++  int GetVideoSkippedFrames();
+   void SetVideoDoViStreamMetadata(DOVIStreamMetadata value);
+   DOVIStreamMetadata GetVideoDoViStreamMetadata();
+   void SetVideoDoViStreamInfo(DOVIStreamInfo value);
+@@ -309,6 +320,9 @@ protected:
+     AVColorTransferCharacteristic colorTransferCharacteristic = AVCOL_TRC_UNSPECIFIED;
+     AgedMap<uint64_t, DOVIFrameMetadata> doviFrameMetadataMap;
+     AgedMap<uint64_t, HDR10PlusFrameMetadata> hdr10PlusFrameMetadataMap;
++    std::optional<double> avSyncError;
++    int droppedFrames = 0;
++    int skippedFrames = 0;
+     DOVIStreamMetadata doviStreamMetadata = {};
+     DOVIStreamInfo doviStreamInfo = {};
+     DOVIStreamInfo sourceDoViStreamInfo = {};
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayer.cpp b/xbmc/cores/VideoPlayer/VideoPlayer.cpp
+--- a/xbmc/cores/VideoPlayer/VideoPlayer.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayer.cpp
+@@ -81,6 +81,7 @@
+ #include <limits>
+ #include <memory>
+ #include <mutex>
++#include <numeric>
+ #include <optional>
+ #include <thread>
+ #include <utility>
+@@ -2028,6 +2029,7 @@ void CVideoPlayer::Process()
+ 
+     // update player state
+     UpdatePlayState(200);
++    UpdateAVSyncError();
+ 
+     // make sure we run subtitle process here
+     m_VideoPlayerSubtitle->UpdatePlaybackPosition(
+@@ -5995,6 +5997,30 @@ int CalculateCurrentChapter(
+ }
+ } // namespace
+ 
++void CVideoPlayer::UpdateAVSyncError()
++{
++  if (!m_avSyncTimer.IsTimePast())
++    return;
++  m_avSyncTimer.Set(100ms);
++
++  const double apts = m_VideoPlayerAudio->GetCurrentPts();
++  const double vpts = m_VideoPlayerVideo->GetCurrentPts();
++  if (m_playSpeed != DVD_PLAYSPEED_NORMAL || apts == DVD_NOPTS_VALUE || vpts == DVD_NOPTS_VALUE)
++  {
++    m_avSyncSamples.clear();
++    CServiceBroker::GetDataCacheCore().SetAVSyncError({});
++    return;
++  }
++
++  // The user's audio offset presents each frame that many ms late on purpose.
++  m_avSyncSamples.push_back(apts - vpts - m_renderManager.GetDelay() * 1000.0);
++  if (m_avSyncSamples.size() > AV_SYNC_SAMPLES)
++    m_avSyncSamples.pop_front();
++  const double sum = std::accumulate(m_avSyncSamples.begin(), m_avSyncSamples.end(), 0.0);
++  CServiceBroker::GetDataCacheCore().SetAVSyncError(sum / m_avSyncSamples.size() /
++                                                     DVD_TIME_BASE);
++}
++
+ void CVideoPlayer::UpdatePlayState(double timeout)
+ {
+   if (m_State.timestamp != 0 &&
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayer.h b/xbmc/cores/VideoPlayer/VideoPlayer.h
+--- a/xbmc/cores/VideoPlayer/VideoPlayer.h
++++ b/xbmc/cores/VideoPlayer/VideoPlayer.h
+@@ -28,6 +28,7 @@
+ 
+ #include <atomic>
+ #include <chrono>
++#include <deque>
+ #include <memory>
+ #include <unordered_map>
+ #include <utility>
+@@ -538,6 +539,7 @@ protected:
+   void OpenDefaultStreams(bool reset = true);
+ 
+   void UpdatePlayState(double timeout);
++  void UpdateAVSyncError();
+   void GetGeneralInfo(std::string& strVideoInfo);
+   int64_t GetUpdatedTime();
+   int64_t GetTime();
+@@ -693,4 +695,9 @@ protected:
+   double m_maSumVideo{0};
+   double m_maSumDelta{0};
+   double m_maSumDelay{0};
++
++  // UpdateAVSyncError's samples, the last two seconds at 10 Hz.
++  static constexpr size_t AV_SYNC_SAMPLES = 20;
++  XbmcThreads::EndTime<> m_avSyncTimer;
++  std::deque<double> m_avSyncSamples;
+ };
+diff --git a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
+--- a/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
++++ b/xbmc/cores/VideoPlayer/VideoPlayerVideo.cpp
+@@ -705,6 +705,8 @@ void CVideoPlayerVideo::UpdatePlayerInfo()
+   m_dataCacheCore.SetVideoLiveBitRate(GetVideoBitrate());
+   m_dataCacheCore.SetVideoQueueLevel(std::min(99, level));
+   m_dataCacheCore.SetVideoQueueDataLevel(std::min(99, dataLevel));
++  m_dataCacheCore.SetVideoDroppedFrames(m_iDroppedFrames);
++  m_dataCacheCore.SetVideoSkippedFrames(m_renderManager.GetSkippedFrames());
+ }
+ 
+ bool CVideoPlayerVideo::ProcessDecoderOutput(double &frametime, double &pts)
+diff --git a/xbmc/guilib/guiinfo/GUIInfoLabels.h b/xbmc/guilib/guiinfo/GUIInfoLabels.h
+--- a/xbmc/guilib/guiinfo/GUIInfoLabels.h
++++ b/xbmc/guilib/guiinfo/GUIInfoLabels.h
+@@ -898,6 +898,9 @@ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_HAS_METADATA = 1788;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_MAXSCL_NITS = 1789;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_AVERAGE_MAXRGB_NITS = 1790;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR10PLUS_TARGET_MAX_NITS = 1791;
++constexpr uint32_t PLAYER_PROCESS_AV_SYNC_ERROR = 1792;
++constexpr uint32_t PLAYER_PROCESS_VIDEO_DROPPED_FRAMES = 1793;
++constexpr uint32_t PLAYER_PROCESS_VIDEO_SKIPPED_FRAMES = 1794;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_HAS_CLL           = 1749;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_MAX_CLL           = 1750;
+ constexpr uint32_t PLAYER_PROCESS_VIDEO_HDR_MAX_FALL          = 1751;
+diff --git a/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp b/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
+--- a/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
++++ b/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp
+@@ -808,6 +808,20 @@ bool CPlayerGUIInfo::GetLabel(std::string& value,
+       value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().targeted_system_display_maximum_luminance);
+       return true;
+ 
++    // In ms, signed; empty while paused, seeking or missing a stream.
++    case PLAYER_PROCESS_AV_SYNC_ERROR:
++    {
++      const auto error = CServiceBroker::GetDataCacheCore().GetAVSyncError();
++      value = error ? StringUtils::Format("{:+.0f}", *error * 1000.0) : "";
++      return true;
++    }
++    case PLAYER_PROCESS_VIDEO_DROPPED_FRAMES:
++      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoDroppedFrames());
++      return true;
++    case PLAYER_PROCESS_VIDEO_SKIPPED_FRAMES:
++      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoSkippedFrames());
++      return true;
++
+     case PLAYER_PROCESS_VIDEO_DOVI_SOURCE_MIN_PQ:
+       value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoDoViStreamMetadata().source_min_pq);
+       return true;

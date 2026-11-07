@@ -1,7 +1,10 @@
-<!-- kodi-customize: H.264 timestamp offset -->
+<!-- kodi-customize: video -->
 <video>
 	<!-- CPM's AMLCodec adds this many ms (750 by default) to each H.264 frame's
 	     timestamp, which the decoder already reports in stream time. -->
 	<decoderh264offset>0</decoderh264offset>
+	<!-- The audio offset slider moves 10 ms per press; Kodi's 5 ms takes 20
+	     presses per 100 ms. -->
+	<audiodelaystep>0.010</audiodelaystep>
 </video>
 <!-- kodi-customize: end -->

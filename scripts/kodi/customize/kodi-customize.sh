@@ -243,19 +243,19 @@ bingie_playback_info() {
   fi
 }
 
-# Bingie's OSD Video button (102) opens the playback info panel, and its
-# bookmarks (the chapter list), play-from-beginning and info buttons stay
-# hidden. The range ends at the layout's first </include>, after its top row.
+# Bingie's OSD Video button (102) opens the playback info panel, and its exit,
+# audio settings, bookmarks (the chapter list), play-from-beginning and info
+# buttons stay hidden, each named by the skin setting that shows it. The range
+# ends at the layout's first </include>, after its top row.
 bingie_osd_buttons() {
   file="$SKIN/IncludesOSD.xml"
   range='/<include name="OSDButtons_Bingie_Layout">/,/<\/include>/'
-  if sed -n "$range p" "$file" | grep -qE 'ActivateWindow\(123\)|Skin\.HasSetting\(bingie_osd_buttons_(bookmarks|play_beginning|info)\)'; then
-    sed -i \
-      -e "$range s#<onclick>ActivateWindow(123)</onclick>#<onclick>ActivateWindow(playerprocessinfo)</onclick>#" \
-      -e "$range s#<visible>Skin.HasSetting(bingie_osd_buttons_bookmarks)</visible>#<visible>false</visible>#" \
-      -e "$range s#<visible>Skin.HasSetting(bingie_osd_buttons_play_beginning)</visible>#<visible>false</visible>#" \
-      -e "$range s#<visible>Skin.HasSetting(bingie_osd_buttons_info)</visible>#<visible>false</visible>#" \
-      "$file"
+  hidden='back audio bookmarks play_beginning info'
+  if sed -n "$range p" "$file" | grep -qE "ActivateWindow\(123\)|Skin\.HasSetting\(bingie_osd_buttons_($(echo "$hidden" | tr ' ' '|'))\)"; then
+    sed -i -e "$range s#<onclick>ActivateWindow(123)</onclick>#<onclick>ActivateWindow(playerprocessinfo)</onclick>#" "$file"
+    for button in $hidden; do
+      sed -i "$range s#<visible>Skin.HasSetting(bingie_osd_buttons_$button)</visible>#<visible>false</visible>#" "$file"
+    done
     log "Bingie OSD buttons patched"
     reload_skin=1
   fi
