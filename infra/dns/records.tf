@@ -80,14 +80,3 @@ resource "cloudflare_dns_record" "wan" {
     ignore_changes = [content]
   }
 }
-
-import {
-  to = cloudflare_dns_record.wan
-  id = "${nonsensitive(var.cloudflare_zone_id)}/${one(data.cloudflare_dns_records.wan.result).id}"
-}
-
-data "cloudflare_dns_records" "wan" {
-  zone_id = var.cloudflare_zone_id
-  type    = "A"
-  name    = { exact = "wan.${var.domain_name}" }
-}
