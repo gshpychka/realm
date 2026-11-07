@@ -38,6 +38,8 @@
     ./home.nix
     ./openclaw.nix
     ./openclaw-queued-media.nix
+    ./hermes-agent.nix
+    ./hermes-ssh-key.nix
     ./voice-broker.nix
   ];
 

@@ -1,5 +1,6 @@
 {
   config,
+  lib,
   ...
 }:
 let
@@ -86,6 +87,11 @@ in
           config.services.openclaw-gateway.user
           config.users.users.voice-broker.name
         ];
+      };
+      hermes = lib.mkIf config.services.hermes-agent.enable {
+        port = ports.hermes;
+        auth = "native";
+        websockets = true;
       };
     };
     loopbackGate.clients = [

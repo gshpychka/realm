@@ -16,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@main
+      # Populate Hermes's filtered Python source before read-only evaluation.
+      - run: nix eval --raw .#nixosConfigurations.hoard.config.services.hermes-agent.package.drvPath
       # Evaluate flake outputs on every supported system without building checks.
       - run: nix flake check --all-systems --no-build
 

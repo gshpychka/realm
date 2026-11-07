@@ -46,6 +46,11 @@
       # not following our nixpkgs: more cache hits that way
       url = "github:numtide/llm-agents.nix";
     };
+    hermes-agent = {
+      url = "github:NousResearch/hermes-agent/9b904dcc22c23fe8b82834339bbdd96495072e59";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
+    };
     nix-openclaw = {
       # not following our nixpkgs: its pinned pnpm dependency hashes are
       # computed against its own nixpkgs
