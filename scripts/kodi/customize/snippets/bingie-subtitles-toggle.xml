@@ -10,7 +10,7 @@
 	<alttexturefocus colordiffuse="$INFO[Skin.String(OSDBingieButtonsFocusColor)]">kodi-customize/subtitles-off_fo.png</alttexturefocus>
 	<alttexturenofocus colordiffuse="$INFO[Skin.String(OSDBingieButtonsColor)]">kodi-customize/subtitles-off.png</alttexturenofocus>
 	<usealttexture>!VideoPlayer.SubtitlesEnabled</usealttexture>
-	<onclick>Action(ShowSubtitles)</onclick>
+	<onclick>RunScript(/storage/.config/kodi-customize/kodi-toggle-subtitles.py)</onclick>
 	<visible>!Player.HasAudio + VideoPlayer.HasSubtitles</visible>
 </control>
 <!-- kodi-customize: end -->
