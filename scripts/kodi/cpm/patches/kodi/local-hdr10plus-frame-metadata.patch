@@ -120,10 +120,10 @@ diff --git a/xbmc/guilib/guiinfo/PlayerGUIInfo.cpp b/xbmc/guilib/guiinfo/PlayerG
 +      return true;
 +    // maxscl and average_maxrgb are in 0.1 cd/m².
 +    case PLAYER_PROCESS_VIDEO_HDR10PLUS_MAXSCL_NITS:
-+      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().maxscl / 10);
++      value = StringUtils::Format("{:.1f}", CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().maxscl / 10.0);
 +      return true;
 +    case PLAYER_PROCESS_VIDEO_HDR10PLUS_AVERAGE_MAXRGB_NITS:
-+      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().average_maxrgb / 10);
++      value = StringUtils::Format("{:.1f}", CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().average_maxrgb / 10.0);
 +      return true;
 +    case PLAYER_PROCESS_VIDEO_HDR10PLUS_TARGET_MAX_NITS:
 +      value = std::to_string(CServiceBroker::GetDataCacheCore().GetVideoHdr10PlusFrameMetadata().targeted_system_display_maximum_luminance);

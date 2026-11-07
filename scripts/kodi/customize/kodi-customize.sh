@@ -1,6 +1,6 @@
 #!/bin/sh
-# Customizations to Kodi settings, the Bingie skin and PlexKodiConnect on the
-# kodi box. Kodi overwrites an addon's directory on every update, so this is
+# Customizations to Kodi settings, the splash screens, the Bingie skin and
+# PlexKodiConnect on the kodi box. Kodi overwrites an addon's directory on every update, so this is
 # idempotent and reruns at boot and after each update
 # (kodi-customize.{service,path}). Deployment: scripts/kodi/runbook.md.
 set -eu
@@ -461,7 +461,25 @@ $(find "$HERE/skin-overrides" -type f)
 EOF
 }
 
+# splash.png, Matrix-style rain from scripts/kodi/splash.py, as the boot splash
+# (CoreELEC's init shows /flash/oemsplash-1080.png ahead of its own) and as
+# Kodi's startup splash (Kodi shows special://home/media/splash.png ahead of
+# its own).
+install_splash() {
+  for dst in /flash/oemsplash-1080.png /storage/.kodi/media/splash.png; do
+    if [ -f "$dst" ] && [ "$(md5sum <"$HERE/splash.png")" = "$(md5sum <"$dst")" ]; then
+      continue
+    fi
+    case $dst in /flash/*) mount -o remount,rw /flash ;; esac
+    mkdir -p "$(dirname "$dst")"
+    cp "$HERE/splash.png" "$dst"
+    case $dst in /flash/*) mount -o remount,ro /flash ;; esac
+    log "installed splash at $dst"
+  done
+}
+
 advanced_settings
+install_splash
 pkc_hdr
 bingie_widgets_streams
 if systemctl -q is-active kodi.service; then

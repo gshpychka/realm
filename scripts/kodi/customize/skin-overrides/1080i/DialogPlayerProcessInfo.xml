@@ -54,7 +54,7 @@
 					<height>60</height>
 					<textoffsetx>30</textoffsetx>
 					<font>Reg26</font>
-					<label>Video streams · $INFO[VideoPlayer.VideoStreamCount]</label>
+					<label>Video stream</label>
 					<enable>Integer.IsGreater(VideoPlayer.VideoStreamCount,1)</enable>
 					<onclick>RunScript(/storage/.config/kodi-customize/kodi-video-stream.py)</onclick>
 				</control>
