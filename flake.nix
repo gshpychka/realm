@@ -47,7 +47,7 @@
       url = "github:numtide/llm-agents.nix";
     };
     hermes-agent = {
-      url = "github:NousResearch/hermes-agent/9b904dcc22c23fe8b82834339bbdd96495072e59";
+      url = "tarball+https://codeload.github.com/NousResearch/hermes-agent/tar.gz/9b904dcc22c23fe8b82834339bbdd96495072e59";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
