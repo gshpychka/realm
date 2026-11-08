@@ -1,27 +1,4 @@
-"""Which backend a delegated request belongs to: Home Assistant, the selected agent, or neither.
-
-The classification has one of two roles, by the broker's mode (config.py):
-- Gated (`routing`): a request is classified before any backend runs and goes
-  to the chosen backend alone. Classifying acts on nothing, so a classifier
-  failure asks the user again instead of guessing a backend, and never falls
-  back to another classifier.
-- Shadow (`home_assistant.shadow`, parallel mode): Home Assistant hears every
-  utterance itself and alone acts on the home (assist.py), so no classification
-  gates anything. Each delegation is classified only to log the answer beside
-  what Home Assistant actually did. It is off unless configured, because each
-  classification is a paid request.
-
-The classifier is pluggable (`Router`). Every provider gets the same policy
-(CHOICES, INSTRUCTIONS) and evidence, and answers with a RouteDecision or
-RoutingFailed; only its request and answer shapes differ:
-- decisions: OpenAI Decisions (https://developers.openai.com/api/docs/guides/decisions),
-  on the broker's OpenAI key.
-- jev: TypeSafe Jev through OpenRouter's System One API (POST /api/v1/systemone,
-  not chat), on an OpenRouter key. The request and answer shapes are the ones the
-  earlier JevRouter (branch test/voice-ha-classifier) and the frozen routing
-  benchmarks sent and checked (workspace reports routing-realistic-retest-2026-10-16.md
-  and jev-openrouter-funded-run2-2026-10-16.md).
-"""
+"""Delegated-request classification."""
 
 from __future__ import annotations
 

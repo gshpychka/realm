@@ -1,18 +1,4 @@
-"""The Hermes agent, reached through its same-host bridge (hermes_bridge.py).
-
-Hermes's own HTTP API (/v1/responses) refuses to write a Telegram session, and
-consults are turns of the owner's Telegram conversation, so that voice and
-Telegram share one context. The bridge runs as the Hermes user beside the
-gateway and takes a consult into that session through the gateway's own
-client. The broker reaches it over a Unix socket only its group can open.
-
-The bridge's HTTP contract (hermes_bridge.py implements it):
-- POST /consult {submission_id, task, instructions} -> 200 {text}, or an error
-  status with {error}. 503: nothing was submitted. 502: the turn ended without
-  an answer. 504: whether the turn ran or ended is unknown.
-- GET /history?limit=N -> 200 {messages: [{role, text, timestamp}]}, the
-  newest N messages as the gateway displays them, timestamps in seconds.
-"""
+"""Shared-session consultations and recent conversation turns."""
 
 from __future__ import annotations
 
@@ -28,12 +14,8 @@ from .config import Hermes as HermesConfig
 
 log = logging.getLogger(__name__)
 
-# One consult: longer than the bridge's own bound on a turn (hermes_bridge._CONSULT_TIMEOUT_S), so
-# the bridge says whether the turn ended before the broker stops waiting.
 _CONSULT_TIMEOUT_S = 95.0
-# One read of the session's history.
 _HISTORY_TIMEOUT_S = 10.0
-# History roles whose text is conversation; tool rows have roles of their own.
 _ROLES: dict[str, Role] = {"user": "user", "assistant": "assistant"}
 
 
@@ -42,25 +24,21 @@ class Hermes:
         self._config = config
         self._http = httpx2.AsyncClient(
             transport=httpx2.AsyncHTTPTransport(uds=str(config.socket)),
-            # The host is never resolved: every request goes to the socket.
+            # The URL authority labels requests on the Unix transport.
             base_url="http://hermes",
             timeout=_HISTORY_TIMEOUT_S,
         )
 
     @property
     def observer(self) -> Observe | None:
-        # Hermes has no separate observer session; parallel mode remains disabled.
         return None
 
     def conversation(self, conversation_id: str) -> Conversation:
         return Conversation(self, conversation_id)
 
     async def consult(self, task: str, submission_id: str) -> str:
-        """The agent's answer to `task`, submitted as `submission_id`.
-
-        Exactly one request, never retried: a consult that failed or timed out
-        may still have run, and may have acted.
-        """
+        """The spoken answer to `task` under `submission_id`."""
+        # Delivery failures leave task execution uncertain.
         try:
             response = await self._http.post(
                 "/consult",
@@ -104,15 +82,13 @@ class Hermes:
 
 
 class Conversation:
-    """The consults of one spoken conversation: turns of the session the bridge serves."""
+    """Consultations within one spoken conversation."""
 
     def __init__(self, hermes: Hermes, conversation_id: str) -> None:
         self._hermes = hermes
         self._id = conversation_id
 
     async def consult(self, task: str) -> str:
-        # New for every consult and sent once: the gateway admits a submission ID once, so the ID
-        # is what the bridge recovers the turn by after a lost connection, never a second turn.
         return await self._hermes.consult(task, f"voice-broker:{self._id}:{uuid.uuid4().hex}")
 
     async def recent(self) -> list[Turn]:
@@ -127,7 +103,7 @@ def _json(response: httpx2.Response) -> Any:
 
 
 def _turns(messages: list[Any], since: float) -> list[Turn]:
-    """The conversation in `messages`, in order: each user or assistant message's text, from `since` on."""
+    """User and assistant turns in message order."""
     turns: list[Turn] = []
     for message in messages:
         if not isinstance(message, dict):

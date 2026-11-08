@@ -84,7 +84,7 @@ async function runPi(agent: PiCommand): Promise<void> {
     if (sessionFile) process.stdout.write(`Resume: pituitary --session ${JSON.stringify(sessionFile)}\n`);
     process.exit(0);
   };
-  // biome-ignore lint/correctness/noComponentHookFactories: Created once at CLI startup, never inside a component render.
+  // biome-ignore lint/correctness/noComponentHookFactories: Workspace has a stable identity for the CLI session.
   function Workspace({ initialPrompt }: { initialPrompt?: string }) {
     const [commands, setCommands] = useState<Command[]>([]);
     useEffect(() => {

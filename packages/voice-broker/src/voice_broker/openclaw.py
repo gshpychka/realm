@@ -135,7 +135,7 @@ class OpenClaw:
 
     @property
     def observer(self) -> Observe | None:
-        """observe, when the config names an observer session."""
+        """Optional read-only verification of a task's observed outcome."""
         return None if self._config.observer_session_key is None else self.observe
 
     async def preflight(self, task: str) -> Fit:

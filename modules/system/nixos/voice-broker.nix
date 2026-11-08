@@ -121,12 +121,12 @@ let
     + " one, and read its outcome with sessions_history."
   );
   voiceCallSkill = {
-    description = "Call a speaker when the owner's answer is needed now; announcements need no reply.";
+    description = "Request the owner's immediate answer through a speaker.";
     text = ''
       When something needs the owner's answer now, call a speaker: a question
       blocking work, a choice, a confirmation, or news needing a reaction.
-      A Home Assistant announcement is for a notice needing no reply; Telegram
-      is for detail or anything that can wait. Calls interrupt the room, so
+      Use announcements for informational notices and Telegram for details
+      or deferred communication. Calls interrupt the room, so
       reserve them for what matters now.
 
       The speakers, by area: ${
@@ -136,11 +136,11 @@ let
           voice-broker-call --socket ${callSocket} <Area> "<opening>"
 
       The speaker chimes, says the opening, then listens. Replies reach the
-      configured primary ${cfg.backend} conversation, with its tools and memory,
-      not whichever unrelated session invoked the command.${overflowCallText}
+      configured primary ${cfg.backend} conversation, with its tools and memory.${overflowCallText}
       `started` means the speaker picked up; `failed: <reason>` means muted,
-      busy or unreachable: use Telegram instead. Keep the opening to one or
-      two spoken sentences. A successful call is not the owner's answer.
+      busy or unreachable: send the message through Telegram. Keep the opening
+      to one or two spoken sentences. The command confirms speaker pickup; the
+      owner's spoken reply supplies their answer.
     '';
   };
 in
@@ -154,7 +154,7 @@ in
         "hermes"
       ];
       default = "openclaw";
-      description = "The assistant carrying out delegated requests. This does not change the OpenAI Live voice or Home Assistant routing.";
+      description = "The assistant for delegated requests.";
     };
 
     hermes = {
@@ -162,18 +162,18 @@ in
         type = lib.types.bool;
         default = cfg.backend == "hermes";
         defaultText = lib.literalExpression ''config.my.voice-broker.backend == "hermes"'';
-        description = "Provision the local same-user Hermes gateway bridge. It may be enabled for verification while OpenClaw remains selected.";
+        description = "Whether the local Hermes consultation service is enabled.";
       };
       sessionKey = lib.mkOption {
         type = lib.types.nullOr lib.types.nonEmptyStr;
         default = null;
-        description = "Exact existing Hermes gateway routing key. Null selects the owner's Telegram DM using Hermes's telegram-owner-id credential; no ID is stored in the Nix store. Resolve the active canonical session afresh, including after /new and compression.";
+        description = "The conversation routing key. Null selects the owner's Telegram direct-message route.";
       };
     };
 
     sopsFile = lib.mkOption {
       type = lib.types.path;
-      description = "SOPS file holding openai-api-key, device-token and home-assistant-token; openclaw-secret only for OpenClaw, and openrouter-api-key only for Jev. Hermes uses a private local gateway ticket, not a copied API credential.";
+      description = "Encrypted credentials: openai-api-key, device-token and home-assistant-token, plus openclaw-secret for OpenClaw and openrouter-api-key for Jev.";
     };
 
     homeAssistant.url = lib.mkOption {
@@ -401,7 +401,7 @@ in
           }
           {
             assertion = useOpenClaw || !cfg.overflow.enable;
-            message = "my.voice-broker.overflow is OpenClaw-specific; Hermes uses its gateway's native session admission and compaction.";
+            message = "my.voice-broker.overflow requires the openclaw backend.";
           }
           {
             assertion =
@@ -455,9 +455,6 @@ in
               {
                 url = openclaw.localUrl;
                 token_file = credential openclawCredential;
-                # Every consult is a turn of main, in main's own session; with
-                # overflow.enable, elsewhere when the estimate says it is too full.
-                # null: the broker reads nothing before a consult (config.py).
                 session_key = openclaw.mainSessionKey;
                 agent = mainAgent;
                 overflow =
@@ -496,7 +493,6 @@ in
           ) credentialNames
         );
 
-        # Static: the selected assistant reaches the call socket as a group member.
         users.users.${user} = {
           isSystemUser = true;
           group = user;
@@ -584,17 +580,16 @@ in
           }
         ];
         systemd.services.voice-broker-hermes = {
-          description = "Private voice broker bridge to the existing Hermes gateway";
+          description = "Hermes consultation service";
           wantedBy = [ "multi-user.target" ];
           wants = [ "hermes-agent.service" ];
           after = [ "hermes-agent.service" ];
           environment.HERMES_HOME = hermesHome;
           serviceConfig = {
-            # Use the gateway's exact SDK/interpreter. Same-UID tickets never
-            # leave this bridge; it cannot start a replacement gateway.
             ExecStart = lib.escapeShellArgs (
               [
                 "${hermes.package.hermesVenv}/bin/python"
+                # Adjacent modules can shadow installed packages.
                 "-I"
                 "${../../../packages/voice-broker/src/voice_broker/hermes_bridge.py}"
                 "--socket"
@@ -615,9 +610,11 @@ in
                   ]
               )
             );
+            # The owner ID stays in a runtime credential.
             LoadCredential =
               lib.optional (cfg.hermes.sessionKey == null)
                 "telegram-owner-id:${config.sops.secrets."hermes-agent/telegram-owner-id".path}";
+            # Control-socket authentication requires the session owner's OS identity.
             User = hermes.user;
             Group = user;
             RuntimeDirectory = "voice-broker-hermes";

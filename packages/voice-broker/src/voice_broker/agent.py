@@ -1,9 +1,4 @@
-"""The agent that carries out the work GPT-Live delegates, whichever backend it is.
-
-Two adapters implement it: OpenClaw (openclaw.py) and Hermes (hermes.py).
-config.Config.agent picks one, and create_agent builds it. The rest of the
-broker sees only what this module defines.
-"""
+"""Delegated tasks and conversation history."""
 
 from __future__ import annotations
 
@@ -14,18 +9,18 @@ if TYPE_CHECKING:
     from .config import AgentConfig
 
 Role = Literal["user", "assistant"]
-# One message of a conversation: who said it and what.
+# A conversation turn's role and text.
 Turn = tuple[Role, str]
-# A read-only check of what Home Assistant did: None, or a discrepancy to tell. Raises ConsultFailed.
+# Read-only task verification with an optional discrepancy to report. Raises ConsultFailed.
 Observe = Callable[[str], Awaitable[str | None]]
 
 
 class ConsultFailed(Exception):
-    """The agent gave no answer."""
+    """The consultation's answer is unavailable."""
 
 
 class HistoryUnavailable(Exception):
-    """The agent's conversation could not be read."""
+    """Conversation history is unavailable."""
 
 
 class Conversation(Protocol):
@@ -36,14 +31,14 @@ class Conversation(Protocol):
         ...
 
     async def recent(self) -> list[Turn]:
-        """The newest turns of the agent's conversation, what the voice starts with. Raises HistoryUnavailable."""
+        """The newest conversation turns. Raises HistoryUnavailable."""
         ...
 
 
 class Agent(Protocol):
     @property
     def observer(self) -> Observe | None:
-        """The read-only check of Home Assistant's work; None when the agent has none configured."""
+        """Optional read-only verification of a task's observed outcome."""
         ...
 
     def conversation(self, conversation_id: str) -> Conversation:
@@ -54,7 +49,7 @@ class Agent(Protocol):
 
 
 def create_agent(config: AgentConfig) -> Agent:
-    """The agent `config` describes. Each adapter is imported only when chosen."""
+    """The configured conversational agent."""
     from .config import Hermes, OpenClaw
 
     match config:

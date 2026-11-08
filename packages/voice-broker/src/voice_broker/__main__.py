@@ -112,11 +112,7 @@ class Broker:
         return Parallel(listener, self._agent.observer, self._router.route if self._router else None)
 
     def _consults(self, device: Device) -> Consults:
-        """A new conversation's consults at `device`.
-
-        Its id is new for every conversation, so no two conversations, at one
-        speaker or two, ever share an OpenClaw overflow session.
-        """
+        """Consultations for a new spoken conversation at `device`."""
         return self._agent.conversation(f"{device.name}-{uuid.uuid4().hex[:12]}")
 
     def _in_conversation(self, address: str) -> bool:

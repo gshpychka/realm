@@ -114,24 +114,18 @@ class OpenClaw:
 
 @dataclass(frozen=True, slots=True)
 class Hermes:
-    """The Hermes agent, reached through its same-host bridge (hermes.py, hermes_bridge.py).
+    """Connection settings for a shared-conversation agent."""
 
-    The bridge, not the broker, picks the Hermes session: the owner's Telegram
-    conversation, whose model, tools and memory consults use as they are.
-    """
-
-    # The bridge's Unix socket.
+    # The local consultation socket.
     socket: Path
-    # Added to the agent's own prompt for every consult: model input only, never in the transcript.
+    # Execution-only consultation instructions.
     instructions: str
     history: History
 
 
-# The agent delegated work goes to (agent.create_agent builds it).
 AgentConfig = OpenClaw | Hermes
 # agent.provider in the JSON.
 AGENT_PROVIDERS = ("openclaw", "hermes")
-# The keys a Hermes agent takes: OpenClaw's own options configure nothing there, so they are refused.
 _HERMES_KEYS = frozenset({"provider", "socket", "instructions", "history"})
 
 

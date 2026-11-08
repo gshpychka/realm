@@ -19,47 +19,55 @@ speaker with it.
 
 ## Assistant selection
 
-In `machines/hoard/voice-broker.nix`, select one backend:
+`my.voice-broker.backend` selects the assistant for delegated work and spoken
+replies: `"openclaw"` or `"hermes"`. The selected assistant provides its tools,
+memory and primary conversation, plus the voice-call skill and call-socket
+access. Gated routing gives each request one execution authority.
+
+Set the backend in `machines/hoard/voice-broker.nix`:
 
 ```nix
-my.voice-broker.backend = "hermes"; # or "openclaw"
+my.voice-broker.backend = "hermes";
 ```
 
-This changes only the agent carrying out delegated work. GPT-Live speech,
-device authentication, echo cancellation and Home Assistant gated routing
-are unchanged. There is no automatic fallback to a second agent: an uncertain
-outcome must not repeat a household action. Parallel mode remains refused
-with either backend because both primary agents can act on the home.
+### Hermes
 
-Hermes uses `voice-broker-hermes.service`, a private Unix-socket bridge running
-as the existing Hermes service user. It discovers that gateway and obtains a
-single-use same-user ticket; it never starts another gateway, copies an API
-token, opens a network listener, or creates a separate voice agent/profile.
-It uses the pinned gateway SDK and native `session.resume` / `prompt.submit`
-RPCs, not `/v1/responses` (which cannot write a Telegram-owned session).
+`voice-broker-hermes.service` provides a private Unix-socket consultation API.
+Authentication uses the session owner's OS identity and a single-use gateway
+ticket. Socket access is restricted to its owner and group.
 
-By default the target is the owner's existing Hermes Telegram DM. The owner
-ID is passed as a systemd credential, not embedded in the Nix store. The
-active session is resolved read-only on every request, respecting `/new` and
-compression. `my.voice-broker.hermes.sessionKey` can instead name an explicit
-existing routing key. Speak to the Telegram bot first if that conversation
-does not yet exist. Hermes retains its normal queue, compaction and approval
-handling; pending approvals/clarifications may require Telegram. Replies also
-follow the Telegram session's normal delivery path, so do not expect voice-only
-messages. OpenClaw's optional overflow estimator is not used with Hermes.
+The default route is the owner's Telegram direct-message conversation. Its
+owner ID stays in a systemd runtime credential. An explicit route is configured
+with `my.voice-broker.hermes.sessionKey`. Each request resolves the route's active
+canonical session, including after `/new` and compression.
 
-Hoard provisions the bridge with `hermes.enable = true` even while OpenClaw
-is selected, allowing a read-only readiness probe as the broker user:
+Consultation results come from terminal admission receipts. Submission IDs
+identify consultations across reconnects. Admitted work continues after client
+disconnects and timeouts. The owner handles approvals and clarifying questions
+in Telegram; consultation replies also reach that conversation.
+
+Hoard provisions the service with `hermes.enable = true`. Readiness is available
+through the local socket:
 
 ```sh
 sudo -u voice-broker curl --fail --unix-socket /run/voice-broker-hermes/agent.sock http://hermes/health
 ```
 
-Only the selected assistant gets the voice-call skill and call-socket access.
-Calling a speaker sends the spoken answer to its configured primary
-conversation, not an unrelated session invoking the command. Neither calls
-nor consults silently switch assistants. Pull before testing/committing, push
-and verify the exact revision before deploying hoard with `nixos-switch`.
+### Consultation API
+
+- `POST /consult` accepts `{submission_id, task, instructions}` and returns
+  `200 {text}`. `503` confirms the task was not submitted; `502` reports a
+  terminal failure; `504` reports an uncertain execution outcome.
+  `task` is conversation text; `instructions` is execution guidance.
+  The service deadline is 90 seconds.
+- `GET /history?limit=N` returns `{messages: [{role, text, timestamp}]}`,
+  with timestamps in seconds.
+- `GET /health` reports readiness and the active canonical session ID.
+
+### Deploy
+
+Pull before validation and committing. Push and verify the exact revision
+before deploying hoard with `nixos-switch`.
 
 ## One-time setup
 

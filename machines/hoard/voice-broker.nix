@@ -17,7 +17,6 @@ let
     what they say.
 
   '';
-  # Gated: the selected backend also acts on the home when the classifier sends it there.
   liveGated = ''
     Delegation policy:
     Backend tools:
@@ -114,9 +113,7 @@ in
 {
   my.voice-broker = {
     enable = true;
-    # Switching assistants needs only backend = "hermes"; keep current traffic unchanged.
     backend = "openclaw";
-    # Provision the private Hermes bridge for readiness verification as well.
     hermes.enable = true;
     sopsFile = ../../secrets/hoard/voice-broker.yaml;
     recordings.enable = false;

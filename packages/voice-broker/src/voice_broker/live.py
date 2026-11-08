@@ -606,9 +606,7 @@ class LiveSession:
                         if slots:
                             await asyncio.wait([consult], timeout=_COMBINE_WAIT_S)
                             if not consult.done():
-                                # A slow consult (up to the agent adapter's consult timeout) holds no home result: Home
-                                # Assistant has acted, and silence could get a command repeated. Each turn is
-                                # told on its own once done, and the agent's answer follows.
+                                # Completed results retain an independent delivery path.
                                 log.info("consult still running; home assistant turns told on their own")
                                 for slot in slots:
                                     slot.claimed = False

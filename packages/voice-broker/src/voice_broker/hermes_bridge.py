@@ -1,65 +1,4 @@
-"""The Hermes bridge: the voice broker's consults as turns of the owner's Telegram session.
-
-Runs as a file on the Hermes package's own interpreter, as the Hermes user:
-
-    .hermesVenv/bin/python -I hermes_bridge.py --socket PATH --home HERMES_HOME \\
-        (--telegram-chat-id-file FILE | --session-key KEY)
-
-so it imports nothing of the voice broker, and Hermes and aiohttp only where
-they are used (the broker's tests import it without either). -I keeps the
-file's own directory off sys.path: the broker's modules beside it (agent.py,
-config.py, session.py) would shadow Hermes's packages of the same names.
-
-Why a bridge: Hermes's HTTP API (/v1/responses) never writes a Telegram
-session, and a spoken consult must be a turn of the owner's Telegram
-conversation, with its model, tools and memory. The bridge reaches the
-running gateway the way Hermes's own clients do, through
-hermes_cli.gateway_client: the gateway's own authentication (a ticket minted on
-its control socket, same OS user only), no API token, no second agent, no
-gateway of its own.
-
-A consult (POST /consult {submission_id, task, instructions}):
-1. finds the route's active session in state.db, read-only
-   (SessionDB.find_latest_gateway_session_for_peer, which respects /new resets);
-2. attaches to it (session.resume), which names the canonical session: a
-   compressed conversation's lineage root, its turns' target;
-3. submits the task (prompt.submit) under the broker's submission ID. `text` is
-   what the transcript keeps, `api_text` what the model reads: the
-   instructions, then the task. The turn is an ordinary turn of the session:
-   its replies, documents too, also reach the owner on Telegram;
-4. waits for that admission's own message.complete frame, then reads its
-   durable receipt (prompt.receipt, include_result): the receipt, never the
-   frame, is the answer. Other turns of the session (the owner typing on
-   Telegram) and this turn's interim frames are skipped. A frame can be lost
-   in a replay gap, so the receipt is also read on a backed-off tick.
-
-The gateway admits a submission ID once per session (hermes_state_runtime
-admit_session_input: an exact replay returns the existing admission and never
-runs it again). So after a lost connection the bridge attaches again and asks
-by the same ID, never under a new one. Past the consult's bound, or when the
-owner itself lost track of the turn (receipt status unknown), the answer is
-"uncertain", never success.
-
-Nothing here stops Hermes's work: a broker that hangs up or times out leaves
-the turn running, and the bridge never interrupts the session or cancels an
-admission (that would stop the owner's Telegram turns too). Leaving the
-gateway's connection only detaches this viewer (gateway_client: "Closing a
-viewer never stops its authority").
-
-Approvals and clarifying questions stay the gateway's: nothing here answers
-them. A turn waiting on one waits for the owner to answer on Telegram, and
-the consult may run out of time meanwhile (504 uncertain).
-
-HTTP, on a Unix socket only (mode 0660; systemd gives it the broker's group):
-- POST /consult -> 200 {text}; 400 malformed; 503 {error} nothing was
-  submitted; 502 {error} the turn ended without an answer; 504 {error:
-  uncertain} whether it ran or ended is unknown.
-- GET /history?limit=N -> 200 {messages: [{role, text, timestamp}]}: the
-  newest N rows of the session as the gateway displays them (session.history),
-  timestamps in seconds; 503 {error}.
-- GET /health -> 200 {ready: true, session_id} after the same lookup and
-  attach a consult makes, without a prompt or a model call; 503 {error}.
-"""
+"""Agent consultations and history for a shared conversation."""
 
 from __future__ import annotations
 
@@ -79,64 +18,54 @@ from typing import Any, Protocol
 
 log = logging.getLogger("hermes_bridge")
 
-# One consult, from the session lookup to the receipt with its answer. The broker waits a little
-# longer (hermes._CONSULT_TIMEOUT_S), so it hears "uncertain" rather than a timeout of its own.
 _CONSULT_TIMEOUT_S = 90.0
-# One history read or health check.
 _HISTORY_TIMEOUT_S = 8.0
-# The first wait for a completion frame before the receipt is read anyway; doubled up to the most.
 _TICK_S = 0.25
 _TICK_MAX_S = 5.0
-# The first wait before attaching again after a lost connection; doubled up to _TICK_MAX_S.
 _RECONNECT_S = 0.5
-# A request body, at most: a spoken task and the broker's instructions are a few KiB.
 _MAX_BODY = 256 * 1024
 
-# The broker's submission IDs (hermes.Conversation): bounded, and nothing a log or key would misread.
+# Submission IDs use a log-safe alphabet.
 _SUBMISSION_ID = re.compile(r"[A-Za-z0-9:._-]{1,200}")
 _CONSULT_KEYS = frozenset({"submission_id", "task", "instructions"})
-# A Telegram DM's chat ID is its user's: a positive number (a group's is negative).
 _CHAT_ID = re.compile(r"[1-9][0-9]*")
-# Receipt statuses of an admission still in the gateway's hands (gateway/session_contract.py AdmissionReceipt).
 _PENDING = frozenset({"queued", "started"})
 
 
 class Unavailable(Exception):
-    """Nothing was submitted: no gateway, no session, or the gateway refused the submission."""
+    """The task has not been submitted."""
 
 
 class Failed(Exception):
-    """The turn ended without an answer: its outcome, or why its result is none."""
+    """A terminal consultation whose answer is unavailable."""
 
 
 class Uncertain(Exception):
-    """The turn may have run, and whether it ended is unknown."""
+    """The consultation's execution outcome is unknown."""
 
 
 class Client(Protocol):
-    """hermes_cli.gateway_client.GatewayClient, as far as the bridge uses it."""
+    """An authenticated session connection with RPC and completion events."""
 
-    # Event frames; a lost connection queues its error as one.
     events: asyncio.Queue[Any]
 
     async def rpc(self, method: str, **params: Any) -> Any: ...
 
 
-# An attachment to the running gateway, for one request.
 Connect = Callable[[], AbstractAsyncContextManager[Client]]
-# The route's active session ID; raises Unavailable.
+# The active session ID for a route. Raises Unavailable.
 Resolve = Callable[[], Awaitable[str]]
 
 
 class _Lost(Exception):
-    """The connection was lost while waiting for events."""
+    """The consultation transport is disconnected."""
 
 
 @dataclass
 class _Attempt:
-    # The submission may have reached the gateway.
+    # Submission delivery may have occurred.
     sent: bool = False
-    # A submit's answer was lost: the submission may be admitted, unseen.
+    # The submission acknowledgment is unavailable.
     ambiguous: bool = False
 
 
@@ -144,9 +73,9 @@ class _Attempt:
 class Bridge:
     connect: Connect
     resolve: Resolve
-    # The owner's refusal of one request (GatewayRPCError): that request did nothing.
+    # A request refusal before execution.
     refused: type[Exception]
-    # A lost or failed connection (GatewayClientError): an answer it carried may be lost.
+    # An interrupted connection with an uncertain response.
     lost: type[Exception]
     consult_timeout_s: float = _CONSULT_TIMEOUT_S
     history_timeout_s: float = _HISTORY_TIMEOUT_S
@@ -169,7 +98,7 @@ class Bridge:
             raise
         except (Unavailable, Failed):
             raise
-        except Exception as e:  # a bug, or a gateway answer of a shape never seen: never success
+        except Exception as e:
             log.exception("consult %s failed", submission_id)
             raise (Uncertain if attempt.sent else Unavailable)(f"bridge_error:{type(e).__name__}") from e
 
@@ -184,9 +113,8 @@ class Bridge:
                     resumed = _string(
                         await client.rpc("session.resume", session_id=session_id, omit_messages=True), "session_id"
                     )
+                    # Recovery preserves the admitted session identity.
                     if canonical is not None and resumed != canonical:
-                        # The admission's session is no longer what the route resolves to: its receipt
-                        # can't be asked for there.
                         raise Uncertain("session_changed")
                     canonical = resumed
                     if admission is None:
@@ -196,7 +124,6 @@ class Bridge:
                             session_id=canonical,
                             submission_id=submission_id,
                             text=task,
-                            # The model's input: the instructions stay out of the transcript.
                             api_text=f"{instructions}\n\n{task}" if instructions else task,
                         )
                         admission = _string(receipt, "admission_id")
@@ -209,7 +136,6 @@ class Bridge:
                     raise Uncertain(f"refused:{e}") from e
                 raise Unavailable(str(e)) from e
             except (self.lost, _Lost, Unavailable, TimeoutError) as e:
-                # TimeoutError: one RPC's own deadline. The consult's bound cancels instead, and passes.
                 if not attempt.sent:
                     if isinstance(e, Unavailable):
                         raise
@@ -231,7 +157,6 @@ class Bridge:
             receipt = await self._receipt(client, session_id, admission)
         status = _status(receipt)
         if status != "terminal":
-            # unknown: the owner lost the turn across a restart. Only the owner may resolve it.
             raise Uncertain(f"status:{status}")
         if "result" not in receipt:
             receipt = await self._receipt(client, session_id, admission)
@@ -241,7 +166,7 @@ class Bridge:
         return await client.rpc("prompt.receipt", session_id=session_id, admission_id=admission, include_result=True)
 
     async def history(self, limit: int) -> list[dict[str, Any]]:
-        """The newest `limit` rows of the session as the gateway displays them. Raises Unavailable."""
+        """The newest `limit` conversation messages. Raises Unavailable."""
         try:
             async with asyncio.timeout(self.history_timeout_s):
                 session_id = await self.resolve()
@@ -250,7 +175,7 @@ class Bridge:
                     history = await client.rpc("session.history", session_id=canonical)
         except Unavailable:
             raise
-        except Exception as e:  # the gateway's refusals and lost connections, and anything unforeseen
+        except Exception as e:
             log.warning("history unreadable", exc_info=not isinstance(e, self.lost | TimeoutError))
             raise Unavailable(f"history:{type(e).__name__}") from e
         messages = history.get("messages") if isinstance(history, dict) else None
@@ -259,7 +184,7 @@ class Bridge:
         return [_row(message) for message in messages[-limit:] if isinstance(message, dict)]
 
     async def health(self) -> dict[str, Any]:
-        """The session a consult would be a turn of, found and attached to. Raises Unavailable."""
+        """Consultation readiness and the active session ID. Raises Unavailable."""
         try:
             async with asyncio.timeout(self.history_timeout_s):
                 session_id = await self.resolve()
@@ -267,7 +192,7 @@ class Bridge:
                     return {"ready": True, "session_id": await self._attach(client, session_id)}
         except Unavailable:
             raise
-        except Exception as e:  # the gateway's refusals and lost connections, and anything unforeseen
+        except Exception as e:
             log.warning("health check failed", exc_info=not isinstance(e, self.lost | TimeoutError))
             raise Unavailable(f"health:{type(e).__name__}") from e
 
@@ -279,12 +204,7 @@ class Bridge:
 
 
 async def _completion(client: Client, admission: str) -> None:
-    """Consume event frames until `admission`'s message.complete; a lost connection raises _Lost.
-
-    The admission ID is on the frame itself, stamped from the execution that
-    published it (gateway/session_events.py publish), and on a cancelled
-    admission's payload too (session_authority _settle_cancelled).
-    """
+    """Completion of `admission`. Raises _Lost."""
     while True:
         event = await client.events.get()
         if isinstance(event, Exception):
@@ -303,14 +223,14 @@ def _status(receipt: Any) -> Any:
 
 
 def _answer(receipt: dict[str, Any]) -> str:
-    """The final text of a terminal receipt; Failed unless the turn completed with one."""
+    """The final answer of a completed consultation. Raises Failed."""
     outcome = receipt.get("outcome")
     if outcome != "completed":
         raise Failed(str(outcome))
     result = receipt.get("result")
     if not isinstance(result, dict):
         raise Failed("no_result")
-    # gateway/session_results.py prepare_result: these flags make the outcome failed or interrupted.
+    # Embedded failure flags take precedence over a completed outcome.
     if result.get("failed") or result.get("error"):
         raise Failed("failed")
     if result.get("interrupted"):
@@ -329,7 +249,7 @@ def _string(answer: Any, key: str) -> str:
 
 
 def _row(message: dict[str, Any]) -> dict[str, Any]:
-    """A displayed row (tui_gateway/contracts/common.py TranscriptMessage), cut to what the broker reads."""
+    """A conversation message's role, text and timestamp."""
     text, timestamp = message.get("text"), message.get("timestamp")
     return {
         "role": message.get("role"),
@@ -338,41 +258,26 @@ def _row(message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# Production: the pinned Hermes's own pieces.
-
-
 @asynccontextmanager
 async def gateway(home: Path) -> AsyncIterator[Any]:
-    """An attachment to `home`'s running gateway; Unavailable unless one is ready.
-
-    connect_gateway given an endpoint dials it as-is: it never starts a
-    gateway, or replaces one, as its default would (hermes_cli/gateway_client.py).
-    attachable is its own readiness rule: ready, or a restart's after-turn wait,
-    whose owner still answers for its turns (a new submission there is refused).
-    """
+    """An authenticated connection to the active session service. Raises Unavailable."""
     from hermes_cli.gateway_client import connect_gateway
     from hermes_cli.gateway_runtime import attachable, discover_gateway_endpoint
 
     found = await asyncio.to_thread(discover_gateway_endpoint, home)
     if not attachable(found):
         raise Unavailable(f"gateway_{found.state}")
-    # The default frame bound, as Hermes's CLI uses: the canonical session.resume answers with the
-    # whole transcript, whatever omit_messages says (gateway/session_controls.py resume ignores it).
+    # An explicit endpoint confines attachment to an existing service.
     async with connect_gateway(endpoint=found.endpoint) as client:
         yield client
 
 
 def resolve_session(home: Path, route: str) -> str:
-    """The active session of `route`, from `home`'s state.db, read-only; Unavailable when it has none.
-
-    The gateway's own recovery lookup, so a /new reset fences off the session
-    before it. No transcript is read, and no legacy sessions.json.
-    """
+    """The active session ID for `route`. Raises Unavailable."""
     from hermes_state import SessionDB
 
     db = SessionDB(db_path=home / "state.db", read_only=True)
     try:
-        # A route key is agent:<namespace>:<platform>:...; the row's source is the platform.
         row = db.find_latest_gateway_session_for_peer(source=route.split(":")[2], session_key=route)
     finally:
         db.close()
@@ -383,11 +288,7 @@ def resolve_session(home: Path, route: str) -> str:
 
 
 def telegram_route(chat_id_file: Path) -> str:
-    """The route key of the owner's Telegram DM, whose chat ID the file holds.
-
-    gateway/session.py build_session_key: agent:main (the default profile's
-    namespace), the platform, the chat type, the chat ID.
-    """
+    """The owner's Telegram direct-message route."""
     chat_id = chat_id_file.read_text().strip()
     if not _CHAT_ID.fullmatch(chat_id):
         raise ValueError(f"{chat_id_file} holds no Telegram user's chat ID")
@@ -395,7 +296,7 @@ def telegram_route(chat_id_file: Path) -> str:
 
 
 def make_app(bridge: Bridge) -> Any:
-    """The bridge's aiohttp application."""
+    """The consultation, history and readiness API."""
     from aiohttp import web
 
     def error(status: int, code: str) -> web.Response:
@@ -434,9 +335,6 @@ def make_app(bridge: Bridge) -> Any:
             limit = int(request.query["limit"])
         except (KeyError, ValueError):
             return error(400, "invalid_limit")
-        # Honor the broker's configured row budget. The native gateway client
-        # already bounds transcript frames; an unrelated row cap would reject
-        # otherwise valid broker configurations before their own bounds apply.
         if limit < 1:
             return error(400, "invalid_limit")
         try:
@@ -459,15 +357,15 @@ def make_app(bridge: Bridge) -> Any:
 
 
 async def serve(app: Any, socket: Path) -> Any:
-    """`app` served on `socket`, mode 0660, and nowhere else; returns its runner, to clean up."""
+    """A local application runner with owner/group socket access."""
     from aiohttp import web
 
     runner = web.AppRunner(app)
     await runner.setup()
-    # A socket left by a bridge that died; anything else there is not ours to remove.
+    # Cleanup is restricted to socket paths.
     if socket.is_socket():
         socket.unlink()
-    # The socket is never more open than its final mode, not even between bind and chmod.
+    # Owner/group access applies from socket creation.
     umask = os.umask(0o117)
     try:
         await web.UnixSite(runner, str(socket)).start()
@@ -507,7 +405,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     logging.basicConfig(level=args.log_level, format="%(levelname)s %(name)s: %(message)s")
     home = args.home.absolute()
-    # connect_gateway mints its ticket for get_hermes_home(), which reads HERMES_HOME.
+    # Authentication and session lookup share one home.
     if (named := os.environ.get("HERMES_HOME")) and Path(named).absolute() != home:
         raise SystemExit(f"HERMES_HOME is {named}, not --home {home}")
     os.environ["HERMES_HOME"] = str(home)
