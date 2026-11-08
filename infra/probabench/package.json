@@ -8,7 +8,7 @@
     "typecheck": "tsc -p packages/domain && tsc -p packages/runner && tsc -p packages/web && tsc -p packages/web/src && tsc -p packages/service && tsc -p packages/stack",
     "bench": "sops exec-env ../../secrets/infra/probabench.env 'bun packages/runner/src/main.ts'",
     "sync": "sops exec-env ../../secrets/infra/probabench.env 'bun packages/runner/src/main.ts --sync'",
-    "test": "vitest run",
+    "test": "node node_modules/vitest/vitest.mjs run",
     "check": "bun run typecheck && bun run test && bun run build",
     "dev": "sops exec-env ../../secrets/infra/probabench.env 'bun run --cwd packages/web dev'",
     "dev:alchemy": "sops exec-env ../../secrets/infra/probabench.env 'bun run --cwd packages/stack dev'",

@@ -17,6 +17,14 @@
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "overrides": [
     {
+      "includes": ["**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "correctness": { "noComponentHookFactories": "off" }
+        }
+      }
+    },
+    {
       "includes": [
         "packages/tui/src/**",
         "!packages/tui/src/components/mascot.tsx",
