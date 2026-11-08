@@ -1,0 +1,68 @@
+diff --git a/custom_components/yasno_outages/__init__.py b/custom_components/yasno_outages/__init__.py
+index 90f9f04..1bc52f3 100644
+--- a/custom_components/yasno_outages/__init__.py
++++ b/custom_components/yasno_outages/__init__.py
+@@ -6,10 +6,10 @@ import logging
+ from typing import TYPE_CHECKING
+ 
+ from homeassistant.const import Platform
+-from homeassistant.exceptions import ConfigEntryError
++from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
+ from homeassistant.loader import async_get_loaded_integration
+ 
+-from .api import YasnoApi, YasnoNotFoundError
++from .api import YasnoApi, YasnoApiError, YasnoNotFoundError
+ from .const import (
+     CONF_GROUP,
+     CONF_HOUSE_ID,
+@@ -99,7 +99,10 @@ async def async_setup_entry(
+ 
+     # Setup API for resolving region and provider ids
+     bootstrap_api = YasnoApi()
+-    await bootstrap_api.fetch_regions()
++    try:
++        await bootstrap_api.fetch_regions()
++    except YasnoApiError as err:
++        raise ConfigEntryNotReady(str(err)) from err
+ 
+     region_data = bootstrap_api.get_region_by_name(region)
+     provider_data = bootstrap_api.get_provider_by_name(region, provider)
+@@ -126,6 +129,8 @@ async def async_setup_entry(
+             await async_create_stale_address_issue(hass, entry)
+             msg = "Address no longer found; reconfigure integration entry"
+             raise ConfigEntryError(msg) from err
++        except YasnoApiError as err:
++            raise ConfigEntryNotReady(str(err)) from err
+ 
+     # If group is not resolved, return error
+     if not group:
+@@ -138,7 +143,10 @@ async def async_setup_entry(
+         provider_id=provider_data["id"],
+         group=group,
+     )
+-    await api.fetch_regions()
++    try:
++        await api.fetch_regions()
++    except YasnoApiError as err:
++        raise ConfigEntryNotReady(str(err)) from err
+ 
+     coordinator = YasnoOutagesCoordinator(hass, entry, api, group=group)
+     entry.runtime_data = YasnoOutagesData(
+diff --git a/custom_components/yasno_outages/api/base.py b/custom_components/yasno_outages/api/base.py
+index 6f5c0ad..b9c93de 100644
+--- a/custom_components/yasno_outages/api/base.py
++++ b/custom_components/yasno_outages/api/base.py
+@@ -67,7 +67,12 @@ class BaseYasnoApi(ABC):
+             if err.status == API_HTTP_STATUS_NOT_FOUND:
+                 raise YasnoNotFoundError(msg) from err
+             raise YasnoApiError(msg) from err
+-        except (aiohttp.ClientError, aiohttp.ContentTypeError, ValueError) as err:
++        except (
++            aiohttp.ClientError,
++            aiohttp.ContentTypeError,
++            TimeoutError,
++            ValueError,
++        ) as err:
+             msg = f"Failed to fetch data from {url}"
+             raise YasnoApiError(msg) from err
+ 

@@ -18,6 +18,7 @@
     ./nix.nix
     ./filesystems.nix
     ./networking.nix
+    ./time.nix
     ./users.nix
     ./nginx.nix
     ./rustdesk.nix
