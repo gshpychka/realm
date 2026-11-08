@@ -25,7 +25,7 @@ let
   checks = {
     hermesWithoutOpenClaw = lib.all (a: a.assertion) hermes.assertions;
     noOpenClawCredential = !(hermes.sops.secrets ? "voice-broker/openclaw-secret");
-    rejectsHermesOverflow = failure "overflow is OpenClaw-specific" overflow;
+    rejectsHermesOverflow = failure "my.voice-broker.overflow" overflow;
     rejectsParallel = failure "mode parallel" parallel;
     preservesVoiceAndRouting =
       original.my.voice-broker.settings.live.instructions
