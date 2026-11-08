@@ -80,13 +80,15 @@ in
         port = ports.jellyfin;
         auth = "native";
       };
-      openclaw = {
+      openclaw = lib.mkIf config.my.openclaw.enable {
         port = ports.openclaw;
         websockets = true;
         loopbackClients = [
           config.services.openclaw-gateway.user
-          config.users.users.voice-broker.name
-        ];
+        ]
+        ++ lib.optional (
+          config.my.voice-broker.enable && config.my.voice-broker.backend == "openclaw"
+        ) config.users.users.voice-broker.name;
       };
       hermes = lib.mkIf config.services.hermes-agent.enable {
         port = ports.hermes;

@@ -20,14 +20,14 @@ from websockets.http11 import Request, Response
 
 from . import config as config_module
 from ._aec import EchoCanceller
+from .agent import Conversation as Consults
+from .agent import create_agent
 from .assist import HomeListener, ToolPolicy
 from .calls import Calls
 from .config import Config, Device
 from .conversation import Conversation
 from .home_assistant import HomeAssistant
 from .live import LiveSession, Mode, Parallel, Routed, live_connector
-from .openclaw import Conversation as Consults
-from .openclaw import OpenClaw
 from .protocol import MIC_RATE, ProtocolError, parse_start
 from .routing import router
 
@@ -62,7 +62,7 @@ class _DeviceState:
 class Broker:
     def __init__(self, config: Config) -> None:
         self._config = config
-        self._openclaw = OpenClaw(config.openclaw)
+        self._agent = create_agent(config.agent)
         self._devices = {d.address: _DeviceState(d, EchoCanceller(MIC_RATE)) for d in config.devices}
         openai = AsyncOpenAI(api_key=config.openai_api_key)
         self._connect = live_connector(openai)
@@ -109,16 +109,15 @@ class Broker:
             state.home_runs,
             barge_in=home.barge_in,
         )
-        observe = self._openclaw.observe if self._config.openclaw.observer_session_key else None
-        return Parallel(listener, observe, self._router.route if self._router else None)
+        return Parallel(listener, self._agent.observer, self._router.route if self._router else None)
 
     def _consults(self, device: Device) -> Consults:
-        """A new conversation's consults at `device`, all in one session: main's, or its own when main's is too full.
+        """A new conversation's consults at `device`.
 
         Its id is new for every conversation, so no two conversations, at one
-        speaker or two, ever share an overflow session.
+        speaker or two, ever share an OpenClaw overflow session.
         """
-        return self._openclaw.conversation(f"{device.name}-{uuid.uuid4().hex[:12]}")
+        return self._agent.conversation(f"{device.name}-{uuid.uuid4().hex[:12]}")
 
     def _in_conversation(self, address: str) -> bool:
         current = self._devices[address].current
@@ -197,7 +196,7 @@ class Broker:
                 calls.close()
                 server.close()
         finally:
-            await self._openclaw.aclose()
+            await self._agent.aclose()
             if self._router is not None:
                 await self._router.aclose()
 

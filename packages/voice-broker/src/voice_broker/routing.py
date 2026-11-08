@@ -1,4 +1,4 @@
-"""Which backend a delegated request belongs to: Home Assistant, OpenClaw, or neither.
+"""Which backend a delegated request belongs to: Home Assistant, the selected agent, or neither.
 
 The classification has one of two roles, by the broker's mode (config.py):
 - Gated (`routing`): a request is classified before any backend runs and goes
@@ -35,10 +35,10 @@ from typing import Any, Literal, Protocol, assert_never, get_args
 
 from openai import AsyncOpenAI, OpenAIError
 
+from .agent import Turn
 from .config import DecisionsProvider, JevProvider, Routing, RoutingShadow
-from .openclaw import Turn
 
-Route = Literal["ha", "openclaw", "clarify"]
+Route = Literal["ha", "agent", "clarify"]
 
 # Every provider takes a description per choice; these and the instructions are the routing policy.
 # Ambiguous home commands belong to Home Assistant: its conversation agent is an LLM
@@ -49,7 +49,7 @@ CHOICES: dict[Route, str] = {
         "ambiguous home command whose device Home Assistant can ask about, and a reply to a question Home Assistant "
         "is waiting on."
     ),
-    "openclaw": (
+    "agent": (
         "The household assistant: anything beyond the home, such as weather forecasts, knowledge, coding, reminders, "
         "calendar, messages, news or research, and every request that mixes home control with any non-home work."
     ),
@@ -67,7 +67,7 @@ INSTRUCTIONS = (
     "Area identifies location, not a missing device type. "
     "Named home scenes are home requests; asking what a scene means is knowledge. "
     "A home device named weather station is not a weather forecast. "
-    "A request that mixes home control with any non-home work is openclaw, whole. "
+    "A request that mixes home control with any non-home work is agent, whole. "
     "Choose exactly one route."
 )
 # Spoken turns of this conversation the classifier sees, newest last.

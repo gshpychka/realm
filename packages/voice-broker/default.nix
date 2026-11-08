@@ -64,7 +64,12 @@ python3Packages.buildPythonApplication {
     websockets
   ]);
 
-  nativeCheckInputs = [ python3Packages.pytestCheckHook ];
+  # The bridge runs in Hermes's own environment; aiohttp is needed here only
+  # to exercise its real private Unix HTTP listener in the package tests.
+  nativeCheckInputs = with python3Packages; [
+    pytestCheckHook
+    aiohttp
+  ];
 
   meta.mainProgram = "voice-broker";
 }

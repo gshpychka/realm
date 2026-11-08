@@ -18,7 +18,7 @@ def make_config(tmp_path: Path):
             "openai_api_key": "key",
             "devices": [],
             "live": Live(model="gpt-live-1", voice="marin", instructions=""),
-            "openclaw": OpenClaw(
+            "agent": OpenClaw(
                 url="http://openclaw.test",
                 token="gateway-secret",
                 session_key="agent:main:main",

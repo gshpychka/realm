@@ -7,14 +7,59 @@ the stock Assist path, still switched between pipelines by the Assistant
 selects. **Hey Jarvis** hands the conversation to the
 voice broker on hoard (`machines/hoard/voice-broker.nix`), which
 runs it on GPT-Live. GPT-Live listens while it speaks and decides itself when
-to answer, yield or keep going. Work it delegates goes to OpenClaw's main
-agent on hoard (`machines/hoard/openclaw.nix`), in one session every PE
-shares. A request that names no place is about the PE's `voiceArea`.
+to answer, yield or keep going. Delegated work goes to the assistant selected
+by `my.voice-broker.backend`: OpenClaw (the current choice) or Hermes, with
+the selected assistant's own tools, memory and primary conversation. Every PE
+uses that conversation. A request that names no place is about the PE's `voiceArea`.
 
 While a broker conversation runs, the wake word or a press of the center
 button ends it.
 A Home Assistant announcement that arrives mid-conversation shares the
 speaker with it.
+
+## Assistant selection
+
+In `machines/hoard/voice-broker.nix`, select one backend:
+
+```nix
+my.voice-broker.backend = "hermes"; # or "openclaw"
+```
+
+This changes only the agent carrying out delegated work. GPT-Live speech,
+device authentication, echo cancellation and Home Assistant gated routing
+are unchanged. There is no automatic fallback to a second agent: an uncertain
+outcome must not repeat a household action. Parallel mode remains refused
+with either backend because both primary agents can act on the home.
+
+Hermes uses `voice-broker-hermes.service`, a private Unix-socket bridge running
+as the existing Hermes service user. It discovers that gateway and obtains a
+single-use same-user ticket; it never starts another gateway, copies an API
+token, opens a network listener, or creates a separate voice agent/profile.
+It uses the pinned gateway SDK and native `session.resume` / `prompt.submit`
+RPCs, not `/v1/responses` (which cannot write a Telegram-owned session).
+
+By default the target is the owner's existing Hermes Telegram DM. The owner
+ID is passed as a systemd credential, not embedded in the Nix store. The
+active session is resolved read-only on every request, respecting `/new` and
+compression. `my.voice-broker.hermes.sessionKey` can instead name an explicit
+existing routing key. Speak to the Telegram bot first if that conversation
+does not yet exist. Hermes retains its normal queue, compaction and approval
+handling; pending approvals/clarifications may require Telegram. Replies also
+follow the Telegram session's normal delivery path, so do not expect voice-only
+messages. OpenClaw's optional overflow estimator is not used with Hermes.
+
+Hoard provisions the bridge with `hermes.enable = true` even while OpenClaw
+is selected, allowing a read-only readiness probe as the broker user:
+
+```sh
+sudo -u voice-broker curl --fail --unix-socket /run/voice-broker-hermes/agent.sock http://hermes/health
+```
+
+Only the selected assistant gets the voice-call skill and call-socket access.
+Calling a speaker sends the spoken answer to its configured primary
+conversation, not an unrelated session invoking the command. Neither calls
+nor consults silently switch assistants. Pull before testing/committing, push
+and verify the exact revision before deploying hoard with `nixos-switch`.
 
 ## One-time setup
 
@@ -183,8 +228,8 @@ pass, flash other PEs. This firmware change needs no NixOS rebuild.
 ## Home Assistant's home-only pipeline
 
 Hoard uses `my.voice-broker.mode = "gated"`: its classifier routes each request
-to Home Assistant or OpenClaw. The module refuses `"parallel"`, because OpenClaw
-consults can also act on the home (see "Consults and main's session" below).
+to Home Assistant or the selected assistant. The module refuses `"parallel"`, because its
+consults can also act on the home (see "OpenClaw consults and main's session" below).
 
 If the gateway token changes, update both `secrets/hoard/voice-broker.yaml`'s
 `openclaw-secret` and `secrets/hoard/openclaw.yaml`'s `gateway-token`.
@@ -230,7 +275,7 @@ To remove the helper-created integration, keep the broker in `"gated"` mode,
 then delete the **Voice broker home** pipeline and its agent under the OpenAI
 Conversation integration.
 
-## Consults and main's session
+## OpenClaw consults and main's session
 
 Every consult is a turn of OpenClaw's main agent, in main's own session,
 `agent:main:main`, the one Telegram uses. So a spoken conversation and

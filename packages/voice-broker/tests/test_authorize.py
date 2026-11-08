@@ -18,7 +18,7 @@ def test_only_a_known_speaker_with_the_token_is_let_in(tmp_path: Path):
         openai_api_key="key",
         devices=[Device(name="kitchen", address=SPEAKER, area="Kitchen", call_action="esphome.kitchen_call")],
         live=Live(model="gpt-live-1", voice="marin", instructions=""),
-        openclaw=OpenClaw(
+        agent=OpenClaw(
             url="http://openclaw.test",
             token="gateway-token",
             session_key="agent:main:main",

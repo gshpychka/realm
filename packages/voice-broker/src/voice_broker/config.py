@@ -5,9 +5,10 @@ production) and they are read at startup.
 
 What happens to a delegated request is one of three modes, by which of
 `routing` and `home_assistant` is set (never both):
-- neither: every delegated request is an OpenClaw consult;
+- neither: every delegated request is an agent consult;
 - `routing` (gated): a classifier picks Home Assistant's text conversation or
-  OpenClaw for each request, and only that one runs (routing.py);
+  the agent for each request, and only that one runs (routing.py; its route
+  for the selected agent is named "agent");
 - `home_assistant` (parallel): Home Assistant hears the conversation's audio
   itself and alone acts on the home (assist.py). No classifier gates anything;
   one may shadow, for the log only.
@@ -112,6 +113,29 @@ class OpenClaw:
 
 
 @dataclass(frozen=True, slots=True)
+class Hermes:
+    """The Hermes agent, reached through its same-host bridge (hermes.py, hermes_bridge.py).
+
+    The bridge, not the broker, picks the Hermes session: the owner's Telegram
+    conversation, whose model, tools and memory consults use as they are.
+    """
+
+    # The bridge's Unix socket.
+    socket: Path
+    # Added to the agent's own prompt for every consult: model input only, never in the transcript.
+    instructions: str
+    history: History
+
+
+# The agent delegated work goes to (agent.create_agent builds it).
+AgentConfig = OpenClaw | Hermes
+# agent.provider in the JSON.
+AGENT_PROVIDERS = ("openclaw", "hermes")
+# The keys a Hermes agent takes: OpenClaw's own options configure nothing there, so they are refused.
+_HERMES_KEYS = frozenset({"provider", "socket", "instructions", "history"})
+
+
+@dataclass(frozen=True, slots=True)
 class Device:
     """A Voice PE allowed to open conversations."""
 
@@ -151,7 +175,7 @@ PROVIDERS = ("decisions", "jev")
 
 @dataclass(frozen=True, slots=True)
 class Routing:
-    """Gated mode: delegated requests split between Home Assistant and OpenClaw by a classifier (routing.py)."""
+    """Gated mode: delegated requests split between Home Assistant and the selected agent by a classifier."""
 
     provider: Provider
     # Past this, the request is not classified and nothing runs.
@@ -212,7 +236,7 @@ class Config:
     openai_api_key: str
     devices: list[Device]
     live: Live
-    openclaw: OpenClaw
+    agent: AgentConfig
     calls: Calls
     # Conversation ends after this long with nobody speaking and nothing playing.
     idle_timeout_s: float
@@ -247,7 +271,7 @@ def _history(raw: dict[str, Any]) -> History:
 def _overflow(raw: dict[str, Any], session_key: str) -> Overflow:
     when_unknown = raw["when_unknown"]
     if when_unknown not in OVERFLOW_WHEN_UNKNOWN:
-        raise ValueError(f"openclaw.overflow.when_unknown must be one of {', '.join(OVERFLOW_WHEN_UNKNOWN)}")
+        raise ValueError(f"agent.overflow.when_unknown must be one of {', '.join(OVERFLOW_WHEN_UNKNOWN)}")
     overflow = Overflow(
         session_prefix=raw["session_prefix"],
         handoff_max_chars=int(raw["handoff_max_chars"]),
@@ -258,15 +282,15 @@ def _overflow(raw: dict[str, Any], session_key: str) -> Overflow:
     # would run with that agent's tools.
     agent_prefix = ":".join(session_key.split(":")[:2]) + ":"
     if not session_key.startswith("agent:") or not overflow.session_prefix.startswith(agent_prefix):
-        raise ValueError(f"openclaw.overflow sessions must be {session_key!r}'s agent's")
+        raise ValueError(f"agent.overflow sessions must be {session_key!r}'s agent's")
     name = overflow.session_prefix.removeprefix(agent_prefix).removesuffix(":")
     if not overflow.session_prefix.endswith(":") or not name or ":" in name:
-        raise ValueError("openclaw.overflow.session_prefix must be agent:<id>:<name>:")
+        raise ValueError("agent.overflow.session_prefix must be agent:<id>:<name>:")
     # Overflow sessions are their own, never the agent session or one under it.
     if overflow.session_prefix.startswith(f"{session_key}:"):
-        raise ValueError(f"openclaw.overflow.session_prefix must not be under {session_key!r}")
+        raise ValueError(f"agent.overflow.session_prefix must not be under {session_key!r}")
     if overflow.handoff_max_chars < 0 or overflow.margin_tokens < 0:
-        raise ValueError("openclaw.overflow.handoff_max_chars and margin_tokens must be at least 0")
+        raise ValueError("agent.overflow.handoff_max_chars and margin_tokens must be at least 0")
     return overflow
 
 
@@ -291,6 +315,25 @@ def _openclaw(raw: dict[str, Any]) -> OpenClaw:
             if key is not None and not key.startswith(prefix):
                 raise ValueError(f"openclaw session {key!r} is not agent {openclaw.agent!r}'s")
     return openclaw
+
+
+def _hermes(raw: dict[str, Any]) -> Hermes:
+    if extra := sorted(set(raw) - _HERMES_KEYS):
+        raise ValueError(f"agent.provider hermes takes no {', '.join(extra)}")
+    socket = raw["socket"]
+    if not isinstance(socket, str) or not socket:
+        raise ValueError("agent.provider hermes needs a socket")
+    return Hermes(socket=Path(socket), instructions=raw["instructions"], history=_history(raw["history"]))
+
+
+def _agent(raw: dict[str, Any]) -> AgentConfig:
+    match raw.get("provider"):
+        case "openclaw":
+            return _openclaw(raw)
+        case "hermes":
+            return _hermes(raw)
+        case _:
+            raise ValueError(f"agent.provider must be one of {', '.join(AGENT_PROVIDERS)}")
 
 
 def _calls(raw: dict[str, Any]) -> Calls:
@@ -398,7 +441,7 @@ def load(path: Path) -> Config:
         openai_api_key=_read_secret(raw["openai_api_key_file"]),
         devices=devices,
         live=_live(raw["live"]),
-        openclaw=_openclaw(raw["openclaw"]),
+        agent=_agent(raw["agent"]),
         calls=_calls(raw["calls"]),
         idle_timeout_s=float(raw["idle_timeout_s"]),
         max_conversation_s=float(raw["max_conversation_s"]),

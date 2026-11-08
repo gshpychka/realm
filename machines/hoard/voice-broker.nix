@@ -17,7 +17,7 @@ let
     what they say.
 
   '';
-  # Gated: the backend (OpenClaw's main agent) also acts on the home, when the classifier sends it there.
+  # Gated: the selected backend also acts on the home when the classifier sends it there.
   liveGated = ''
     Delegation policy:
     Backend tools:
@@ -88,7 +88,7 @@ let
     Delegate before giving an answer that depends on backend work.
     Do not guess the result while waiting.
   '';
-  openclawGated = ''
+  agentGated = ''
     This turn comes from a voice speaker in the home. Carry out the latest
     request in the conversation it quotes. Check the current state before
     changing something when the request is ambiguous, and before repeating
@@ -99,7 +99,7 @@ let
     silently. When a subagent carries the work on, say so; its result
     reaches Telegram.
   '';
-  openclawParallel = ''
+  agentParallel = ''
     This turn comes from a voice speaker in the home. Carry out the latest
     request in the conversation it quotes, except home control: Home
     Assistant hears the same speech and alone changes the home, and you
@@ -114,6 +114,10 @@ in
 {
   my.voice-broker = {
     enable = true;
+    # Switching assistants needs only backend = "hermes"; keep current traffic unchanged.
+    backend = "openclaw";
+    # Provision the private Hermes bridge for readiness verification as well.
+    hermes.enable = true;
     sopsFile = ../../secrets/hoard/voice-broker.yaml;
     recordings.enable = false;
     homeAssistant.url = "http://homeassistant.${config.my.domain}:8123";
@@ -173,8 +177,8 @@ in
         voice = "marin";
         instructions = liveCommon + (if parallel then liveParallel else liveGated);
       };
-      openclaw = {
-        instructions = if parallel then openclawParallel else openclawGated;
+      agent = {
+        instructions = if parallel then agentParallel else agentGated;
         # the voice starts with the Telegram conversation of the last day
         history = {
           # transcript rows, most of them tool calls and results

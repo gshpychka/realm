@@ -22,12 +22,13 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import quote
 
 import httpx2
 from openai import AsyncOpenAI, OpenAIError
 
+from .agent import ConsultFailed, HistoryUnavailable, Observe, Role, Turn, newest
 from .config import OpenClaw as OpenClawConfig
 
 log = logging.getLogger(__name__)
@@ -79,19 +80,8 @@ _OBSERVER_INSTRUCTIONS = (
     "mishear, so when the request is unclear, or the state can't be read, report matches=true."
 )
 
-Role = Literal["user", "assistant"]
-# One message of a conversation: who said it and what.
-Turn = tuple[Role, str]
 # Transcript roles whose text is conversation; tool results have a role of their own.
 _ROLES: dict[str, Role] = {"user": "user", "assistant": "assistant"}
-
-
-class ConsultFailed(Exception):
-    """The agent gave no answer."""
-
-
-class HistoryUnavailable(Exception):
-    """The agent's conversation could not be read."""
 
 
 class _UsageUnknown(Exception):
@@ -142,6 +132,11 @@ class OpenClaw:
     @property
     def config(self) -> OpenClawConfig:
         return self._config
+
+    @property
+    def observer(self) -> Observe | None:
+        """observe, when the config names an observer session."""
+        return None if self._config.observer_session_key is None else self.observe
 
     async def preflight(self, task: str) -> Fit:
         """Whether a consult of `task` likely fits the agent session before the gateway would compact it.
@@ -353,7 +348,7 @@ class OpenClaw:
         if not isinstance(messages, list):
             raise HistoryUnavailable(f"history messages are {type(messages).__name__}")
         turns = _turns(messages, since=time.time() - history.max_age_s)
-        return _newest(turns, max_chars)
+        return newest(turns, max_chars)
 
     async def aclose(self) -> None:
         # closes the HTTP client with it
@@ -498,15 +493,3 @@ def _texts(content: Any) -> list[str]:
         if isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str)
     ]
     return [text for text in texts if text]
-
-
-def _newest(turns: list[Turn], max_chars: int) -> list[Turn]:
-    """The longest tail of `turns` whose text fits in `max_chars`."""
-    kept = 0
-    chars = 0
-    for _, text in reversed(turns):
-        chars += len(text)
-        if chars > max_chars:
-            break
-        kept += 1
-    return turns[len(turns) - kept :]

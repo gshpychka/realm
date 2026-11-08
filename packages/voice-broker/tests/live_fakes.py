@@ -8,9 +8,9 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import numpy as np
+from voice_broker.agent import Turn
 from voice_broker.config import Live
 from voice_broker.live import Consult, LiveSession, Mode
-from voice_broker.openclaw import Turn
 from voice_broker.protocol import Phase
 
 

@@ -49,11 +49,11 @@ from openai.resources.live.live import AsyncLiveConnection
 from openai.types.live.initial_item_param import InitialItemParam
 from openai.types.live.session_config_param import SessionConfigParam
 
+from .agent import ConsultFailed, HistoryUnavailable, Observe, Role, Turn
 from .assist import HeardSpeech, HomeEvent, HomeTurn, Outcome, Unavailable
 from .config import Live
 from .dsp import mic_to_speaker_rate
 from .home_assistant import HomeAssistantFailed, HomeReply
-from .openclaw import ConsultFailed, HistoryUnavailable, Role, Turn
 from .protocol import SPEAKER_RATE, Phase
 from .routing import RouteDecision, RouteRequest, RoutingFailed
 from .session import Host, MicOverflow, SessionRefused, located, placement
@@ -142,8 +142,6 @@ LiveConnector = Callable[[], AbstractAsyncContextManager[AsyncLiveConnection]]
 Consult = Callable[[str], Awaitable[str]]
 # The agent's recent conversation; raises HistoryUnavailable.
 Recall = Callable[[], Awaitable[list[Turn]]]
-# A read-only check of what Home Assistant did: None, or a discrepancy to tell. Raises ConsultFailed.
-Observe = Callable[[str], Awaitable[str | None]]
 # A classification logged and never acted on.
 Shadow = Callable[[RouteRequest], Awaitable[RouteDecision]]
 
@@ -608,7 +606,7 @@ class LiveSession:
                         if slots:
                             await asyncio.wait([consult], timeout=_COMBINE_WAIT_S)
                             if not consult.done():
-                                # A slow consult (up to openclaw._TIMEOUT_S) holds no home result: Home
+                                # A slow consult (up to the agent adapter's consult timeout) holds no home result: Home
                                 # Assistant has acted, and silence could get a command repeated. Each turn is
                                 # told on its own once done, and the agent's answer follows.
                                 log.info("consult still running; home assistant turns told on their own")
@@ -744,7 +742,7 @@ class LiveSession:
         match decision.route:
             case "clarify":
                 return _CLARIFY
-            case "openclaw":
+            case "agent":
                 try:
                     return await self._consult(self._task(heard))
                 except ConsultFailed as e:

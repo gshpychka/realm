@@ -355,6 +355,10 @@
               inherit (projectPackages.x86_64-linux) bay flare rolesanywhere;
               dura-agents = import ./tests/dura-agents.nix { inherit pkgs; };
               dura-catalog = import ./tests/dura-catalog.nix { inherit pkgs; };
+              voice-broker-module = import ./tests/voice-broker.nix {
+                inherit pkgs;
+                host = self.nixosConfigurations.hoard;
+              };
               bay-vm = import ./tests/bay.nix { inherit inputs pkgs; };
               bay-shellcheck =
                 pkgs.runCommand "check-bay-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; }
