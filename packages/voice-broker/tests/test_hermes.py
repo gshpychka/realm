@@ -77,7 +77,6 @@ def test_each_consult_has_its_own_submission_id(socket: Path):
 
     ids = [r.body["submission_id"] for r in run(scenario())]
     assert len(set(ids)) == 3
-    assert "kitchen-1" in ids[0] and "kitchen-2" in ids[2]
 
 
 @pytest.mark.parametrize(

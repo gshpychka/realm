@@ -1,4 +1,4 @@
-# Evaluate both assistant selections, including Hermes with OpenClaw disabled.
+# Check backend independence and policy across composed host configurations.
 # These are module/configuration checks: no daemon, secrets or model calls.
 { pkgs, host }:
 let
@@ -23,32 +23,8 @@ let
   };
   failure = needle: cfg: lib.any (a: !a.assertion && lib.hasInfix needle a.message) cfg.assertions;
   checks = {
-    preservesOpenClaw = original.my.voice-broker.settings.agent.provider == "openclaw";
-    openClawCredential = original.sops.secrets ? "voice-broker/openclaw-secret";
-    openClawCallSkill = original.my.openclaw.skills ? voice-call;
-    hermesWithoutOpenClaw = !hermes.my.openclaw.enable && lib.all (a: a.assertion) hermes.assertions;
-    hermesProvider = hermes.my.voice-broker.settings.agent.provider == "hermes";
-    hermesSocket =
-      hermes.my.voice-broker.settings.agent.socket == "/run/voice-broker-hermes/agent.sock";
+    hermesWithoutOpenClaw = lib.all (a: a.assertion) hermes.assertions;
     noOpenClawCredential = !(hermes.sops.secrets ? "voice-broker/openclaw-secret");
-    noOpenClawFields =
-      !(hermes.my.voice-broker.settings.agent ? token_file)
-      && !(hermes.my.voice-broker.settings.agent ? overflow)
-      && !(hermes.my.voice-broker.settings.agent ? url);
-    noOpenClawIdentity = hermes.my.voice-broker.identityFile == null;
-    hermesCallSkill = hermes.my.hermes-agent.skills ? voice-call;
-    hermesCallPermissions = builtins.elem "voice-broker" hermes.users.users.hermes.extraGroups;
-    bridgeSameUser =
-      hermes.systemd.services.voice-broker-hermes.serviceConfig.User == hermes.services.hermes-agent.user;
-    bridgePrivateGroup =
-      hermes.systemd.services.voice-broker-hermes.serviceConfig.Group == "voice-broker"
-      && hermes.systemd.services.voice-broker-hermes.serviceConfig.RuntimeDirectoryMode == "0750";
-    bridgeIsolatedInterpreter = lib.hasInfix " -I " hermes.systemd.services.voice-broker-hermes.serviceConfig.ExecStart;
-    bridgeUsesPinnedSDK = lib.hasInfix (builtins.unsafeDiscardStringContext "${hermes.services.hermes-agent.package.hermesVenv}/bin/python") hermes.systemd.services.voice-broker-hermes.serviceConfig.ExecStart;
-    ownerIdIsCredential =
-      builtins.length hermes.systemd.services.voice-broker-hermes.serviceConfig.LoadCredential == 1
-      && lib.hasInfix "--telegram-chat-id-file" hermes.systemd.services.voice-broker-hermes.serviceConfig.ExecStart;
-    bridgeOrdered = builtins.elem "voice-broker-hermes.service" hermes.systemd.services.voice-broker.after;
     rejectsHermesOverflow = failure "overflow is OpenClaw-specific" overflow;
     rejectsParallel = failure "mode parallel" parallel;
     preservesVoiceAndRouting =

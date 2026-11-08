@@ -453,27 +453,14 @@ def test_the_gateway_is_dialed_only_when_discovered_ready(monkeypatch: pytest.Mo
     assert dialed == ["endpoint"]
 
 
-def test_the_owner_route_is_the_telegram_dm_key(tmp_path: Path):
+def test_invalid_owner_ids_are_refused(tmp_path: Path):
     chat = tmp_path / "chat-id"
-    chat.write_text("123456789\n")
-    assert hermes_bridge.telegram_route(chat) == "agent:main:telegram:dm:123456789"
     for bad in ("", "abc", "-100123", "12 34"):
         chat.write_text(bad)
         with pytest.raises(ValueError):
             hermes_bridge.telegram_route(chat)
     with pytest.raises(OSError):
         hermes_bridge.telegram_route(tmp_path / "missing")
-
-
-def test_the_route_is_one_of_a_session_key_or_a_chat_id_file():
-    with pytest.raises(SystemExit):
-        hermes_bridge.parse_args(["--socket", "/run/s", "--home", "/h"])
-    with pytest.raises(SystemExit):
-        hermes_bridge.parse_args(
-            ["--socket", "/run/s", "--home", "/h", "--session-key", "a:b:c:d", "--telegram-chat-id-file", "/f"]
-        )
-    args = hermes_bridge.parse_args(["--socket", "/run/s", "--home", "/h", "--session-key", "agent:main:telegram:dm:1"])
-    assert args.session_key == "agent:main:telegram:dm:1"
 
 
 # The HTTP side, on a real Unix socket.

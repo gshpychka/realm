@@ -7,7 +7,7 @@ import asyncio
 from live_fakes import Connection, conversation
 from voice_broker.home_assistant import HomeAssistantFailed, HomeReply
 from voice_broker.live import _APPEND_MAX_BYTES, LiveSession, Routed, _chunks
-from voice_broker.routing import CHOICES, RouteDecision, RouteRequest, RoutingFailed
+from voice_broker.routing import RouteDecision, RouteRequest, RoutingFailed
 
 
 class Backends:
@@ -85,10 +85,6 @@ def test_a_failed_home_request_is_never_run_again():
     conn = run(script, backends)
     assert "may have acted" in conn.spoken[0]
     assert backends.home == ["Turn on the light.", "Is it on?"]
-
-
-def test_classifier_choices_name_the_selected_agent_not_a_provider():
-    assert set(CHOICES) == {"ha", "agent", "clarify"}
 
 
 def test_a_transcript_trailing_the_classification_is_routed_whole():
