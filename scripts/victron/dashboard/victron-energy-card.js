@@ -8,6 +8,7 @@
 // box's control_entity (or its reading); the card never calls a service.
 
 import { EDITOR_TAG } from "./editor.js";
+import "./victron-system-card.js";
 import * as libVenus from "./lib-venus.js";
 import { cssDataDark } from "./css-dark.js";
 import { cssDataLight } from "./css-light.js";

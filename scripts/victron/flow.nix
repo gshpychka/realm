@@ -562,8 +562,15 @@ in
       path = "overview";
       type = "custom:grid-layout";
       layout = {
-        grid-template-columns = "minmax(0, 240px) minmax(0, 1fr)";
-        grid-template-areas = ''"charging ." "flow flow"'';
+        grid-template-columns = "minmax(0, 620px) 240px";
+        grid-template-areas = ''"flow charging"'';
+        justify-content = "center";
+        align-items = "start";
+        grid-gap = "16px";
+        mediaquery."(max-width: 900px)" = {
+          grid-template-columns = "minmax(0, 1fr)";
+          grid-template-areas = ''"charging" "flow"'';
+        };
 
       };
       cards = [
@@ -602,7 +609,7 @@ in
         {
           type = "vertical-stack";
           view_layout.grid-area = "flow";
-          cards = [ { type = "custom:victron-energy-card"; } ];
+          cards = [ { type = "custom:victron-system-card"; } ];
         }
       ];
     };
