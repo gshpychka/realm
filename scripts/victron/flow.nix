@@ -62,9 +62,9 @@ in
       type = "victron-input-system";
       z = tab;
       name = "Grid source";
-      service = system.service;
+      inherit (system) service;
       serviceObj = system;
-      path = source.path;
+      inherit (source) path;
       pathObj = source;
       onlyChanges = true;
       roundValues = "no";
@@ -96,9 +96,9 @@ in
       type = "victron-input-ess";
       z = tab;
       name = "DVCC user limit";
-      service = settings.service;
+      inherit (settings) service;
       serviceObj = settings;
-      path = limit.path;
+      inherit (limit) path;
       pathObj = limit;
       onlyChanges = true;
       roundValues = "no";
@@ -174,9 +174,9 @@ in
       type = "victron-output-ess";
       z = tab;
       name = "DVCC charging-current ceiling";
-      service = settings.service;
+      inherit (settings) service;
       serviceObj = settings;
-      path = limit.path;
+      inherit (limit) path;
       pathObj = limit;
       outputs = 0;
       x = 940;
