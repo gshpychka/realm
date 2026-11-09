@@ -10,7 +10,7 @@ import socket
 import ssl
 import subprocess
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -108,7 +108,7 @@ def home_assistant(url):
         + address.netloc
         + "/api/websocket"
     )
-    with websocket.create_connection(ws_url, timeout=20) as connection:
+    with closing(websocket.create_connection(ws_url, timeout=20)) as connection:
         if json.loads(connection.recv())["type"] != "auth_required":
             raise RuntimeError("Unexpected Home Assistant authentication handshake")
         connection.send(json.dumps({"type": "auth", "access_token": token}))
