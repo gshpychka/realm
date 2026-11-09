@@ -25,7 +25,7 @@ const REFRESH_MS = MINUTE;
 // Gives the recorder time to commit the new mode before re-querying.
 const MODE_REFRESH_DELAY_MS = 3_000;
 const PENDING_TIMEOUT_MS = 45_000;
-const TIME_STEPS = [5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880].map((m) => m * MINUTE);
+
 // Recorded mode labels retain transitions independently of numeric readings.
 const MODE_TONES = {
   "Ramping": "amber",
@@ -43,7 +43,7 @@ const SERIES = {
 };
 
 const STYLE = `
-  :host { display: block; }
+  :host { display: block; width: min(100%, 240px); }
   ha-card {
     --vc-bg: #3c3c3c; --vc-lower: #373737; --vc-border: #4d4d4d;
     --vc-text: #e8e8e8; --vc-muted: #a8a8a8; --vc-blue: #4a90d0;
@@ -54,40 +54,37 @@ const STYLE = `
     box-shadow: none; overflow: hidden;
     font-family: var(--victron-live-font, "Museo Sans Rounded", ui-rounded, system-ui, sans-serif);
   }
-  .card { container-type: inline-size; padding: 14px 16px 10px; }
-  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  .title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0; }
-  .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; font-size: 12px; color: var(--vc-muted); }
+  .card { padding: 8px 10px 6px; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .title { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0; }
+  .meta { display: flex; align-items: center; margin-top: 3px; font-size: 10px; color: var(--vc-muted); }
   .badge {
-    display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px;
-    background: var(--vc-lower); border: 1px solid var(--vc-border); color: var(--vc-text);
+    display: inline-flex; align-items: center; gap: 5px; color: var(--vc-text);
   }
   .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--tone); }
-  .control { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .control { display: flex; align-items: center; }
   .action {
-    min-height: 44px; min-width: 104px; padding: 0 18px; border-radius: 10px; cursor: pointer;
+    min-height: 44px; min-width: 70px; padding: 0 8px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--vc-border); background: var(--vc-lower); color: var(--vc-text);
-    font: inherit; font-size: 14px; font-weight: 600;
+    font: inherit; font-size: 11px; font-weight: 600;
   }
   .action:hover:not(:disabled) { border-color: var(--tone); }
   .action:focus-visible, svg:focus-visible { outline: 2px solid var(--primary-color, var(--vc-blue)); outline-offset: 2px; }
   .action:disabled { cursor: default; opacity: 0.5; }
-  .note { font-size: 12px; color: var(--vc-muted); min-height: 1em; }
+  .note { font-size: 10px; color: var(--vc-muted); }
+  .note:empty { display: none; }
   .note.error { color: var(--vc-error); }
-  .readings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; margin: 14px 0 6px; }
-  .reading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .k { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--vc-muted); white-space: nowrap; }
-  .v { font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
   .swatch { width: 14px; border-top: 2px solid var(--tone); }
   .swatch.soc { border-top-width: 1.5px; }
-  .graph { position: relative; }
+  .graph { position: relative; margin-top: 4px; }
   svg { display: block; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
-  .graph-note { position: absolute; top: 14px; left: 52px; font-size: 12px; color: var(--vc-muted); pointer-events: none; }
+  .graph-note { position: absolute; top: 8px; left: 4px; font-size: 10px; color: var(--vc-muted); pointer-events: none; }
   .graph-note.error { color: var(--vc-error); }
   .tip {
-    position: absolute; top: 8px; z-index: 1; pointer-events: none; min-width: 148px;
+    position: fixed; inset: auto; margin: 0; pointer-events: none; min-width: 148px; max-width: 220px;
     padding: 7px 9px; border-radius: 8px; background: var(--vc-lower); border: 1px solid var(--vc-border);
-    font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums;
+    color: var(--vc-text); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums;
   }
   .tip .when { font-weight: 600; }
   .tip .row { display: flex; align-items: center; gap: 6px; }
@@ -111,11 +108,7 @@ const STYLE = `
   .trace.projection { stroke-dasharray: 5 4; stroke-opacity: 0.85; }
   .area { fill: var(--vc-mauve); fill-opacity: 0.07; }
   .cursor { stroke: var(--vc-text); stroke-opacity: 0.6; }
-  @container (max-width: 420px) {
-    .head { flex-direction: column; align-items: stretch; }
-    .control { align-items: stretch; }
-    .readings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
+
 `;
 
 function el(tag, className, parent, text) {
@@ -332,11 +325,11 @@ class VictronChargingCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 6;
+    return 2;
   }
 
   getGridOptions() {
-    return { columns: 12, min_columns: 6 };
+    return { columns: 3, min_columns: 3 };
   }
 
   connectedCallback() {
@@ -385,23 +378,15 @@ class VictronChargingCard extends HTMLElement {
     el("h2", "title", heading, "Charging");
     const meta = el("div", "meta", heading);
     const badge = el("span", "badge", meta);
-    const since = el("span", "", meta);
+
     const control = el("div", "control", head);
     const button = el("button", "action", control);
     button.type = "button";
     button.addEventListener("click", () => this._act());
-    const note = el("div", "note", control);
+    const note = el("div", "note", body);
     note.setAttribute("aria-live", "polite");
 
-    const readings = el("div", "readings", body);
-    const values = {};
-    for (const [key, { label }] of Object.entries(SERIES)) {
-      const item = el("div", `reading ${key}`, readings);
-      const k = el("span", "k", item);
-      el("i", `swatch ${key}`, k);
-      k.append(label);
-      values[key] = el("span", "v", item);
-    }
+
 
     const graph = el("div", "graph", body);
     const chart = svg("svg", { tabindex: 0, role: "group" }, graph);
@@ -416,8 +401,12 @@ class VictronChargingCard extends HTMLElement {
     chart.addEventListener("blur", () => this._hideCursor());
     const graphNote = el("div", "graph-note", graph);
     const tip = el("div", "tip", graph);
+    tip.setAttribute("popover", "auto");
     tip.hidden = true;
-    this._els = { badge, since, button, note, values, graph, chart, graphNote, tip };
+    tip.addEventListener("toggle", (event) => {
+      if (event.newState === "closed") this._hideCursor();
+    });
+    this._els = { badge, button, note, graph, chart, graphNote, tip };
   }
 
   _formats() {
@@ -442,21 +431,16 @@ class VictronChargingCard extends HTMLElement {
         return new Intl.NumberFormat(undefined, options);
       }
     };
-    const parts = date({ year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23" });
+
     this._formatKey = key;
     this._format = {
-      time: date({ hour: "2-digit", minute: "2-digit", hour12 }),
-      dayTime: date({ weekday: "short", hour: "2-digit", minute: "2-digit", hour12 }),
+
       exact: date({ weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12 }),
-      day: date({ weekday: "short", day: "numeric" }),
+
       amps: number({ maximumFractionDigits: 1 }),
       signed: number({ maximumFractionDigits: 1, signDisplay: "exceptZero" }),
       percent: number({ maximumFractionDigits: 0 }),
-      // Milliseconds the configured zone is ahead of UTC at `t`, for aligned ticks.
-      offset: (t) => {
-        const p = Object.fromEntries(parts.formatToParts(t).map((x) => [x.type, Number(x.value)]));
-        return Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second) - Math.floor(t / 1000) * 1000;
-      },
+
     };
     return this._format;
   }
@@ -598,50 +582,35 @@ class VictronChargingCard extends HTMLElement {
   }
 
   _renderLive() {
-    const { badge, since, button, note, values } = this._els;
-    const f = this._formats();
+    const { badge, button, note } = this._els;
     const status = this._status();
     const label = status ? status.state : "Unavailable";
     badge.textContent = label;
     badge.dataset.tone = MODE_TONES[label] ?? "muted";
 
-    let meta = "";
-    if (status) {
-      const changed = Date.parse(status.last_changed);
-      if (Number.isFinite(changed)) {
-        meta = `since ${(Date.now() - changed > 20 * HOUR ? f.dayTime : f.time).format(changed)}`;
-      }
-      const { remaining_seconds: remaining, duration_seconds: duration } = status.attributes;
-      if (status.attributes.phase === RAMPING && status.attributes.window_open === true && finite(remaining) && finite(duration)) {
-        meta += ` · ${Math.ceil(remaining / 60)} of ${Math.round(duration / 60)} min left`;
-      }
-    }
-    since.textContent = meta;
+
 
     const { restore, blocked } = this._control();
     button.textContent = this._pending ? (this._pending.restore ? "Restoring…" : "Throttling…") : restore ? "Restore" : "Throttle";
     button.disabled = Boolean(blocked || this._pending);
+    button.title = blocked ?? "";
     button.setAttribute("aria-busy", String(Boolean(this._pending)));
     button.dataset.tone = restore ? "sage" : "amber";
     note.className = this._notice?.error ? "note error" : "note";
-    note.textContent = this._pending ? "Waiting for telemetry…" : this._notice?.text ?? blocked ?? "";
+    note.textContent = this._pending ? "Waiting for telemetry…" : this._notice?.text ?? "";
 
-    for (const key of NUMERIC) {
-      const state = this._states[key];
-      values[key].textContent = this._formatValue(key, parseState(key, state?.state));
-    }
+
   }
 
   _renderGraph() {
     const { chart, graphNote } = this._els;
     const width = this._width;
     if (!width) return;
-    const f = this._formats();
-    const height = Math.round(clamp(width * 0.45, 190, 300));
-    const left = 44;
-    const right = width - 38;
-    const top = 14;
-    const bottom = height - 34;
+    const height = 48;
+    const left = 2;
+    const right = width - 2;
+    const top = 3;
+    const bottom = height - 11;
     const bandY = bottom + 4;
     const now = Date.now();
     const t0 = now - this._config.history_hours * HOUR;
@@ -680,23 +649,9 @@ class VictronChargingCard extends HTMLElement {
 
     for (let v = yMin; v <= yMax + yStep / 2; v += yStep) {
       svg("line", { class: "gridline", x1: left, x2: right, y1: round(Y(v)), y2: round(Y(v)) }, chart);
-      svg("text", { class: "axis", x: left - 6, y: round(Y(v)) + 4, "text-anchor": "end" }, chart).textContent = f.amps.format(v);
-    }
-    svg("text", { class: "axis", x: left - 6, y: top - 4, "text-anchor": "end" }, chart).textContent = "A";
-    for (const v of [0, 50, 100]) {
-      svg("text", { class: "axis", x: right + 6, y: round(S(v)) + 4 }, chart).textContent = `${v}%`;
+
     }
 
-    const span = t1 - t0;
-    const maxTicks = Math.max(2, Math.floor((right - left) / 76));
-    const step = TIME_STEPS.find((s) => span / s <= maxTicks) ?? TIME_STEPS[TIME_STEPS.length - 1];
-    const offset = f.offset(t0);
-    for (let t = Math.ceil((t0 + offset) / step) * step - offset; t <= t1; t += step) {
-      const x = X(t);
-      if (x < left + 18 || x > right - 18) continue;
-      svg("text", { class: "axis", x: round(x), y: height - 6, "text-anchor": "middle" }, chart)
-        .textContent = (step >= 1440 * MINUTE ? f.day : f.time).format(t);
-    }
 
     const plot = svg("g", { "clip-path": "url(#plot)" }, chart);
     const status = series.status;
@@ -732,9 +687,7 @@ class VictronChargingCard extends HTMLElement {
 
     const nowX = round(X(now));
     svg("line", { class: "now", x1: nowX, x2: nowX, y1: top, y2: bandY + 6 }, chart);
-    if (projection) {
-      svg("text", { class: "axis", x: nowX, y: top - 4, "text-anchor": "middle" }, chart).textContent = "Now";
-    }
+
 
     this._geom = { left, right, top, bottom: bandY + 6, t0, t1, now, X, transitions, projection, series };
     if (this._cursor) this._setCursor(clamp(this._cursor.t, t0, t1), this._cursor.transition);
@@ -774,6 +727,7 @@ class VictronChargingCard extends HTMLElement {
   _hideCursor() {
     this._cursor = null;
     this._cursorLine?.remove();
+    if (this._els.tip.matches(":popover-open")) this._els.tip.hidePopover();
     this._els.tip.hidden = true;
   }
 
@@ -805,9 +759,12 @@ class VictronChargingCard extends HTMLElement {
       for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(key, valueAt(g.series[key], t)));
     }
     tip.hidden = false;
+    if (!tip.matches(":popover-open")) tip.showPopover();
     const width = tip.offsetWidth;
-    const leftPos = x + 12 + width > this._width ? x - 12 - width : x + 12;
-    tip.style.left = `${Math.max(0, leftPos)}px`;
+    const rect = chart.getBoundingClientRect();
+    tip.style.left = `${clamp(rect.left + x + 8, 8, Math.max(8, window.innerWidth - width - 8))}px`;
+    const top = rect.bottom + 4 + tip.offsetHeight > window.innerHeight - 8 ? rect.top - tip.offsetHeight - 4 : rect.bottom + 4;
+    tip.style.top = `${Math.max(8, top)}px`;
   }
 }
 
