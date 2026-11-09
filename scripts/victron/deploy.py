@@ -149,17 +149,20 @@ def owned(node, bundle):
     return node["id"] == bundle["tabId"] or node.get("z") == bundle["tabId"]
 
 
-def apply_flow(client, bundle, desired):
+def apply_flow(client, bundle, desired, credentials=None):
     current = client.request("/flows")
     existing = [node for node in current["flows"] if owned(node, bundle)]
-    if sorted(existing, key=lambda node: node["id"]) == sorted(
+    if credentials is None and sorted(existing, key=lambda node: node["id"]) == sorted(
         desired, key=lambda node: node["id"]
     ):
         return
     others = [node for node in current["flows"] if not owned(node, bundle)]
-    client.request(
-        "/flows", {"rev": current["rev"], "flows": others + desired}, deployment="flows"
-    )
+    deployment = deepcopy(desired)
+    for node in deployment:
+        if credentials is not None and node["id"] in credentials:
+            node["credentials"] = credentials[node["id"]]
+    configuration = {"rev": current["rev"], "flows": others + deployment}
+    client.request("/flows", configuration, deployment="flows")
     actual = client.request("/flows")["flows"]
     if [node for node in actual if not owned(node, bundle)] != others:
         raise RuntimeError("Unrelated Node-RED configuration changed")
@@ -247,6 +250,25 @@ def update_controls(command, rest, bundle, dashboard, script):
         raise RuntimeError("Home Assistant dashboard readback differs")
 
 
+def wait_for_telemetry(rest, bundle):
+    for _ in range(60):
+        try:
+            readings = [
+                rest("/api/states/" + sensor["entityId"])
+                for sensor in bundle["telemetry"]["sensors"]
+            ]
+            if all(
+                reading["state"] not in ("unknown", "unavailable")
+                for reading in readings
+            ):
+                return
+        except HTTPError as error:
+            if error.code != 404:
+                raise
+        time.sleep(1)
+    raise RuntimeError("Charging telemetry did not become available in Home Assistant")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("deploy", "status", "full", "rollback"))
@@ -263,6 +285,20 @@ def main():
         text=True,
     )
     bundle = json.loads(result.stdout)
+    mqtt_credentials = None
+    if args.action == "deploy":
+        mqtt_user = os.environ.get("MQTT_USERNAME")
+        mqtt_password = os.environ.get("MQTT_PASSWORD")
+        if not mqtt_user or not mqtt_password:
+            raise RuntimeError(
+                "MQTT_USERNAME and MQTT_PASSWORD are required for telemetry deployment"
+            )
+        mqtt_credentials = {
+            bundle["telemetry"]["brokerId"]: {
+                "user": mqtt_user,
+                "password": mqtt_password,
+            }
+        }
     password = os.environ.get("VICTRON_PASSWORD")
     if not password:
         raise RuntimeError("VICTRON_PASSWORD is required")
@@ -323,16 +359,14 @@ def main():
                         },
                     )
                     desired_dashboard = deepcopy(dashboard)
-                    desired_dashboard["views"] = [
-                        view
-                        for view in dashboard["views"]
-                        if view.get("path") != controls["view"]["path"]
-                    ] + [controls["view"]]
+                    desired_dashboard["views"] = [controls["view"]]
                     configure_control(command, rest, bundle, None)
+                    apply_flow(client, bundle, bundle["flows"], mqtt_credentials)
+                    wait_for_telemetry(rest, bundle)
                     update_controls(
                         command, rest, bundle, desired_dashboard, controls["script"]
                     )
-                    apply_flow(client, bundle, bundle["flows"])
+
                     print(
                         json.dumps(
                             {
@@ -349,24 +383,36 @@ def main():
                         raise RuntimeError("Rollback requires --backup")
                     snapshot = json.loads(args.backup.read_text())
                     full_charging(client, bundle)
-                    previous_views = [
-                        view
-                        for view in snapshot["dashboard"]["views"]
-                        if view.get("path") == controls["view"]["path"]
-                    ]
-                    dashboard["views"] = [
-                        view
-                        for view in dashboard["views"]
-                        if view.get("path") != controls["view"]["path"]
-                    ] + previous_views
                     update_controls(
-                        command, rest, bundle, dashboard, snapshot["script"]
+                        command, rest, bundle, snapshot["dashboard"], snapshot["script"]
                     )
                     apply_flow(
                         client,
                         bundle,
                         [node for node in snapshot["flows"] if owned(node, bundle)],
                     )
+                    if not any(
+                        node["id"] == bundle["telemetry"]["brokerId"]
+                        for node in snapshot["flows"]
+                    ):
+                        topics = [
+                            sensor["topic"] for sensor in bundle["telemetry"]["sensors"]
+                        ]
+                        topics += [
+                            bundle["telemetry"]["availabilityTopic"],
+                            bundle["telemetry"]["stateTopic"],
+                        ]
+                        for topic in topics:
+                            rest(
+                                "/api/services/mqtt/publish",
+                                {
+                                    "topic": topic,
+                                    "payload": "",
+                                    "retain": True,
+                                    "qos": 1,
+                                },
+                                method="POST",
+                            )
                     configure_control(
                         command, rest, bundle, snapshot["control_disabled_by"]
                     )
@@ -379,6 +425,8 @@ def main():
                         )
                     )
     finally:
+        if mqtt_credentials is not None:
+            mqtt_credentials.clear()
         client.close()
 
 

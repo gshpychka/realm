@@ -2,6 +2,68 @@ let
   tab = "victron-charging-ramp";
   controller = "victron-charging-ramp-controller";
   chargeLimitEntity = "number.cerbo_ess_max_charge_current";
+  brokerId = "victron-charging-ramp-mqtt";
+  telemetryRoot = "realm/victron/charging-ramp";
+  sensors =
+    builtins.map
+      (
+        spec:
+        let
+          id = "victron_charging_ramp_${spec.key}";
+        in
+        {
+          entityId = "sensor.${id}";
+          topic = "homeassistant/sensor/${id}/config";
+          payload = builtins.toJSON (
+            {
+              unique_id = id;
+              default_entity_id = "sensor.${id}";
+              state_topic = "${telemetryRoot}/state";
+              availability_topic = "${telemetryRoot}/availability";
+              payload_available = "online";
+              payload_not_available = "offline";
+              expire_after = 45;
+              enabled_by_default = true;
+              device = {
+                identifiers = [ "realm_victron_charging_ramp" ];
+                name = "Victron charging ramp";
+                manufacturer = "realm";
+                model = "Node-RED charging controller";
+              };
+            }
+            // spec.config
+          );
+        }
+      )
+      [
+        {
+          key = "status";
+          config = {
+            name = "Status";
+            icon = "mdi:state-machine";
+            value_template = "{{ value_json.state }}";
+            json_attributes_topic = "${telemetryRoot}/state";
+          };
+        }
+        {
+          key = "elapsed";
+          config = {
+            name = "Elapsed";
+            device_class = "duration";
+            unit_of_measurement = "s";
+            value_template = "{{ value_json.elapsed_seconds }}";
+          };
+        }
+        {
+          key = "remaining";
+          config = {
+            name = "Remaining";
+            device_class = "duration";
+            unit_of_measurement = "s";
+            value_template = "{{ value_json.remaining_seconds }}";
+          };
+        }
+      ];
   system = {
     service = "com.victronenergy.system";
     name = "Venus system";
@@ -37,6 +99,11 @@ in
   overrideId = "victron-charging-ramp-full";
   limitService = settings.service;
   limitPath = limit.path;
+  telemetry = {
+    inherit brokerId sensors;
+    availabilityTopic = "${telemetryRoot}/availability";
+    stateTopic = "${telemetryRoot}/state";
+  };
   flows = [
     {
       id = tab;
@@ -154,20 +221,22 @@ in
       name = "30-minute charging ramp";
       func = builtins.readFile ./charging-ramp.js;
       initialize = ''
-        context.set("state", null);
         context.set("timer", null);
       '';
       finalize = ''
         const timer = context.get("timer");
         if (timer) clearInterval(timer);
       '';
-      outputs = 1;
+      outputs = 2;
       timeout = 0;
       noerr = 0;
       libs = [ ];
       x = 620;
       y = 180;
-      wires = [ [ "victron-charging-ramp-output" ] ];
+      wires = [
+        [ "victron-charging-ramp-output" ]
+        [ "victron-charging-ramp-state" ]
+      ];
     }
     {
       id = "victron-charging-ramp-output";
@@ -181,6 +250,120 @@ in
       outputs = 0;
       x = 940;
       y = 180;
+      wires = [ ];
+    }
+    {
+      id = brokerId;
+      type = "mqtt-broker";
+      z = tab;
+      name = "Home Assistant telemetry";
+      broker = "homeassistant.glib.sh";
+      port = 1883;
+      clientid = "realm-victron-charging-ramp";
+      autoConnect = true;
+      usetls = false;
+      protocolVersion = 4;
+      keepalive = 15;
+      cleansession = true;
+      birthTopic = "${telemetryRoot}/availability";
+      birthPayload = "online";
+      birthQos = "1";
+      birthRetain = "true";
+      closeTopic = "${telemetryRoot}/availability";
+      closePayload = "offline";
+      closeQos = "1";
+      closeRetain = "true";
+      willTopic = "${telemetryRoot}/availability";
+      willPayload = "offline";
+      willQos = "1";
+      willRetain = "true";
+    }
+    {
+      id = "victron-charging-ramp-state";
+      type = "mqtt out";
+      z = tab;
+      name = "Charging telemetry";
+      broker = brokerId;
+      topic = "${telemetryRoot}/state";
+      qos = "0";
+      retain = "false";
+      x = 950;
+      y = 260;
+      wires = [ ];
+    }
+    {
+      id = "victron-charging-ramp-heartbeat";
+      type = "inject";
+      z = tab;
+      name = "Telemetry heartbeat";
+      props = [
+        { p = "payload"; }
+        {
+          p = "topic";
+          vt = "str";
+        }
+      ];
+      topic = "status";
+      payloadType = "date";
+      repeat = "10";
+      once = true;
+      onceDelay = 1;
+      x = 320;
+      y = 340;
+      wires = [ [ controller ] ];
+    }
+    {
+      id = "victron-charging-ramp-discover";
+      type = "inject";
+      z = tab;
+      name = "Register charging sensors";
+      props = [ { p = "payload"; } ];
+      payloadType = "date";
+      repeat = "";
+      once = true;
+      onceDelay = 1;
+      x = 320;
+      y = 420;
+      wires = [ [ "victron-charging-ramp-discovery" ] ];
+    }
+    {
+      id = "victron-charging-ramp-discovery";
+      type = "function";
+      z = tab;
+      name = "Home Assistant discovery";
+      func = ''
+        if (msg.status && msg.status.fill !== "green") return null;
+        return [${builtins.toJSON (builtins.map (sensor: { inherit (sensor) topic payload; }) sensors)}];
+      '';
+      outputs = 1;
+      timeout = 0;
+      noerr = 0;
+      libs = [ ];
+      x = 610;
+      y = 420;
+      wires = [ [ "victron-charging-ramp-discovery-output" ] ];
+    }
+    {
+      id = "victron-charging-ramp-mqtt-status";
+      type = "status";
+      z = tab;
+      name = "Broker connection";
+      scope = [ "victron-charging-ramp-state" ];
+      x = 320;
+      y = 500;
+      wires = [ [ "victron-charging-ramp-discovery" ] ];
+    }
+    {
+      id = "victron-charging-ramp-discovery-output";
+      type = "mqtt out";
+      z = tab;
+      name = "Retained sensor definitions";
+      broker = brokerId;
+      topic = "";
+      qos = "1";
+      retain = "true";
+      x = 950;
+      y = 420;
       wires = [ ];
     }
   ];
@@ -204,14 +387,51 @@ in
       ];
     };
     view = {
-      title = "Charging";
-      path = "charging";
-      type = "sections";
-      max_columns = 1;
-      sections = [
+      title = "Victron";
+      path = "overview";
+      type = "panel";
+      cards = [
         {
-          type = "grid";
+          type = "vertical-stack";
           cards = [
+            {
+              type = "grid";
+              columns = 2;
+              square = false;
+              cards = [
+                {
+                  type = "markdown";
+                  entity_id = [ chargeLimitEntity ];
+                  content = ''
+                    **Current charging limit**
+
+                    {% set limit = states('${chargeLimitEntity}') %}
+                    {% if is_number(limit) %}
+                    {{ 'Unrestricted' if limit | float < 0 else limit ~ ' A' }}
+                    {% else %}
+                    Unavailable
+                    {% endif %}
+
+                    Inverter and battery limits apply.
+                  '';
+                }
+                {
+                  type = "tile";
+                  entity = "sensor.victron_charging_ramp_status";
+                  name = "Charging status";
+                }
+                {
+                  type = "tile";
+                  entity = "sensor.victron_charging_ramp_elapsed";
+                  name = "Ramp elapsed";
+                }
+                {
+                  type = "tile";
+                  entity = "sensor.victron_charging_ramp_remaining";
+                  name = "Ramp remaining";
+                }
+              ];
+            }
             {
               type = "shortcut";
               label = "Full charging now";
@@ -222,6 +442,7 @@ in
                 confirmation.text = "Cancel the charging ramp until the next grid outage?";
               };
             }
+            { type = "custom:victron-live-card"; }
           ];
         }
       ];

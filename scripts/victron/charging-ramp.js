@@ -18,6 +18,24 @@ function save() {
     ? `${state.requestedLimit}/${fullCurrent} A; ${Math.ceil((duration - state.elapsed) / 60)} min remaining`
     : state.mode;
   node.status({ fill: state.mode === "waiting" ? "yellow" : "green", shape: "dot", text });
+  const labels = {
+    "ramping": "Ramping",
+    "normal charging": "Normal charging",
+    "outage: ramp armed": "Waiting for grid",
+    "override: full charging until next outage": "Full charging override",
+    "generator or shore charging": "Generator / shore charging",
+  };
+  node.send([null, { payload: {
+    state: labels[state.mode] || "Waiting for data",
+    phase: state.mode,
+    elapsed_seconds: state.elapsed,
+    remaining_seconds: state.mode === "ramping" ? Math.max(0, duration - state.elapsed) : 0,
+    duration_seconds: duration,
+    target_current_a: fullCurrent,
+    charging_limit_a: state.observedLimit,
+    override: state.override,
+    ready: state.ready,
+  } }]);
 }
 
 function stopTimer() {
@@ -28,7 +46,7 @@ function stopTimer() {
 
 function setLimit(value) {
   state.requestedLimit = value;
-  node.send({ payload: value });
+  node.send([{ payload: value }, null]);
   save();
 }
 
@@ -39,6 +57,23 @@ function fullCharging() {
   setLimit(normalLimit);
 }
 
+function startTimer() {
+  if (context.get("timer")) return;
+  const timer = setInterval(() => {
+    if (state.mode !== "ramping" || state.source !== 1) return;
+    // Timer steps preserve the ramp rate across wall-clock corrections.
+    state.elapsed = Math.min(duration, state.elapsed + stepSeconds);
+    if (state.elapsed === duration) {
+      stopTimer();
+      state.mode = "normal charging";
+      setLimit(normalLimit);
+    } else {
+      setLimit(Math.round(fullCurrent * state.elapsed / duration));
+    }
+  }, stepSeconds * 1000);
+  context.set("timer", timer);
+}
+
 function applySource() {
   stopTimer();
   state.elapsed = 0;
@@ -47,19 +82,7 @@ function applySource() {
   } else if (state.source === 1) {
     state.mode = "ramping";
     setLimit(0);
-    const timer = setInterval(() => {
-      if (state.mode !== "ramping" || state.source !== 1) return;
-      // Timer steps preserve the ramp rate across wall-clock corrections.
-      state.elapsed = Math.min(duration, state.elapsed + stepSeconds);
-      if (state.elapsed === duration) {
-        stopTimer();
-        state.mode = "normal charging";
-        setLimit(normalLimit);
-      } else {
-        setLimit(Math.round(fullCurrent * state.elapsed / duration));
-      }
-    }, stepSeconds * 1000);
-    context.set("timer", timer);
+    startTimer();
   } else if (state.source === 2 || state.source === 3) {
     state.mode = "generator or shore charging";
     setLimit(normalLimit);
@@ -117,5 +140,6 @@ if (!state.ready && state.source !== null && state.observedLimit !== null) {
   state.ready = true;
   applySource();
 }
+if (state.ready && state.source === 1 && state.mode === "ramping") startTimer();
 save();
 return null;
