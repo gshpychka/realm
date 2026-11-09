@@ -55,15 +55,11 @@ const STYLE = `
     box-shadow: none; overflow: hidden;
     font-family: var(--victron-live-font, "Museo Sans Rounded", ui-rounded, system-ui, sans-serif);
   }
-  .card { box-sizing: border-box; min-height: 238px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .card { box-sizing: border-box; min-height: 238px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
   .head { display: contents; }
   .head > div:first-child { flex: 1; }
   .title { margin: 0; font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--vc-muted); }
-  .meta { display: flex; align-items: center; margin-top: 8px; font-size: 20px; font-weight: 600; color: var(--vc-text); }
-  .badge {
-    display: inline-flex; align-items: center; gap: 8px; color: var(--vc-text);
-  }
-  .badge::before { content: ""; width: 9px; height: 9px; flex-shrink: 0; border-radius: 50%; background: var(--tone); }
+
   .control { display: flex; align-items: stretch; order: 3; }
   .action {
     min-height: 44px; min-width: 70px; padding: 0 8px; border-radius: 8px; cursor: pointer;
@@ -377,9 +373,7 @@ class VictronChargingCard extends HTMLElement {
     const body = el("div", "card", card);
     const head = el("div", "head", body);
     const heading = el("div", "", head);
-    el("h2", "title", heading, "Charging");
-    const meta = el("div", "meta", heading);
-    const badge = el("span", "badge", meta);
+    el("h2", "title", heading, "Charging power");
 
     const control = el("div", "control", head);
     const button = el("button", "action", control);
@@ -408,7 +402,7 @@ class VictronChargingCard extends HTMLElement {
     tip.addEventListener("toggle", (event) => {
       if (event.newState === "closed") this._hideCursor();
     });
-    this._els = { badge, button, note, graph, chart, graphNote, tip };
+    this._els = { button, note, graph, chart, graphNote, tip };
   }
 
   _formats() {
@@ -584,11 +578,7 @@ class VictronChargingCard extends HTMLElement {
   }
 
   _renderLive() {
-    const { badge, button, note } = this._els;
-    const status = this._status();
-    const label = status ? status.state : "Unavailable";
-    badge.textContent = modeLabel(label);
-    badge.dataset.tone = MODE_TONES[label] ?? "muted";
+    const { button, note } = this._els;
 
 
 
@@ -608,7 +598,7 @@ class VictronChargingCard extends HTMLElement {
     const { chart, graphNote } = this._els;
     const width = this._width;
     if (!width) return;
-    const height = 48;
+    const height = 120;
     const left = 2;
     const right = width - 2;
     const top = 3;
