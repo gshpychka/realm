@@ -11,14 +11,16 @@ const state = flow.get("gridRamp") || {
 const numeric = value => typeof value === "number" && Number.isFinite(value) ? value : null;
 const flag = value => value === 1 || value === true ? true : value === 0 || value === false ? false : null;
 const settings = () => state.activeSettings || state.configuration?.values;
+const enabled = () => state.configuration?.values.enabled !== false;
 const duration = () => (settings()?.duration_minutes || 0) * 60;
 function save() {
   flow.set("gridRamp", state);
   const active = settings(), configured = state.configuration?.values;
-  const labels = { ramping: "Ramping", "normal input": "Normal input", "override: normal input": "Input override", "outage: ramp armed": "No grid power" };
+  const labels = { disabled: "Off", ramping: "Ramping", "normal input": "Normal input", "override: normal input": "Input override", "outage: ramp armed": "No grid power" };
   node.status({ fill: state.ready ? "green" : "yellow", shape: "dot", text: state.mode });
   node.send([null, null, { payload: {
     state: labels[state.mode] || "Waiting for data", phase: state.mode,
+    enabled: configured?.enabled ?? null,
     elapsed_seconds: state.windowOpen ? state.elapsed : 0,
     remaining_seconds: state.windowOpen ? Math.max(0, duration() - state.elapsed) : 0,
     duration_seconds: active ? duration() : null,
@@ -63,10 +65,11 @@ function finishWindow() {
   state.windowOpen = false;
   state.override = false;
   state.activeSettings = null;
-  state.mode = "normal input";
+  state.mode = enabled() ? "normal input" : "disabled";
   normalInput();
 }
 function beginWindow() {
+  if (!enabled()) return;
   state.windowOpen = true;
   state.elapsed = 0;
   state.override = false;
@@ -79,7 +82,7 @@ function releaseInput() {
   normalInput();
 }
 function applyRamp() {
-  if (!state.ready || state.available !== true || !state.windowOpen || state.override || !state.activeSettings) return;
+  if (!enabled() || !state.ready || state.available !== true || !state.windowOpen || state.override || !state.activeSettings) return;
   state.mode = "ramping";
   const active = state.activeSettings;
   const amps = active.start_current_a + (active.target_current_a - active.start_current_a) * state.elapsed / duration();
@@ -95,7 +98,7 @@ function applyRamp() {
   }
 }
 function startTimer() {
-  if (context.get("timer") || !state.windowOpen || !state.activeSettings) return;
+  if (!enabled() || context.get("timer") || !state.windowOpen || !state.activeSettings) return;
   context.set("timer", setInterval(() => {
     state.elapsed = Math.min(duration(), state.elapsed + stepSeconds);
     if (state.elapsed >= duration()) finishWindow();
@@ -104,6 +107,7 @@ function startTimer() {
   }, stepSeconds * 1000));
 }
 function applyAvailability() {
+  if (!enabled()) return finishWindow();
   if (state.available === false) {
     state.mode = "outage: ramp armed";
     state.requestedPower = 0;
@@ -114,6 +118,7 @@ function applyAvailability() {
   else { state.mode = "normal input"; normalInput(); }
 }
 const wasReady = state.ready;
+const wasEnabled = enabled();
 let availabilityChanged = false;
 if (msg.topic === "configuration") {
   state.configuration = msg.payload;
@@ -161,7 +166,7 @@ if (msg.topic === "configuration") {
     state.requestedLimit = normalLimit;
     state.sentLimit = null;
     state.override = state.windowOpen;
-    state.mode = "override: normal input";
+    state.mode = enabled() ? "override: normal input" : "disabled";
     ignore(false);
     node.error("Input limit write failed: " + status.text);
     save();
@@ -171,15 +176,18 @@ if (msg.topic === "configuration") {
 state.ready = !!state.configuration && state.dischargeAllowed === true && state.available !== null &&
   state.observedLimit !== null && state.observedIgnore !== null;
 if (state.dischargeAllowed === false && (state.windowOpen || state.requestedIgnore === true)) finishWindow();
-if (!state.ready) {
+if (state.configuration && !enabled()) {
+  if (wasEnabled || state.windowOpen || state.requestedIgnore === true) finishWindow();
+  state.mode = "disabled";
+} else if (!state.ready) {
   if (state.requestedIgnore === true || state.requestedLimit !== null && state.requestedLimit < normalLimit) {
     state.override = state.windowOpen;
     normalInput();
   }
   state.mode = "waiting";
-} else if (!wasReady || availabilityChanged) applyAvailability();
+} else if (!wasReady || availabilityChanged || wasEnabled !== enabled()) applyAvailability();
 if (msg.topic === "full") releaseInput();
-else if (msg.topic === "throttle" && state.ready && state.available === true) {
+else if (msg.topic === "throttle" && enabled() && state.ready && state.available === true) {
   if (!state.windowOpen) beginWindow();
   state.override = false;
   applyRamp();

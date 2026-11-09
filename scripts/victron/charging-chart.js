@@ -1,27 +1,26 @@
-// Recorded whole-AC-input power and the controller's remaining planned allowance.
+// Recorded grid power and active input limits.
 
 const TAG = "victron-charging-chart";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const ENTITY_OPTIONS = {
   status: "status_entity",
   power: "power_entity",
-  battery: "battery_power_entity",
-  limit: "limit_entity",
-  voltage: "voltage_entity",
-  soc: "soc_entity",
+
 };
 const SETTINGS_ENTITIES = {
+  enabled_entity: "switch.victron_grid_ramp_enabled",
+  skip_entity: "script.victron_full_charging_now",
   duration_entity: "number.victron_grid_ramp_duration",
   start_current_entity: "number.victron_grid_ramp_start_current",
   target_current_entity: "number.victron_grid_ramp_target_current",
   reset_defaults_entity: "button.victron_grid_ramp_reset_defaults",
 };
 const REQUIRED = [...Object.values(ENTITY_OPTIONS), "history_hours"];
-const NUMERIC = ["power", "battery", "ceiling", "soc"];
+const NUMERIC = ["power", "ceiling"];
 // Bounds the recorder query; long windows are additionally decimated per pixel.
 const MAX_HISTORY_HOURS = 168;
 
-const RAMPING = "ramping";
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const REFRESH_MS = MINUTE;
@@ -41,14 +40,12 @@ const MODE_TONES = {
   "Input override": "blue",
   "No grid power": "muted",
   "Waiting for data": "muted",
+  "Off": "muted",
 };
 const modeLabel = (mode) => Object.hasOwn(MODE_TONES, mode) ? mode : "Mode unavailable";
 const SERIES = {
-  power: { label: "Grid", unit: "W", description: "Grid import power" },
-  battery: { label: "Battery", unit: "W", description: "Negative power supplies household loads" },
-  ceiling: { label: "Limit", unit: "W", description: "Nominal input ceiling; plotted during ramping" },
-  planned: { label: "Plan", unit: "W", description: "Planned input allowance" },
-  soc: { label: "SoC", unit: "%" },
+  power: { label: "Grid", unit: "W" },
+  ceiling: { label: "Limit", unit: "W" },
 };
 
 const STYLE = `
@@ -56,10 +53,13 @@ const STYLE = `
     --vc-text: var(--primary-text-color); --vc-muted: var(--secondary-text-color);
     --vc-border: var(--divider-color); --vc-amber: var(--warning-color);
     --vc-sage: var(--success-color); --vc-blue: var(--info-color);
-    --vc-mauve: var(--purple-color, var(--accent-color));
+
     display: block; width: 100%; height: 124px;
   }
   .graph { position: relative; height: 100%; }
+  .legend { position: absolute; top: 2px; left: 4px; display: flex; gap: 12px; font-size: 14px; line-height: 18px; color: var(--vc-muted); pointer-events: none; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend [hidden] { display: none; }
   .settings-button, .settings-close {
     appearance: none; border: 0; border-radius: 50%; background: var(--ha-card-background, var(--card-background-color));
     color: var(--vc-muted); cursor: pointer; width: 32px; height: 32px; font-size: 20px;
@@ -74,10 +74,10 @@ const STYLE = `
   .settings-dialog::backdrop { background: rgb(0 0 0 / 45%); }
   .settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .settings-heading h2 { margin: 0; font-size: 20px; }
-  .settings-note { margin: 12px 0 0; color: var(--vc-muted); font-size: 14px; }
+
   svg { display: block; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
   svg:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
-  .graph-note { position: absolute; top: 8px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
+  .graph-note { position: absolute; top: 25px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
   .graph-note.error { color: var(--error-color); }
   .tip {
     position: fixed; inset: auto; margin: 0; box-sizing: border-box;
@@ -94,23 +94,20 @@ const STYLE = `
   .tip button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
   .muted { color: var(--vc-muted); }
   .swatch { width: 12px; border-top: 2px solid var(--tone); }
-  .swatch.soc { border-top-width: 1.5px; }
-  .tone-amber, .ceiling, .planned { --tone: var(--vc-amber); }
+  .tone-amber, .ceiling { --tone: var(--vc-amber); }
   .tone-sage, .power { --tone: var(--vc-sage); }
-  .tone-blue, .battery { --tone: var(--vc-blue); }
+  .tone-blue { --tone: var(--vc-blue); }
   .tone-text { --tone: var(--vc-text); }
   .tone-muted { --tone: var(--vc-muted); }
-  .soc { --tone: var(--vc-mauve); }
+
   .gridline { stroke: var(--vc-border); stroke-width: 1; }
   .band { fill: var(--tone); opacity: 0.75; }
   .marker { stroke: var(--vc-text); stroke-opacity: 0.28; stroke-dasharray: 2 3; }
   .now { stroke: var(--vc-text); stroke-opacity: 0.35; }
   .trace { fill: none; stroke: var(--tone); stroke-linejoin: round; stroke-linecap: round; }
   .trace.power { stroke-width: 2; }
-  .trace.battery, .trace.ceiling, .trace.planned { stroke-width: 1.5; stroke-linecap: butt; }
-  .trace.soc { stroke-width: 1.25; stroke-opacity: 0.8; }
-  .trace.projection { stroke-dasharray: 5 4; stroke-opacity: 0.85; }
-  .area { fill: var(--vc-mauve); fill-opacity: 0.035; }
+  .trace.ceiling { stroke-width: 1.5; stroke-dasharray: 4 3; stroke-linecap: butt; }
+  .area { fill: var(--vc-sage); fill-opacity: 0.1; }
   .cursor { stroke: var(--vc-text); stroke-opacity: 0.6; }
 `;
 
@@ -138,7 +135,7 @@ function parseState(key, state) {
   if (key === "status") return state;
   const n = Number(state);
   if (!Number.isFinite(n)) return null;
-  if (key === "soc" && (n < 0 || n > 100)) return null;
+
   return n;
 }
 
@@ -305,7 +302,7 @@ class VictronChargingChart extends HTMLElement {
     const settings = { ...SETTINGS_ENTITIES };
     for (const key of Object.keys(settings)) {
       const id = config[key] ?? settings[key];
-      const domain = key === "reset_defaults_entity" ? "button" : "number";
+      const domain = { enabled_entity: "switch", skip_entity: "script", reset_defaults_entity: "button" }[key] || "number";
       if (typeof id !== "string" || !new RegExp(`^${domain}\\.[a-z0-9_]+$`).test(id)) {
         throw new Error(`${key} must be a ${domain} entity id.`);
       }
@@ -400,7 +397,7 @@ class VictronChargingChart extends HTMLElement {
     el("style", "", root, STYLE);
     const graph = el("div", "graph", root);
     const chart = svg("svg", { tabindex: 0, role: "group" }, graph);
-    chart.setAttribute("aria-label", "Grid input power history. Click to pin the inspector; arrow keys move it, Page Up and Page Down jump between mode changes.");
+    chart.setAttribute("aria-label", "Grid power and input limit history. Click to pin the inspector; arrow keys move it, Page Up and Page Down jump between mode changes.");
     // Click/tap pins until light dismiss; hover only previews and never moves a pinned inspector.
     chart.addEventListener("click", (e) => {
       this._pinned = true;
@@ -418,6 +415,12 @@ class VictronChargingChart extends HTMLElement {
       else if (!this._pinned) this._hideCursor();
     });
     const graphNote = el("div", "graph-note", graph);
+    const legend = el("div", "legend", graph);
+    for (const key of NUMERIC) {
+      const item = el("span", "", legend);
+      el("i", `swatch ${key}`, item);
+      el("span", "", item, SERIES[key].label);
+    }
     const settings = el("button", "settings-button", graph, "⚙");
     settings.type = "button";
     settings.title = "Ramp settings";
@@ -436,7 +439,7 @@ class VictronChargingChart extends HTMLElement {
     tip.addEventListener("toggle", (event) => {
       if (event.newState === "closed") this._hideCursor();
     });
-    this._els = { graph, chart, graphNote, tip };
+    this._els = { graph, chart, graphNote, legend, tip };
   }
 
   _closeSettings() {
@@ -464,7 +467,7 @@ class VictronChargingChart extends HTMLElement {
     close.setAttribute("aria-label", "Close settings");
     close.addEventListener("click", () => this._closeSettings());
     const content = el("div", "", dialog, "Loading settings…");
-    el("p", "settings-note", dialog, "Changes apply to the next ramp.");
+
     const config = this._config;
     try {
       dialog.showModal();
@@ -474,6 +477,9 @@ class VictronChargingChart extends HTMLElement {
         type: "entities",
         show_header_toggle: false,
         entities: [
+          { entity: config.enabled_entity, name: "Automatic ramp" },
+          { type: "button", entity: config.skip_entity, name: "Current ramp", icon: "mdi:skip-next", action_name: "Skip once", tap_action: { action: "perform-action", perform_action: config.skip_entity } },
+          { type: "section", label: "Next ramp" },
           { entity: config.duration_entity, name: "Duration" },
           { entity: config.start_current_entity, name: "Start current" },
           { entity: config.target_current_entity, name: "Target current" },
@@ -519,17 +525,15 @@ class VictronChargingChart extends HTMLElement {
     this._format = {
       exact: date({ weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12 }),
       power: number({ maximumFractionDigits: 2 }),
-      signed: number({ maximumFractionDigits: 2, signDisplay: "exceptZero" }),
-      percent: number({ maximumFractionDigits: 0 }),
+
     };
     return this._format;
   }
 
-  _formatValue(key, v) {
+  _formatValue(v) {
     const f = this._formats();
     if (!finite(v)) return "Unavailable";
-    if (key === "soc") return `${f.percent.format(v)} %`;
-    return `${(key === "battery" ? f.signed : f.power).format(v / 1000)} kW`;
+    return `${f.power.format(v / 1000)} kW`;
   }
 
   _appendLive(key, state) {
@@ -605,48 +609,25 @@ class VictronChargingChart extends HTMLElement {
     });
   }
 
-  _status() {
-    const status = this._states.status;
-    return status && parseState("status", status.state) !== null ? status : null;
-  }
-
-  _projection(now) {
-    const status = this._status();
-    const a = status?.attributes ?? {};
-    const {
-      elapsed_seconds: elapsed, remaining_seconds: remaining, duration_seconds: duration,
-      start_current_a: start, target_current_a: targetCurrent, input_voltage_v: voltage,
-    } = a;
-    if (a.phase !== RAMPING || a.window_open !== true || a.override === true || a.grid_available !== true || a.ready !== true) return null;
-    if (![elapsed, remaining, duration, start, targetCurrent, voltage].every(finite) ||
-        duration <= 0 || remaining <= 0 || elapsed < 0 || start < 0 || targetCurrent < start || voltage <= 0) return null;
-    const anchor = Date.parse(status.last_updated);
-    const end = anchor + remaining * 1000;
-    if (!Number.isFinite(anchor) || end <= now) return null;
-    const target = targetCurrent * voltage;
-    const from = (start + (targetCurrent - start) * clamp(elapsed / duration, 0, 1)) * voltage;
-    return { anchor, end, from, target };
-  }
-
   _renderGraph() {
-    const { chart, graphNote } = this._els;
+    const { chart, graphNote, legend } = this._els;
     const width = this._width;
     const height = this._height;
     if (!width || !height) return;
     const left = 2;
     const right = width - 2;
-    const top = 3;
+    const top = 25;
     const bottom = height - 11;
     const bandY = bottom + 4;
     const now = Date.now();
     const t0 = now - this._config.history_hours * HOUR;
-    const projection = this._projection(now);
-    const t1 = projection ? projection.end : now;
-    const series = this._series ?? { status: [], power: [], battery: [], ceiling: [], soc: [] };
+    const t1 = now;
+    const series = this._series ?? { status: [], power: [], ceiling: [] };
     // Active ramp ceilings share the power scale; the normal connection rating stays inspectable.
     const displayed = { ...series, ceiling: series.ceiling.map(p => ({
       t: p.t, v: valueAt(series.status, p.t) === "Ramping" ? p.v : null,
     })) };
+    legend.lastElementChild.hidden = !displayed.ceiling.some(p => finite(p.v));
 
     graphNote.className = this._historyError ? "graph-note error" : "graph-note";
     graphNote.textContent = this._historyError
@@ -655,21 +636,20 @@ class VictronChargingChart extends HTMLElement {
 
     let lo = 0;
     let hi = 0;
-    for (const key of ["power", "battery", "ceiling"]) {
+    for (const key of NUMERIC) {
       for (const p of displayed[key]) {
         if (!plotted(key, p.v)) continue;
         lo = Math.min(lo, p.v);
         hi = Math.max(hi, p.v);
       }
     }
-    if (projection) hi = Math.max(hi, projection.target);
+
     const yStep = niceStep(hi - lo || 10, Math.max(2, Math.floor((bottom - top) / 44)));
     const yMin = Math.floor(lo / yStep) * yStep;
     const yMax = Math.max(yStep, Math.ceil(hi / yStep) * yStep);
     const X = (t) => left + ((t - t0) / (t1 - t0)) * (right - left);
     const Y = (v) => bottom - ((v - yMin) / (yMax - yMin)) * (bottom - top);
-    // SoC has its own fixed 0–100 % scale, independent of power.
-    const S = (v) => bottom - (v / 100) * (bottom - top);
+
 
     chart.setAttribute("width", width);
     chart.setAttribute("height", height);
@@ -703,21 +683,15 @@ class VictronChargingChart extends HTMLElement {
     const buckets = Math.max(1, Math.round(right - left));
     const runs = (key, scale, isStep) =>
       traceRuns(decimate(displayed[key], key, t0, now, buckets), key, now, isStep, X, scale);
-    const socRuns = runs("soc", S, true);
-    svg("path", { class: "area", d: areaPath(socRuns, bottom) }, plot);
-    svg("path", { class: "trace soc", d: linePath(socRuns) }, plot);
-    svg("path", { class: "trace battery", d: linePath(runs("battery", Y, true)) }, plot);
+    const gridRuns = runs("power", Y, true);
+    svg("path", { class: "area", d: areaPath(gridRuns, Y(0)) }, plot);
     svg("path", { class: "trace ceiling", d: linePath(runs("ceiling", Y, true)) }, plot);
-    if (projection) {
-      const d = `M${round(X(projection.anchor))},${round(Y(projection.from))}L${round(X(projection.end))},${round(Y(projection.target))}`;
-      svg("path", { class: "trace planned projection", d }, plot);
-    }
-    svg("path", { class: "trace power", d: linePath(runs("power", Y, true)) }, plot);
+    svg("path", { class: "trace power", d: linePath(gridRuns) }, plot);
 
     const nowX = round(X(now));
     svg("line", { class: "now", x1: nowX, x2: nowX, y1: top, y2: bandY + 6 }, chart);
 
-    this._geom = { left, right, top, bottom: bandY + 6, t0, t1, now, X, transitions, projection, series };
+    this._geom = { left, right, top, bottom: bandY + 6, t0, t1, now, X, transitions, series };
     if (this._cursor) {
       // Do not replace a pinned inspector's DOM or selection as the rolling
       // window moves. Its timestamp/value snapshot remains inspectable.
@@ -808,24 +782,16 @@ class VictronChargingChart extends HTMLElement {
     const row = (key, label, value) => {
       const line = el("div", "row", tip);
       el("i", `swatch ${key}`, line);
-      const name = el("span", "", line, label);
-      if (SERIES[key]?.description) name.title = SERIES[key].description;
+      el("span", "", line, label);
       const cell = el("span", "", line);
-      const source = key === "ceiling" || key === "planned" ? "status" : key;
+      const source = key === "ceiling" ? "status" : key;
       this._historyValue(cell, value, this._ids[source]);
     };
-    if (t > g.now) {
-      const p = g.projection;
-      const v = p.from + ((t - p.anchor) / (p.end - p.anchor)) * (p.target - p.from);
-      el("div", "muted", tip, "Plan, not an actuator floor");
-      row("planned", SERIES.planned.label, this._formatValue("planned", Math.min(v, p.target)));
-    } else {
-      const mode = el("div", "muted", tip);
-      this._historyValue(mode, transition
-        ? `${modeLabel(transition.from)} → ${modeLabel(transition.to)}`
-        : modeLabel(valueAt(g.series.status, t)), this._ids.status);
-      for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(key, valueAt(g.series[key], t)));
-    }
+    const mode = el("div", "muted", tip);
+    this._historyValue(mode, transition
+      ? `${modeLabel(transition.from)} → ${modeLabel(transition.to)}`
+      : modeLabel(valueAt(g.series.status, t)), this._ids.status);
+    for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(valueAt(g.series[key], t)));
     if (!tip.matches(":popover-open")) tip.showPopover();
     this._positionTip();
   }
@@ -847,7 +813,7 @@ if (!window.customCardFeatures.some((feature) => feature.type === TAG)) {
   window.customCardFeatures.push({
     type: TAG,
     name: "Victron grid input power chart",
-    description: "Grid import, battery power, nominal input ceiling and SoC history with a planned input allowance.",
+    description: "Grid power and the active input limit.",
     configurable: false,
     // Chart-only feature for the genuine Mushroom grid-input composition.
     isSupported: (hass, context) => {

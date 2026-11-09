@@ -2,6 +2,7 @@ let
   tab = "victron-charging-ramp";
   controller = "victron-charging-ramp-controller";
   rampDefaults = {
+    enabled = true;
     duration_minutes = 60;
     start_current_a = 0;
     target_current_a = 43.5;
@@ -215,6 +216,33 @@ let
           step = 0.1;
         }
       ];
+  enabledSwitch = {
+    entityId = "switch.victron_grid_ramp_enabled";
+    topic = "homeassistant/switch/victron_grid_ramp_enabled/config";
+    payload = builtins.toJSON {
+      unique_id = "victron_grid_ramp_enabled";
+      default_entity_id = "switch.victron_grid_ramp_enabled";
+      name = "Automatic ramp";
+      entity_category = "config";
+      state_topic = "${telemetryRoot}/state";
+      value_template = "{{ 'ON' if value_json.enabled else 'OFF' }}";
+      command_topic = "${telemetryRoot}/config/enabled";
+      payload_on = "ON";
+      payload_off = "OFF";
+      qos = 1;
+      retain = false;
+      optimistic = false;
+      availability_topic = "${telemetryRoot}/availability";
+      payload_available = "online";
+      payload_not_available = "offline";
+      device = {
+        identifiers = [ "realm_victron_charging_ramp" ];
+        name = "Victron grid input";
+        manufacturer = "realm";
+        model = "Node-RED input controller";
+      };
+    };
+  };
   resetButton = {
     entityId = "button.victron_grid_ramp_reset_defaults";
     topic = "homeassistant/button/victron_grid_ramp_reset_defaults/config";
@@ -239,7 +267,13 @@ let
       };
     };
   };
-  discovery = sensors ++ settingNumbers ++ [ resetButton ];
+  discovery =
+    sensors
+    ++ settingNumbers
+    ++ [
+      enabledSwitch
+      resetButton
+    ];
   commandSequence = command: {
     action = "mqtt.publish";
     data = {
@@ -268,8 +302,14 @@ in
   inherit rampDefaults settingsFile;
   telemetry = {
     inherit brokerId sensors discovery;
-    settingsEntities = builtins.map (item: item.entityId) settingNumbers;
-    settingsTopics = builtins.map (item: item.topic) (settingNumbers ++ [ resetButton ]);
+    settingsEntities = builtins.map (item: item.entityId) (settingNumbers ++ [ enabledSwitch ]);
+    settingsTopics = builtins.map (item: item.topic) (
+      settingNumbers
+      ++ [
+        enabledSwitch
+        resetButton
+      ]
+    );
     availabilityTopic = "${telemetryRoot}/availability";
     stateTopic = "${telemetryRoot}/state";
   };
@@ -279,8 +319,13 @@ in
       type = "tab";
       label = "Grid input ramp";
       disabled = false;
-      info = "A grid-input ramp uses its saved duration, starting current and target current. Defaults are ${toString rampDefaults.duration_minutes} minutes, ${toString rampDefaults.start_current_a} A and ${toString rampDefaults.target_current_a} A. Home Assistant edits apply to the next ramp. The inverter enforces its native current floor; completion restores the normal input limit.";
+      info = "A grid-input ramp uses its saved duration, starting current and target current. Defaults are ${toString rampDefaults.duration_minutes} minutes, ${toString rampDefaults.start_current_a} A and ${toString rampDefaults.target_current_a} A. Numeric edits apply to the next ramp; automatic-ramp enable changes apply immediately. Reset restores only numeric defaults. The inverter enforces its native current floor; completion restores the normal input limit.";
       env = [
+        {
+          name = "DEFAULT_ENABLED";
+          value = if rampDefaults.enabled then "true" else "false";
+          type = "bool";
+        }
         {
           name = "DEFAULT_DURATION_MINUTES";
           value = toString rampDefaults.duration_minutes;
@@ -765,7 +810,13 @@ in
       description = "Apply the input ramp at its current point, opening a new window when needed.";
       icon = "mdi:gauge-low";
       mode = "single";
-      sequence = [ (commandSequence "throttle") ];
+      sequence = [
+        {
+          condition = "template";
+          value_template = "{{ state_attr('${statusEntity}', 'enabled') == true }}";
+        }
+        (commandSequence "throttle")
+      ];
     };
     scripts.${controlScript} = {
       alias = "Victron: toggle grid-input ramp";
@@ -784,13 +835,6 @@ in
               ];
               sequence = [ { action = "script.${restoreScript}"; } ];
             }
-          ];
-          default = [
-            {
-              condition = "template";
-              value_template = "{{ ${gridReady} }}";
-            }
-            { action = "script.${throttleScript}"; }
           ];
         }
       ];
@@ -836,9 +880,9 @@ in
           type = "custom:mushroom-template-card";
           entity = statusEntity;
           primary = "Grid input";
-          secondary = "{{ 'Restore' if is_state('${statusEntity}', 'Ramping') else 'Throttle' if ${gridReady} else '' }}";
+          secondary = "{{ 'Skip this ramp' if is_state('${statusEntity}', 'Ramping') else 'Off' if state_attr('${statusEntity}', 'enabled') == false else 'No grid power' if state_attr('${statusEntity}', 'enabled') == true and state_attr('${statusEntity}', 'grid_available') == false else 'Automatic' }}";
           icon = "{{ 'mdi:flash' if is_state('${statusEntity}', 'Ramping') else 'mdi:gauge-low' }}";
-          color = "{{ 'amber' if is_state('${statusEntity}', 'Ramping') else 'blue' if ${gridReady} else 'disabled' }}";
+          color = "{{ 'amber' if is_state('${statusEntity}', 'Ramping') else 'disabled' if state_attr('${statusEntity}', 'enabled') == false else 'blue' if ${gridReady} else 'disabled' }}";
           vertical = true;
           features_position = "bottom";
           tap_action = {
@@ -856,10 +900,7 @@ in
               type = "custom:victron-charging-chart";
               status_entity = statusEntity;
               power_entity = "sensor.multiplus_input_power_l1";
-              battery_power_entity = "sensor.battery_power";
-              limit_entity = inputLimitEntity;
-              voltage_entity = "sensor.multiplus_input_voltage_l1";
-              soc_entity = "sensor.battery_charge";
+
               history_hours = 2;
             }
           ];

@@ -2,14 +2,15 @@
 
 The Cerbo ramps total AC-input current locally in Node-RED. Grid restoration starts a linear ramp with one update per minute. Completion restores `normalInputCurrentA`; PowerAssist supplies the remaining household demand, and native inverter and battery-management limits remain active.
 
-`flow.nix` declares the flow, `rampDefaults` and single-page Victron dashboard. `charging-ramp.js` owns the active window; `ramp-settings.js` saves configuration on the Cerbo at `settingsFile`. The chart's gear opens native Home Assistant controls for duration, starting current, target current and Reset defaults. Edits apply to the next window; an active window keeps its captured settings. Saved configuration survives Home Assistant and Node-RED restarts.
+`flow.nix` declares the flow, `rampDefaults` and single-page Victron dashboard. `charging-ramp.js` owns the active window; `ramp-settings.js` saves configuration on the Cerbo at `settingsFile`. The chart's gear opens Automatic ramp, Skip once and the next ramp's duration, starting current and target current. Saved configuration survives Home Assistant and Node-RED restarts.
 
 ## Operation
 
-- **Restore** reconnects grid input at its normal current limit. The override expires at the original window's end. Full battery SOC leaves a whole-input window active because the allowance also supplies household loads. The inject button and `deploy.py full` perform the same override.
+- **Skip once** reconnects grid input at its normal current limit for the current window. Automatic operation remains enabled for the next grid return. The inject button and `deploy.py full` perform the same override. Full battery SOC leaves a whole-input window active because the allowance also supplies household loads.
+- **Automatic ramp** persists its on/off state. Turning it off releases the current restriction; turning it on arms the next grid return. Numeric settings apply to the next window. Reset defaults restores those numbers and preserves the on/off choice.
 - **Throttle** resumes an open window or starts a new configured window. It requires ready grid and battery inputs. `deploy.py throttle` performs the same action.
-- Tap the Mushroom card or its icon for the displayed Restore/Throttle action. Chart interaction only inspects history; clicking the chart pins a selectable inspector.
-- The card plots grid power, signed battery power, the nominal input ceiling and SoC. Its future trace follows the captured current ramp; future measured values remain unknown. Native current quantization and the PowerAssist minimum remain hardware-owned.
+- Tap the Mushroom card or its icon to skip an active ramp. Chart interaction inspects history; clicking the chart pins a selectable inspector.
+- The chart shows recorded Grid power and the active Limit, with a shared power scale and a shaded grid trace. Native current quantization and the PowerAssist minimum remain hardware-owned.
 - Recorder history belongs to Home Assistant. Live timing arrives through its MQTT broker and expires after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
 - An outage arms a fresh ramp. An already-present grid starts in normal operation when Node-RED starts.
 - Flow redeployments preserve in-memory ramp progress and overrides.
@@ -46,7 +47,7 @@ Initial telemetry setup also requires the existing Home Assistant broker credent
 
 Install Mushroom and Layout Card through HACS. Mushroom owns the card and its actions; Layout Card keeps the compact card above the full-width power-flow view.
 
-`charging-chart.js` is a chart feature registered as a content-addressed data URI. History and the native settings popup use the authenticated Home Assistant frontend connection. The native `victron_toggle_charging` script selects restore during an active ramp and throttles only with ready grid inputs. Existing entity and script identifiers retain their names.
+`charging-chart.js` is a chart feature registered as a content-addressed data URI. History and the native settings popup use the authenticated Home Assistant frontend connection. The native `victron_toggle_charging` script skips an active ramp. Existing entity and script identifiers retain their names.
 
 ```sh
 scripts/victron/deploy.py deploy
