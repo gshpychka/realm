@@ -106,7 +106,8 @@ export function openBatteryDetails(initialHass, entities, opener) {
       detail: event.detail, bubbles: true, composed: true,
     }));
   });
-  document.body.append(host);
+  // Native charts receive theme and locale contexts from the HA view.
+  opener.after(host);
   dialog.showModal();
   update(hass);
   (async () => {

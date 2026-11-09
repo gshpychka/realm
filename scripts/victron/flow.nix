@@ -563,7 +563,8 @@ in
       type = "custom:grid-layout";
       layout = {
         grid-template-columns = "minmax(0, 620px) 240px";
-        grid-template-areas = ''"flow charging"'';
+        grid-template-areas = ''"flow charging" "flow ."'';
+        grid-template-rows = "240px auto";
         justify-content = "center";
         align-items = "start";
         grid-gap = "16px";
