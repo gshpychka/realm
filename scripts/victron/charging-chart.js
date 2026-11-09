@@ -346,6 +346,15 @@ class VictronChargingChart extends HTMLElement {
   }
 
   connectedCallback() {
+    this._reposition = () => this._positionTip();
+    this._scrollRoots = [];
+    for (let node = this; node;) {
+      const root = node.getRootNode();
+      root.addEventListener("scroll", this._reposition, { capture: true, passive: true });
+      this._scrollRoots.push(root);
+      node = root.host;
+    }
+    window.addEventListener("resize", this._reposition, { passive: true });
     this._resize = new ResizeObserver(([entry]) => {
       const width = Math.floor(entry.contentRect.width);
       const height = Math.floor(entry.contentRect.height);
@@ -370,6 +379,9 @@ class VictronChargingChart extends HTMLElement {
   }
 
   disconnectedCallback() {
+    window.removeEventListener("resize", this._reposition);
+    for (const root of this._scrollRoots ?? []) root.removeEventListener("scroll", this._reposition, true);
+    this._scrollRoots = [];
     this._closeSettings();
     this._resize?.disconnect();
     this._intersection?.disconnect();
