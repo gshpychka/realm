@@ -473,6 +473,8 @@ class VictronChargingChart extends HTMLElement {
       if (this._settingsDialog !== dialog || !this.isConnected) return;
       this._settingsCard = card;
       card.hass = this._hass;
+      // The entities card's hass setter updates rows after its initial render.
+      card.requestUpdate?.();
     } catch (error) {
       if (this._settingsDialog === dialog) content.textContent = `Settings unavailable: ${error?.message || "could not load native card"}`;
     }
