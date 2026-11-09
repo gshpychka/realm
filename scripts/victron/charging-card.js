@@ -35,6 +35,7 @@ const MODE_TONES = {
   "Waiting for grid": "muted",
   "Waiting for data": "muted",
 };
+const modeLabel = (mode) => mode === "Waiting for grid" ? "No grid power" : mode;
 const SERIES = {
   current: { label: "Actual", unit: "A" },
   bms: { label: "BMS limit", unit: "A" },
@@ -54,37 +55,38 @@ const STYLE = `
     box-shadow: none; overflow: hidden;
     font-family: var(--victron-live-font, "Museo Sans Rounded", ui-rounded, system-ui, sans-serif);
   }
-  .card { padding: 8px 10px 6px; }
-  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .title { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0; }
-  .meta { display: flex; align-items: center; margin-top: 3px; font-size: 10px; color: var(--vc-muted); }
+  .card { box-sizing: border-box; min-height: 238px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .head { display: contents; }
+  .head > div:first-child { flex: 1; }
+  .title { margin: 0; font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--vc-muted); }
+  .meta { display: flex; align-items: center; margin-top: 8px; font-size: 20px; font-weight: 600; color: var(--vc-text); }
   .badge {
-    display: inline-flex; align-items: center; gap: 5px; color: var(--vc-text);
+    display: inline-flex; align-items: center; gap: 8px; color: var(--vc-text);
   }
-  .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--tone); }
-  .control { display: flex; align-items: center; }
+  .badge::before { content: ""; width: 9px; height: 9px; flex-shrink: 0; border-radius: 50%; background: var(--tone); }
+  .control { display: flex; align-items: stretch; order: 3; }
   .action {
     min-height: 44px; min-width: 70px; padding: 0 8px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--vc-border); background: var(--vc-lower); color: var(--vc-text);
-    font: inherit; font-size: 11px; font-weight: 600;
+    width: 100%; font: inherit; font-size: 16px; font-weight: 600;
   }
   .action:hover:not(:disabled) { border-color: var(--tone); }
   .action:focus-visible, svg:focus-visible { outline: 2px solid var(--primary-color, var(--vc-blue)); outline-offset: 2px; }
   .action:disabled { cursor: default; opacity: 0.5; }
-  .note { font-size: 10px; color: var(--vc-muted); }
+  .note { order: 4; font-size: 14px; color: var(--vc-muted); }
   .note:empty { display: none; }
   .note.error { color: var(--vc-error); }
 
   .swatch { width: 14px; border-top: 2px solid var(--tone); }
   .swatch.soc { border-top-width: 1.5px; }
-  .graph { position: relative; margin-top: 4px; }
+  .graph { position: relative; order: 2; }
   svg { display: block; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
-  .graph-note { position: absolute; top: 8px; left: 4px; font-size: 10px; color: var(--vc-muted); pointer-events: none; }
+  .graph-note { position: absolute; top: 8px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
   .graph-note.error { color: var(--vc-error); }
   .tip {
     position: fixed; inset: auto; margin: 0; pointer-events: none; min-width: 148px; max-width: 220px;
     padding: 7px 9px; border-radius: 8px; background: var(--vc-lower); border: 1px solid var(--vc-border);
-    color: var(--vc-text); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums;
+    color: var(--vc-text); font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums;
   }
   .tip .when { font-weight: 600; }
   .tip .row { display: flex; align-items: center; gap: 6px; }
@@ -325,7 +327,7 @@ class VictronChargingCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 2;
+    return 5;
   }
 
   getGridOptions() {
@@ -585,7 +587,7 @@ class VictronChargingCard extends HTMLElement {
     const { badge, button, note } = this._els;
     const status = this._status();
     const label = status ? status.state : "Unavailable";
-    badge.textContent = label;
+    badge.textContent = modeLabel(label);
     badge.dataset.tone = MODE_TONES[label] ?? "muted";
 
 
@@ -754,8 +756,8 @@ class VictronChargingCard extends HTMLElement {
       el("div", "muted", tip, "Projected ramp");
       row("policy", SERIES.policy.label, this._formatValue("policy", Math.min(v, p.target)));
     } else {
-      if (transition) el("div", "", tip, `${transition.from} → ${transition.to}`);
-      else el("div", "muted", tip, valueAt(g.series.status, t) ?? "Mode unknown");
+      if (transition) el("div", "", tip, `${modeLabel(transition.from)} → ${modeLabel(transition.to)}`);
+      else el("div", "muted", tip, modeLabel(valueAt(g.series.status, t) ?? "Mode unknown"));
       for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(key, valueAt(g.series[key], t)));
     }
     tip.hidden = false;
