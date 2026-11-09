@@ -1,5 +1,6 @@
 let
   tab = "victron-charging-ramp";
+  rampDurationMinutes = 30;
   controller = "victron-charging-ramp-controller";
   chargeLimitEntity = "number.cerbo_ess_max_charge_current";
   brokerId = "victron-charging-ramp-mqtt";
@@ -115,7 +116,7 @@ in
       type = "tab";
       label = "Grid charging ramp";
       disabled = false;
-      info = "Charging ramps to the inverter limit over 30 minutes. Full charging overrides the remaining window until the battery is full or the window ends. An outage or runtime restart arms a fresh ramp.";
+      info = "Charging ramps to the inverter limit over ${toString rampDurationMinutes} minutes. Full charging overrides the remaining window until the battery is full or the window ends. An outage or runtime restart arms a fresh ramp.";
       env = [
         {
           name = "FULL_CHARGE_CURRENT_A";
@@ -124,7 +125,7 @@ in
         }
         {
           name = "RAMP_DURATION_SECONDS";
-          value = "1800";
+          value = toString (rampDurationMinutes * 60);
           type = "num";
         }
       ];
@@ -257,7 +258,7 @@ in
       id = controller;
       type = "function";
       z = tab;
-      name = "30-minute charging ramp";
+      name = "${toString rampDurationMinutes}-minute charging ramp";
       func = builtins.readFile ./charging-ramp.js;
       initialize = ''
         context.set("timer", null);

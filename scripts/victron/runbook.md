@@ -1,12 +1,12 @@
 # Victron GX
 
-The Cerbo runs the charging ramp locally in Node-RED. Grid restoration starts a 30-minute increase of the DVCC user ceiling from zero to the inverter's 140 A rating. The completed ramp restores the unrestricted user ceiling; inverter and battery-management limits remain active.
+The Cerbo runs the charging ramp locally in Node-RED. Grid restoration increases the DVCC user ceiling from zero to the inverter's current limit over the configured duration. The completed ramp restores the unrestricted user ceiling; inverter and battery-management limits remain active.
 
-`flow.nix` declares the flow and single-page Victron dashboard. `charging-ramp.js` owns ramp and override behavior. `deploy.py` applies these declarations through the native APIs, preserving unrelated flows and dashboards. Deployment enables the existing Home Assistant charging-current entity; rollback restores its original enabled state.
+`flow.nix` declares the flow and single-page Victron dashboard; `rampDurationMinutes` sets the duration. `charging-ramp.js` owns ramp and override behavior. `deploy.py` applies these declarations through the native APIs, preserving unrelated flows and dashboards. Deployment enables the existing Home Assistant charging-current entity; rollback restores its original enabled state.
 
 ## Operation
 
-- **Victron → Full charging now** skips the remaining charging ramp. The override ends at 100% battery SOC or the end of the original 30-minute ramp window, whichever comes first; normal charging continues. The Node-RED inject button and `deploy.py full` perform the same override.
+- **Victron → Full charging now** skips the remaining charging ramp. The override ends at 100% battery SOC or the end of the original ramp window, whichever comes first; normal charging continues. The Node-RED inject button and `deploy.py full` perform the same override.
 - The Victron page shows the current charging ceiling, controller status, elapsed ramp time and remaining time. Timing updates every ten seconds through Home Assistant's existing MQTT broker; readings expire after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
 - An outage arms a fresh ramp. A Node-RED restart with grid present starts a fresh ramp.
 - Flow redeployments preserve in-memory ramp progress and overrides.
