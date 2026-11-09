@@ -90,6 +90,11 @@ let
     name = "DVCC Charge current limit (A)";
     mode = "both";
   };
+  soc = {
+    path = "/Dc/Battery/Soc";
+    type = "float";
+    name = "Battery state of charge (%)";
+  };
 in
 {
   host = "192.168.1.236";
@@ -110,7 +115,7 @@ in
       type = "tab";
       label = "Grid charging ramp";
       disabled = false;
-      info = "Charging ramps to the inverter limit over 30 minutes. Full charging overrides this grid-connected period; an outage or restart arms a fresh ramp. DVCC battery protections remain active.";
+      info = "Charging ramps to the inverter limit over 30 minutes. Full charging overrides the remaining window until the battery is full or the window ends. An outage or runtime restart arms a fresh ramp.";
       env = [
         {
           name = "FULL_CHARGE_CURRENT_A";
@@ -212,6 +217,40 @@ in
       onceDelay = 0.1;
       x = 330;
       y = 260;
+      wires = [ [ controller ] ];
+    }
+    {
+      id = "victron-charging-ramp-soc";
+      type = "victron-input-system";
+      z = tab;
+      name = "Battery state of charge";
+      inherit (system) service;
+      serviceObj = system;
+      inherit (soc) path;
+      pathObj = soc;
+      onlyChanges = true;
+      roundValues = "no";
+      outputs = 1;
+      x = 140;
+      y = 20;
+      wires = [ [ "victron-charging-ramp-soc-topic" ] ];
+    }
+    {
+      id = "victron-charging-ramp-soc-topic";
+      type = "change";
+      z = tab;
+      name = "Battery SOC";
+      rules = [
+        {
+          t = "set";
+          p = "topic";
+          pt = "msg";
+          to = "soc";
+          tot = "str";
+        }
+      ];
+      x = 350;
+      y = 20;
       wires = [ [ controller ] ];
     }
     {
@@ -373,7 +412,7 @@ in
     scriptId = "victron_full_charging_now";
     script = {
       alias = "Victron: full charging now";
-      description = "Normal charging until the next grid outage.";
+      description = "Skip the remaining ramp until the battery is full or its original window ends.";
       icon = "mdi:flash";
       mode = "single";
       sequence = [
@@ -437,7 +476,7 @@ in
               tap_action = {
                 action = "perform-action";
                 perform_action = "script.victron_full_charging_now";
-                confirmation.text = "Cancel the charging ramp until the next grid outage?";
+                confirmation.text = "Skip the remaining charging ramp?";
               };
             }
             { type = "custom:victron-live-card"; }

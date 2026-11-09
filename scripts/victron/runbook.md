@@ -6,7 +6,7 @@ The Cerbo runs the charging ramp locally in Node-RED. Grid restoration starts a 
 
 ## Operation
 
-- **Victron → Full charging now** restores normal charging until the next grid outage. The Node-RED inject button and `deploy.py full` perform the same override.
+- **Victron → Full charging now** skips the remaining charging ramp. The override ends at 100% battery SOC or the end of the original 30-minute ramp window, whichever comes first; normal charging continues. The Node-RED inject button and `deploy.py full` perform the same override.
 - The Victron page shows the current charging ceiling, controller status, elapsed ramp time and remaining time. Timing updates every ten seconds through Home Assistant's existing MQTT broker; readings expire after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
 - An outage arms a fresh ramp. A Node-RED restart with grid present starts a fresh ramp.
 - Flow redeployments preserve in-memory ramp progress and overrides.
