@@ -411,8 +411,6 @@ in
                     {% else %}
                     Unavailable
                     {% endif %}
-
-                    Inverter and battery limits apply.
                   '';
                 }
                 {
