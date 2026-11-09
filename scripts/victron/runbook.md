@@ -6,8 +6,10 @@ The Cerbo runs the charging ramp locally in Node-RED. Grid restoration increases
 
 ## Operation
 
-- **Victron → Full charging now** skips the remaining charging ramp. The override ends at 100% battery SOC or the end of the original ramp window, whichever comes first; normal charging continues. The Node-RED inject button and `deploy.py full` perform the same override.
-- The Victron page shows the current charging ceiling, controller status, elapsed ramp time and remaining time. Timing updates every ten seconds through Home Assistant's existing MQTT broker; readings expire after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
+- **Restore** skips the remaining charging ramp. The override ends at 100% battery SOC or the end of the original ramp window, whichever comes first; normal charging continues. The Node-RED inject button and `deploy.py full` perform the same override.
+- **Throttle** applies the ramp at the current point in an open window, or starts a new configured window. It requires live grid inputs. `deploy.py throttle` performs the same action.
+- The charging card plots recorded BMS and user ceilings, actual battery current and SoC, with policy-coloured mode bands and transition timestamps. Its dashed future trace follows the remaining configured ramp. Unrestricted user ceilings remain nonnumeric; future BMS limits, actual current and SoC remain unmeasured.
+- Recorder history belongs to Home Assistant. Live timing arrives through its MQTT broker and expires after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
 - An outage arms a fresh ramp. A Node-RED restart with grid present starts a fresh ramp.
 - Flow redeployments preserve in-memory ramp progress and overrides.
 - Flow memory holds charging state; node memory holds the running timer.
@@ -18,17 +20,20 @@ The Cerbo runs the charging ramp locally in Node-RED. Grid restoration increases
 
 Supply the GX local-network password in `VICTRON_PASSWORD` and the existing Home Assistant API token in `HOME_ASSISTANT_TOKEN`. The executable uses a Nix-provided Python with `websocket-client`.
 
-Deployment also requires the existing Home Assistant broker credentials in `MQTT_USERNAME` and `MQTT_PASSWORD`. Node-RED owns the broker credential store.
+Initial telemetry setup also requires the existing Home Assistant broker credentials in `MQTT_USERNAME` and `MQTT_PASSWORD`. Node-RED owns the broker credential store; subsequent deployments reuse it.
+
+`charging-card.js` is a self-contained module registered as a content-addressed data URI. Its history and controls use the authenticated Home Assistant frontend connection.
 
 ```sh
 scripts/victron/deploy.py deploy
 scripts/victron/deploy.py status
 scripts/victron/deploy.py full
+scripts/victron/deploy.py throttle
 ```
 
 HTTPS uses the GX certificate pin in `flow.nix`. Credentials stay outside the repository. Tokens remain in process memory and are revoked after each command.
 
-Deployment prints a private snapshot path under `~/.local/state/victron-node-red/`. Rollback releases the charging ceiling and restores the snapshot's owned flow, script and Victron dashboard. Restoring a flow without telemetry removes its MQTT sensor definitions:
+Deployment prints a private snapshot path under `~/.local/state/victron-node-red/`. Rollback releases the charging ceiling and restores the snapshot's owned flow, scripts, frontend resource and Victron dashboard. Restoring a flow without telemetry removes its MQTT sensor definitions:
 
 ```sh
 scripts/victron/deploy.py rollback --backup /path/to/snapshot.json

@@ -39,6 +39,8 @@ function save() {
     target_current_a: fullCurrent,
     charging_limit_a: state.observedLimit,
     override: state.override,
+    window_open: state.windowOpen,
+    grid_source: state.source,
     battery_soc: state.soc,
     ready: state.ready,
   } }]);
@@ -72,6 +74,21 @@ function finishWindow() {
   state.windowOpen = false;
   state.mode = "normal charging";
   setLimit(normalLimit);
+}
+
+function throttleCharging() {
+  if (!state.ready || state.source !== 1) {
+    node.warn("Grid charging inputs are unavailable.");
+    return;
+  }
+  if (!state.windowOpen) {
+    state.windowOpen = true;
+    state.elapsed = 0;
+  }
+  state.override = false;
+  state.mode = "ramping";
+  setLimit(Math.round(fullCurrent * state.elapsed / duration));
+  startTimer();
 }
 
 function startTimer() {
@@ -120,6 +137,8 @@ if (msg.topic === "soc") {
     msg.payload >= 0 && msg.payload <= 100 ? msg.payload : null;
 } else if (msg.topic === "full") {
   fullCharging();
+} else if (msg.topic === "throttle") {
+  throttleCharging();
 } else if (msg.topic === "grid") {
   const source = msg.payload;
   if (![0, 1, 2, 3, 240].includes(source)) {

@@ -3,6 +3,7 @@
 """Deploy the Cerbo charging policy and its Home Assistant controls."""
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -189,6 +190,19 @@ def full_charging(client, bundle):
     raise RuntimeError("Full charging did not restore the normal DVCC user limit")
 
 
+def throttle_charging(client, bundle):
+    client.request("/inject/" + bundle["throttleId"], {})
+    for _ in range(30):
+        controller = json.loads(state(client, bundle)["msg"])
+        if (
+            controller["mode"] == "ramping"
+            and current_limit(client, bundle) == controller["requestedLimit"]
+        ):
+            return
+        time.sleep(0.5)
+    raise RuntimeError("Charging ramp did not become active")
+
+
 def save_snapshot(directory, snapshot):
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     filename = directory / (datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ") + ".json")
@@ -235,16 +249,93 @@ def configure_control(command, rest, bundle, disabled_by):
         raise RuntimeError("Victron charge control did not become available")
 
 
-def update_controls(command, rest, bundle, dashboard, script):
+def read_scripts(rest, controls):
+    result = {}
+    for script_id in controls["scripts"]:
+        try:
+            result[script_id] = rest("/api/config/script/config/" + script_id)
+        except HTTPError as error:
+            if error.code != 404:
+                raise
+            result[script_id] = None
+    return result
+
+
+def owned_resource(command, bundle):
+    suffix = "#" + bundle["homeAssistant"]["cardResource"]["key"]
+    matches = [
+        resource
+        for resource in command("lovelace/resources")
+        if resource["url"].endswith(suffix)
+    ]
+    if len(matches) > 1:
+        raise RuntimeError("Multiple charging card resources are registered")
+    return matches[0] if matches else None
+
+
+def declared_resource(bundle):
+    declaration = bundle["homeAssistant"]["cardResource"]
+    encoded = base64.b64encode(declaration["source"].encode()).decode()
+    return {
+        "url": "data:text/javascript;charset=utf-8;base64,"
+        + encoded
+        + "#"
+        + declaration["key"],
+        "type": "module",
+    }
+
+
+def configure_resource(command, bundle, desired):
+    current = owned_resource(command, bundle)
+    if desired is None:
+        if current:
+            command("lovelace/resources/delete", resource_id=current["id"])
+    elif current is None:
+        command(
+            "lovelace/resources/create", url=desired["url"], res_type=desired["type"]
+        )
+    elif any(current[key] != desired[key] for key in ("url", "type")):
+        command(
+            "lovelace/resources/update",
+            resource_id=current["id"],
+            url=desired["url"],
+            res_type=desired["type"],
+        )
+    actual = owned_resource(command, bundle)
+    if (desired is None and actual is not None) or (
+        desired is not None
+        and (
+            actual is None
+            or any(actual[key] != desired[key] for key in ("url", "type"))
+        )
+    ):
+        raise RuntimeError("Charging card resource readback differs")
+
+
+def update_controls(command, rest, bundle, dashboard, scripts, resource):
     controls = bundle["homeAssistant"]
-    path = "/api/config/script/config/" + controls["scriptId"]
-    if script is None:
-        rest(path, method="DELETE")
-    else:
-        rest(path, script, method="POST")
-        actual = rest(path)
-        if any(actual.get(key) != value for key, value in script.items()):
-            raise RuntimeError("Home Assistant script readback differs")
+    if set(scripts) != set(controls["scripts"]):
+        raise RuntimeError("Script definitions exceed the owned control scope")
+    current_scripts = read_scripts(rest, controls)
+    for script_id, script in scripts.items():
+        path = "/api/config/script/config/" + script_id
+        if script is None:
+            if current_scripts[script_id] is not None:
+                rest(path, method="DELETE")
+        else:
+            rest(path, script, method="POST")
+    actual_scripts = read_scripts(rest, controls)
+    for script_id, expected in scripts.items():
+        actual = actual_scripts[script_id]
+        if (expected is None and actual is not None) or (
+            expected is not None
+            and (
+                actual is None
+                or any(actual.get(key) != value for key, value in expected.items())
+            )
+        ):
+            raise RuntimeError("Home Assistant script readback differs: " + script_id)
+    configure_resource(command, bundle, resource)
     command("lovelace/config/save", url_path=controls["dashboard"], config=dashboard)
     if command("lovelace/config", url_path=controls["dashboard"]) != dashboard:
         raise RuntimeError("Home Assistant dashboard readback differs")
@@ -271,7 +362,9 @@ def wait_for_telemetry(rest, bundle):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("deploy", "status", "full", "rollback"))
+    parser.add_argument(
+        "action", choices=("deploy", "status", "full", "throttle", "rollback")
+    )
     parser.add_argument("--ha-url", default="http://homeassistant.glib.sh:8123")
     parser.add_argument("--backup", type=Path)
     parser.add_argument(
@@ -285,20 +378,34 @@ def main():
         text=True,
     )
     bundle = json.loads(result.stdout)
+    if args.action == "rollback":
+        if args.backup is None:
+            raise RuntimeError("Rollback requires --backup")
+        try:
+            snapshot = json.loads(args.backup.read_text())
+        except json.JSONDecodeError:
+            raise RuntimeError("Incompatible rollback snapshot") from None
+        if (
+            not isinstance(snapshot, dict)
+            or not {"flows", "dashboard", "scripts", "resource", "control_disabled_by"}
+            <= snapshot.keys()
+            or not isinstance(snapshot["scripts"], dict)
+            or set(snapshot["scripts"]) != set(bundle["homeAssistant"]["scripts"])
+        ):
+            raise RuntimeError("Incompatible rollback snapshot")
     mqtt_credentials = None
     if args.action == "deploy":
         mqtt_user = os.environ.get("MQTT_USERNAME")
         mqtt_password = os.environ.get("MQTT_PASSWORD")
-        if not mqtt_user or not mqtt_password:
-            raise RuntimeError(
-                "MQTT_USERNAME and MQTT_PASSWORD are required for telemetry deployment"
-            )
-        mqtt_credentials = {
-            bundle["telemetry"]["brokerId"]: {
-                "user": mqtt_user,
-                "password": mqtt_password,
+        if bool(mqtt_user) != bool(mqtt_password):
+            raise RuntimeError("Supply MQTT_USERNAME and MQTT_PASSWORD together")
+        if mqtt_user:
+            mqtt_credentials = {
+                bundle["telemetry"]["brokerId"]: {
+                    "user": mqtt_user,
+                    "password": mqtt_password,
+                }
             }
-        }
     password = os.environ.get("VICTRON_PASSWORD")
     if not password:
         raise RuntimeError("VICTRON_PASSWORD is required")
@@ -314,8 +421,11 @@ def main():
                     }
                 )
             )
-        elif args.action == "full":
-            full_charging(client, bundle)
+        elif args.action in ("full", "throttle"):
+            if args.action == "full":
+                full_charging(client, bundle)
+            else:
+                throttle_charging(client, bundle)
             print(
                 json.dumps(
                     {
@@ -331,15 +441,17 @@ def main():
                 control = command(
                     "config/entity_registry/get", entity_id=controls["controlEntity"]
                 )
-                script_path = "/api/config/script/config/" + controls["scriptId"]
-                try:
-                    script = rest(script_path)
-                except HTTPError as error:
-                    if error.code != 404:
-                        raise
-                    script = None
+                scripts = read_scripts(rest, controls)
+                resource = owned_resource(command, bundle)
                 current = client.request("/flows")
                 if args.action == "deploy":
+                    if mqtt_credentials is None and not any(
+                        node["id"] == bundle["telemetry"]["brokerId"]
+                        for node in current["flows"]
+                    ):
+                        raise RuntimeError(
+                            "Initial telemetry deployment requires MQTT_USERNAME and MQTT_PASSWORD"
+                        )
                     limit = current_limit(client, bundle)
                     if (
                         not any(owned(node, bundle) for node in current["flows"])
@@ -354,7 +466,8 @@ def main():
                             "flows": current["flows"],
                             "limit": limit,
                             "dashboard": dashboard,
-                            "script": script,
+                            "scripts": scripts,
+                            "resource": resource,
                             "control_disabled_by": control["disabled_by"],
                         },
                     )
@@ -364,7 +477,12 @@ def main():
                     apply_flow(client, bundle, bundle["flows"], mqtt_credentials)
                     wait_for_telemetry(rest, bundle)
                     update_controls(
-                        command, rest, bundle, desired_dashboard, controls["script"]
+                        command,
+                        rest,
+                        bundle,
+                        desired_dashboard,
+                        controls["scripts"],
+                        declared_resource(bundle),
                     )
 
                     print(
@@ -379,12 +497,14 @@ def main():
                         )
                     )
                 else:
-                    if args.backup is None:
-                        raise RuntimeError("Rollback requires --backup")
-                    snapshot = json.loads(args.backup.read_text())
                     full_charging(client, bundle)
                     update_controls(
-                        command, rest, bundle, snapshot["dashboard"], snapshot["script"]
+                        command,
+                        rest,
+                        bundle,
+                        snapshot["dashboard"],
+                        snapshot["scripts"],
+                        snapshot["resource"],
                     )
                     apply_flow(
                         client,

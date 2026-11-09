@@ -5,6 +5,11 @@ let
   chargeLimitEntity = "number.cerbo_ess_max_charge_current";
   brokerId = "victron-charging-ramp-mqtt";
   telemetryRoot = "realm/victron/charging-ramp";
+  # Command age includes transport delay and clock skew.
+  commandMaxAgeSeconds = 30;
+  throttleNode = "victron-charging-ramp-throttle";
+  restoreScript = "victron_full_charging_now";
+  throttleScript = "victron_throttle_charging";
   sensors =
     builtins.map
       (
@@ -103,6 +108,7 @@ in
   tabId = tab;
   controllerId = controller;
   overrideId = "victron-charging-ramp-full";
+  throttleId = throttleNode;
   limitService = settings.service;
   limitPath = limit.path;
   telemetry = {
@@ -252,6 +258,63 @@ in
       ];
       x = 350;
       y = 20;
+      wires = [ [ controller ] ];
+    }
+    {
+      id = throttleNode;
+      type = "inject";
+      z = tab;
+      name = "Throttle charging";
+      props = [
+        { p = "payload"; }
+        {
+          p = "topic";
+          vt = "str";
+        }
+      ];
+      topic = "throttle";
+      payloadType = "date";
+      repeat = "";
+      once = false;
+      x = 330;
+      y = 300;
+      wires = [ [ controller ] ];
+    }
+    {
+      id = "victron-charging-ramp-command";
+      type = "mqtt in";
+      z = tab;
+      name = "Charging command";
+      broker = brokerId;
+      topic = "${telemetryRoot}/command";
+      qos = "1";
+      datatype = "json";
+      nl = false;
+      rap = true;
+      rh = 0;
+      x = 140;
+      y = 580;
+      wires = [ [ "victron-charging-ramp-command-check" ] ];
+    }
+    {
+      id = "victron-charging-ramp-command-check";
+      type = "function";
+      z = tab;
+      name = "Fresh throttle request";
+      func = ''
+        const command = msg.payload;
+        if (msg.retain || !command || command.command !== "throttle" ||
+            typeof command.issued_at !== "number" || !Number.isFinite(command.issued_at)) return null;
+        const age = Date.now() / 1000 - command.issued_at;
+        if (Math.abs(age) > ${toString commandMaxAgeSeconds}) return null;
+        return {topic: "throttle"};
+      '';
+      outputs = 1;
+      timeout = 0;
+      noerr = 0;
+      libs = [ ];
+      x = 390;
+      y = 580;
       wires = [ [ controller ] ];
     }
     {
@@ -410,8 +473,7 @@ in
   homeAssistant = {
     dashboard = "victron-live";
     controlEntity = chargeLimitEntity;
-    scriptId = "victron_full_charging_now";
-    script = {
+    scripts.${restoreScript} = {
       alias = "Victron: full charging now";
       description = "Skip the remaining ramp until the battery is full or its original window ends.";
       icon = "mdi:flash";
@@ -426,6 +488,27 @@ in
         }
       ];
     };
+    scripts.${throttleScript} = {
+      alias = "Victron: throttle charging";
+      description = "Apply the charging ramp at its current point, opening a new window when needed.";
+      icon = "mdi:gauge-low";
+      mode = "single";
+      sequence = [
+        {
+          action = "mqtt.publish";
+          data = {
+            topic = "${telemetryRoot}/command";
+            payload = "{{ {'command': 'throttle', 'issued_at': as_timestamp(now())} | to_json }}";
+            qos = 1;
+            retain = false;
+          };
+        }
+      ];
+    };
+    cardResource = {
+      key = "victron-charging-card";
+      source = builtins.readFile ./charging-card.js;
+    };
     view = {
       title = "Victron";
       path = "overview";
@@ -435,50 +518,15 @@ in
           type = "vertical-stack";
           cards = [
             {
-              type = "grid";
-              columns = 2;
-              square = false;
-              cards = [
-                {
-                  type = "markdown";
-                  entity_id = [ chargeLimitEntity ];
-                  content = ''
-                    **Current charging limit**
-
-                    {% set limit = states('${chargeLimitEntity}') %}
-                    {% if is_number(limit) %}
-                    {{ 'Unrestricted' if limit | float < 0 else limit ~ ' A' }}
-                    {% else %}
-                    Unavailable
-                    {% endif %}
-                  '';
-                }
-                {
-                  type = "tile";
-                  entity = "sensor.victron_charging_ramp_status";
-                  name = "Charging status";
-                }
-                {
-                  type = "tile";
-                  entity = "sensor.victron_charging_ramp_elapsed";
-                  name = "Ramp elapsed";
-                }
-                {
-                  type = "tile";
-                  entity = "sensor.victron_charging_ramp_remaining";
-                  name = "Ramp remaining";
-                }
-              ];
-            }
-            {
-              type = "shortcut";
-              label = "Full charging now";
-              icon = "mdi:flash";
-              tap_action = {
-                action = "perform-action";
-                perform_action = "script.victron_full_charging_now";
-                confirmation.text = "Skip the remaining charging ramp?";
-              };
+              type = "custom:victron-charging-card";
+              status_entity = "sensor.victron_charging_ramp_status";
+              bms_limit_entity = "sensor.battery_maximum_allowed_charge_current";
+              policy_limit_entity = chargeLimitEntity;
+              current_entity = "sensor.battery_dc_bus_current";
+              soc_entity = "sensor.battery_charge";
+              throttle_action = "script.${throttleScript}";
+              restore_action = "script.${restoreScript}";
+              history_hours = 2;
             }
             { type = "custom:victron-live-card"; }
           ];
