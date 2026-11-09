@@ -11,8 +11,9 @@ This directory contains a modified copy of the dashboard card shipped with
 
 The upstream frontend identifies Venus-OS-Dashboard-Card as its base.
 
-Every JavaScript file here is derived from the upstream file of the same role
-and carries a header naming its origin and stating that it was modified:
+The upstream-derived JavaScript modules listed below carry headers naming their
+origin and stating that they were modified. The system card and battery-details
+panel are local components; the Victron logo has a separate source attribution:
 
   upstream www/victron-vrm-api.js -> victron-energy-card.js
   upstream www/editor.js          -> editor.js

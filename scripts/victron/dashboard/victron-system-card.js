@@ -1,15 +1,18 @@
 // Read-only Lovelace card drawing the Victron VRM "overview" layout: grid, inverter,
 // AC loads and battery boxes joined by animated power paths.
 //
-// Every shape is an original vector primitive drawn here; no Victron/VRM/gui-v2
-// asset is copied. The card has no dependencies, performs no API polling and
-// calls no services: it only reads `hass.states` pushed by the frontend.
+// Layout shapes are local; the logo's official source is recorded beside it.
+// Readings use hass.states and battery history uses native HA charts.
+// The card never calls services.
 //
 // Usage (all entity bindings are optional and default to DEFAULT_ENTITIES):
 //   type: custom:victron-system-card
 //   entities:
 //     grid_power: sensor.grid_power
 
+import { openBatteryDetails } from "./battery-details.js";
+
+const LOGO_URL = new URL("./victron-logo.svg", import.meta.url).href;
 const CARD_TYPE = "victron-system-card";
 const DASH = "—";
 
@@ -32,6 +35,12 @@ const DEFAULT_ENTITIES = Object.freeze({
   battery_voltage: "sensor.battery_dc_bus_voltage",
   battery_current: "sensor.battery_dc_bus_current",
   battery_temperature: "sensor.battery_temperature",
+  battery_health: "sensor.battery_state_of_health",
+  battery_capacity: "sensor.battery_installed_capacity",
+  battery_modules: "sensor.battery_number_of_modules_online",
+  battery_remaining: "sensor.battery_remaining_time",
+  battery_charge_limit: "sensor.battery_maximum_allowed_charge_current",
+  battery_user_limit: "number.cerbo_ess_max_charge_current",
 });
 const ENTITY_ID = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 
@@ -183,34 +192,8 @@ function batteryIcon() {
   </g>`;
 }
 
-// An original side view of a spring: a trochoid split into one segment per
-// turn. Each turn is drawn over a wider blue stroke so it visibly crosses the
-// previous one, giving the coil its depth.
-function coilIcon() {
-  const turns = 4.25;
-  const steps = 40;
-  const points = [];
-  for (let i = 0; i <= turns * steps; i++) {
-    const t = Math.PI * 0.5 + (i / steps) * 2 * Math.PI;
-    points.push([4.2 * t - 24 * Math.sin(t), 46 * Math.cos(t + 0.3)]);
-  }
-  const xs = points.map(([x]) => x);
-  const offset = -(Math.min(...xs) + Math.max(...xs)) / 2;
-  const segments = [];
-  for (let start = 0; start < points.length - 1; start += steps / 2) {
-    const slice = points.slice(start, start + steps / 2 + 1);
-    segments.push(
-      `M${slice.map(([x, y]) => `${(x + offset).toFixed(1)} ${y.toFixed(1)}`).join(" L")}`,
-    );
-  }
-  return `<g transform="translate(149 80)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    ${segments
-      .map(
-        (d) =>
-          `<path d="${d}" stroke="${COLOR.blue}" stroke-width="22"/><path d="${d}" stroke="#fff" stroke-width="12"/>`,
-      )
-      .join("")}
-  </g>`;
+function victronLogo() {
+  return `<image href="${LOGO_URL}" x="68" y="22" width="162" height="106" preserveAspectRatio="xMidYMid meet"/>`;
 }
 
 function gridBox(origin) {
@@ -247,7 +230,7 @@ function inverterBox(origin) {
     <rect x="1.5" y="1.5" width="${width - 3}" height="${height - 3}" rx="${r}" fill="${COLOR.background}"/>
     <path d="M1.5 ${body} V${1.5 + r} Q1.5 1.5 ${1.5 + r} 1.5 H${width - 1.5 - r} Q${width - 1.5} 1.5 ${width - 1.5} ${1.5 + r} V${body} Z" fill="${COLOR.blue}"/>
     <rect x="1.5" y="149" width="${width - 3}" height="8" fill="${COLOR.orange}"/>
-    ${coilIcon()}
+    ${victronLogo()}
     <rect x="1.5" y="1.5" width="${width - 3}" height="${height - 3}" rx="${r}" fill="none" stroke="${COLOR.blue}" stroke-width="3"/>
     ${text("inverterState", width / 2, 331, 33, `text-anchor="middle" fill="${COLOR.blue}"`)}
   </g>`;
@@ -257,7 +240,7 @@ function batteryBox(origin) {
   const { width, height, divider } = BOX.battery;
   const rule = (y) =>
     `<line x1="25" y1="${y}" x2="${width - 25}" y2="${y}" stroke="${COLOR.divider}" stroke-width="2"/>`;
-  return `<g ${translate(origin)}>
+  return `<g ${translate(origin)} data-battery-details role="button" tabindex="0" aria-label="Battery details">
     ${frame(width, height, divider)}
     ${batteryIcon()}
     ${text("batteryTitle", 86, 63, 34)}
@@ -411,6 +394,7 @@ class VictronLiveCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._update();
+    if (this._batteryPanel?.open) this._batteryPanel.update(hass);
   }
 
   getCardSize() {
@@ -430,6 +414,7 @@ class VictronLiveCard extends HTMLElement {
   disconnectedCallback() {
     this._resize.disconnect();
     this._motion.removeEventListener("change", this._onMotionChange);
+    this._batteryPanel?.close();
   }
 
   _chooseLayout(width) {
@@ -457,6 +442,8 @@ class VictronLiveCard extends HTMLElement {
         }
         svg { display: block; width: 100%; height: auto; }
         text { font-family: ${FONT}; }
+        [data-battery-details] { cursor: pointer; }
+        [data-battery-details]:focus-visible { outline: 3px solid ${COLOR.blue}; }
         /* CSS fill would override the coloured texts' fill attributes. */
         text:not([fill]) { fill: ${COLOR.text}; }
       </style>
@@ -482,6 +469,17 @@ class VictronLiveCard extends HTMLElement {
         </svg>
       </ha-card>`;
     this._svg = this.shadowRoot.querySelector("svg");
+    const battery = this.shadowRoot.querySelector("[data-battery-details]");
+    const inspectBattery = () => {
+      if (!this._hass || this._batteryPanel?.open) return;
+      this._batteryPanel = openBatteryDetails(this._hass, this._entities, this);
+    };
+    battery.addEventListener("click", inspectBattery);
+    battery.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      inspectBattery();
+    });
     this._fields = new Map(
       [...this.shadowRoot.querySelectorAll("[data-field]")].map((node) => [
         node.dataset.field,
