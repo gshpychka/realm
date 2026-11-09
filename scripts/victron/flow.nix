@@ -569,8 +569,8 @@ in
         align-items = "start";
         grid-gap = "16px";
         mediaquery."(max-width: 900px)" = {
-          grid-template-columns = "minmax(0, 1fr)";
-          grid-template-areas = ''"charging" "flow"'';
+          grid-template-columns = "minmax(0, 1fr) minmax(0, 240px) minmax(0, 1fr)";
+          grid-template-areas = ''". charging ." "flow flow flow"'';
         };
 
       };

@@ -12,7 +12,7 @@ const METRICS = [
   ["battery_user_limit", "User charge-current ceiling"],
 ];
 
-/** Read-only battery readings and native Recorder charts. */
+/** Read-only battery readings and 24-hour history. */
 export function openBatteryDetails(initialHass, entities, opener) {
   let hass = initialHass;
   const host = document.createElement("div");
@@ -135,7 +135,13 @@ export function openBatteryDetails(initialHass, entities, opener) {
         cards.push(card);
       }
     } catch {
-      if (dialog.open) history.querySelector(".status")?.replaceChildren("History is unavailable.");
+      if (dialog.open) {
+        const status = document.createElement("p");
+        status.className = "status";
+        status.textContent = "History is unavailable.";
+        history.replaceChildren(status);
+        cards.length = 0;
+      }
     }
   })();
   return { update, close, get open() { return dialog.open; } };

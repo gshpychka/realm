@@ -3,8 +3,9 @@
 // Modified for the standalone victron-energy-card; changes are listed in NOTICE.
 //
 // Rendering library: card skeleton, boxes, anchors, connection lines, flow
-// animation and history sparklines. It reads hass.states and the recorder
-// history REST endpoint only; it never calls services.
+// animation and history sparklines with hover/tap inspection. It reads
+// hass.states and the recorder history REST endpoint only; it never calls
+// services.
 
 /* A flow moves only when its signal is a finite number outside ±FLOW_DEADBAND.
    Zero, missing, unknown and unavailable signals stop it (upstream threshold). */
@@ -545,6 +546,30 @@ export function fillBox(config, isDark, hass, appendTo, history, historyVersion)
 /**********************************************/
 /* History sparkline                          */
 /**********************************************/
+
+/* Inspection retains every held value; drawing preserves per-pixel extrema and gaps. */
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+/* viewBox size; the path is decimated to one min/max column per width unit */
+const GRAPH_W = 500;
+const GRAPH_H = 100;
+/* keeps the 3-unit stroke inside the viewBox at the extremes */
+const GRAPH_PAD = 1.5;
+/* Raised while a tooltip is visible so it paints above the box texts
+   (they share z-index 2 with the graph and come later in the DOM). */
+const INSPECT_Z_INDEX = "4";
+
+/* Inspection events stay inside the graph. */
+const CONTAINED_EVENTS = [
+    "pointerdown", "pointermove", "pointerup", "pointercancel", "mousedown", "mouseup",
+    "touchstart", "touchmove", "touchend", "touchcancel", "click", "dblclick", "contextmenu", "action",
+];
+
+/* points array → { start, end } (ms) of the window it was fetched for */
+const historyWindows = new WeakMap();
+/* graph div → its inspector view (elements, plotted series, active inspection) */
+const inspectors = new WeakMap();
+
 function creatGraph(boxId, mainId, isDark, appendTo, config, history, historyVersion) {
 
     const state = getState(appendTo);
@@ -556,48 +581,439 @@ function creatGraph(boxId, mainId, isDark, appendTo, config, history, historyVer
     if (!divGraph) return;
     state.graphDrawn.set(boxId, graphKey);
 
-    const pathD = generatePath(history?.get(mainId), 500, 99);
-    if (!pathD || pathD.includes("NaN")) {
-        divGraph.replaceChildren();
+    const points = history?.get(mainId);
+    const plot = Array.isArray(points) ? plotHistory(points) : null;
+    if (!plot) {
+        clearGraph(divGraph);
         return;
     }
 
-    const colorPath = customColor || (isDark ? "#ffffff" : "#000000");
-    const opacityPath = customColor ? 0.9 : 0.47;
+    const color = customColor || (isDark ? "#ffffff" : "#000000");
+    const opacity = customColor ? 0.9 : 0.47;
 
-    divGraph.innerHTML = `
-        <svg viewBox="0 0 500 100" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" style="width: 100%; height: 100%;">
-            <path fill="none" stroke="${esc(colorPath)}" stroke-opacity="${opacityPath}" stroke-width="3" d="${pathD}" />
-        </svg>
-    `;
+    const view = graphView(divGraph);
+    view.appendTo = appendTo;
+    if (view.entity !== mainId) view.active = null;
+    view.entity = mainId;
+    view.plot = plot;
+
+    // colours come from safeColor or constants and go through the DOM API
+    view.line.setAttribute("stroke", color);
+    view.line.setAttribute("stroke-opacity", String(opacity));
+    view.line.setAttribute("d", plot.path);
+    if (plot.zeroY === null) {
+        view.zero.removeAttribute("d");
+    } else {
+        // signed series (e.g. import/export): faint zero reference
+        view.zero.setAttribute("d", `M0,${round2(plot.zeroY)}H${GRAPH_W}`);
+        view.zero.setAttribute("stroke", color);
+    }
+    view.cross.style.borderLeftColor = color;
+    view.dot.style.backgroundColor = color;
+    view.color = color;
+    view.tip.style.background = isDark ? "rgba(28, 28, 28, 0.94)" : "rgba(255, 255, 255, 0.96)";
+    view.tip.style.color = isDark ? "#ffffff" : "#484848";
+    view.dot.style.boxShadow = `0 0 0 2px ${isDark ? "#1c1c1c" : "#ffffff"}`;
+    divGraph.style.cursor = "crosshair";
+
+    // a pinned or hovered time keeps its place across history refreshes
+    if (view.active && view.active.time < plot.start) view.active = null;
+    renderInspection(view);
 }
 
-function generatePath(data, svgWidth = 500, svgHeight = 100) {
-    if (!data || data.length < 2) return "";
+/* No history (or none any more): drop the drawing and all inspector state */
+function clearGraph(divGraph) {
+    inspectors.delete(divGraph);
+    divGraph.replaceChildren();
+    divGraph.style.zIndex = "";
+    divGraph.style.cursor = "";
+}
 
-    // 1: min/max for normalisation
-    const minY = Math.min(...data.map((d) => d.value));
-    let maxY = Math.max(...data.map((d) => d.value));
-    // constant values: avoid dividing by zero
-    if (maxY === minY) maxY = minY + 1;
-
-    // 2: normalise points (SVG y grows downwards)
-    const points = data.map((d, index) => ({
-        x: (index / (data.length - 1)) * svgWidth,
-        y: svgHeight - ((d.value - minY) / (maxY - minY)) * svgHeight,
-    }));
-
-    // 3: smooth quadratic segments
-    let path = `M${points[0].x},${points[0].y}`;
-    for (let i = 1; i < points.length; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        const midX = (prev.x + curr.x) / 2;
-        path += ` Q${prev.x},${prev.y} ${midX},${curr.y}`;
+/** Held history values, unavailable intervals and time coordinates. */
+function plotHistory(points) {
+    let rows = points.filter((p) => p && p.time instanceof Date && !isNaN(p.time.getTime()));
+    for (let i = 1; i < rows.length; i++) {
+        if (rows[i].time < rows[i - 1].time) {
+            rows = rows.slice().sort((a, b) => a.time - b.time);
+            break;
+        }
     }
-    path += ` T${points[points.length - 1].x},${points[points.length - 1].y}`;
+    const n = rows.length;
+    if (!n) return null;
 
-    return path;
+    const t = new Float64Array(n);
+    const v = new Array(n);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < n; i++) {
+        t[i] = rows[i].time.getTime();
+        const value = typeof rows[i].value === "number" && Number.isFinite(rows[i].value) ? rows[i].value : null;
+        v[i] = value;
+        if (value !== null) {
+            if (value < lo) lo = value;
+            if (value > hi) hi = value;
+        }
+    }
+    if (lo === Infinity) return null;
+    // constant series: a centred flat line
+    if (lo === hi) {
+        lo -= 1;
+        hi += 1;
+    }
+
+    const fetched = historyWindows.get(points);
+    const start = fetched ? fetched.start : t[0];
+    let end = fetched ? fetched.end : Math.max(Date.now(), t[n - 1]);
+    if (end <= start) end = start + 1;
+
+    const span = end - start;
+    const xOf = (time) => Math.min(Math.max((time - start) / span, 0), 1) * GRAPH_W;
+    const yOf = (value) => GRAPH_PAD + ((hi - value) / (hi - lo)) * (GRAPH_H - 2 * GRAPH_PAD);
+
+    // Decimation: consecutive held values starting in the same column are
+    // summarised as first → min → max → last, so a 24 h history of a fast
+    // sensor stays at most a few commands per column.
+    const parts = [];
+    let acc = null;
+    let joined = false; // the next run continues the previous one (no gap between)
+    const flush = () => {
+        if (!acc) return;
+        parts.push(`${acc.move ? "M" : "L"}${round2(acc.xStart)},${round2(acc.first)}`);
+        if (acc.count > 1) {
+            const jumpX = round2(acc.xLast);
+            parts.push(`H${jumpX}V${round2(acc.min)}V${round2(acc.max)}V${round2(acc.last)}`);
+        }
+        parts.push(`H${round2(acc.xEnd)}`);
+        acc = null;
+    };
+
+    for (let i = 0; i < n; i++) {
+        const from = Math.max(t[i], start);
+        const to = i + 1 < n ? Math.min(t[i + 1], end) : end;
+        if (to <= from) continue; // never held inside the window
+        if (v[i] === null) {
+            flush();
+            joined = false;
+            continue;
+        }
+        const xa = xOf(from);
+        const xb = xOf(to);
+        const y = yOf(v[i]);
+        const col = Math.floor(xa);
+        if (acc && acc.col === col) {
+            acc.min = Math.min(acc.min, y);
+            acc.max = Math.max(acc.max, y);
+            acc.last = y;
+            acc.xLast = xa;
+            acc.xEnd = xb;
+            acc.count++;
+        } else {
+            flush();
+            acc = { col, move: !joined, xStart: xa, xLast: xa, xEnd: xb, first: y, last: y, min: y, max: y, count: 1 };
+        }
+        joined = true;
+        if (Math.floor(xb) > col) flush();
+    }
+    flush();
+    if (!parts.length) return null;
+
+    return {
+        t,
+        v,
+        start,
+        end,
+        yOf,
+        path: parts.join(""),
+        zeroY: lo < 0 && hi > 0 ? yOf(0) : null,
+    };
+}
+
+function round2(x) {
+    return Math.round(x * 100) / 100;
+}
+
+/* The graph div's persistent elements; listeners are attached once per div */
+function graphView(divGraph) {
+    let view = inspectors.get(divGraph);
+    if (view) return view;
+
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${GRAPH_W} ${GRAPH_H}`);
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.style.cssText = "display: block; width: 100%; height: 100%; overflow: visible;";
+
+    const zero = document.createElementNS(SVG_NS, "path");
+    zero.setAttribute("fill", "none");
+    zero.setAttribute("stroke-opacity", "0.25");
+    zero.setAttribute("stroke-width", "1");
+    zero.setAttribute("stroke-dasharray", "3 3");
+    zero.setAttribute("vector-effect", "non-scaling-stroke");
+
+    const line = document.createElementNS(SVG_NS, "path");
+    line.setAttribute("fill", "none");
+    line.setAttribute("stroke-width", "3");
+    line.setAttribute("stroke-linejoin", "round");
+    line.setAttribute("stroke-linecap", "round");
+    svg.append(zero, line);
+
+    const cross = document.createElement("div");
+    cross.style.cssText = "position: absolute; top: 0; bottom: 0; width: 0; display: none; " +
+        "border-left: 1px dashed; opacity: 0.7; pointer-events: none;";
+
+    const dot = document.createElement("div");
+    dot.style.cssText = "position: absolute; width: 7px; height: 7px; border-radius: 50%; display: none; " +
+        "transform: translate(-50%, -50%); pointer-events: none;";
+
+    const valueEl = document.createElement("div");
+    valueEl.style.cssText = "font-weight: 600; font-variant-numeric: tabular-nums;";
+    const rangeEl = document.createElement("div");
+    rangeEl.style.cssText = "opacity: 0.75; font-variant-numeric: tabular-nums;";
+
+    const tip = document.createElement("div");
+    tip.style.cssText = "position: absolute; bottom: calc(100% + 4px); left: 0; display: none; " +
+        "padding: 3px 7px; border-radius: 4px; border: 1px solid transparent; " +
+        "font-family: inherit; font-size: 12px; line-height: 1.35; white-space: normal; " +
+        "max-width: calc(100% - 8px); box-sizing: border-box; overflow-wrap: anywhere; " +
+        "box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); pointer-events: none; cursor: text; " +
+        "user-select: text; -webkit-user-select: text;";
+    tip.append(valueEl, rangeEl);
+
+    divGraph.replaceChildren(svg, cross, dot, tip);
+
+    view = {
+        divGraph, svg, zero, line, cross, dot, tip, valueEl, rangeEl,
+        appendTo: null, entity: "", plot: null, color: "",
+        active: null,          // { time: ms, pinned: boolean } or null
+        lastPointerType: "",
+    };
+    inspectors.set(divGraph, view);
+    if (!divGraph._vrmInspect) attachInspection(divGraph);
+    return view;
+}
+
+/* Hover (mouse/pen) follows the pointer; a tap/click pins or unpins. */
+function attachInspection(divGraph) {
+    divGraph._vrmInspect = true;
+
+    const contain = (ev) => ev.stopPropagation();
+    for (const type of CONTAINED_EVENTS) {
+        divGraph.addEventListener(type, contain, type.startsWith("touch") ? { passive: true } : false);
+    }
+
+    divGraph.addEventListener("pointerdown", (ev) => {
+        const view = inspectors.get(divGraph);
+        if (view) view.lastPointerType = ev.pointerType || "";
+    });
+
+    divGraph.addEventListener("pointermove", (ev) => {
+        const view = inspectors.get(divGraph);
+        if (!view?.plot || ev.pointerType === "touch" || view.active?.pinned) return;
+        const time = eventTime(view, ev);
+        if (time === null) return;
+        view.active = { time, pinned: false };
+        renderInspection(view);
+    });
+
+    divGraph.addEventListener("pointerleave", () => {
+        const view = inspectors.get(divGraph);
+        if (!view || view.active?.pinned) return;
+        view.active = null;
+        renderInspection(view);
+    });
+
+    divGraph.addEventListener("click", (ev) => {
+        const view = inspectors.get(divGraph);
+        if (!view?.plot) return;
+        // clicks inside the pinned tooltip, or ending a text selection there,
+        // leave the pin alone so its text can be selected and copied
+        if (view.tip.contains(ev.target) || selectionInside(view.tip)) return;
+        const time = eventTime(view, ev);
+        if (view.active?.pinned) {
+            const hovering = view.lastPointerType === "mouse" || view.lastPointerType === "pen";
+            view.active = hovering && time !== null ? { time, pinned: false } : null;
+        } else if (time !== null) {
+            view.active = { time, pinned: true };
+        }
+        renderInspection(view);
+    });
+}
+
+function selectionInside(el) {
+    const root = el.getRootNode();
+    // Chromium exposes the selection inside a shadow root only via the root
+    const selection = (typeof root.getSelection === "function" ? root.getSelection() : null) || window.getSelection();
+    return !!selection && !selection.isCollapsed &&
+        (el.contains(selection.anchorNode) || el.contains(selection.focusNode));
+}
+
+/* Pointer x → time (ms) within the plotted window */
+function eventTime(view, ev) {
+    const rect = view.svg.getBoundingClientRect();
+    if (!rect.width || !Number.isFinite(ev.clientX)) return null;
+    const frac = Math.min(Math.max((ev.clientX - rect.left) / rect.width, 0), 1);
+    return view.plot.start + frac * (view.plot.end - view.plot.start);
+}
+
+function hideInspection(view) {
+    view.cross.style.display = "none";
+    view.dot.style.display = "none";
+    view.tip.style.display = "none";
+    view.tip.style.pointerEvents = "none";
+    view.divGraph.style.zIndex = "";
+}
+
+function renderInspection(view) {
+    const { plot, active } = view;
+    if (!plot || !active) {
+        hideInspection(view);
+        return;
+    }
+
+    const info = describeAt(view, active.time);
+    const frac = Math.min(Math.max((active.time - plot.start) / (plot.end - plot.start), 0), 1);
+    const left = `${frac * 100}%`;
+
+    view.cross.style.left = left;
+    view.cross.style.display = "block";
+    if (info.y === null) {
+        view.dot.style.display = "none";
+    } else {
+        view.dot.style.left = left;
+        view.dot.style.top = `${(info.y / GRAPH_H) * 100}%`;
+        view.dot.style.display = "block";
+    }
+
+    // textContent is only touched when the text changes, so a selection in a
+    // pinned tooltip survives refreshes that do not alter it
+    setText(view.valueEl, info.value);
+    setText(view.rangeEl, info.range);
+    view.valueEl.style.fontStyle = info.measured ? "" : "italic";
+    view.tip.style.borderColor = active.pinned ? view.color : "transparent";
+    view.tip.style.pointerEvents = active.pinned ? "auto" : "none";
+    view.tip.style.display = "block";
+    view.divGraph.style.zIndex = INSPECT_Z_INDEX;
+
+    // horizontally centred on the crosshair, clamped to the graph width
+    const graphWidth = view.divGraph.clientWidth;
+    const tipWidth = view.tip.offsetWidth;
+    const x = frac * graphWidth;
+    const tipLeft = tipWidth >= graphWidth
+        ? (graphWidth - tipWidth) / 2
+        : Math.min(Math.max(x - tipWidth / 2, 0), graphWidth - tipWidth);
+    view.tip.style.left = `${tipLeft}px`;
+    const graphBounds = view.divGraph.getBoundingClientRect();
+    const boxBounds = view.divGraph.parentElement.getBoundingClientRect();
+    const bottom = Math.min(graphBounds.height + 4, graphBounds.bottom - boxBounds.top - view.tip.offsetHeight - 4);
+    view.tip.style.bottom = `${bottom}px`;
+}
+
+function setText(el, text) {
+    if (el.textContent !== text) el.textContent = text;
+}
+
+/** The held measurement and its interval at a time. */
+function describeAt(view, time) {
+    const { plot } = view;
+    const hass = view.appendTo ? getState(view.appendTo).hass : null;
+    const fmt = timeLabeler(hass, plot.end);
+
+    // last row with t <= time (equal timestamps: the later row is the one held)
+    let lowIndex = 0;
+    let highIndex = plot.t.length - 1;
+    let index = -1;
+    while (lowIndex <= highIndex) {
+        const mid = (lowIndex + highIndex) >> 1;
+        if (plot.t[mid] <= time) {
+            index = mid;
+            lowIndex = mid + 1;
+        } else {
+            highIndex = mid - 1;
+        }
+    }
+
+    if (index < 0) {
+        return { value: "no data", range: `before ${fmt(plot.t[0])}`, y: null, measured: false };
+    }
+
+    const from = plot.t[index];
+    const to = index + 1 < plot.t.length ? plot.t[index + 1] : null;
+    const fromLabel = from <= plot.start ? `≤ ${fmt(from)}` : fmt(from);
+    const range = to === null ? `since ${fromLabel}` : `${fromLabel} – ${fmt(to)}`;
+    const value = plot.v[index];
+    if (value === null) {
+        return { value: unavailableLabel(hass), range, y: null, measured: false };
+    }
+    return { value: formatHistoryValue(hass, view.entity, value), range, y: plot.yOf(value), measured: true };
+}
+
+function unavailableLabel(hass) {
+    try {
+        const text = hass?.localize?.("state.default.unavailable");
+        if (typeof text === "string" && text) return text;
+    } catch (e) {
+        // English fallback below
+    }
+    return "unavailable";
+}
+
+/* Historical readings use entity display precision and the profile's number format. */
+const NUMBER_LOCALE = { comma_decimal: "en-US", decimal_comma: "de", space_comma: "fr" };
+
+function formatHistoryValue(hass, id, value) {
+    const unit = hass?.states?.[id]?.attributes?.unit_of_measurement || "";
+    const precision = hass?.entities?.[id]?.display_precision;
+    const numberFormat = hass?.locale?.number_format;
+    const locale = numberFormat === "system" ? undefined
+        : NUMBER_LOCALE[numberFormat] || hass?.locale?.language || hass?.language || undefined;
+    const options = Number.isInteger(precision) && precision >= 0 && precision <= 20
+        ? { minimumFractionDigits: precision, maximumFractionDigits: precision }
+        : { maximumFractionDigits: 2 };
+    if (numberFormat === "none") options.useGrouping = false;
+
+    let text;
+    try {
+        text = new Intl.NumberFormat(locale, options).format(value);
+    } catch (e) {
+        text = String(value);
+    }
+    return unit ? `${text} ${unit}` : text;
+}
+
+/* Formatters per locale/time zone/clock setting, created once */
+const timeFormatterCache = new Map();
+
+function timeFormatters(hass) {
+    const language = hass?.locale?.language || hass?.language || undefined;
+    // Home Assistant profile: show times in the server's or the browser's zone
+    const timeZone = hass?.locale?.time_zone === "server" ? hass?.config?.time_zone || undefined : undefined;
+    const clock = hass?.locale?.time_format;
+    const hour12 = clock === "12" ? true : clock === "24" ? false : undefined;
+    const key = `${language}|${timeZone}|${hour12}`;
+    let formatters = timeFormatterCache.get(key);
+    if (formatters) return formatters;
+
+    const make = (lang, zone) => ({
+        time: new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12, timeZone: zone }),
+        weekday: new Intl.DateTimeFormat(lang, { weekday: "short", timeZone: zone }),
+        day: new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: zone }),
+    });
+    try {
+        formatters = make(language, timeZone);
+    } catch (e) {
+        // unknown language tag or time zone: browser defaults
+        formatters = make(undefined, undefined);
+    }
+    timeFormatterCache.set(key, formatters);
+    return formatters;
+}
+
+/* Time of day; prefixed with the weekday when not on the window's last day */
+function timeLabeler(hass, reference) {
+    const { time, weekday, day } = timeFormatters(hass);
+    const referenceDay = day.format(reference);
+    return (ms) => day.format(ms) === referenceDay
+        ? time.format(ms)
+        : `${weekday.format(ms)} ${time.format(ms)}`;
 }
 
 /******************************************************/
@@ -852,8 +1268,10 @@ export function graphEntities(config) {
 
 /**
  * One recorder history request for all entities. Resolves to a Map of
- * entity id → reduced points for entities with numeric history; throws when
- * the request fails. The caller owns scheduling and discards stale results.
+ * entity id → the complete chronological series of Recorder state changes
+ * (`{ time, value }`, value null while unknown/unavailable/non-numeric) for
+ * entities with at least one numeric value; throws when the request fails.
+ * The caller owns scheduling and discards stale results.
  */
 export async function fetchHistory(hass, entityIds, periodInHours = HISTORY_HOURS) {
     const startTime = new Date(Date.now() - periodInHours * 60 * 60 * 1000);
@@ -862,6 +1280,7 @@ export async function fetchHistory(hass, entityIds, periodInHours = HISTORY_HOUR
         "&minimal_response=true&no_attributes=true&significant_changes_only=true";
 
     const response = await hass.callApi("GET", url);
+    const fetchedAt = Date.now();
     const series = new Map();
     if (!Array.isArray(response)) return series;
 
@@ -870,50 +1289,35 @@ export async function fetchHistory(hass, entityIds, periodInHours = HISTORY_HOUR
         if (!Array.isArray(rows) || !rows.length) continue;
         const id = rows[0]?.entity_id;
         if (!entityIds.includes(id)) continue;
-        const points = reduceHistory(rows, startTime, periodInHours);
-        if (points.length >= 2) series.set(id, points);
+        const points = historyPoints(rows);
+        if (!points.some((p) => p.value !== null)) continue;
+        // The window the series covers, for time-proportional drawing. The end
+        // is never before the last row (browser and server clocks may differ).
+        historyWindows.set(points, {
+            start: startTime.getTime(),
+            end: Math.max(fetchedAt, points[points.length - 1].time.getTime()),
+        });
+        series.set(id, points);
     }
     return series;
 }
 
-/* Upstream reduction: one sample per 30 minutes plus min/max of 6 segments */
-function reduceHistory(rawData, startTime, periodInHours, numSegments = 6) {
-
-    const formattedData = rawData
-        .map((item) => ({
-            time: new Date(item.last_changed ?? item.last_updated ?? (item.lu ? item.lu * 1000 : NaN)),
-            state: numericState({ state: item.state ?? item.s }),
-        }))
-        .filter((item) => item.state !== null && !isNaN(item.time.getTime()));
-
-    if (formattedData.length === 0) return [];
-
-    const interval = 30 * 60 * 1000;
-    const totalIntervals = (periodInHours * 60 * 60 * 1000) / interval;
-    const startTimestamp = Math.floor(startTime.getTime() / interval) * interval;
-
-    const reducedData = [];
-    for (let i = 0; i < totalIntervals; i++) {
-        const targetTime = new Date(startTimestamp + i * interval);
-        const closest = formattedData.reduce((prev, curr) =>
-            Math.abs(curr.time - targetTime) < Math.abs(prev.time - targetTime) ? curr : prev
-        );
-        reducedData.push({ time: targetTime, value: closest.state });
+/**
+ * Recorder rows → chronological held values with their actual timestamps.
+ * Nothing is resampled or averaged. Rows repeating the previous value add no
+ * information to a step function and are dropped, so each point's time is
+ * when its value began. Home Assistant reports the state already in effect at
+ * the window start with the requested start time as its timestamp.
+ */
+function historyPoints(rows) {
+    const points = [];
+    for (const item of rows) {
+        // REST rows: last_changed (ISO); websocket-style rows: lc/lu (epoch seconds)
+        const epoch = item.lc ?? item.lu;
+        const time = new Date(item.last_changed ?? item.last_updated ?? (typeof epoch === "number" ? epoch * 1000 : NaN));
+        if (isNaN(time.getTime())) continue;
+        points.push({ time, value: numericState({ state: item.state ?? item.s }) });
     }
-
-    // keep peaks: add min and max of each segment
-    const segmentSize = Math.ceil(formattedData.length / numSegments);
-    for (let i = 0; i < formattedData.length; i += segmentSize) {
-        const segment = formattedData.slice(i, i + segmentSize);
-        let minPoint = { value: Infinity, time: null };
-        let maxPoint = { value: -Infinity, time: null };
-        segment.forEach((point) => {
-            if (point.state < minPoint.value) minPoint = { value: point.state, time: point.time };
-            if (point.state > maxPoint.value) maxPoint = { value: point.state, time: point.time };
-        });
-        reducedData.push(minPoint, maxPoint);
-    }
-
-    reducedData.sort((a, b) => a.time - b.time);
-    return reducedData;
+    points.sort((a, b) => a.time - b.time);
+    return points.filter((point, i) => i === 0 || point.value !== points[i - 1].value);
 }

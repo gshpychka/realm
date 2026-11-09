@@ -43,6 +43,9 @@ Identity and integration independence
     translations are imported statically.
 
 Behaviour
+  - Recorder sparklines retain original timestamps, held values and unavailable
+    intervals, with hover crosshairs and selectable, pinnable inspection.
+  - Sparkline inspection contains pointer, touch and action events.
   - New per-box `control_entity`: tapping a box opens Home Assistant's native
     more-info dialog (hass-more-info) for it instead of the reading. Boxes are
     keyboard-activatable. The card performs no service calls.
@@ -73,7 +76,7 @@ Safety and validation
   - All entity, config and state text is escaped for HTML text and attributes,
     including font sizes, link indexes, box keys and editor option labels.
   - Colours are restricted to plain colour syntax before entering CSS/SVG;
-    font sizes to numbers or number+px/em/rem/%; ball size to (0, 20].
+    font sizes to numbers or number+px/em/rem/%; ball size to [0.5, 20].
   - Box ids, anchors (1-3 per side, duplicates merged) and link geometry are
     validated; invalid entries are skipped instead of logged per update.
 
