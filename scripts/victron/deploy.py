@@ -5,11 +5,15 @@
 import argparse
 import base64
 import hashlib
+import io
 import json
 import os
+import re
+import shlex
 import socket
 import ssl
 import subprocess
+import tarfile
 import time
 from contextlib import closing, contextmanager
 from copy import deepcopy
@@ -22,6 +26,148 @@ from urllib.request import Request, urlopen
 import websocket
 
 SOURCE = Path(__file__).with_name("flow.nix")
+FRONTEND_KEY = "victron-energy-card"
+
+
+def frontend_resource(bundle):
+    assets = bundle["homeAssistant"]["frontendAssets"]
+    if not {FRONTEND_KEY + ".js", "LICENSE", "NOTICE"} <= assets.keys() or any(
+        not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name)
+        or not isinstance(source, str)
+        for name, source in assets.items()
+    ):
+        raise RuntimeError("Invalid dashboard frontend assets")
+    digest = hashlib.sha256(json.dumps(assets, sort_keys=True).encode()).hexdigest()
+    return {
+        "url": f"/local/victron-energy/{digest}/{FRONTEND_KEY}.js#{FRONTEND_KEY}",
+        "type": "module",
+    }
+
+
+def upload_frontend(bundle):
+    resource = frontend_resource(bundle)
+    destination = "/config/www/" + urlsplit(resource["url"]).path.removeprefix(
+        "/local/"
+    )
+    destination = str(Path(destination).parent)
+    assets = bundle["homeAssistant"]["frontendAssets"]
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as output:
+        for name, source in sorted(assets.items()):
+            data = source.encode()
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            member.mode = 0o644
+            output.addfile(member, io.BytesIO(data))
+    ssh = shlex.split(
+        os.environ.get(
+            "HOME_ASSISTANT_SSH_COMMAND",
+            "ssh -o BatchMode=yes root@homeassistant.glib.sh",
+        )
+    )
+    remote = (
+        f"set -eu; mkdir -p {shlex.quote(destination)}; "
+        f"tar -xf - -C {shlex.quote(destination)}; cd {shlex.quote(destination)}; "
+        "sha256sum " + " ".join(shlex.quote(name) for name in sorted(assets))
+    )
+    result = subprocess.run(
+        ssh + [remote],
+        input=archive.getvalue(),
+        capture_output=True,
+        timeout=60,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            "Frontend upload failed: " + result.stderr.decode(errors="replace").strip()
+        )
+    actual = {
+        name: digest
+        for line in result.stdout.decode().splitlines()
+        for digest, name in [line.split(maxsplit=1)]
+    }
+    expected = {
+        name: hashlib.sha256(source.encode()).hexdigest()
+        for name, source in assets.items()
+    }
+    if actual != expected:
+        raise RuntimeError("Deployed frontend asset checksums differ")
+    return resource
+
+
+def frontend_snapshot(command, rest, bundle):
+    return {
+        "scope": "victron-frontend",
+        "dashboard": command(
+            "lovelace/config", url_path=bundle["homeAssistant"]["dashboard"]
+        ),
+        "scripts": read_scripts(rest, bundle["homeAssistant"]),
+        "resource": owned_resource(command, bundle),
+        "frontend_resource": owned_resource(command, bundle, FRONTEND_KEY),
+    }
+
+
+def restore_frontend(command, rest, bundle, snapshot):
+    if (
+        not isinstance(snapshot, dict)
+        or snapshot.get("scope") != "victron-frontend"
+        or not {"dashboard", "scripts", "resource", "frontend_resource"}
+        <= snapshot.keys()
+        or not isinstance(snapshot["scripts"], dict)
+        or set(snapshot["scripts"]) != set(bundle["homeAssistant"]["scripts"])
+        or not isinstance(snapshot["dashboard"], dict)
+        or not isinstance(snapshot["dashboard"].get("views"), list)
+    ):
+        raise RuntimeError("Incompatible frontend rollback snapshot")
+    for field, key in [
+        ("resource", bundle["homeAssistant"]["cardResource"]["key"]),
+        ("frontend_resource", FRONTEND_KEY),
+    ]:
+        resource = snapshot[field]
+        if resource is not None and (
+            not isinstance(resource, dict)
+            or resource.get("type") != "module"
+            or not isinstance(resource.get("url"), str)
+            or not resource["url"].endswith("#" + key)
+        ):
+            raise RuntimeError("Incompatible frontend resource snapshot")
+    configure_resource(command, bundle, snapshot["frontend_resource"], FRONTEND_KEY)
+    update_controls(
+        command,
+        rest,
+        bundle,
+        snapshot["dashboard"],
+        snapshot["scripts"],
+        snapshot["resource"],
+    )
+
+
+def deploy_frontend(command, rest, bundle, directory):
+    require_resources(command, bundle)
+    previous = frontend_snapshot(command, rest, bundle)
+    backup = save_snapshot(directory, previous)
+    desired = deepcopy(previous["dashboard"])
+    view = bundle["homeAssistant"]["view"]
+    matches = [
+        i for i, item in enumerate(desired["views"]) if item.get("path") == view["path"]
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("Expected exactly one owned Victron overview")
+    desired["views"][matches[0]] = view
+    resource = upload_frontend(bundle)
+    try:
+        configure_resource(command, bundle, resource, FRONTEND_KEY)
+        update_controls(
+            command,
+            rest,
+            bundle,
+            desired,
+            bundle["homeAssistant"]["scripts"],
+            declared_resource(bundle),
+        )
+    except Exception:
+        restore_frontend(command, rest, bundle, previous)
+        raise
+    return backup
 
 
 class NodeRed:
@@ -261,15 +407,15 @@ def read_scripts(rest, controls):
     return result
 
 
-def owned_resource(command, bundle):
-    suffix = "#" + bundle["homeAssistant"]["cardResource"]["key"]
+def owned_resource(command, bundle, key=None):
+    suffix = "#" + (key or bundle["homeAssistant"]["cardResource"]["key"])
     matches = [
         resource
         for resource in command("lovelace/resources")
         if resource["url"].endswith(suffix)
     ]
     if len(matches) > 1:
-        raise RuntimeError("Multiple charging card resources are registered")
+        raise RuntimeError("Multiple frontend resources have the same ownership key")
     return matches[0] if matches else None
 
 
@@ -285,8 +431,8 @@ def declared_resource(bundle):
     }
 
 
-def configure_resource(command, bundle, desired):
-    current = owned_resource(command, bundle)
+def configure_resource(command, bundle, desired, key=None):
+    current = owned_resource(command, bundle, key)
     if desired is None:
         if current:
             command("lovelace/resources/delete", resource_id=current["id"])
@@ -301,7 +447,7 @@ def configure_resource(command, bundle, desired):
             url=desired["url"],
             res_type=desired["type"],
         )
-    actual = owned_resource(command, bundle)
+    actual = owned_resource(command, bundle, key)
     if (desired is None and actual is not None) or (
         desired is not None
         and (
@@ -309,7 +455,7 @@ def configure_resource(command, bundle, desired):
             or any(actual[key] != desired[key] for key in ("url", "type"))
         )
     ):
-        raise RuntimeError("Charging card resource readback differs")
+        raise RuntimeError("Frontend resource readback differs")
 
 
 def require_resources(command, bundle):
@@ -380,7 +526,16 @@ def wait_for_telemetry(rest, bundle):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=("deploy", "status", "full", "throttle", "rollback")
+        "action",
+        choices=(
+            "deploy",
+            "frontend",
+            "frontend-rollback",
+            "status",
+            "full",
+            "throttle",
+            "rollback",
+        ),
     )
     parser.add_argument("--ha-url", default="http://homeassistant.glib.sh:8123")
     parser.add_argument("--backup", type=Path)
@@ -395,6 +550,23 @@ def main():
         text=True,
     )
     bundle = json.loads(result.stdout)
+    if args.action in ("frontend", "frontend-rollback"):
+        with home_assistant(args.ha_url) as (command, rest):
+            if args.action == "frontend":
+                backup = deploy_frontend(command, rest, bundle, args.state_dir)
+                print(json.dumps({"frontend_deployed": True, "backup": str(backup)}))
+            else:
+                if args.backup is None:
+                    raise RuntimeError("Frontend rollback requires --backup")
+                try:
+                    snapshot = json.loads(args.backup.read_text())
+                except json.JSONDecodeError:
+                    raise RuntimeError(
+                        "Incompatible frontend rollback snapshot"
+                    ) from None
+                restore_frontend(command, rest, bundle, snapshot)
+                print(json.dumps({"frontend_rolled_back": True}))
+        return
     if args.action == "rollback":
         if args.backup is None:
             raise RuntimeError("Rollback requires --backup")
@@ -404,7 +576,14 @@ def main():
             raise RuntimeError("Incompatible rollback snapshot") from None
         if (
             not isinstance(snapshot, dict)
-            or not {"flows", "dashboard", "scripts", "resource", "control_disabled_by"}
+            or not {
+                "flows",
+                "dashboard",
+                "scripts",
+                "resource",
+                "frontend_resource",
+                "control_disabled_by",
+            }
             <= snapshot.keys()
             or not isinstance(snapshot["scripts"], dict)
             or set(snapshot["scripts"]) != set(bundle["homeAssistant"]["scripts"])
@@ -462,6 +641,7 @@ def main():
                 )
                 scripts = read_scripts(rest, controls)
                 resource = owned_resource(command, bundle)
+                energy_resource = owned_resource(command, bundle, FRONTEND_KEY)
                 current = client.request("/flows")
                 if args.action == "deploy":
                     if mqtt_credentials is None and not any(
@@ -487,11 +667,15 @@ def main():
                             "dashboard": dashboard,
                             "scripts": scripts,
                             "resource": resource,
+                            "frontend_resource": energy_resource,
                             "control_disabled_by": control["disabled_by"],
                         },
                     )
                     desired_dashboard = deepcopy(dashboard)
                     desired_dashboard["views"] = [controls["view"]]
+                    configure_resource(
+                        command, bundle, upload_frontend(bundle), FRONTEND_KEY
+                    )
                     configure_control(command, rest, bundle, None)
                     apply_flow(client, bundle, bundle["flows"], mqtt_credentials)
                     wait_for_telemetry(rest, bundle)
@@ -517,6 +701,9 @@ def main():
                     )
                 else:
                     full_charging(client, bundle)
+                    configure_resource(
+                        command, bundle, snapshot["frontend_resource"], FRONTEND_KEY
+                    )
                     update_controls(
                         command,
                         rest,

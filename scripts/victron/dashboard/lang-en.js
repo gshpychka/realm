@@ -1,0 +1,73 @@
+// Derived from www/lang-en.js of jayjojayson/hass-victron-vrm-api 2.0
+// (commit 017c7dc0c6956c6602c5678f2b339a514257a1e1), Apache-2.0.
+// Modified for the standalone victron-energy-card; see NOTICE.
+
+export default {
+  tab1Render: {
+    theme_choice: "Select card theme:",
+    light: "Light",
+    dark: "Dark",
+    auto: "Auto",
+    transparent: "Transparent",
+    devices_per_column: "Number of \"Devices\" per column:",
+    font_size_zones: "Font size in \"Devices\" zones:",
+    in_header: "in header",
+    in_devices: "in devices",
+    in_sensor2: "in secondary value",
+    in_footer: "in footer",
+    font_size: "Font size (px)",
+    colors_title: "Customize colors:",
+    box_shadow_color: "Box border",
+    anchor_color: "Anchor point",
+    graph_color: "Lines",
+    ball_color: "Animation dot",
+    text_main_color: "Main value text",
+    text_sub_color: "Sub value text",
+    ball_size: "Animation dot size",
+    history_color: "History graph",
+    auto_size: "Auto"
+  },
+  subtabRender: {
+    header_title: "Header configuration",
+    icon_choice: "Icon picker",
+    name_choice: "Device name",
+    sensor_title: "Main sensor configuration",
+    entity_choice: "Entity picker",
+    entity2_choice: "Secondary entity picker",
+    control_entity: "Control entity (opened on tap instead of the main entity)",
+    enable_graph: "Enable graphic",
+    enable_gauge: "Enable gauge in %",
+    warning_gauge: "Can only be enabled if the unit of measurement is %",
+    header_footer_title: "Header and footer sensors configuration",
+    entity_header: "Select header entity",
+    entity_footer: "Select footer entity",
+    entity2_footer: "Select 2nd footer entity",
+    entity3_footer: "Select 3rd footer entity",
+    anchor_title: "Add anchor",
+    left_qtyBox: "Left",
+    top_qtyBox: "Top",
+    bottom_qtyBox: "Bottom",
+    right_qtyBox: "Right",
+    add_links: "Add links",
+    add_link: "Add link",
+    footer_layout: "Footer layout",
+    layout_horizontal: "Horizontal",
+    layout_vertical: "Vertical",
+    footer_align: "Footer alignment",
+    align_left: "Left",
+    align_center: "Center",
+    align_right: "Right"
+  },
+  addLink: {
+    start: "Start",
+    end: "End",
+    entity_picker: "Flow signal entity",
+    reverse: "reverse",
+    link_title: "Link",
+    delete_link: "Delete link"
+  },
+  tabs: {
+    general: "Conf.",
+    column: "Col."
+  }
+};

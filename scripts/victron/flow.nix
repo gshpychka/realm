@@ -13,6 +13,7 @@ let
   controlScript = "victron_toggle_charging";
   statusEntity = "sensor.victron_charging_ramp_status";
   gridReady = "states('${statusEntity}') not in ['unknown', 'unavailable'] and state_attr('${statusEntity}', 'ready') == true and state_attr('${statusEntity}', 'grid_source') == 1";
+  frontendDirectory = builtins.readDir ./dashboard;
   sensors =
     builtins.map
       (
@@ -540,6 +541,18 @@ in
       "mushroom.js"
       "layout-card.js"
     ];
+    frontendAssets = builtins.listToAttrs (
+      builtins.map
+        (name: {
+          inherit name;
+          value = builtins.readFile (./dashboard + "/${name}");
+        })
+        (
+          builtins.filter (name: frontendDirectory.${name} == "regular") (
+            builtins.attrNames frontendDirectory
+          )
+        )
+    );
     cardResource = {
       key = "victron-charging-card";
       source = builtins.readFile ./charging-chart.js;
@@ -589,7 +602,7 @@ in
         {
           type = "vertical-stack";
           view_layout.grid-area = "flow";
-          cards = [ { type = "custom:victron-live-card"; } ];
+          cards = [ { type = "custom:victron-energy-card"; } ];
         }
       ];
     };

@@ -17,6 +17,27 @@ The Cerbo runs the charging ramp locally in Node-RED. Grid restoration increases
 - The Home Assistant override also releases the ceiling while Node-RED is stopped. A stopped Node-RED retains its last DVCC setting until it is released or the controller resumes.
 - DVCC applies this ceiling to its managed chargers, including solar chargers. Generator and shore input retain normal charging.
 
+## Energy card
+
+`dashboard/` contains the standalone `custom:victron-energy-card` and its visual editor. The frontend reads Home Assistant entities and Recorder history. Its default layout uses the local MQTT entities for Grid, Battery, MultiPlus and House loads.
+
+The visual editor configures each box's main and secondary entities, footer readings, graph, gauge, icon, name and connection anchors. `control_entity` selects the entity whose native Home Assistant dialog opens when the box is clicked; its value is independent of the displayed reading. A Battery box can display SoC and open the charging-current control.
+
+```yaml
+type: custom:victron-energy-card
+```
+
+An explicit `devices` map supplies the complete set of boxes and supports entities from any integration. Connection `entity` readings determine flow direction; `inv` sets the sign convention. Missing and unavailable readings stop their flow.
+
+Frontend deployment requires the existing HA token and SSH access to HA's `/config/www`. `HOME_ASSISTANT_SSH_COMMAND` supplies the SSH executable, options and destination; its default is `ssh -o BatchMode=yes root@homeassistant.glib.sh`. Assets have content-addressed directories and verified checksums.
+
+```sh
+scripts/victron/deploy.py frontend
+scripts/victron/deploy.py frontend-rollback --backup /path/to/frontend-snapshot.json
+```
+
+These actions own the dashboard frontend, its scripts and resources. Charging policy, device registry and GX runtime remain unchanged. Refresh the HA page after deploying a frontend resource. The copied frontend's Apache-2.0 license and upstream attribution live in `dashboard/LICENSE` and `dashboard/NOTICE`.
+
 ## Deployment
 
 Supply the GX local-network password in `VICTRON_PASSWORD` and the existing Home Assistant API token in `HOME_ASSISTANT_TOKEN`. The executable uses a Nix-provided Python with `websocket-client`.

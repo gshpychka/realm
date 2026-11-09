@@ -1,0 +1,225 @@
+// Derived from www/css-editor.js of jayjojayson/hass-victron-vrm-api 2.0
+// (commit 017c7dc0c6956c6602c5678f2b339a514257a1e1), Apache-2.0.
+// Modified for the standalone victron-energy-card; see NOTICE.
+
+export function css() {
+    return `
+
+        #tab-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .editor {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px 0px;
+        }
+
+        .devices-editor {
+            display: flex;
+            flex-direction: column;
+            padding: 0px 0px;
+        }
+
+        .subTab-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px 0px;
+        }
+
+        .col {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .row {
+            position: relative;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .inner {
+            padding: 10px 5px;
+        }
+
+        .cell {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .cellx1-5 {
+            flex: 1.5;
+        }
+
+        .left {
+            position: relative;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .right {
+            position: relative;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .contMenu {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            box-shadow: none;
+            border-width: 1px;
+            border-style: solid;
+            border-color: var(--outline-color);
+            border-radius: var(--ha-card-border-radius, 12px);
+            padding: 0px 8px;
+        }
+
+        .headerMenu {
+            font-weight: 500;
+        }
+
+        .noGap {
+            gap: 0;
+        }
+
+        ha-selector {
+            display: block;
+            width: 100%;
+        }
+
+        /* keep expansion panel content from collapsing */
+        ha-expansion-panel .inner {
+            display: block;
+            overflow: visible;
+        }
+
+        /* --- tabs (own buttons, independent of HA internals) --- */
+        .vrm-tabs {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            scrollbar-width: none;
+            border-bottom: 1px solid var(--divider-color, #444);
+            margin-bottom: 4px;
+        }
+
+        .vrm-subtabs {
+            margin-top: 8px;
+        }
+
+        .vrm-tab {
+            appearance: none;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            color: var(--secondary-text-color);
+            font: inherit;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            padding: 10px 10px;
+            flex: 1 1 auto;
+            white-space: nowrap;
+            min-height: 40px;
+            cursor: pointer;
+            transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+        }
+
+        .vrm-tab:hover {
+            background-color: rgba(var(--rgb-primary-text-color, 255, 255, 255), 0.05);
+            color: var(--primary-text-color);
+        }
+
+        .vrm-tab[active] {
+            border-bottom-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .vrm-tab-panel {
+            padding: 0 4px;
+        }
+
+        /* --- native inputs (ha-textfield was removed in HA 2026.10) --- */
+        .vrm-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .vrm-field-label {
+            font-size: 0.85em;
+            color: var(--secondary-text-color);
+        }
+
+        .vrm-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 8px;
+            font: inherit;
+            background: var(--input-fill-color, var(--secondary-background-color, #1c2536));
+            color: var(--primary-text-color);
+            border: 1px solid var(--divider-color, #404040);
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .vrm-input:focus {
+            border-color: var(--primary-color);
+        }
+
+        .vrm-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* --- radio buttons (replace ha-radio/ha-formfield) --- */
+        .radio-group {
+            flex-wrap: wrap;
+            gap: 6px 16px;
+        }
+
+        .vrm-radio {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            color: var(--primary-text-color);
+        }
+
+        .vrm-radio input[type="radio"] {
+            accent-color: var(--primary-color);
+            width: 18px;
+            height: 18px;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        select.vrm-input {
+            cursor: pointer;
+        }
+
+        .vrm-switch-label {
+            font-size: 0.85em;
+            color: var(--secondary-text-color);
+        }
+
+        input[type="range"] {
+            accent-color: var(--primary-color);
+        }
+    `;
+}
