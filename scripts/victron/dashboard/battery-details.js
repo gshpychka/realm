@@ -127,9 +127,12 @@ export function openBatteryDetails(initialHass, entities, opener) {
           type: "history-graph", title: definition.title, entities: selected,
           hours_to_show: 24, refresh_interval: 60,
         });
+        history.append(card);
+        // Context consumers connect before the first history render.
+        if (card.updateComplete) await card.updateComplete;
+        if (!dialog.open || !host.isConnected) return;
         card.hass = hass;
         cards.push(card);
-        history.append(card);
       }
     } catch {
       if (dialog.open) history.querySelector(".status")?.replaceChildren("History is unavailable.");
