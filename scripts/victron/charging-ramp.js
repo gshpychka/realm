@@ -2,7 +2,8 @@ const fullCurrent = Number(env.get("FULL_CHARGE_CURRENT_A"));
 const duration = Number(env.get("RAMP_DURATION_SECONDS"));
 const stepSeconds = 10;
 const normalLimit = -1;
-const state = context.get("state") || {
+// Default node-local context is cleared when its node closes.
+const state = flow.get("state") || {
   source: null,
   observedLimit: null,
   requestedLimit: null,
@@ -13,7 +14,7 @@ const state = context.get("state") || {
 };
 
 function save() {
-  context.set("state", state);
+  flow.set("state", state);
   const text = state.mode === "ramping"
     ? `${state.requestedLimit}/${fullCurrent} A; ${Math.ceil((duration - state.elapsed) / 60)} min remaining`
     : state.mode;
@@ -28,7 +29,7 @@ function save() {
   node.send([null, { payload: {
     state: labels[state.mode] || "Waiting for data",
     phase: state.mode,
-    elapsed_seconds: state.elapsed,
+    elapsed_seconds: state.mode === "ramping" ? state.elapsed : 0,
     remaining_seconds: state.mode === "ramping" ? Math.max(0, duration - state.elapsed) : 0,
     duration_seconds: duration,
     target_current_a: fullCurrent,

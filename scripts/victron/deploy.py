@@ -162,7 +162,7 @@ def apply_flow(client, bundle, desired, credentials=None):
         if credentials is not None and node["id"] in credentials:
             node["credentials"] = credentials[node["id"]]
     configuration = {"rev": current["rev"], "flows": others + deployment}
-    client.request("/flows", configuration, deployment="flows")
+    client.request("/flows", configuration, deployment="nodes")
     actual = client.request("/flows")["flows"]
     if [node for node in actual if not owned(node, bundle)] != others:
         raise RuntimeError("Unrelated Node-RED configuration changed")
@@ -173,7 +173,7 @@ def apply_flow(client, bundle, desired, credentials=None):
 
 
 def state(client, bundle):
-    return client.request(f"/context/node/{bundle['controllerId']}/state")
+    return client.request(f"/context/flow/{bundle['tabId']}/state")
 
 
 def current_limit(client, bundle):

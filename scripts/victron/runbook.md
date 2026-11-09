@@ -10,6 +10,7 @@ The Cerbo runs the charging ramp locally in Node-RED. Grid restoration starts a 
 - The Victron page shows the current charging ceiling, controller status, elapsed ramp time and remaining time. Timing updates every ten seconds through Home Assistant's existing MQTT broker; readings expire after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
 - An outage arms a fresh ramp. A Node-RED restart with grid present starts a fresh ramp.
 - Flow redeployments preserve in-memory ramp progress and overrides.
+- Flow memory holds charging state; node memory holds the running timer.
 - The Home Assistant override also releases the ceiling while Node-RED is stopped. A stopped Node-RED retains its last DVCC setting until it is released or the controller resumes.
 - DVCC applies this ceiling to its managed chargers, including solar chargers. Generator and shore input retain normal charging.
 
@@ -32,5 +33,7 @@ Deployment prints a private snapshot path under `~/.local/state/victron-node-red
 ```sh
 scripts/victron/deploy.py rollback --backup /path/to/snapshot.json
 ```
+
+Restart Node-RED before deploying after a rollback.
 
 Native API contract: <https://nodered.org/docs/api/admin/methods/post/flows/>.
