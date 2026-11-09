@@ -11,6 +11,7 @@
 //     grid_power: sensor.grid_power
 
 import { openBatteryDetails } from "./battery-details.js";
+import { historyMarkup, mountOverviewHistory } from "./overview-history.js";
 
 const LOGO_URL = new URL("./victron-logo.svg", import.meta.url).href;
 const CARD_TYPE = "victron-system-card";
@@ -76,9 +77,9 @@ const COLOR = Object.freeze({
 
 // Box sizes match the 1179x1015 reference; layouts only move the boxes and paths.
 const BOX = Object.freeze({
-  ac: { width: 340, height: 313, divider: 178 },
+  ac: { width: 340, height: 313, divider: 222 },
   inverter: { width: 298, height: 370, body: 271 },
-  battery: { width: 340, height: 553, divider: 225 },
+  battery: { width: 340, height: 553, divider: 318 },
 });
 
 // Paths run from source to sink for positive power: grid -> inverter (import),
@@ -203,10 +204,11 @@ function gridBox(origin) {
     ${pylonIcon()}
     ${text("gridTitle", 86, 63, 34)}
     ${text("gridPower", 25, 141, 48)}
-    ${label("L1", 25, 233, 28)}
-    ${text("gridVoltage", 182, 233, 28)}
-    ${text("gridCurrent", 25, 279, 28)}
-    ${text("gridL1Power", 182, 279, 28)}
+    ${historyMarkup("grid", COLOR.grid, 158)}
+    ${label("L1", 22, 295, 22)}
+    ${text("gridVoltage", 65, 295, 24)}
+    ${text("gridCurrent", 145, 295, 24)}
+    ${text("gridL1Power", 230, 295, 24)}
   </g>`;
 }
 
@@ -217,9 +219,10 @@ function loadsBox(origin) {
     ${acIcon()}
     ${label("AC Loads", 86, 63, 34)}
     ${text("loadsPower", 25, 141, 48)}
-    ${label("L1", 25, 233, 28)}
-    ${text("loadsL1Power", 182, 233, 28)}
-    ${text("loadsFrequency", 25, 279, 28)}
+    ${historyMarkup("loads", COLOR.ac, 158)}
+    ${label("L1", 22, 295, 22)}
+    ${text("loadsL1Power", 65, 295, 24)}
+    ${text("loadsFrequency", 225, 295, 24)}
   </g>`;
 }
 
@@ -246,14 +249,15 @@ function batteryBox(origin) {
     ${text("batteryTitle", 86, 63, 34)}
     ${text("batteryPower", 86, 110, 30, `fill="${COLOR.muted}"`)}
     ${text("batterySoc", 25, 188, 48)}
-    ${label("Voltage", 25, 283, 28)}
-    ${text("batteryVoltage", 182, 283, 28)}
-    ${rule(322)}
-    ${label("Current", 25, 378, 28)}
-    ${text("batteryCurrent", 182, 378, 28)}
-    ${rule(418)}
-    ${label("Temperature", 25, 475, 28)}
-    ${text("batteryTemperature", 25, 520, 28)}
+    ${historyMarkup("battery", COLOR.battery, 208)}
+    ${label("Voltage", 25, 371, 28)}
+    ${text("batteryVoltage", 182, 371, 28)}
+    ${rule(397)}
+    ${label("Current", 25, 445, 28)}
+    ${text("batteryCurrent", 182, 445, 28)}
+    ${rule(471)}
+    ${label("Temperature", 25, 525, 24)}
+    ${text("batteryTemperature", 205, 525, 28)}
   </g>`;
 }
 
@@ -387,6 +391,9 @@ class VictronLiveCard extends HTMLElement {
       }
     }
     this._entities = Object.freeze({ ...DEFAULT_ENTITIES, ...overrides });
+    this._history?.close();
+    this._history = null;
+    this._startHistory();
     this._seen = null;
     this._update();
   }
@@ -409,12 +416,15 @@ class VictronLiveCard extends HTMLElement {
     this._resize.observe(this);
     this._motion.addEventListener("change", this._onMotionChange);
     if (!this._layout) this._chooseLayout(this.clientWidth || LAYOUTS.wide.width);
+    this._startHistory();
   }
 
   disconnectedCallback() {
     this._resize.disconnect();
     this._motion.removeEventListener("change", this._onMotionChange);
     this._batteryPanel?.close();
+    this._history?.close();
+    this._history = null;
   }
 
   _chooseLayout(width) {
@@ -427,6 +437,8 @@ class VictronLiveCard extends HTMLElement {
 
   _render() {
     const layout = LAYOUTS[this._layout];
+    this._history?.close();
+    this._history = null;
     // The template contains only constants; entity values are written later
     // through textContent, never parsed as markup.
     this.shadowRoot.innerHTML = `
@@ -444,6 +456,8 @@ class VictronLiveCard extends HTMLElement {
         text { font-family: ${FONT}; }
         [data-battery-details] { cursor: pointer; }
         [data-battery-details]:focus-visible { outline: 3px solid ${COLOR.blue}; }
+        [data-history] { cursor: crosshair; }
+        [data-history]:focus-visible { outline: 2px solid ${COLOR.blue}; }
         /* CSS fill would override the coloured texts' fill attributes. */
         text:not([fill]) { fill: ${COLOR.text}; }
       </style>
@@ -491,8 +505,19 @@ class VictronLiveCard extends HTMLElement {
     );
     this._directions = { grid: null, loads: null, battery: null };
     this._seen = null;
+    this._startHistory();
     this._applyMotionPreference();
     this._update();
+  }
+
+  _startHistory() {
+    if (this._history || !this._svg || !this.isConnected) return;
+    this._history = mountOverviewHistory(this._svg, [
+      { name: "grid", entity: this._entities.grid_power, read: (state) => numeric(state, "power"), format: power },
+      { name: "loads", entity: this._entities.loads_power, read: (state) => numeric(state, "power"), format: power },
+      { name: "battery", entity: this._entities.battery_soc, read: (state) => numeric(state, "percent"), format: (value) => fixed(value, 1, "%"), percent: true },
+    ]);
+    if (this._hass) this._history.update(this._hass);
   }
 
   // Reduced motion freezes the particles in place; their comet shape still
@@ -526,6 +551,7 @@ class VictronLiveCard extends HTMLElement {
 
   _update() {
     if (!this._hass || !this._svg) return;
+    this._history?.update(this._hass);
     const states = this._hass.states;
     const objects = Object.values(this._entities).map((id) => states[id]);
     // HA replaces a state object whenever it changes, so identity is enough to

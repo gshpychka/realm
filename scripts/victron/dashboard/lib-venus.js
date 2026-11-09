@@ -567,6 +567,11 @@ const CONTAINED_EVENTS = [
 
 /* points array → { start, end } (ms) of the window it was fetched for */
 const historyWindows = new WeakMap();
+/** The fetched interval, in epoch milliseconds. */
+export function getHistoryWindow(points) {
+    const window = historyWindows.get(points);
+    return window ? { ...window } : null;
+}
 /* graph div → its inspector view (elements, plotted series, active inspection) */
 const inspectors = new WeakMap();
 
