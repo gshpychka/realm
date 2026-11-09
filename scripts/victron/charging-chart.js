@@ -44,10 +44,10 @@ const MODE_TONES = {
 };
 const modeLabel = (mode) => Object.hasOwn(MODE_TONES, mode) ? mode : "Mode unavailable";
 const SERIES = {
-  power: { label: "Grid import", unit: "W" },
-  battery: { label: "Battery power", unit: "W", description: "Negative power supplies household loads" },
-  ceiling: { label: "Nominal ceiling", unit: "W", description: "The input ceiling is plotted during ramping" },
-  planned: { label: "Planned allowance", unit: "W" },
+  power: { label: "Grid", unit: "W", description: "Grid import power" },
+  battery: { label: "Battery", unit: "W", description: "Negative power supplies household loads" },
+  ceiling: { label: "Limit", unit: "W", description: "Nominal input ceiling; plotted during ramping" },
+  planned: { label: "Plan", unit: "W", description: "Planned input allowance" },
   soc: { label: "SoC", unit: "%" },
 };
 
