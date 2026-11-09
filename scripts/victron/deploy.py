@@ -312,6 +312,20 @@ def configure_resource(command, bundle, desired):
         raise RuntimeError("Charging card resource readback differs")
 
 
+def require_resources(command, bundle):
+    controls = bundle["homeAssistant"]
+    resources = command("lovelace/resources")
+    missing = [
+        name
+        for name in controls["resourceFiles"]
+        if not any(
+            urlsplit(item["url"]).path.endswith("/" + name) for item in resources
+        )
+    ]
+    if missing:
+        raise RuntimeError("Missing Home Assistant resources: " + ", ".join(missing))
+
+
 def update_controls(command, rest, bundle, dashboard, scripts, resource):
     controls = bundle["homeAssistant"]
     if set(scripts) != set(controls["scripts"]):
@@ -322,7 +336,10 @@ def update_controls(command, rest, bundle, dashboard, scripts, resource):
         if script is None:
             if current_scripts[script_id] is not None:
                 rest(path, method="DELETE")
-        else:
+        elif current_scripts[script_id] is None or any(
+            current_scripts[script_id].get(key) != value
+            for key, value in script.items()
+        ):
             rest(path, script, method="POST")
     actual_scripts = read_scripts(rest, controls)
     for script_id, expected in scripts.items():
@@ -437,6 +454,8 @@ def main():
         else:
             controls = bundle["homeAssistant"]
             with home_assistant(args.ha_url) as (command, rest):
+                if args.action == "deploy":
+                    require_resources(command, bundle)
                 dashboard = command("lovelace/config", url_path=controls["dashboard"])
                 control = command(
                     "config/entity_registry/get", entity_id=controls["controlEntity"]

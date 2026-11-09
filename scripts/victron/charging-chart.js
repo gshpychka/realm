@@ -1,6 +1,6 @@
-// Charging history, active policy and the remaining planned ramp.
+// Recorded charging history and the remaining planned ramp.
 
-const TAG = "victron-charging-card";
+const TAG = "victron-charging-chart";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const ENTITY_OPTIONS = {
   status: "status_entity",
@@ -9,22 +9,23 @@ const ENTITY_OPTIONS = {
   current: "current_entity",
   soc: "soc_entity",
 };
-const ACTION_OPTIONS = ["throttle_action", "restore_action"];
-const REQUIRED = [...Object.values(ENTITY_OPTIONS), ...ACTION_OPTIONS, "history_hours"];
+const REQUIRED = [...Object.values(ENTITY_OPTIONS), "history_hours"];
 const NUMERIC = ["current", "bms", "policy", "soc"];
 // Bounds the recorder query; long windows are additionally decimated per pixel.
 const MAX_HISTORY_HOURS = 168;
 // The DVCC user ceiling is unrestricted at -1.
 const UNRESTRICTED = -1;
-// Victron /Ac/ActiveIn/Source enum: 1 is Grid, the only source a ramp runs on.
-const GRID_SOURCE = 1;
 const RAMPING = "ramping";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const REFRESH_MS = MINUTE;
 // Gives the recorder time to commit the new mode before re-querying.
 const MODE_REFRESH_DELAY_MS = 3_000;
-const PENDING_TIMEOUT_MS = 45_000;
+// Inspection events stay inside the feature.
+const CONTAINED_EVENTS = [
+  "action", "click", "dblclick", "contextmenu", "pointerdown", "pointerup", "mousedown", "mouseup",
+  "touchstart", "touchend", "touchcancel", "keydown", "keyup",
+];
 
 // Recorded mode labels retain transitions independently of numeric readings.
 const MODE_TONES = {
@@ -44,57 +45,37 @@ const SERIES = {
 };
 
 const STYLE = `
-  :host { display: block; width: min(100%, 240px); }
-  ha-card {
-    --vc-bg: #3c3c3c; --vc-lower: #373737; --vc-border: #4d4d4d;
-    --vc-text: #e8e8e8; --vc-muted: #a8a8a8; --vc-blue: #4a90d0;
-    --vc-amber: #f8a63a; --vc-sage: #8bb86a; --vc-mauve: #b294bb;
-    --vc-error: var(--error-color, #f08a76);
-    display: block; background: var(--vc-bg); color: var(--vc-text);
-    border: 1px solid var(--vc-border); border-radius: var(--ha-card-border-radius, 12px);
-    box-shadow: none; overflow: hidden;
-    font-family: var(--victron-live-font, "Museo Sans Rounded", ui-rounded, system-ui, sans-serif);
+  :host {
+    --vc-text: var(--primary-text-color); --vc-muted: var(--secondary-text-color);
+    --vc-border: var(--divider-color); --vc-amber: var(--warning-color);
+    --vc-sage: var(--success-color); --vc-blue: var(--info-color);
+    --vc-mauve: var(--purple-color, var(--accent-color));
+    display: block; width: 100%; height: 140px;
   }
-  .card { box-sizing: border-box; min-height: 238px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
-  .head { display: contents; }
-  .head > div:first-child { flex: 1; }
-  .title { margin: 0; font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--vc-muted); }
-
-  .control { display: flex; align-items: stretch; order: 3; }
-  .action {
-    min-height: 44px; min-width: 70px; padding: 0 8px; border-radius: 8px; cursor: pointer;
-    border: 1px solid var(--vc-border); background: var(--vc-lower); color: var(--vc-text);
-    width: 100%; font: inherit; font-size: 16px; font-weight: 600;
-  }
-  .action:hover:not(:disabled) { border-color: var(--tone); }
-  .action:focus-visible, svg:focus-visible { outline: 2px solid var(--primary-color, var(--vc-blue)); outline-offset: 2px; }
-  .action:disabled { cursor: default; opacity: 0.5; }
-  .note { order: 4; font-size: 14px; color: var(--vc-muted); }
-  .note:empty { display: none; }
-  .note.error { color: var(--vc-error); }
-
-  .swatch { width: 14px; border-top: 2px solid var(--tone); }
-  .swatch.soc { border-top-width: 1.5px; }
-  .graph { position: relative; order: 2; }
+  .graph { position: relative; height: 100%; }
   svg { display: block; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+  svg:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
   .graph-note { position: absolute; top: 8px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
-  .graph-note.error { color: var(--vc-error); }
+  .graph-note.error { color: var(--error-color); }
   .tip {
-    position: fixed; inset: auto; margin: 0; pointer-events: none; min-width: 148px; max-width: 220px;
-    padding: 7px 9px; border-radius: 8px; background: var(--vc-lower); border: 1px solid var(--vc-border);
-    color: var(--vc-text); font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums;
+    position: fixed; inset: auto; margin: 0; min-width: 148px; max-width: 220px; padding: 7px 9px;
+    border-radius: 8px; border: 1px solid var(--divider-color); box-shadow: var(--ha-card-box-shadow, none);
+    background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color);
+    font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums;
+    pointer-events: auto; user-select: text; -webkit-user-select: text; cursor: text;
   }
   .tip .when { font-weight: 600; }
   .tip .row { display: flex; align-items: center; gap: 6px; }
   .tip .row span:last-child { margin-left: auto; padding-left: 10px; }
-  .tip .muted { color: var(--vc-muted); }
-  [data-tone=amber], .tone-amber, .policy { --tone: var(--vc-amber); }
-  [data-tone=sage], .tone-sage, .current { --tone: var(--vc-sage); }
-  [data-tone=blue], .tone-blue, .bms { --tone: var(--vc-blue); }
-  [data-tone=text], .tone-text { --tone: var(--vc-text); }
-  [data-tone=muted], .tone-muted { --tone: var(--vc-muted); }
+  .muted { color: var(--vc-muted); }
+  .swatch { width: 14px; border-top: 2px solid var(--tone); }
+  .swatch.soc { border-top-width: 1.5px; }
+  .tone-amber, .policy { --tone: var(--vc-amber); }
+  .tone-sage, .current { --tone: var(--vc-sage); }
+  .tone-blue, .bms { --tone: var(--vc-blue); }
+  .tone-text { --tone: var(--vc-text); }
+  .tone-muted { --tone: var(--vc-muted); }
   .soc { --tone: var(--vc-mauve); }
-  .axis { fill: var(--vc-muted); font-size: 11px; font-family: inherit; }
   .gridline { stroke: var(--vc-border); stroke-width: 1; }
   .band { fill: var(--tone); opacity: 0.75; }
   .marker { stroke: var(--vc-text); stroke-opacity: 0.28; stroke-dasharray: 2 3; }
@@ -106,7 +87,6 @@ const STYLE = `
   .trace.projection { stroke-dasharray: 5 4; stroke-opacity: 0.85; }
   .area { fill: var(--vc-mauve); fill-opacity: 0.07; }
   .cursor { stroke: var(--vc-text); stroke-opacity: 0.6; }
-
 `;
 
 function el(tag, className, parent, text) {
@@ -258,7 +238,7 @@ function niceStep(range, count) {
   return [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((s) => s >= raw);
 }
 
-class VictronChargingCard extends HTMLElement {
+class VictronChargingChart extends HTMLElement {
   constructor() {
     super();
     this._states = {};
@@ -266,10 +246,12 @@ class VictronChargingCard extends HTMLElement {
     this._historyAt = 0;
     this._gen = 0;
     this._width = 0;
+    this._height = 0;
     this._visible = false;
     this._cursor = null;
-    this._pending = null;
-    this._notice = null;
+    this._pinned = false;
+    // Bubble-phase isolation preserves the feature's own input handlers.
+    for (const type of CONTAINED_EVENTS) this.addEventListener(type, (e) => e.stopPropagation(), { passive: true });
     this._build();
   }
 
@@ -280,11 +262,6 @@ class VictronChargingCard extends HTMLElement {
     for (const key of Object.values(ENTITY_OPTIONS)) {
       if (typeof config[key] !== "string" || !/^[a-z_]+\.[a-z0-9_]+$/.test(config[key])) {
         throw new Error(`${key} must be an entity id.`);
-      }
-    }
-    for (const key of ACTION_OPTIONS) {
-      if (typeof config[key] !== "string" || !/^script\.[a-z0-9_]+$/.test(config[key])) {
-        throw new Error(`${key} must be a script entity id.`);
       }
     }
     const hours = Number(config.history_hours);
@@ -302,6 +279,8 @@ class VictronChargingCard extends HTMLElement {
     if (this._hass) this.hass = this._hass;
   }
 
+
+
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
@@ -317,29 +296,22 @@ class VictronChargingCard extends HTMLElement {
       if (key === "status" && previous && previous.state !== state?.state) this._modeChanged();
     }
     if (!changed) return;
-    this._checkPending();
     this._maybeLoad();
     this._scheduleRender();
-  }
-
-  getCardSize() {
-    return 5;
-  }
-
-  getGridOptions() {
-    return { columns: 3, min_columns: 3 };
   }
 
   connectedCallback() {
     this._resize = new ResizeObserver(([entry]) => {
       const width = Math.floor(entry.contentRect.width);
-      if (width !== this._width) {
+      const height = Math.floor(entry.contentRect.height);
+      if (width !== this._width || height !== this._height) {
         this._width = width;
+        this._height = height;
         this._scheduleRender();
       }
     });
     this._resize.observe(this._els.graph);
-    // History is fetched only while the card is on screen.
+    // History is fetched only while the feature is on screen.
     this._intersection = new IntersectionObserver(([entry]) => {
       this._visible = entry.isIntersecting;
       this._maybeLoad();
@@ -357,10 +329,9 @@ class VictronChargingCard extends HTMLElement {
     this._intersection?.disconnect();
     clearInterval(this._tick);
     clearTimeout(this._modeRefresh);
-    clearTimeout(this._pending?.timer);
     cancelAnimationFrame(this._frame);
     this._frame = null;
-    this._pending = null;
+    this._hideCursor();
     this._visible = false;
     this._gen++;
     this._loading = false;
@@ -369,40 +340,29 @@ class VictronChargingCard extends HTMLElement {
   _build() {
     const root = this.attachShadow({ mode: "open" });
     el("style", "", root, STYLE);
-    const card = el("ha-card", "", root);
-    const body = el("div", "card", card);
-    const head = el("div", "head", body);
-    const heading = el("div", "", head);
-    el("h2", "title", heading, "Charging power");
-
-    const control = el("div", "control", head);
-    const button = el("button", "action", control);
-    button.type = "button";
-    button.addEventListener("click", () => this._act());
-    const note = el("div", "note", body);
-    note.setAttribute("aria-live", "polite");
-
-
-
-    const graph = el("div", "graph", body);
+    const graph = el("div", "graph", root);
     const chart = svg("svg", { tabindex: 0, role: "group" }, graph);
-    chart.setAttribute("aria-label", "Charging history. Arrow keys move the inspector, Page Up and Page Down jump between mode changes.");
-    for (const type of ["pointerdown", "pointermove"]) chart.addEventListener(type, (e) => this._onPointer(e));
-    chart.addEventListener("pointerleave", (e) => e.pointerType === "mouse" && this._hideCursor());
-    chart.addEventListener("pointercancel", () => this._hideCursor());
+    chart.setAttribute("aria-label", "Charging history. Click to pin the inspector; arrow keys move it, Page Up and Page Down jump between mode changes.");
+    // Click/tap pins until light dismiss; hover only previews and never moves a pinned inspector.
+    chart.addEventListener("click", (e) => {
+      this._pinned = true;
+      this._inspect(e);
+    });
+    chart.addEventListener("pointermove", (e) => e.pointerType !== "touch" && !this._pinned && this._inspect(e));
+    chart.addEventListener("pointerleave", (e) => e.pointerType !== "touch" && !this._pinned && this._hideCursor());
     chart.addEventListener("keydown", (e) => this._onKey(e));
     chart.addEventListener("focus", () => {
-      if (!this._cursor && this._geom) this._setCursor(this._geom.now);
+      if (!this._cursor && this._geom && chart.matches(":focus-visible")) this._setCursor(this._geom.now);
     });
-    chart.addEventListener("blur", () => this._hideCursor());
+    // Focus moves to the inspector when selecting its text; only an unpinned preview follows focus.
+    chart.addEventListener("blur", () => !this._pinned && this._hideCursor());
     const graphNote = el("div", "graph-note", graph);
     const tip = el("div", "tip", graph);
     tip.setAttribute("popover", "auto");
-    tip.hidden = true;
     tip.addEventListener("toggle", (event) => {
       if (event.newState === "closed") this._hideCursor();
     });
-    this._els = { button, note, graph, chart, graphNote, tip };
+    this._els = { graph, chart, graphNote, tip };
   }
 
   _formats() {
@@ -427,16 +387,12 @@ class VictronChargingCard extends HTMLElement {
         return new Intl.NumberFormat(undefined, options);
       }
     };
-
     this._formatKey = key;
     this._format = {
-
       exact: date({ weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12 }),
-
       amps: number({ maximumFractionDigits: 1 }),
       signed: number({ maximumFractionDigits: 1, signDisplay: "exceptZero" }),
       percent: number({ maximumFractionDigits: 0 }),
-
     };
     return this._format;
   }
@@ -461,7 +417,7 @@ class VictronChargingCard extends HTMLElement {
   }
 
   _modeChanged() {
-    if (this._notice?.error) this._notice = null;
+    if (!this.isConnected) return;
     clearTimeout(this._modeRefresh);
     this._modeRefresh = setTimeout(() => {
       this._historyAt = 0;
@@ -506,63 +462,13 @@ class VictronChargingCard extends HTMLElement {
     if (this._frame || !this.isConnected) return;
     this._frame = requestAnimationFrame(() => {
       this._frame = null;
-      if (!this._hass || !this._config) return;
-      this._renderLive();
-      this._renderGraph();
+      if (this._hass && this._config) this._renderGraph();
     });
   }
 
   _status() {
     const status = this._states.status;
     return status && parseState("status", status.state) !== null ? status : null;
-  }
-
-  _control() {
-    const status = this._status();
-    const a = status?.attributes ?? {};
-    const restore = a.phase === RAMPING;
-    let blocked = null;
-    if (!status) blocked = "Status unavailable";
-    else if (a.ready !== true) blocked = "Controller not ready";
-    else if (Number(a.grid_source) !== GRID_SOURCE) blocked = "Grid not active";
-    return { restore, blocked };
-  }
-
-  async _act() {
-    const { restore, blocked } = this._control();
-    if (blocked || this._pending) return;
-    const entity = restore ? this._config.restore_action : this._config.throttle_action;
-    const pending = { restore };
-    pending.timer = setTimeout(() => {
-      if (this._pending !== pending) return;
-      this._pending = null;
-      this._notice = { error: true, text: `No telemetry change after ${PENDING_TIMEOUT_MS / 1000} s` };
-      this._scheduleRender();
-    }, PENDING_TIMEOUT_MS);
-    this._pending = pending;
-    this._notice = null;
-    this._scheduleRender();
-    try {
-      await this._hass.callService("script", "turn_on", { entity_id: entity });
-    } catch (error) {
-      if (this._pending !== pending) return;
-      clearTimeout(pending.timer);
-      this._pending = null;
-      this._notice = { error: true, text: `Action failed: ${error?.message || "unknown error"}` };
-      this._scheduleRender();
-    }
-  }
-
-  // Success is only what the controller reports, never the service call's receipt.
-  _checkPending() {
-    if (!this._pending) return;
-    const phase = this._status()?.attributes?.phase;
-    const reached = this._pending.restore
-      ? ["normal charging", "override: full charging"].includes(phase)
-      : phase === RAMPING;
-    if (!reached) return;
-    clearTimeout(this._pending.timer);
-    this._pending = null;
   }
 
   _projection(now) {
@@ -577,28 +483,11 @@ class VictronChargingCard extends HTMLElement {
     return { anchor, end, from: target * clamp(elapsed / duration, 0, 1), target };
   }
 
-  _renderLive() {
-    const { button, note } = this._els;
-
-
-
-    const { restore, blocked } = this._control();
-    button.textContent = this._pending ? (this._pending.restore ? "Restoring…" : "Throttling…") : restore ? "Restore" : "Throttle";
-    button.disabled = Boolean(blocked || this._pending);
-    button.title = blocked ?? "";
-    button.setAttribute("aria-busy", String(Boolean(this._pending)));
-    button.dataset.tone = restore ? "sage" : "amber";
-    note.className = this._notice?.error ? "note error" : "note";
-    note.textContent = this._pending ? "Waiting for telemetry…" : this._notice?.text ?? "";
-
-
-  }
-
   _renderGraph() {
     const { chart, graphNote } = this._els;
     const width = this._width;
-    if (!width) return;
-    const height = 120;
+    const height = this._height;
+    if (!width || !height) return;
     const left = 2;
     const right = width - 2;
     const top = 3;
@@ -630,6 +519,7 @@ class VictronChargingCard extends HTMLElement {
     const yMax = Math.max(yStep, Math.ceil(hi / yStep) * yStep);
     const X = (t) => left + ((t - t0) / (t1 - t0)) * (right - left);
     const Y = (v) => bottom - ((v - yMin) / (yMax - yMin)) * (bottom - top);
+    // SoC has its own fixed 0–100 % scale, independent of the amp axis.
     const S = (v) => bottom - (v / 100) * (bottom - top);
 
     chart.setAttribute("width", width);
@@ -641,9 +531,7 @@ class VictronChargingCard extends HTMLElement {
 
     for (let v = yMin; v <= yMax + yStep / 2; v += yStep) {
       svg("line", { class: "gridline", x1: left, x2: right, y1: round(Y(v)), y2: round(Y(v)) }, chart);
-
     }
-
 
     const plot = svg("g", { "clip-path": "url(#plot)" }, chart);
     const status = series.status;
@@ -680,12 +568,15 @@ class VictronChargingCard extends HTMLElement {
     const nowX = round(X(now));
     svg("line", { class: "now", x1: nowX, x2: nowX, y1: top, y2: bandY + 6 }, chart);
 
-
     this._geom = { left, right, top, bottom: bandY + 6, t0, t1, now, X, transitions, projection, series };
-    if (this._cursor) this._setCursor(clamp(this._cursor.t, t0, t1), this._cursor.transition);
+    if (this._cursor) {
+      const t = clamp(this._cursor.t, t0, t1);
+      if (this._pinned && t === this._cursor.t) this._drawCursor(t);
+      else this._setCursor(t, this._cursor.transition);
+    }
   }
 
-  _onPointer(event) {
+  _inspect(event) {
     const g = this._geom;
     if (!g) return;
     const px = clamp(event.clientX - this._els.chart.getBoundingClientRect().left, g.left, g.right);
@@ -718,9 +609,17 @@ class VictronChargingCard extends HTMLElement {
 
   _hideCursor() {
     this._cursor = null;
+    this._pinned = false;
     this._cursorLine?.remove();
+    this._cursorLine = null;
     if (this._els.tip.matches(":popover-open")) this._els.tip.hidePopover();
-    this._els.tip.hidden = true;
+  }
+
+  _drawCursor(t) {
+    const g = this._geom;
+    const x = round(g.X(t));
+    this._cursorLine?.remove();
+    this._cursorLine = svg("line", { class: "cursor", x1: x, x2: x, y1: g.top, y2: g.bottom }, this._els.chart);
   }
 
   _setCursor(t, transition) {
@@ -728,16 +627,15 @@ class VictronChargingCard extends HTMLElement {
     const { chart, tip } = this._els;
     const f = this._formats();
     this._cursor = { t, transition };
+    this._drawCursor(t);
     const x = round(g.X(t));
-    this._cursorLine?.remove();
-    this._cursorLine = svg("line", { class: "cursor", x1: x, x2: x, y1: g.top, y2: g.bottom }, chart);
 
     tip.replaceChildren();
     el("div", "when", tip, f.exact.format(t));
     const row = (key, label, value) => {
       const line = el("div", "row", tip);
-      if (key) el("i", `swatch ${key}`, line);
-      el("span", key ? "" : "muted", line, label);
+      el("i", `swatch ${key}`, line);
+      el("span", "", line, label);
       el("span", "", line, value);
     };
     if (t > g.now) {
@@ -750,7 +648,6 @@ class VictronChargingCard extends HTMLElement {
       else el("div", "muted", tip, modeLabel(valueAt(g.series.status, t) ?? "Mode unknown"));
       for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(key, valueAt(g.series[key], t)));
     }
-    tip.hidden = false;
     if (!tip.matches(":popover-open")) tip.showPopover();
     const width = tip.offsetWidth;
     const rect = chart.getBoundingClientRect();
@@ -760,12 +657,17 @@ class VictronChargingCard extends HTMLElement {
   }
 }
 
-if (!customElements.get(TAG)) customElements.define(TAG, VictronChargingCard);
-window.customCards = window.customCards || [];
-if (!window.customCards.some((card) => card.type === TAG)) {
-  window.customCards.push({
+if (!customElements.get(TAG)) customElements.define(TAG, VictronChargingChart);
+window.customCardFeatures = window.customCardFeatures || [];
+if (!window.customCardFeatures.some((feature) => feature.type === TAG)) {
+  window.customCardFeatures.push({
     type: TAG,
-    name: "Victron charging",
-    description: "Charging mode, limits and history with the ramp throttle/restore action.",
+    name: "Victron charging chart",
+    configurable: false,
+    // Offered on any card whose entity reports a charging ramp phase.
+    isSupported: (hass, context) => {
+      const id = context?.entity_id;
+      return typeof id === "string" && typeof hass?.states?.[id]?.attributes?.phase === "string";
+    },
   });
 }

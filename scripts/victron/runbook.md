@@ -8,6 +8,7 @@ The Cerbo runs the charging ramp locally in Node-RED. Grid restoration increases
 
 - **Restore** skips the remaining charging ramp. The override ends at 100% battery SOC or the end of the original ramp window, whichever comes first; normal charging continues. The Node-RED inject button and `deploy.py full` perform the same override.
 - **Throttle** applies the ramp at the current point in an open window, or starts a new configured window. It requires live grid inputs. `deploy.py throttle` performs the same action.
+- Tap the Mushroom card or its icon for the displayed Restore/Throttle action. Chart interaction only inspects history; clicking the chart pins a selectable inspector.
 - The charging card plots recorded BMS and user ceilings, actual battery current and SoC, with policy-coloured mode bands and transition timestamps. Its dashed future trace follows the remaining configured ramp. Unrestricted user ceilings remain nonnumeric; future BMS limits, actual current and SoC remain unmeasured.
 - Recorder history belongs to Home Assistant. Live timing arrives through its MQTT broker and expires after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
 - An outage arms a fresh ramp. A Node-RED restart with grid present starts a fresh ramp.
@@ -22,7 +23,9 @@ Supply the GX local-network password in `VICTRON_PASSWORD` and the existing Home
 
 Initial telemetry setup also requires the existing Home Assistant broker credentials in `MQTT_USERNAME` and `MQTT_PASSWORD`. Node-RED owns the broker credential store; subsequent deployments reuse it.
 
-`charging-card.js` is a self-contained module registered as a content-addressed data URI. Its history and controls use the authenticated Home Assistant frontend connection.
+Install Mushroom and Layout Card through HACS. Mushroom owns the card and its actions; Layout Card keeps the compact card above the full-width power-flow view.
+
+`charging-chart.js` is a chart-only card feature registered as a content-addressed data URI. History uses the authenticated Home Assistant frontend connection. The native `victron_toggle_charging` script selects restore during an active ramp and throttles only with ready grid inputs.
 
 ```sh
 scripts/victron/deploy.py deploy

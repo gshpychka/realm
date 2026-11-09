@@ -10,6 +10,9 @@ let
   throttleNode = "victron-charging-ramp-throttle";
   restoreScript = "victron_full_charging_now";
   throttleScript = "victron_throttle_charging";
+  controlScript = "victron_toggle_charging";
+  statusEntity = "sensor.victron_charging_ramp_status";
+  gridReady = "states('${statusEntity}') not in ['unknown', 'unavailable'] and state_attr('${statusEntity}', 'ready') == true and state_attr('${statusEntity}', 'grid_source') == 1";
   sensors =
     builtins.map
       (
@@ -505,31 +508,87 @@ in
         }
       ];
     };
+    scripts.${controlScript} = {
+      alias = "Victron: toggle charging ramp";
+      icon = "mdi:gauge";
+      mode = "single";
+      sequence = [
+        {
+          choose = [
+            {
+              conditions = [
+                {
+                  condition = "state";
+                  entity_id = statusEntity;
+                  state = "Ramping";
+                }
+              ];
+              sequence = [ { action = "script.${restoreScript}"; } ];
+            }
+          ];
+          default = [
+            {
+              condition = "template";
+              value_template = "{{ ${gridReady} }}";
+            }
+            { action = "script.${throttleScript}"; }
+          ];
+        }
+      ];
+    };
+    resourceFiles = [
+      "mushroom.js"
+      "layout-card.js"
+    ];
     cardResource = {
       key = "victron-charging-card";
-      source = builtins.readFile ./charging-card.js;
+      source = builtins.readFile ./charging-chart.js;
     };
     view = {
       title = "Victron";
       path = "overview";
-      type = "panel";
+      type = "custom:grid-layout";
+      layout = {
+        grid-template-columns = "minmax(0, 240px) minmax(0, 1fr)";
+        grid-template-areas = ''"charging ." "flow flow"'';
+
+      };
       cards = [
         {
-          type = "vertical-stack";
-          cards = [
+          type = "custom:mushroom-template-card";
+          entity = statusEntity;
+          primary = "Charging power";
+          secondary = "{{ 'Restore' if is_state('${statusEntity}', 'Ramping') else 'Throttle' if ${gridReady} else '' }}";
+          icon = "{{ 'mdi:flash' if is_state('${statusEntity}', 'Ramping') else 'mdi:gauge-low' }}";
+          color = "{{ 'amber' if is_state('${statusEntity}', 'Ramping') else 'blue' if ${gridReady} else 'disabled' }}";
+          vertical = true;
+          features_position = "bottom";
+          tap_action = {
+            action = "perform-action";
+            perform_action = "script.${controlScript}";
+          };
+          icon_tap_action = {
+            action = "perform-action";
+            perform_action = "script.${controlScript}";
+          };
+          hold_action.action = "more-info";
+          view_layout.grid-area = "charging";
+          features = [
             {
-              type = "custom:victron-charging-card";
-              status_entity = "sensor.victron_charging_ramp_status";
+              type = "custom:victron-charging-chart";
+              status_entity = statusEntity;
               bms_limit_entity = "sensor.battery_maximum_allowed_charge_current";
               policy_limit_entity = chargeLimitEntity;
               current_entity = "sensor.battery_dc_bus_current";
               soc_entity = "sensor.battery_charge";
-              throttle_action = "script.${throttleScript}";
-              restore_action = "script.${restoreScript}";
+
               history_hours = 2;
             }
-            { type = "custom:victron-live-card"; }
           ];
+        }
+        {
+          type = "custom:victron-live-card";
+          view_layout.grid-area = "flow";
         }
       ];
     };
