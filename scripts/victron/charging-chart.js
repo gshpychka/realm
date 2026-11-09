@@ -477,13 +477,13 @@ class VictronChargingChart extends HTMLElement {
         type: "entities",
         show_header_toggle: false,
         entities: [
-          { entity: config.enabled_entity, name: "Automatic ramp" },
+          { entity: config.enabled_entity, name: "Automatic ramp", icon: "mdi:autorenew" },
           { type: "button", entity: config.skip_entity, name: "Current ramp", icon: "mdi:skip-next", action_name: "Skip once", tap_action: { action: "perform-action", perform_action: config.skip_entity } },
           { type: "section", label: "Next ramp" },
           { entity: config.duration_entity, name: "Duration" },
           { entity: config.start_current_entity, name: "Start current" },
           { entity: config.target_current_entity, name: "Target current" },
-          { entity: config.reset_defaults_entity, name: "Reset defaults" },
+          { type: "button", entity: config.reset_defaults_entity, name: "Defaults", icon: "mdi:restore", action_name: "Reset", tap_action: { action: "perform-action", perform_action: "button.press", target: { entity_id: config.reset_defaults_entity } } },
         ],
       });
       // Native theme initialization needs connected HA ancestry before hass.
