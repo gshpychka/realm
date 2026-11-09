@@ -45,8 +45,8 @@ const MODE_TONES = {
 const modeLabel = (mode) => Object.hasOwn(MODE_TONES, mode) ? mode : "Mode unavailable";
 const SERIES = {
   power: { label: "Grid import", unit: "W" },
-  battery: { label: "Battery (− supplies loads)", unit: "W" },
-  ceiling: { label: "Nominal input ceiling", unit: "W" },
+  battery: { label: "Battery power", unit: "W", description: "Negative power supplies household loads" },
+  ceiling: { label: "Nominal ceiling", unit: "W", description: "The input ceiling is plotted during ramping" },
   planned: { label: "Planned allowance", unit: "W" },
   soc: { label: "SoC", unit: "%" },
 };
@@ -57,7 +57,7 @@ const STYLE = `
     --vc-border: var(--divider-color); --vc-amber: var(--warning-color);
     --vc-sage: var(--success-color); --vc-blue: var(--info-color);
     --vc-mauve: var(--purple-color, var(--accent-color));
-    display: block; width: 100%; height: 140px;
+    display: block; width: 100%; height: 124px;
   }
   .graph { position: relative; height: 100%; }
   .settings-button, .settings-close {
@@ -80,19 +80,20 @@ const STYLE = `
   .graph-note { position: absolute; top: 8px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
   .graph-note.error { color: var(--error-color); }
   .tip {
-    position: fixed; inset: auto; margin: 0; min-width: 148px; max-width: 220px; padding: 7px 9px;
+    position: fixed; inset: auto; margin: 0; box-sizing: border-box;
+    width: min(288px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; padding: 8px 10px;
     border-radius: 8px; border: 1px solid var(--divider-color); box-shadow: var(--ha-card-box-shadow, none);
     background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color);
     font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums;
     pointer-events: auto; user-select: text; -webkit-user-select: text; cursor: text;
   }
   .tip .when { font-weight: 600; }
-  .tip .row { display: flex; align-items: center; gap: 6px; }
-  .tip .row span:last-child { margin-left: auto; padding-left: 10px; }
+  .tip .row { display: grid; grid-template-columns: 12px minmax(0, 1fr) max-content; align-items: center; gap: 8px; }
+  .tip .row span:last-child { text-align: right; white-space: nowrap; }
   .tip button { appearance: none; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: inherit; cursor: pointer; user-select: text; -webkit-user-select: text; }
   .tip button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
   .muted { color: var(--vc-muted); }
-  .swatch { width: 14px; border-top: 2px solid var(--tone); }
+  .swatch { width: 12px; border-top: 2px solid var(--tone); }
   .swatch.soc { border-top-width: 1.5px; }
   .tone-amber, .ceiling, .planned { --tone: var(--vc-amber); }
   .tone-sage, .power { --tone: var(--vc-sage); }
@@ -109,7 +110,7 @@ const STYLE = `
   .trace.battery, .trace.ceiling, .trace.planned { stroke-width: 1.5; stroke-linecap: butt; }
   .trace.soc { stroke-width: 1.25; stroke-opacity: 0.8; }
   .trace.projection { stroke-dasharray: 5 4; stroke-opacity: 0.85; }
-  .area { fill: var(--vc-mauve); fill-opacity: 0.07; }
+  .area { fill: var(--vc-mauve); fill-opacity: 0.035; }
   .cursor { stroke: var(--vc-text); stroke-opacity: 0.6; }
 `;
 
@@ -630,6 +631,10 @@ class VictronChargingChart extends HTMLElement {
     const projection = this._projection(now);
     const t1 = projection ? projection.end : now;
     const series = this._series ?? { status: [], power: [], battery: [], ceiling: [], soc: [] };
+    // Active ramp ceilings share the power scale; the normal connection rating stays inspectable.
+    const displayed = { ...series, ceiling: series.ceiling.map(p => ({
+      t: p.t, v: valueAt(series.status, p.t) === "Ramping" ? p.v : null,
+    })) };
 
     graphNote.className = this._historyError ? "graph-note error" : "graph-note";
     graphNote.textContent = this._historyError
@@ -639,7 +644,7 @@ class VictronChargingChart extends HTMLElement {
     let lo = 0;
     let hi = 0;
     for (const key of ["power", "battery", "ceiling"]) {
-      for (const p of series[key]) {
+      for (const p of displayed[key]) {
         if (!plotted(key, p.v)) continue;
         lo = Math.min(lo, p.v);
         hi = Math.max(hi, p.v);
@@ -685,7 +690,7 @@ class VictronChargingChart extends HTMLElement {
 
     const buckets = Math.max(1, Math.round(right - left));
     const runs = (key, scale, isStep) =>
-      traceRuns(decimate(series[key], key, t0, now, buckets), key, now, isStep, X, scale);
+      traceRuns(decimate(displayed[key], key, t0, now, buckets), key, now, isStep, X, scale);
     const socRuns = runs("soc", S, true);
     svg("path", { class: "area", d: areaPath(socRuns, bottom) }, plot);
     svg("path", { class: "trace soc", d: linePath(socRuns) }, plot);
@@ -707,6 +712,7 @@ class VictronChargingChart extends HTMLElement {
       if (this._pinned) {
         if (this._cursor.t >= t0 && this._cursor.t <= t1) this._drawCursor(this._cursor.t);
         else this._cursorLine = null;
+        this._positionTip();
         return;
       }
       const t = clamp(this._cursor.t, t0, t1);
@@ -781,18 +787,17 @@ class VictronChargingChart extends HTMLElement {
 
   _setCursor(t, transition) {
     const g = this._geom;
-    const { chart, tip } = this._els;
+    const { tip } = this._els;
     const f = this._formats();
     this._cursor = { t, transition };
     this._drawCursor(t);
-    const x = round(g.X(t));
-
     tip.replaceChildren();
     el("div", "when", tip, f.exact.format(t));
     const row = (key, label, value) => {
       const line = el("div", "row", tip);
       el("i", `swatch ${key}`, line);
-      el("span", "", line, label);
+      const name = el("span", "", line, label);
+      if (SERIES[key]?.description) name.title = SERIES[key].description;
       const cell = el("span", "", line);
       const source = key === "ceiling" || key === "planned" ? "status" : key;
       this._historyValue(cell, value, this._ids[source]);
@@ -810,10 +815,16 @@ class VictronChargingChart extends HTMLElement {
       for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(key, valueAt(g.series[key], t)));
     }
     if (!tip.matches(":popover-open")) tip.showPopover();
+    this._positionTip();
+  }
+
+  _positionTip() {
+    const { chart, tip } = this._els;
+    if (!tip.matches(":popover-open")) return;
     const width = tip.offsetWidth;
     const rect = chart.getBoundingClientRect();
-    tip.style.left = `${clamp(rect.left + x + 8, 8, Math.max(8, window.innerWidth - width - 8))}px`;
-    const top = rect.bottom + 4 + tip.offsetHeight > window.innerHeight - 8 ? rect.top - tip.offsetHeight - 4 : rect.bottom + 4;
+    tip.style.left = `${clamp(rect.left + (rect.width - width) / 2, 8, Math.max(8, window.innerWidth - width - 8))}px`;
+    const top = rect.bottom + 8 + tip.offsetHeight > window.innerHeight - 8 ? rect.top - tip.offsetHeight - 8 : rect.bottom + 8;
     tip.style.top = `${Math.max(8, top)}px`;
   }
 }
