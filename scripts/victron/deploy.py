@@ -1,0 +1,337 @@
+#!/usr/bin/env nix-shell
+#!nix-shell -i python3 -p "python3.withPackages (p: [p.websocket-client])"
+"""Deploy the Cerbo charging policy and its Home Assistant controls."""
+
+import argparse
+import hashlib
+import json
+import os
+import socket
+import ssl
+import subprocess
+import time
+from contextlib import contextmanager
+from copy import deepcopy
+from datetime import UTC, datetime
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.parse import urlencode, urlsplit
+from urllib.request import Request, urlopen
+
+import websocket
+
+SOURCE = Path(__file__).with_name("flow.nix")
+
+
+class NodeRed:
+    def __init__(self, host, password, fingerprint):
+        discovery = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        discovery.check_hostname = False
+        discovery.verify_mode = ssl.CERT_NONE
+        with (
+            socket.create_connection((host, 1881), timeout=8) as raw,
+            discovery.wrap_socket(raw, server_hostname=host) as tls,
+        ):
+            certificate = tls.getpeercert(binary_form=True)
+        if hashlib.sha256(certificate).hexdigest() != fingerprint:
+            raise RuntimeError("GX TLS certificate differs from the repository pin")
+        self.tls = ssl.create_default_context(
+            cadata=ssl.DER_cert_to_PEM_cert(certificate)
+        )
+        # The pinned GX certificate names venus.local and has no IP subject alternative name.
+        self.tls.check_hostname = False
+        self.tls.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+        self.base = f"https://{host}:1881"
+        self.token = None
+        login = self.request(
+            "/auth/token",
+            {
+                "client_id": "node-red-admin",
+                "grant_type": "password",
+                "scope": "*",
+                "username": "admin",
+                "password": password,
+            },
+            form=True,
+        )
+        self.token = login["access_token"]
+
+    def request(self, path, data=None, *, form=False, deployment=None):
+        headers = {"Accept": "application/json", "Node-RED-API-Version": "v2"}
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
+        if deployment:
+            headers["Node-RED-Deployment-Type"] = deployment
+        body = None
+        if data is not None:
+            headers["Content-Type"] = (
+                "application/x-www-form-urlencoded" if form else "application/json"
+            )
+            body = urlencode(data).encode() if form else json.dumps(data).encode()
+        with urlopen(
+            Request(self.base + path, data=body, headers=headers),
+            context=self.tls,
+            timeout=20,
+        ) as response:
+            content = response.read()
+            if not content:
+                return None
+            if "application/json" in response.headers.get("Content-Type", ""):
+                return json.loads(content)
+            return content.decode()
+
+    def close(self):
+        try:
+            self.request("/auth/revoke", {"token": self.token}, form=True)
+            try:
+                self.request("/flows")
+            except HTTPError as error:
+                if error.code == 401:
+                    return
+                raise
+            raise RuntimeError("Temporary Node-RED token remains active")
+        finally:
+            self.token = None
+
+
+@contextmanager
+def home_assistant(url):
+    token = os.environ.get("HOME_ASSISTANT_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "HOME_ASSISTANT_TOKEN is required for deployment and rollback"
+        )
+    address = urlsplit(url)
+    ws_url = (
+        ("wss" if address.scheme == "https" else "ws")
+        + "://"
+        + address.netloc
+        + "/api/websocket"
+    )
+    with websocket.create_connection(ws_url, timeout=20) as connection:
+        if json.loads(connection.recv())["type"] != "auth_required":
+            raise RuntimeError("Unexpected Home Assistant authentication handshake")
+        connection.send(json.dumps({"type": "auth", "access_token": token}))
+        if json.loads(connection.recv())["type"] != "auth_ok":
+            raise RuntimeError("Home Assistant authentication failed")
+        sequence = 0
+
+        def command(kind, **fields):
+            nonlocal sequence
+            sequence += 1
+            connection.send(json.dumps({"id": sequence, "type": kind, **fields}))
+            while True:
+                response = json.loads(connection.recv())
+                if response.get("id") == sequence:
+                    if not response.get("success"):
+                        raise RuntimeError("Home Assistant command failed: " + kind)
+                    return response.get("result")
+
+        def rest(path, data=None, method=None):
+            headers = {
+                "Authorization": "Bearer " + token,
+                "Content-Type": "application/json",
+            }
+            body = None if data is None else json.dumps(data).encode()
+            with urlopen(
+                Request(
+                    url.rstrip("/") + path, data=body, headers=headers, method=method
+                ),
+                timeout=20,
+            ) as response:
+                content = response.read()
+                return json.loads(content) if content else None
+
+        yield command, rest
+
+
+def owned(node, bundle):
+    return node["id"] == bundle["tabId"] or node.get("z") == bundle["tabId"]
+
+
+def apply_flow(client, bundle, desired):
+    current = client.request("/flows")
+    others = [node for node in current["flows"] if not owned(node, bundle)]
+    client.request(
+        "/flows", {"rev": current["rev"], "flows": others + desired}, deployment="flows"
+    )
+    actual = client.request("/flows")["flows"]
+    if [node for node in actual if not owned(node, bundle)] != others:
+        raise RuntimeError("Unrelated Node-RED configuration changed")
+    if sorted(
+        (node for node in actual if owned(node, bundle)), key=lambda node: node["id"]
+    ) != sorted(desired, key=lambda node: node["id"]):
+        raise RuntimeError("Deployed charging flow differs from the repository")
+
+
+def state(client, bundle):
+    return client.request(f"/context/node/{bundle['controllerId']}/state")
+
+
+def current_limit(client, bundle):
+    return client.request("/victron/cache")[bundle["limitService"]][bundle["limitPath"]]
+
+
+def full_charging(client, bundle):
+    client.request("/inject/" + bundle["overrideId"], {})
+    for _ in range(30):
+        if current_limit(client, bundle) == -1:
+            return
+        time.sleep(0.5)
+    raise RuntimeError("Full charging did not restore the normal DVCC user limit")
+
+
+def save_snapshot(directory, snapshot):
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    filename = directory / (datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ") + ".json")
+    with os.fdopen(
+        os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
+    ) as output:
+        json.dump(snapshot, output, indent=2)
+    return filename
+
+
+def update_controls(command, rest, bundle, dashboard, script):
+    controls = bundle["homeAssistant"]
+    path = "/api/config/script/config/" + controls["scriptId"]
+    if script is None:
+        rest(path, method="DELETE")
+    else:
+        rest(path, script, method="POST")
+        actual = rest(path)
+        if any(actual.get(key) != value for key, value in script.items()):
+            raise RuntimeError("Home Assistant script readback differs")
+    command("lovelace/config/save", url_path=controls["dashboard"], config=dashboard)
+    if command("lovelace/config", url_path=controls["dashboard"]) != dashboard:
+        raise RuntimeError("Home Assistant dashboard readback differs")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("deploy", "status", "full", "rollback"))
+    parser.add_argument("--ha-url", default="http://homeassistant.glib.sh:8123")
+    parser.add_argument("--backup", type=Path)
+    parser.add_argument(
+        "--state-dir", type=Path, default=Path.home() / ".local/state/victron-node-red"
+    )
+    args = parser.parse_args()
+    result = subprocess.run(
+        ["nix", "eval", "--json", "--file", str(SOURCE)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    bundle = json.loads(result.stdout)
+    password = os.environ.get("VICTRON_PASSWORD")
+    if not password:
+        raise RuntimeError("VICTRON_PASSWORD is required")
+    client = NodeRed(bundle["host"], password, bundle["certificateSha256"])
+    password = None
+    try:
+        if args.action == "status":
+            print(
+                json.dumps(
+                    {
+                        "controller": state(client, bundle),
+                        "dvcc_limit_A": current_limit(client, bundle),
+                    }
+                )
+            )
+        elif args.action == "full":
+            full_charging(client, bundle)
+            print(
+                json.dumps(
+                    {
+                        "controller": state(client, bundle),
+                        "dvcc_limit_A": current_limit(client, bundle),
+                    }
+                )
+            )
+        else:
+            controls = bundle["homeAssistant"]
+            with home_assistant(args.ha_url) as (command, rest):
+                dashboard = command("lovelace/config", url_path=controls["dashboard"])
+                script_path = "/api/config/script/config/" + controls["scriptId"]
+                try:
+                    script = rest(script_path)
+                except HTTPError as error:
+                    if error.code != 404:
+                        raise
+                    script = None
+                current = client.request("/flows")
+                if args.action == "deploy":
+                    limit = current_limit(client, bundle)
+                    if (
+                        not any(owned(node, bundle) for node in current["flows"])
+                        and limit != -1
+                    ):
+                        raise RuntimeError(
+                            "Initial deployment requires the agreed unrestricted DVCC user limit"
+                        )
+                    backup = save_snapshot(
+                        args.state_dir,
+                        {
+                            "flows": current["flows"],
+                            "limit": limit,
+                            "dashboard": dashboard,
+                            "script": script,
+                        },
+                    )
+                    desired_dashboard = deepcopy(dashboard)
+                    desired_dashboard["views"] = [
+                        view
+                        for view in dashboard["views"]
+                        if view.get("path") != controls["view"]["path"]
+                    ] + [controls["view"]]
+                    update_controls(
+                        command, rest, bundle, desired_dashboard, controls["script"]
+                    )
+                    apply_flow(client, bundle, bundle["flows"])
+                    print(
+                        json.dumps(
+                            {
+                                "deployed": True,
+                                "backup": str(backup),
+                                "dashboard": controls["dashboard"]
+                                + "/"
+                                + controls["view"]["path"],
+                            }
+                        )
+                    )
+                else:
+                    if args.backup is None:
+                        raise RuntimeError("Rollback requires --backup")
+                    snapshot = json.loads(args.backup.read_text())
+                    full_charging(client, bundle)
+                    previous_views = [
+                        view
+                        for view in snapshot["dashboard"]["views"]
+                        if view.get("path") == controls["view"]["path"]
+                    ]
+                    dashboard["views"] = [
+                        view
+                        for view in dashboard["views"]
+                        if view.get("path") != controls["view"]["path"]
+                    ] + previous_views
+                    update_controls(
+                        command, rest, bundle, dashboard, snapshot["script"]
+                    )
+                    apply_flow(
+                        client,
+                        bundle,
+                        [node for node in snapshot["flows"] if owned(node, bundle)],
+                    )
+                    print(
+                        json.dumps(
+                            {
+                                "rolled_back": True,
+                                "dvcc_limit_A": current_limit(client, bundle),
+                            }
+                        )
+                    )
+    finally:
+        client.close()
+
+
+if __name__ == "__main__":
+    main()
