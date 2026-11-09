@@ -1,8 +1,8 @@
 import { fetchHistory, getHistoryWindow } from "./lib-venus.js";
+import { openEntityHistory } from "./entity-history.js";
 
 const HOURS = 24;
 const REFRESH_MS = 5 * 60 * 1000;
-
 
 /** An inline history strip with a selected-point reading beneath it. */
 export function historyMarkup(name, color, top, width = 340) {
@@ -34,7 +34,7 @@ export function mountOverviewHistory(svg, bindings) {
     const group = svg.querySelector(`[data-history="${binding.name}"]`);
     return {
       ...binding, group, top: Number(group.dataset.top), width: Number(group.dataset.width),
-      rows: [], start: 0, end: 0, active: null, state: null, ready: false,
+      rows: [], liveRows: [], start: 0, end: 0, active: null, state: null, ready: false,
       area: group.querySelector("[data-area]"), line: group.querySelector("[data-line]"),
       status: group.querySelector("[data-status]"), inspector: group.querySelector("[data-inspector]"),
       date: group.querySelector("[data-date]"), value: group.querySelector("[data-value]"),
@@ -46,6 +46,11 @@ export function mountOverviewHistory(svg, bindings) {
     if (node.textContent !== value) node.textContent = value;
   };
   const position = (plot, time) => 1 + ((time - plot.start) / (plot.end - plot.start)) * (plot.width - 2);
+  const mergeRows = (...series) => {
+    const byTime = new Map();
+    for (const rows of series) for (const row of rows) byTime.set(row.time, row);
+    return [...byTime.values()].sort((a, b) => a.time - b.time);
+  };
   const rowAt = (plot, time) => {
     let low = 0;
     let high = plot.rows.length;
@@ -60,6 +65,8 @@ export function mountOverviewHistory(svg, bindings) {
     if (!plot.active || !plot.start || plot.active.time < plot.start) {
       plot.active = null;
       plot.inspector.setAttribute("visibility", "hidden");
+      plot.halo.setAttribute("visibility", "hidden");
+      plot.point.setAttribute("visibility", "hidden");
       plot.group.setAttribute("aria-pressed", "false");
       return;
     }
@@ -72,14 +79,14 @@ export function mountOverviewHistory(svg, bindings) {
     const hour12 = clock === "12" ? true : clock === "24" ? false : undefined;
     let date;
     try {
-      date = new Intl.DateTimeFormat(language, {
-        month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12, timeZone,
-      }).format(time);
+      const day = new Intl.DateTimeFormat(language, { month: "short", day: "numeric", timeZone }).format(time);
+      const clockTime = new Intl.DateTimeFormat(language, { hour: "numeric", minute: "2-digit", hour12, timeZone }).format(time);
+      date = `${day} ${clockTime}`;
     } catch {
       date = new Date(time).toLocaleString();
     }
     setText(plot.date, date);
-    setText(plot.value, value === null ? "Unavailable" : plot.format(value));
+    setText(plot.value, value === null ? "—" : plot.format(value));
     plot.inspector.setAttribute("visibility", "visible");
     plot.group.setAttribute("aria-pressed", String(pinned));
     for (const point of [plot.halo, plot.point]) {
@@ -177,10 +184,13 @@ export function mountOverviewHistory(svg, bindings) {
     const state = hass?.states?.[plot.entity];
     if (!state || state === plot.state) return;
     plot.state = state;
-    if (!plot.ready) return;
     const time = Date.parse(state.last_changed);
     const value = plot.read(state);
     if (!Number.isFinite(time)) return;
+    const row = { time, value };
+    if (plot.liveRows.at(-1)?.time === time) plot.liveRows[plot.liveRows.length - 1] = row;
+    else plot.liveRows.push(row);
+    if (!plot.ready) return;
     if (time > (plot.rows.at(-1)?.time ?? -Infinity)) plot.rows.push({ time, value });
     plot.end = Math.max(Date.now(), time);
     plot.start = plot.end - HOURS * 60 * 60 * 1000;
@@ -199,10 +209,14 @@ export function mountOverviewHistory(svg, bindings) {
         const rows = history.get(plot.entity) || [];
         const window = getHistoryWindow(rows);
         const attributes = hass.states[plot.entity]?.attributes;
-        plot.rows = rows.map((row) => ({
+        const recorded = rows.map((row) => ({
           time: row.time.getTime(),
           value: row.value === null ? null : plot.read({ state: String(row.value), attributes }),
         }));
+        // Recorder commits can lag live updates, including unavailable intervals.
+        plot.rows = mergeRows(recorded, plot.liveRows);
+        const recordedEnd = recorded.at(-1)?.time ?? -Infinity;
+        plot.liveRows = plot.liveRows.filter((row) => row.time > recordedEnd);
         plot.start = window?.start ?? now - HOURS * 60 * 60 * 1000;
         plot.end = window?.end ?? now;
         plot.ready = true;
@@ -213,6 +227,9 @@ export function mountOverviewHistory(svg, bindings) {
     } catch {
       if (!closed) for (const plot of plots) {
         if (!plot.ready) {
+          plot.rows = mergeRows(plot.liveRows);
+          plot.end = Date.now();
+          plot.start = plot.end - HOURS * 60 * 60 * 1000;
           plot.ready = true;
           draw(plot);
         }
@@ -244,6 +261,10 @@ export function mountOverviewHistory(svg, bindings) {
       updateInspection(plot);
     }, { signal: events.signal });
     plot.group.addEventListener("click", (event) => {
+      if (event.target.closest("[data-value]")) {
+        openEntityHistory(plot.group, plot.entity);
+        return;
+      }
       if (event.target.closest("[data-inspection-text]")) return;
       const time = timeAt(event);
       plot.active = plot.active?.pinned ? null : time === null ? null : { time, pinned: true };

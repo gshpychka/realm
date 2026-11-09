@@ -12,6 +12,7 @@
 
 import { openBatteryDetails } from "./battery-details.js";
 import { historyMarkup, mountOverviewHistory } from "./overview-history.js";
+import { openEntityHistory } from "./entity-history.js";
 
 const LOGO_URL = new URL("./victron-logo.svg", import.meta.url).href;
 const CARD_TYPE = "victron-system-card";
@@ -44,6 +45,22 @@ const DEFAULT_ENTITIES = Object.freeze({
   battery_user_limit: "number.cerbo_ess_max_charge_current",
 });
 const ENTITY_ID = /^[a-z0-9_]+\.[a-z0-9_]+$/;
+const VALUE_ENTITIES = Object.freeze({
+  gridTitle: "grid_present",
+  gridPower: "grid_power",
+  gridVoltage: "grid_voltage",
+  gridCurrent: "grid_current",
+  gridL1Power: "grid_l1_power",
+  loadsPower: "loads_power",
+  loadsL1Power: "loads_l1_power",
+  loadsFrequency: "loads_frequency",
+  inverterState: "inverter_state",
+  batteryPower: "battery_power",
+  batterySoc: "battery_soc",
+  batteryVoltage: "battery_voltage",
+  batteryCurrent: "battery_current",
+  batteryTemperature: "battery_temperature",
+});
 
 // Sensor noise around zero should not animate a path or flip the battery label.
 // The numeric value is still displayed exactly as reported.
@@ -391,6 +408,7 @@ class VictronLiveCard extends HTMLElement {
       }
     }
     this._entities = Object.freeze({ ...DEFAULT_ENTITIES, ...overrides });
+    this._bindValueHistory();
     this._history?.close();
     this._history = null;
     this._startHistory();
@@ -458,6 +476,9 @@ class VictronLiveCard extends HTMLElement {
         [data-battery-details]:focus-visible { outline: 3px solid ${COLOR.blue}; }
         [data-history] { cursor: crosshair; }
         [data-history]:focus-visible { outline: 2px solid ${COLOR.blue}; }
+        [data-history-entity] { cursor: pointer; }
+        [data-history-entity]:hover { text-decoration: underline; }
+        [data-history-entity]:focus-visible { outline: 2px solid ${COLOR.blue}; }
         /* CSS fill would override the coloured texts' fill attributes. */
         text:not([fill]) { fill: ${COLOR.text}; }
       </style>
@@ -500,6 +521,7 @@ class VictronLiveCard extends HTMLElement {
         node,
       ]),
     );
+    this._bindValueHistory();
     this._flows = Object.fromEntries(
       [...this.shadowRoot.querySelectorAll("[data-flow]")].map((node) => [node.dataset.flow, node]),
     );
@@ -508,6 +530,27 @@ class VictronLiveCard extends HTMLElement {
     this._startHistory();
     this._applyMotionPreference();
     this._update();
+  }
+
+  _bindValueHistory() {
+    for (const [field, binding] of Object.entries(VALUE_ENTITIES)) {
+      const node = this._fields.get(field);
+      if (!node) continue;
+      if (!node.dataset.historyEntity) {
+        const open = (event) => {
+          if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+          if (event.type === "keydown") event.preventDefault();
+          event.stopPropagation();
+          openEntityHistory(this, node.dataset.historyEntity);
+        };
+        node.addEventListener("click", open);
+        node.addEventListener("keydown", open);
+      }
+      node.dataset.historyEntity = this._entities[binding];
+      node.setAttribute("role", "button");
+      node.setAttribute("tabindex", "0");
+      node.setAttribute("aria-label", `${this._entities[binding]} history`);
+    }
   }
 
   _startHistory() {

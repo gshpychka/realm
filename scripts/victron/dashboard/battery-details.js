@@ -1,3 +1,5 @@
+import { openEntityHistory } from "./entity-history.js";
+
 const METRICS = [
   ["battery_soc", "State of charge"],
   ["battery_power", "Battery power"],
@@ -58,15 +60,17 @@ export function openBatteryDetails(initialHass, entities, opener) {
     const button = document.createElement("button");
     button.className = "metric";
     button.type = "button";
+    button.dataset.historyEntity = entity;
     const caption = document.createElement("span");
     caption.className = "label";
     caption.textContent = label;
     const value = document.createElement("span");
     value.className = "value";
     button.append(caption, value);
-    button.addEventListener("click", () => opener.dispatchEvent(new CustomEvent("hass-more-info", {
-      detail: { entityId: entity }, bubbles: true, composed: true,
-    })));
+    button.addEventListener("click", () => {
+      close();
+      openEntityHistory(opener, entity);
+    });
     metricContainer.append(button);
     values.set(key, value);
   }
@@ -102,9 +106,8 @@ export function openBatteryDetails(initialHass, entities, opener) {
   });
   root.addEventListener("hass-more-info", (event) => {
     event.stopPropagation();
-    opener.dispatchEvent(new CustomEvent("hass-more-info", {
-      detail: event.detail, bubbles: true, composed: true,
-    }));
+    close();
+    openEntityHistory(opener, event.detail.entityId);
   });
   // Native charts receive theme and locale contexts from the HA view.
   opener.after(host);
