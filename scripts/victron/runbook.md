@@ -1,21 +1,21 @@
 # Victron GX
 
-The Cerbo runs the charging ramp locally in Node-RED. Grid restoration increases the DVCC user ceiling from zero to the inverter's current limit over the configured duration. The completed ramp restores the unrestricted user ceiling; inverter and battery-management limits remain active.
+The Cerbo ramps total AC-input current locally in Node-RED. Grid restoration starts a linear ramp with one update per minute. Completion restores `normalInputCurrentA`; PowerAssist supplies the remaining household demand, and native inverter and battery-management limits remain active.
 
-`flow.nix` declares the flow and single-page Victron dashboard; `rampDurationMinutes` sets the duration. `charging-ramp.js` owns ramp and override behavior. `deploy.py` applies these declarations through the native APIs, preserving unrelated flows and dashboards. Deployment enables the existing Home Assistant charging-current entity; rollback restores its original enabled state.
+`flow.nix` declares the flow, `rampDefaults` and single-page Victron dashboard. `charging-ramp.js` owns the active window; `ramp-settings.js` saves configuration on the Cerbo at `settingsFile`. The chart's gear opens native Home Assistant controls for duration, starting current, target current and Reset defaults. Edits apply to the next window; an active window keeps its captured settings. Saved configuration survives Home Assistant and Node-RED restarts.
 
 ## Operation
 
-- **Restore** skips the remaining charging ramp. The override ends at 100% battery SOC or the end of the original ramp window, whichever comes first; normal charging continues. The Node-RED inject button and `deploy.py full` perform the same override.
-- **Throttle** applies the ramp at the current point in an open window, or starts a new configured window. It requires live grid inputs. `deploy.py throttle` performs the same action.
+- **Restore** reconnects grid input at its normal current limit. The override expires at the original window's end. Full battery SOC leaves a whole-input window active because the allowance also supplies household loads. The inject button and `deploy.py full` perform the same override.
+- **Throttle** resumes an open window or starts a new configured window. It requires ready grid and battery inputs. `deploy.py throttle` performs the same action.
 - Tap the Mushroom card or its icon for the displayed Restore/Throttle action. Chart interaction only inspects history; clicking the chart pins a selectable inspector.
-- The charging card plots recorded BMS and user ceilings, actual battery current and SoC, with policy-coloured mode bands and transition timestamps. Its dashed future trace follows the remaining configured ramp. Unrestricted user ceilings remain nonnumeric; future BMS limits, actual current and SoC remain unmeasured.
+- The card plots grid power, signed battery power, the nominal input ceiling and SoC. Its future trace follows the captured current ramp; future measured values remain unknown. Native current quantization and the PowerAssist minimum remain hardware-owned.
 - Recorder history belongs to Home Assistant. Live timing arrives through its MQTT broker and expires after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
-- An outage arms a fresh ramp. A Node-RED restart with grid present starts a fresh ramp.
+- An outage arms a fresh ramp. An already-present grid starts in normal operation when Node-RED starts.
 - Flow redeployments preserve in-memory ramp progress and overrides.
-- Flow memory holds charging state; node memory holds the running timer.
-- The Home Assistant override also releases the ceiling while Node-RED is stopped. A stopped Node-RED retains its last DVCC setting until it is released or the controller resumes.
-- DVCC applies this ceiling to its managed chargers, including solar chargers. Generator and shore input retain normal charging.
+- Flow memory holds the active window; node memory holds its timer and pending current write.
+- A zero allowance isolates AC input. A positive allowance reconnects after its native current-write completion. Physical mains availability is independent of input isolation. A disabled BMS discharge allowance releases the restriction.
+- The Home Assistant restore script also restores input current and connection while Node-RED is stopped. A stopped controller retains its last hardware settings.
 
 ## Energy card
 
@@ -46,7 +46,7 @@ Initial telemetry setup also requires the existing Home Assistant broker credent
 
 Install Mushroom and Layout Card through HACS. Mushroom owns the card and its actions; Layout Card keeps the compact card above the full-width power-flow view.
 
-`charging-chart.js` is a chart-only card feature registered as a content-addressed data URI. History uses the authenticated Home Assistant frontend connection. The native `victron_toggle_charging` script selects restore during an active ramp and throttles only with ready grid inputs.
+`charging-chart.js` is a chart feature registered as a content-addressed data URI. History and the native settings popup use the authenticated Home Assistant frontend connection. The native `victron_toggle_charging` script selects restore during an active ramp and throttles only with ready grid inputs. Existing entity and script identifiers retain their names.
 
 ```sh
 scripts/victron/deploy.py deploy
@@ -57,7 +57,7 @@ scripts/victron/deploy.py throttle
 
 HTTPS uses the GX certificate pin in `flow.nix`. Credentials stay outside the repository. Tokens remain in process memory and are revoked after each command.
 
-Deployment prints a private snapshot path under `~/.local/state/victron-node-red/`. Rollback releases the charging ceiling and restores the snapshot's owned flow, scripts, frontend resource and Victron dashboard. Restoring a flow without telemetry removes its MQTT sensor definitions:
+Deploy policy and its controls together with `deploy`; use `frontend` for presentation-only updates after policy is deployed. Deployment prints a private snapshot path under `~/.local/state/victron-node-red/`. Rollback restores normal input and the captured owned flow, scripts, frontend resource, registry flags and overview:
 
 ```sh
 scripts/victron/deploy.py rollback --backup /path/to/snapshot.json

@@ -1,19 +1,92 @@
 let
   tab = "victron-charging-ramp";
-  rampDurationMinutes = 30;
   controller = "victron-charging-ramp-controller";
-  chargeLimitEntity = "number.cerbo_ess_max_charge_current";
+  rampDefaults = {
+    duration_minutes = 60;
+    start_current_a = 0;
+    target_current_a = 43.5;
+  };
+  settingsFile = "/data/home/nodered/.node-red/realm-grid-ramp.json";
+  rampStepSeconds = 60;
+  normalInputCurrentA = 63;
+  nominalInputVoltageV = 230;
+  inputLimitEntity = "number.multiplus_current_limit";
+  ignoreEntity = "switch.multiplus_control_ignore_ac_in_1";
   brokerId = "victron-charging-ramp-mqtt";
   telemetryRoot = "realm/victron/charging-ramp";
-  # Command age includes transport delay and clock skew.
   commandMaxAgeSeconds = 30;
   throttleNode = "victron-charging-ramp-throttle";
   restoreScript = "victron_full_charging_now";
   throttleScript = "victron_throttle_charging";
   controlScript = "victron_toggle_charging";
   statusEntity = "sensor.victron_charging_ramp_status";
-  gridReady = "states('${statusEntity}') not in ['unknown', 'unavailable'] and state_attr('${statusEntity}', 'ready') == true and state_attr('${statusEntity}', 'grid_source') == 1";
+  gridReady = "states('${statusEntity}') not in ['unknown', 'unavailable'] and state_attr('${statusEntity}', 'ready') == true and state_attr('${statusEntity}', 'grid_available') == true";
   frontendDirectory = builtins.readDir ./dashboard;
+  system = {
+    service = "com.victronenergy.system";
+    name = "Venus system";
+  };
+  vebus = {
+    service = "com.victronenergy.vebus/276";
+    name = "MultiPlus-II";
+  };
+  battery = {
+    service = "com.victronenergy.battery/512";
+    name = "Battery BMS";
+  };
+  limit = {
+    path = "/Ac/In/1/CurrentLimit";
+    type = "float";
+    name = "Input current limit (A)";
+    mode = "both";
+  };
+  ignore = {
+    path = "/Ac/Control/IgnoreAcIn1";
+    type = "enum";
+    name = "Ignore AC input 1";
+    enum = {
+      "0" = "Use input";
+      "1" = "Ignore input";
+    };
+    mode = "both";
+    writable = true;
+  };
+  inputNodes = spec: [
+    {
+      id = "${tab}-${spec.topic}-input";
+      type = "victron-input-${spec.type}";
+      z = tab;
+      inherit (spec) name;
+      inherit (spec.service) service;
+      serviceObj = spec.service;
+      inherit (spec.path) path;
+      pathObj = spec.path;
+      onlyChanges = true;
+      roundValues = "no";
+      outputs = 1;
+      x = 160;
+      inherit (spec) y;
+      wires = [ [ "${tab}-${spec.topic}-topic" ] ];
+    }
+    {
+      id = "${tab}-${spec.topic}-topic";
+      type = "change";
+      z = tab;
+      inherit (spec) name;
+      rules = [
+        {
+          t = "set";
+          p = "topic";
+          pt = "msg";
+          to = spec.topic;
+          tot = "str";
+        }
+      ];
+      x = 390;
+      inherit (spec) y;
+      wires = [ [ controller ] ];
+    }
+  ];
   sensors =
     builtins.map
       (
@@ -36,9 +109,9 @@ let
               enabled_by_default = true;
               device = {
                 identifiers = [ "realm_victron_charging_ramp" ];
-                name = "Victron charging ramp";
+                name = "Victron grid input";
                 manufacturer = "realm";
-                model = "Node-RED charging controller";
+                model = "Node-RED input controller";
               };
             }
             // spec.config
@@ -74,36 +147,107 @@ let
           };
         }
       ];
-  system = {
-    service = "com.victronenergy.system";
-    name = "Venus system";
-  };
-  settings = {
-    service = "com.victronenergy.settings";
-    name = "Venus settings";
-  };
-  source = {
-    path = "/Ac/ActiveIn/Source";
-    type = "enum";
-    name = "AC-Input";
-    enum = {
-      "0" = "Not available";
-      "1" = "Grid";
-      "2" = "Generator";
-      "3" = "Shore";
-      "240" = "Inverting";
+  settingNumbers =
+    builtins.map
+      (
+        spec:
+        let
+          id = "victron_grid_ramp_${spec.suffix}";
+        in
+        {
+          entityId = "number.${id}";
+          topic = "homeassistant/number/${id}/config";
+          payload = builtins.toJSON {
+            unique_id = id;
+            default_entity_id = "number.${id}";
+            inherit (spec) name;
+            entity_category = "config";
+            state_topic = "${telemetryRoot}/state";
+            value_template = "{{ value_json.configured_${spec.key} }}";
+            command_topic = "${telemetryRoot}/config/${spec.key}";
+            command_template = "{{ value }}";
+            inherit (spec) min max step;
+            unit_of_measurement = spec.unit;
+            mode = "box";
+            qos = 1;
+            retain = false;
+            optimistic = false;
+            availability_topic = "${telemetryRoot}/availability";
+            payload_available = "online";
+            payload_not_available = "offline";
+            json_attributes_topic = "${telemetryRoot}/state";
+            json_attributes_template = "{{ {'default_value': value_json.defaults.${spec.key}} | to_json }}";
+            device = {
+              identifiers = [ "realm_victron_charging_ramp" ];
+              name = "Victron grid input";
+              manufacturer = "realm";
+              model = "Node-RED input controller";
+            };
+          };
+        }
+      )
+      [
+        {
+          key = "duration_minutes";
+          suffix = "duration";
+          name = "Ramp duration";
+          unit = "min";
+          min = 1;
+          max = 1440;
+          step = 1;
+        }
+        {
+          key = "start_current_a";
+          suffix = "start_current";
+          name = "Starting current";
+          unit = "A";
+          min = 0;
+          max = normalInputCurrentA;
+          step = 0.1;
+        }
+        {
+          key = "target_current_a";
+          suffix = "target_current";
+          name = "Target current";
+          unit = "A";
+          min = 0;
+          max = normalInputCurrentA;
+          step = 0.1;
+        }
+      ];
+  resetButton = {
+    entityId = "button.victron_grid_ramp_reset_defaults";
+    topic = "homeassistant/button/victron_grid_ramp_reset_defaults/config";
+    payload = builtins.toJSON {
+      unique_id = "victron_grid_ramp_reset_defaults";
+      default_entity_id = "button.victron_grid_ramp_reset_defaults";
+      name = "Reset ramp defaults";
+      entity_category = "config";
+      icon = "mdi:restore";
+      command_topic = "${telemetryRoot}/config/reset";
+      payload_press = "reset";
+      qos = 1;
+      retain = false;
+      availability_topic = "${telemetryRoot}/availability";
+      payload_available = "online";
+      payload_not_available = "offline";
+      device = {
+        identifiers = [ "realm_victron_charging_ramp" ];
+        name = "Victron grid input";
+        manufacturer = "realm";
+        model = "Node-RED input controller";
+      };
     };
   };
-  limit = {
-    path = "/Settings/SystemSetup/MaxChargeCurrent";
-    type = "float";
-    name = "DVCC Charge current limit (A)";
-    mode = "both";
-  };
-  soc = {
-    path = "/Dc/Battery/Soc";
-    type = "float";
-    name = "Battery state of charge (%)";
+  discovery = sensors ++ settingNumbers ++ [ resetButton ];
+  commandSequence = command: {
+    action = "mqtt.publish";
+    data = {
+      topic = "${telemetryRoot}/command";
+      payload = "{{ {'command': '${command}', 'issued_at': as_timestamp(now())} | to_json }}";
+      qos = 1;
+      retain = false;
+    };
   };
 in
 {
@@ -113,10 +257,19 @@ in
   controllerId = controller;
   overrideId = "victron-charging-ramp-full";
   throttleId = throttleNode;
-  limitService = settings.service;
+  limitService = vebus.service;
   limitPath = limit.path;
+  batteryService = battery.service;
+  ignoreService = vebus.service;
+  ignorePath = ignore.path;
+  ignoreStatePath = "/Ac/State/IgnoreAcIn1";
+  inherit normalInputCurrentA;
+  stateKey = "gridRamp";
+  inherit rampDefaults settingsFile;
   telemetry = {
-    inherit brokerId sensors;
+    inherit brokerId sensors discovery;
+    settingsEntities = builtins.map (item: item.entityId) settingNumbers;
+    settingsTopics = builtins.map (item: item.topic) (settingNumbers ++ [ resetButton ]);
     availabilityTopic = "${telemetryRoot}/availability";
     stateTopic = "${telemetryRoot}/state";
   };
@@ -124,95 +277,135 @@ in
     {
       id = tab;
       type = "tab";
-      label = "Grid charging ramp";
+      label = "Grid input ramp";
       disabled = false;
-      info = "Charging ramps to the inverter limit over ${toString rampDurationMinutes} minutes. Full charging overrides the remaining window until the battery is full or the window ends. An outage or runtime restart arms a fresh ramp.";
+      info = "A grid-input ramp uses its saved duration, starting current and target current. Defaults are ${toString rampDefaults.duration_minutes} minutes, ${toString rampDefaults.start_current_a} A and ${toString rampDefaults.target_current_a} A. Home Assistant edits apply to the next ramp. The inverter enforces its native current floor; completion restores the normal input limit.";
       env = [
         {
-          name = "FULL_CHARGE_CURRENT_A";
-          value = "140";
+          name = "DEFAULT_DURATION_MINUTES";
+          value = toString rampDefaults.duration_minutes;
           type = "num";
         }
         {
-          name = "RAMP_DURATION_SECONDS";
-          value = toString (rampDurationMinutes * 60);
+          name = "DEFAULT_START_CURRENT_A";
+          value = toString rampDefaults.start_current_a;
+          type = "num";
+        }
+        {
+          name = "DEFAULT_TARGET_CURRENT_A";
+          value = toString rampDefaults.target_current_a;
+          type = "num";
+        }
+        {
+          name = "RAMP_SETTINGS_FILE";
+          value = settingsFile;
+          type = "str";
+        }
+        {
+          name = "RAMP_STEP_SECONDS";
+          value = toString rampStepSeconds;
+          type = "num";
+        }
+        {
+          name = "NORMAL_INPUT_CURRENT_A";
+          value = toString normalInputCurrentA;
+          type = "num";
+        }
+        {
+          name = "NOMINAL_INPUT_VOLTAGE_V";
+          value = toString nominalInputVoltageV;
           type = "num";
         }
       ];
     }
-    {
-      id = "victron-charging-ramp-source";
-      type = "victron-input-system";
-      z = tab;
-      name = "Grid source";
-      inherit (system) service;
-      serviceObj = system;
-      inherit (source) path;
-      pathObj = source;
-      onlyChanges = true;
-      roundValues = "no";
-      outputs = 1;
-      x = 140;
-      y = 100;
-      wires = [ [ "victron-charging-ramp-grid-topic" ] ];
-    }
-    {
-      id = "victron-charging-ramp-grid-topic";
-      type = "change";
-      z = tab;
-      name = "Grid";
-      rules = [
-        {
-          t = "set";
-          p = "topic";
-          pt = "msg";
-          to = "grid";
-          tot = "str";
-        }
-      ];
-      x = 350;
-      y = 100;
-      wires = [ [ controller ] ];
-    }
-    {
-      id = "victron-charging-ramp-limit";
-      type = "victron-input-ess";
-      z = tab;
-      name = "DVCC user limit";
-      inherit (settings) service;
-      serviceObj = settings;
-      inherit (limit) path;
-      pathObj = limit;
-      onlyChanges = true;
-      roundValues = "no";
-      outputs = 1;
-      x = 140;
-      y = 180;
-      wires = [ [ "victron-charging-ramp-limit-topic" ] ];
-    }
-    {
-      id = "victron-charging-ramp-limit-topic";
-      type = "change";
-      z = tab;
-      name = "Limit";
-      rules = [
-        {
-          t = "set";
-          p = "topic";
-          pt = "msg";
-          to = "limit";
-          tot = "str";
-        }
-      ];
-      x = 350;
-      y = 180;
-      wires = [ [ controller ] ];
-    }
+  ]
+  ++ builtins.concatLists (
+    builtins.map inputNodes [
+      {
+        topic = "available";
+        type = "custom";
+        name = "Mains physically available";
+        service = vebus;
+        path = {
+          path = "/Ac/State/AcIn1Available";
+          type = "enum";
+          name = "AC input 1 available";
+          enum = {
+            "0" = "Unavailable";
+            "1" = "Available";
+          };
+        };
+        y = 60;
+      }
+      {
+        topic = "voltage";
+        type = "vebus";
+        name = "Input voltage";
+        service = vebus;
+        path = {
+          path = "/Ac/ActiveIn/L1/V";
+          type = "float";
+          name = "Input voltage (V)";
+        };
+        y = 120;
+      }
+      {
+        topic = "limit";
+        type = "vebus";
+        name = "Accepted input limit";
+        service = vebus;
+        path = limit;
+        y = 180;
+      }
+      {
+        topic = "ignore";
+        type = "custom";
+        name = "Actual input isolation";
+        service = vebus;
+        path = {
+          path = "/Ac/State/IgnoreAcIn1";
+          type = "enum";
+          name = "Input 1 ignored";
+          enum = {
+            "0" = "Connected";
+            "1" = "Ignored";
+          };
+        };
+        y = 240;
+      }
+      {
+        topic = "soc";
+        type = "system";
+        name = "Battery state of charge";
+        service = system;
+        path = {
+          path = "/Dc/Battery/Soc";
+          type = "float";
+          name = "Battery state of charge (%)";
+        };
+        y = 300;
+      }
+      {
+        topic = "discharge";
+        type = "battery";
+        name = "BMS discharge allowance";
+        service = battery;
+        path = {
+          path = "/Info/MaxDischargeCurrent";
+          type = "float";
+          name = "BMS maximum discharge current (A)";
+        };
+        y = 340;
+      }
+
+    ]
+  )
+  ++ [
     {
       id = "victron-charging-ramp-full";
       type = "inject";
       z = tab;
-      name = "Full charging now";
+      name = "Restore normal input";
       props = [
         { p = "payload"; }
         {
@@ -221,54 +414,19 @@ in
         }
       ];
       topic = "full";
-      payload = "";
       payloadType = "date";
       repeat = "";
       once = false;
       onceDelay = 0.1;
-      x = 330;
-      y = 260;
-      wires = [ [ controller ] ];
-    }
-    {
-      id = "victron-charging-ramp-soc";
-      type = "victron-input-system";
-      z = tab;
-      name = "Battery state of charge";
-      inherit (system) service;
-      serviceObj = system;
-      inherit (soc) path;
-      pathObj = soc;
-      onlyChanges = true;
-      roundValues = "no";
-      outputs = 1;
-      x = 140;
-      y = 20;
-      wires = [ [ "victron-charging-ramp-soc-topic" ] ];
-    }
-    {
-      id = "victron-charging-ramp-soc-topic";
-      type = "change";
-      z = tab;
-      name = "Battery SOC";
-      rules = [
-        {
-          t = "set";
-          p = "topic";
-          pt = "msg";
-          to = "soc";
-          tot = "str";
-        }
-      ];
-      x = 350;
-      y = 20;
+      x = 390;
+      y = 360;
       wires = [ [ controller ] ];
     }
     {
       id = throttleNode;
       type = "inject";
       z = tab;
-      name = "Throttle charging";
+      name = "Ramp grid input";
       props = [
         { p = "payload"; }
         {
@@ -280,15 +438,15 @@ in
       payloadType = "date";
       repeat = "";
       once = false;
-      x = 330;
-      y = 300;
+      x = 390;
+      y = 400;
       wires = [ [ controller ] ];
     }
     {
       id = "victron-charging-ramp-command";
       type = "mqtt in";
       z = tab;
-      name = "Charging command";
+      name = "Input command";
       broker = brokerId;
       topic = "${telemetryRoot}/command";
       qos = "1";
@@ -296,68 +454,171 @@ in
       nl = false;
       rap = true;
       rh = 0;
-      x = 140;
-      y = 580;
+      x = 160;
+      y = 560;
       wires = [ [ "victron-charging-ramp-command-check" ] ];
     }
     {
       id = "victron-charging-ramp-command-check";
       type = "function";
       z = tab;
-      name = "Fresh throttle request";
+      name = "Fresh input request";
       func = ''
         const command = msg.payload;
-        if (msg.retain || !command || command.command !== "throttle" ||
+        if (msg.retain || !command || !["full", "throttle"].includes(command.command) ||
             typeof command.issued_at !== "number" || !Number.isFinite(command.issued_at)) return null;
         const age = Date.now() / 1000 - command.issued_at;
         if (Math.abs(age) > ${toString commandMaxAgeSeconds}) return null;
-        return {topic: "throttle"};
+        return {topic: command.command};
       '';
       outputs = 1;
       timeout = 0;
       noerr = 0;
       libs = [ ];
       x = 390;
-      y = 580;
+      y = 560;
       wires = [ [ controller ] ];
     }
     {
       id = controller;
       type = "function";
       z = tab;
-      name = "${toString rampDurationMinutes}-minute charging ramp";
+      name = "Configurable input ramp";
       func = builtins.readFile ./charging-ramp.js;
       initialize = ''
         context.set("timer", null);
+        context.set("limitWrite", null);
       '';
       finalize = ''
         const timer = context.get("timer");
         if (timer) clearInterval(timer);
+
       '';
-      outputs = 2;
+      outputs = 3;
       timeout = 0;
       noerr = 0;
       libs = [ ];
-      x = 620;
+      x = 650;
       y = 180;
       wires = [
         [ "victron-charging-ramp-output" ]
+        [ "victron-charging-ramp-ignore-output" ]
         [ "victron-charging-ramp-state" ]
       ];
     }
     {
       id = "victron-charging-ramp-output";
-      type = "victron-output-ess";
+      type = "victron-output-vebus";
       z = tab;
-      name = "DVCC charging-current ceiling";
-      inherit (settings) service;
-      serviceObj = settings;
+      name = "AC input current ceiling";
+      inherit (vebus) service;
+      serviceObj = vebus;
       inherit (limit) path;
       pathObj = limit;
       outputs = 0;
-      x = 940;
+      x = 980;
       y = 180;
       wires = [ ];
+    }
+    {
+      id = "victron-charging-ramp-ignore-output";
+      type = "victron-output-custom";
+      z = tab;
+      name = "AC input connection";
+      inherit (vebus) service;
+      serviceObj = vebus;
+      inherit (ignore) path;
+      pathObj = ignore;
+      outputs = 0;
+      x = 980;
+      y = 240;
+      wires = [ ];
+    }
+    {
+      id = "victron-charging-ramp-limit-write";
+      type = "status";
+      z = tab;
+      name = "Current write completion";
+      scope = [ "victron-charging-ramp-output" ];
+      x = 980;
+      y = 290;
+      wires = [ [ "victron-charging-ramp-limit-write-topic" ] ];
+    }
+    {
+      id = "victron-charging-ramp-limit-write-topic";
+      type = "change";
+      z = tab;
+      name = "Current write result";
+      rules = [
+        {
+          t = "set";
+          p = "topic";
+          pt = "msg";
+          to = "limit-write";
+          tot = "str";
+        }
+      ];
+      x = 650;
+      y = 290;
+      wires = [ [ controller ] ];
+    }
+    {
+      id = "victron-charging-ramp-settings-load";
+      type = "inject";
+      z = tab;
+      name = "Load saved ramp settings";
+      props = [
+        { p = "payload"; }
+        {
+          p = "topic";
+          vt = "str";
+        }
+      ];
+      topic = "load";
+      payloadType = "date";
+      repeat = "";
+      once = true;
+      onceDelay = 0.1;
+      x = 160;
+      y = 760;
+      wires = [ [ "victron-charging-ramp-settings" ] ];
+    }
+    {
+      id = "victron-charging-ramp-settings-command";
+      type = "mqtt in";
+      z = tab;
+      name = "Ramp configuration";
+      broker = brokerId;
+      topic = "${telemetryRoot}/config/+";
+      qos = "1";
+      datatype = "utf8";
+      nl = false;
+      rap = true;
+      rh = 0;
+      x = 160;
+      y = 820;
+      wires = [ [ "victron-charging-ramp-settings" ] ];
+    }
+    {
+      id = "victron-charging-ramp-settings";
+      type = "function";
+      z = tab;
+      name = "Persistent ramp settings";
+      func = builtins.readFile ./ramp-settings.js;
+      initialize = "";
+      finalize = "";
+      outputs = 1;
+      timeout = 0;
+      noerr = 0;
+      libs = [
+        {
+          var = "fs";
+          module = "fs";
+        }
+      ];
+      x = 430;
+      y = 760;
+      wires = [ [ controller ] ];
     }
     {
       id = brokerId;
@@ -389,13 +650,13 @@ in
       id = "victron-charging-ramp-state";
       type = "mqtt out";
       z = tab;
-      name = "Charging telemetry";
+      name = "Input telemetry";
       broker = brokerId;
       topic = "${telemetryRoot}/state";
       qos = "0";
       retain = "false";
-      x = 950;
-      y = 260;
+      x = 980;
+      y = 300;
       wires = [ ];
     }
     {
@@ -415,22 +676,22 @@ in
       repeat = "10";
       once = true;
       onceDelay = 1;
-      x = 320;
-      y = 340;
+      x = 390;
+      y = 440;
       wires = [ [ controller ] ];
     }
     {
       id = "victron-charging-ramp-discover";
       type = "inject";
       z = tab;
-      name = "Register charging sensors";
+      name = "Register input sensors";
       props = [ { p = "payload"; } ];
       payloadType = "date";
       repeat = "";
       once = true;
       onceDelay = 1;
-      x = 320;
-      y = 420;
+      x = 390;
+      y = 620;
       wires = [ [ "victron-charging-ramp-discovery" ] ];
     }
     {
@@ -440,14 +701,14 @@ in
       name = "Home Assistant discovery";
       func = ''
         if (msg.status && msg.status.fill !== "green") return null;
-        return [${builtins.toJSON (builtins.map (sensor: { inherit (sensor) topic payload; }) sensors)}];
+        return [${builtins.toJSON (builtins.map (sensor: { inherit (sensor) topic payload; }) discovery)}];
       '';
       outputs = 1;
       timeout = 0;
       noerr = 0;
       libs = [ ];
-      x = 610;
-      y = 420;
+      x = 650;
+      y = 620;
       wires = [ [ "victron-charging-ramp-discovery-output" ] ];
     }
     {
@@ -456,8 +717,8 @@ in
       z = tab;
       name = "Broker connection";
       scope = [ "victron-charging-ramp-state" ];
-      x = 320;
-      y = 500;
+      x = 390;
+      y = 680;
       wires = [ [ "victron-charging-ramp-discovery" ] ];
     }
     {
@@ -469,48 +730,45 @@ in
       topic = "";
       qos = "1";
       retain = "true";
-      x = 950;
-      y = 420;
+      x = 980;
+      y = 620;
       wires = [ ];
     }
   ];
   homeAssistant = {
     dashboard = "victron-live";
-    controlEntity = chargeLimitEntity;
+    controlEntity = inputLimitEntity;
+    controlEntities = [
+      inputLimitEntity
+      ignoreEntity
+    ];
     scripts.${restoreScript} = {
-      alias = "Victron: full charging now";
-      description = "Skip the remaining ramp until the battery is full or its original window ends.";
+      alias = "Victron: restore normal grid input";
+      description = "Release the input ramp and reconnect mains at the normal current limit.";
       icon = "mdi:flash";
       mode = "single";
       sequence = [
+        ((commandSequence "full") // { continue_on_error = true; })
         {
           action = "number.set_value";
-          target.entity_id = chargeLimitEntity;
-          data = {
-            value = -1;
-          };
+          target.entity_id = inputLimitEntity;
+          data.value = normalInputCurrentA;
+        }
+        {
+          action = "switch.turn_off";
+          target.entity_id = ignoreEntity;
         }
       ];
     };
     scripts.${throttleScript} = {
-      alias = "Victron: throttle charging";
-      description = "Apply the charging ramp at its current point, opening a new window when needed.";
+      alias = "Victron: ramp grid input";
+      description = "Apply the input ramp at its current point, opening a new window when needed.";
       icon = "mdi:gauge-low";
       mode = "single";
-      sequence = [
-        {
-          action = "mqtt.publish";
-          data = {
-            topic = "${telemetryRoot}/command";
-            payload = "{{ {'command': 'throttle', 'issued_at': as_timestamp(now())} | to_json }}";
-            qos = 1;
-            retain = false;
-          };
-        }
-      ];
+      sequence = [ (commandSequence "throttle") ];
     };
     scripts.${controlScript} = {
-      alias = "Victron: toggle charging ramp";
+      alias = "Victron: toggle grid-input ramp";
       icon = "mdi:gauge";
       mode = "single";
       sequence = [
@@ -572,13 +830,12 @@ in
           grid-template-columns = "minmax(0, 1fr) minmax(0, 240px) minmax(0, 1fr)";
           grid-template-areas = ''". charging ." "flow flow flow"'';
         };
-
       };
       cards = [
         {
           type = "custom:mushroom-template-card";
           entity = statusEntity;
-          primary = "Charging power";
+          primary = "Grid input";
           secondary = "{{ 'Restore' if is_state('${statusEntity}', 'Ramping') else 'Throttle' if ${gridReady} else '' }}";
           icon = "{{ 'mdi:flash' if is_state('${statusEntity}', 'Ramping') else 'mdi:gauge-low' }}";
           color = "{{ 'amber' if is_state('${statusEntity}', 'Ramping') else 'blue' if ${gridReady} else 'disabled' }}";
@@ -598,11 +855,11 @@ in
             {
               type = "custom:victron-charging-chart";
               status_entity = statusEntity;
-              bms_limit_entity = "sensor.battery_maximum_allowed_charge_current";
-              policy_limit_entity = chargeLimitEntity;
-              current_entity = "sensor.battery_dc_bus_current";
+              power_entity = "sensor.multiplus_input_power_l1";
+              battery_power_entity = "sensor.battery_power";
+              limit_entity = inputLimitEntity;
+              voltage_entity = "sensor.multiplus_input_voltage_l1";
               soc_entity = "sensor.battery_charge";
-
               history_hours = 2;
             }
           ];

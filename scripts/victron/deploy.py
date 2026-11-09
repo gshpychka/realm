@@ -320,33 +320,60 @@ def apply_flow(client, bundle, desired, credentials=None):
 
 
 def state(client, bundle):
-    return client.request(f"/context/flow/{bundle['tabId']}/state")
+    return client.request(f"/context/flow/{bundle['tabId']}/{bundle['stateKey']}")
 
 
 def current_limit(client, bundle):
     return client.request("/victron/cache")[bundle["limitService"]][bundle["limitPath"]]
 
 
+def input_ignored(client, bundle):
+    return client.request("/victron/cache")[bundle["ignoreService"]][
+        bundle["ignoreStatePath"]
+    ]
+
+
 def full_charging(client, bundle):
     client.request("/inject/" + bundle["overrideId"], {})
     for _ in range(30):
-        if current_limit(client, bundle) == -1:
+        if (
+            current_limit(client, bundle) == bundle["normalInputCurrentA"]
+            and input_ignored(client, bundle) == 0
+        ):
             return
         time.sleep(0.5)
-    raise RuntimeError("Full charging did not restore the normal DVCC user limit")
+    raise RuntimeError(
+        "Full input did not restore normal input current and clear ignore"
+    )
 
 
 def throttle_charging(client, bundle):
     client.request("/inject/" + bundle["throttleId"], {})
     for _ in range(30):
         controller = json.loads(state(client, bundle)["msg"])
+        active = controller.get("activeSettings")
         if (
             controller["mode"] == "ramping"
-            and current_limit(client, bundle) == controller["requestedLimit"]
+            and controller.get("ready") is True
+            and active
         ):
-            return
+            fraction = controller["elapsed"] / (active["duration_minutes"] * 60)
+            amps = (
+                active["start_current_a"]
+                + (active["target_current_a"] - active["start_current_a"]) * fraction
+            )
+            ignored = input_ignored(client, bundle)
+            accepted = current_limit(client, bundle)
+            if (amps == 0 and ignored == 1) or (
+                amps > 0
+                and ignored == 0
+                and isinstance(accepted, (int, float))
+                and not isinstance(accepted, bool)
+                and 0 < accepted <= bundle["normalInputCurrentA"]
+            ):
+                return
         time.sleep(0.5)
-    raise RuntimeError("Charging ramp did not become active")
+    raise RuntimeError("Grid-input ramp did not become active")
 
 
 def save_snapshot(directory, snapshot):
@@ -360,39 +387,46 @@ def save_snapshot(directory, snapshot):
 
 
 def configure_control(command, rest, bundle, disabled_by):
-    entity_id = bundle["homeAssistant"]["controlEntity"]
-    entity = command("config/entity_registry/get", entity_id=entity_id)
-    if entity["disabled_by"] != disabled_by:
-        command(
-            "config/entity_registry/update",
-            entity_id=entity_id,
-            disabled_by=disabled_by,
-        )
-        rest(
-            "/api/services/homeassistant/reload_config_entry",
-            {"entry_id": entity["config_entry_id"]},
-            method="POST",
-        )
-    if (
-        command("config/entity_registry/get", entity_id=entity_id)["disabled_by"]
-        != disabled_by
-    ):
-        raise RuntimeError("Victron charge-control registry readback differs")
-    if disabled_by is None:
+    for entity_id in bundle["homeAssistant"]["controlEntities"]:
+        desired = None if disabled_by is None else disabled_by[entity_id]
+        entity = command("config/entity_registry/get", entity_id=entity_id)
+        if entity["disabled_by"] != desired:
+            command(
+                "config/entity_registry/update",
+                entity_id=entity_id,
+                disabled_by=desired,
+            )
+            rest(
+                "/api/services/homeassistant/reload_config_entry",
+                {"entry_id": entity["config_entry_id"]},
+                method="POST",
+            )
+        if (
+            command("config/entity_registry/get", entity_id=entity_id)["disabled_by"]
+            != desired
+        ):
+            raise RuntimeError("Victron input-control registry readback differs")
+        if desired is not None:
+            continue
         for _ in range(60):
             try:
                 control = rest("/api/states/" + entity_id)
                 if control["state"] not in ("unknown", "unavailable"):
-                    if control["attributes"]["min"] > -1:
+                    if entity_id.startswith("number.") and not (
+                        control["attributes"]["min"]
+                        <= bundle["normalInputCurrentA"]
+                        <= control["attributes"]["max"]
+                    ):
                         raise RuntimeError(
-                            "Victron charge control does not support the unrestricted limit"
+                            "Victron input control does not support normal input current"
                         )
-                    return
+                    break
             except HTTPError as error:
                 if error.code != 404:
                     raise
             time.sleep(0.5)
-        raise RuntimeError("Victron charge control did not become available")
+        else:
+            raise RuntimeError("Victron input control did not become available")
 
 
 def read_scripts(rest, controls):
@@ -511,8 +545,15 @@ def wait_for_telemetry(rest, bundle):
                 rest("/api/states/" + sensor["entityId"])
                 for sensor in bundle["telemetry"]["sensors"]
             ]
+            settings = [
+                rest("/api/states/" + entity_id)
+                for entity_id in bundle["telemetry"]["settingsEntities"]
+            ]
             if all(
                 reading["state"] not in ("unknown", "unavailable")
+                for reading in readings + settings
+            ) and any(
+                reading.get("attributes", {}).get("ready") is True
                 for reading in readings
             ):
                 return
@@ -613,7 +654,8 @@ def main():
                 json.dumps(
                     {
                         "controller": state(client, bundle),
-                        "dvcc_limit_A": current_limit(client, bundle),
+                        "input_current_A": current_limit(client, bundle),
+                        "input_ignored": input_ignored(client, bundle),
                     }
                 )
             )
@@ -626,7 +668,8 @@ def main():
                 json.dumps(
                     {
                         "controller": state(client, bundle),
-                        "dvcc_limit_A": current_limit(client, bundle),
+                        "input_current_A": current_limit(client, bundle),
+                        "input_ignored": input_ignored(client, bundle),
                     }
                 )
             )
@@ -636,9 +679,12 @@ def main():
                 if args.action == "deploy":
                     require_resources(command, bundle)
                 dashboard = command("lovelace/config", url_path=controls["dashboard"])
-                control = command(
-                    "config/entity_registry/get", entity_id=controls["controlEntity"]
-                )
+                control_disabled_by = {
+                    entity_id: command(
+                        "config/entity_registry/get", entity_id=entity_id
+                    )["disabled_by"]
+                    for entity_id in controls["controlEntities"]
+                }
                 scripts = read_scripts(rest, controls)
                 resource = owned_resource(command, bundle)
                 energy_resource = owned_resource(command, bundle, FRONTEND_KEY)
@@ -652,13 +698,6 @@ def main():
                             "Initial telemetry deployment requires MQTT_USERNAME and MQTT_PASSWORD"
                         )
                     limit = current_limit(client, bundle)
-                    if (
-                        not any(owned(node, bundle) for node in current["flows"])
-                        and limit != -1
-                    ):
-                        raise RuntimeError(
-                            "Initial deployment requires the agreed unrestricted DVCC user limit"
-                        )
                     backup = save_snapshot(
                         args.state_dir,
                         {
@@ -668,11 +707,22 @@ def main():
                             "scripts": scripts,
                             "resource": resource,
                             "frontend_resource": energy_resource,
-                            "control_disabled_by": control["disabled_by"],
+                            "control_disabled_by": control_disabled_by,
                         },
                     )
                     desired_dashboard = deepcopy(dashboard)
-                    desired_dashboard["views"] = [controls["view"]]
+                    view = controls["view"]
+                    matches = [
+                        i
+                        for i, item in enumerate(desired_dashboard["views"])
+                        if item.get("path") == view["path"]
+                    ]
+                    if len(matches) > 1:
+                        raise RuntimeError("Multiple owned Victron overviews")
+                    if matches:
+                        desired_dashboard["views"][matches[0]] = view
+                    else:
+                        desired_dashboard["views"].append(view)
                     configure_resource(
                         command, bundle, upload_frontend(bundle), FRONTEND_KEY
                     )
@@ -717,28 +767,29 @@ def main():
                         bundle,
                         [node for node in snapshot["flows"] if owned(node, bundle)],
                     )
+                    topics = list(bundle["telemetry"]["settingsTopics"])
                     if not any(
                         node["id"] == bundle["telemetry"]["brokerId"]
                         for node in snapshot["flows"]
                     ):
-                        topics = [
+                        topics += [
                             sensor["topic"] for sensor in bundle["telemetry"]["sensors"]
                         ]
                         topics += [
                             bundle["telemetry"]["availabilityTopic"],
                             bundle["telemetry"]["stateTopic"],
                         ]
-                        for topic in topics:
-                            rest(
-                                "/api/services/mqtt/publish",
-                                {
-                                    "topic": topic,
-                                    "payload": "",
-                                    "retain": True,
-                                    "qos": 1,
-                                },
-                                method="POST",
-                            )
+                    for topic in topics:
+                        rest(
+                            "/api/services/mqtt/publish",
+                            {
+                                "topic": topic,
+                                "payload": "",
+                                "retain": True,
+                                "qos": 1,
+                            },
+                            method="POST",
+                        )
                     configure_control(
                         command, rest, bundle, snapshot["control_disabled_by"]
                     )
@@ -746,7 +797,8 @@ def main():
                         json.dumps(
                             {
                                 "rolled_back": True,
-                                "dvcc_limit_A": current_limit(client, bundle),
+                                "input_current_A": current_limit(client, bundle),
+                                "input_ignored": input_ignored(client, bundle),
                             }
                         )
                     )

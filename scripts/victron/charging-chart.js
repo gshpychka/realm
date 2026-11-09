@@ -1,20 +1,26 @@
-// Recorded charging history and the remaining planned ramp.
+// Recorded whole-AC-input power and the controller's remaining planned allowance.
 
 const TAG = "victron-charging-chart";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const ENTITY_OPTIONS = {
   status: "status_entity",
-  bms: "bms_limit_entity",
-  policy: "policy_limit_entity",
-  current: "current_entity",
+  power: "power_entity",
+  battery: "battery_power_entity",
+  limit: "limit_entity",
+  voltage: "voltage_entity",
   soc: "soc_entity",
 };
+const SETTINGS_ENTITIES = {
+  duration_entity: "number.victron_grid_ramp_duration",
+  start_current_entity: "number.victron_grid_ramp_start_current",
+  target_current_entity: "number.victron_grid_ramp_target_current",
+  reset_defaults_entity: "button.victron_grid_ramp_reset_defaults",
+};
 const REQUIRED = [...Object.values(ENTITY_OPTIONS), "history_hours"];
-const NUMERIC = ["current", "bms", "policy", "soc"];
+const NUMERIC = ["power", "battery", "ceiling", "soc"];
 // Bounds the recorder query; long windows are additionally decimated per pixel.
 const MAX_HISTORY_HOURS = 168;
-// The DVCC user ceiling is unrestricted at -1.
-const UNRESTRICTED = -1;
+
 const RAMPING = "ramping";
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -23,24 +29,25 @@ const REFRESH_MS = MINUTE;
 const MODE_REFRESH_DELAY_MS = 3_000;
 // Inspection events stay inside the feature.
 const CONTAINED_EVENTS = [
-  "action", "click", "dblclick", "contextmenu", "pointerdown", "pointerup", "mousedown", "mouseup",
-  "touchstart", "touchend", "touchcancel", "keydown", "keyup",
+  "action", "input", "change", "click", "dblclick", "contextmenu",
+  "pointerdown", "pointerup", "pointermove", "pointercancel", "mousedown", "mouseup",
+  "touchstart", "touchmove", "touchend", "touchcancel", "keydown", "keyup",
 ];
 
 // Recorded mode labels retain transitions independently of numeric readings.
 const MODE_TONES = {
   "Ramping": "amber",
-  "Normal charging": "sage",
-  "Full charging override": "blue",
-  "Generator / shore charging": "text",
-  "Waiting for grid": "muted",
+  "Normal input": "sage",
+  "Input override": "blue",
+  "No grid power": "muted",
   "Waiting for data": "muted",
 };
-const modeLabel = (mode) => mode === "Waiting for grid" ? "No grid power" : mode;
+const modeLabel = (mode) => Object.hasOwn(MODE_TONES, mode) ? mode : "Mode unavailable";
 const SERIES = {
-  current: { label: "Actual", unit: "A" },
-  bms: { label: "BMS limit", unit: "A" },
-  policy: { label: "Our limit", unit: "A" },
+  power: { label: "Grid import", unit: "W" },
+  battery: { label: "Battery (− supplies loads)", unit: "W" },
+  ceiling: { label: "Nominal input ceiling", unit: "W" },
+  planned: { label: "Planned allowance", unit: "W" },
   soc: { label: "SoC", unit: "%" },
 };
 
@@ -53,6 +60,21 @@ const STYLE = `
     display: block; width: 100%; height: 140px;
   }
   .graph { position: relative; height: 100%; }
+  .settings-button, .settings-close {
+    appearance: none; border: 0; border-radius: 50%; background: var(--ha-card-background, var(--card-background-color));
+    color: var(--vc-muted); cursor: pointer; width: 32px; height: 32px; font-size: 20px;
+  }
+  .settings-button { position: absolute; top: 2px; right: 2px; }
+  .settings-button:focus-visible, .settings-close:focus-visible { outline: 2px solid var(--primary-color); }
+  .settings-dialog {
+    width: min(440px, calc(100vw - 48px)); max-height: calc(100dvh - 48px); overflow: auto;
+    padding: 16px; border: 1px solid var(--vc-border); border-radius: 16px;
+    background: var(--ha-card-background, var(--card-background-color)); color: var(--vc-text);
+  }
+  .settings-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+  .settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .settings-heading h2 { margin: 0; font-size: 20px; }
+  .settings-note { margin: 12px 0 0; color: var(--vc-muted); font-size: 14px; }
   svg { display: block; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
   svg:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
   .graph-note { position: absolute; top: 8px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
@@ -67,12 +89,14 @@ const STYLE = `
   .tip .when { font-weight: 600; }
   .tip .row { display: flex; align-items: center; gap: 6px; }
   .tip .row span:last-child { margin-left: auto; padding-left: 10px; }
+  .tip button { appearance: none; background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: inherit; cursor: pointer; user-select: text; -webkit-user-select: text; }
+  .tip button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
   .muted { color: var(--vc-muted); }
   .swatch { width: 14px; border-top: 2px solid var(--tone); }
   .swatch.soc { border-top-width: 1.5px; }
-  .tone-amber, .policy { --tone: var(--vc-amber); }
-  .tone-sage, .current { --tone: var(--vc-sage); }
-  .tone-blue, .bms { --tone: var(--vc-blue); }
+  .tone-amber, .ceiling, .planned { --tone: var(--vc-amber); }
+  .tone-sage, .power { --tone: var(--vc-sage); }
+  .tone-blue, .battery { --tone: var(--vc-blue); }
   .tone-text { --tone: var(--vc-text); }
   .tone-muted { --tone: var(--vc-muted); }
   .soc { --tone: var(--vc-mauve); }
@@ -81,8 +105,8 @@ const STYLE = `
   .marker { stroke: var(--vc-text); stroke-opacity: 0.28; stroke-dasharray: 2 3; }
   .now { stroke: var(--vc-text); stroke-opacity: 0.35; }
   .trace { fill: none; stroke: var(--tone); stroke-linejoin: round; stroke-linecap: round; }
-  .trace.current { stroke-width: 2; }
-  .trace.bms, .trace.policy { stroke-width: 1.5; stroke-linecap: butt; }
+  .trace.power { stroke-width: 2; }
+  .trace.battery, .trace.ceiling, .trace.planned { stroke-width: 1.5; stroke-linecap: butt; }
   .trace.soc { stroke-width: 1.25; stroke-opacity: 0.8; }
   .trace.projection { stroke-dasharray: 5 4; stroke-opacity: 0.85; }
   .area { fill: var(--vc-mauve); fill-opacity: 0.07; }
@@ -113,14 +137,19 @@ function parseState(key, state) {
   if (key === "status") return state;
   const n = Number(state);
   if (!Number.isFinite(n)) return null;
-  if (key === "bms" && n < 0) return null;
   if (key === "soc" && (n < 0 || n > 100)) return null;
-  if (key === "policy" && n < 0) return n === UNRESTRICTED ? UNRESTRICTED : null;
   return n;
 }
 
-// Unrestricted is a mode, not an amperage: it breaks the numeric trace.
-const plotted = (key, v) => finite(v) && !(key === "policy" && v === UNRESTRICTED);
+const plotted = (key, v) => finite(v);
+
+// Only explicit watt telemetry is meaningful; legacy charging-current attributes
+// must leave a gap rather than being converted or relabelled.
+function inputCeiling(state) {
+  const a = state?.attributes;
+  if (parseState("status", state?.state) === null || !a || !finite(a.input_limit_w) || a.input_limit_w < 0) return null;
+  return a.input_limit_w;
+}
 
 function pushPoint(points, t, v) {
   const last = points[points.length - 1];
@@ -131,21 +160,25 @@ function pushPoint(points, t, v) {
   points.push({ t, v });
 }
 
-// HA returns one array per entity; only the first item names its entity_id and
-// later minimal entries carry just state/last_changed. The first entry is the
-// state at the window start, so a series never begins before its first timestamp.
+// HA returns one array per entity. Full status attributes are required for watt
+// history; state changes and attribute updates use their own exact timestamps.
+// The initial row is the state at the window start, never an earlier trace.
 function parseHistory(response, ids, startMs) {
   const rowsById = new Map();
   for (const rows of Array.isArray(response) ? response : []) {
     const id = Array.isArray(rows) ? rows[0]?.entity_id : undefined;
     if (typeof id === "string") rowsById.set(id, rows);
   }
-  const series = {};
+  const series = { ceiling: [] };
   for (const [key, id] of Object.entries(ids)) {
     const points = [];
     for (const row of rowsById.get(id) ?? []) {
       const t = Date.parse(row?.last_changed ?? row?.last_updated);
       if (Number.isFinite(t)) pushPoint(points, Math.max(t, startMs), parseState(key, row.state));
+      if (key === "status") {
+        const updated = Date.parse(row?.last_updated ?? row?.last_changed);
+        if (Number.isFinite(updated)) pushPoint(series.ceiling, Math.max(updated, startMs), inputCeiling(row));
+      }
     }
     series[key] = points;
   }
@@ -268,7 +301,17 @@ class VictronChargingChart extends HTMLElement {
     if (!Number.isFinite(hours) || hours <= 0 || hours > MAX_HISTORY_HOURS) {
       throw new Error(`history_hours must be a number in (0, ${MAX_HISTORY_HOURS}].`);
     }
-    this._config = { ...config, history_hours: hours };
+    const settings = { ...SETTINGS_ENTITIES };
+    for (const key of Object.keys(settings)) {
+      const id = config[key] ?? settings[key];
+      const domain = key === "reset_defaults_entity" ? "button" : "number";
+      if (typeof id !== "string" || !new RegExp(`^${domain}\\.[a-z0-9_]+$`).test(id)) {
+        throw new Error(`${key} must be a ${domain} entity id.`);
+      }
+      settings[key] = id;
+    }
+    this._closeSettings();
+    this._config = { ...config, ...settings, history_hours: hours };
     this._ids = Object.fromEntries(Object.entries(ENTITY_OPTIONS).map(([key, option]) => [key, config[option]]));
     this._states = {};
     this._series = null;
@@ -284,6 +327,7 @@ class VictronChargingChart extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
+    if (this._settingsCard && this._settingsDialog?.open) this._settingsCard.hass = hass;
     if (!this._config) return;
     let changed = first;
     for (const [key, id] of Object.entries(this._ids)) {
@@ -325,6 +369,7 @@ class VictronChargingChart extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._closeSettings();
     this._resize?.disconnect();
     this._intersection?.disconnect();
     clearInterval(this._tick);
@@ -342,7 +387,7 @@ class VictronChargingChart extends HTMLElement {
     el("style", "", root, STYLE);
     const graph = el("div", "graph", root);
     const chart = svg("svg", { tabindex: 0, role: "group" }, graph);
-    chart.setAttribute("aria-label", "Charging history. Click to pin the inspector; arrow keys move it, Page Up and Page Down jump between mode changes.");
+    chart.setAttribute("aria-label", "Grid input power history. Click to pin the inspector; arrow keys move it, Page Up and Page Down jump between mode changes.");
     // Click/tap pins until light dismiss; hover only previews and never moves a pinned inspector.
     chart.addEventListener("click", (e) => {
       this._pinned = true;
@@ -355,14 +400,82 @@ class VictronChargingChart extends HTMLElement {
       if (!this._cursor && this._geom && chart.matches(":focus-visible")) this._setCursor(this._geom.now);
     });
     // Focus moves to the inspector when selecting its text; only an unpinned preview follows focus.
-    chart.addEventListener("blur", () => !this._pinned && this._hideCursor());
+    chart.addEventListener("blur", (event) => {
+      if (this._els.tip.contains(event.relatedTarget)) this._pinned = true;
+      else if (!this._pinned) this._hideCursor();
+    });
     const graphNote = el("div", "graph-note", graph);
+    const settings = el("button", "settings-button", graph, "⚙");
+    settings.type = "button";
+    settings.title = "Ramp settings";
+    settings.setAttribute("aria-label", "Ramp settings");
+    settings.setAttribute("aria-haspopup", "dialog");
+    for (const type of CONTAINED_EVENTS) settings.addEventListener(type, (e) => e.stopPropagation());
+    settings.addEventListener("click", () => this._openSettings());
     const tip = el("div", "tip", graph);
     tip.setAttribute("popover", "auto");
+    // Keep the preview mounted when focus leaves the graph for selectable text
+    // or a native-history button; all interaction still stays inside the feature.
+    tip.addEventListener("pointerdown", () => { this._pinned = true; });
+    tip.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") this._hideCursor();
+    });
     tip.addEventListener("toggle", (event) => {
       if (event.newState === "closed") this._hideCursor();
     });
     this._els = { graph, chart, graphNote, tip };
+  }
+
+  _closeSettings() {
+    const dialog = this._settingsDialog;
+    this._settingsDialog = null;
+    this._settingsCard = null;
+    if (dialog?.open) dialog.close();
+    dialog?.remove();
+  }
+
+  async _openSettings() {
+    if (!this._config || !this._hass || !this.isConnected || this._settingsDialog) return;
+    this._hideCursor();
+    const dialog = el("dialog", "settings-dialog", this.shadowRoot);
+    this._settingsDialog = dialog;
+    dialog.setAttribute("aria-label", "Grid input ramp settings");
+    for (const type of CONTAINED_EVENTS) dialog.addEventListener(type, (e) => e.stopPropagation());
+    dialog.addEventListener("close", () => {
+      if (this._settingsDialog === dialog) this._closeSettings();
+    });
+    const heading = el("div", "settings-heading", dialog);
+    el("h2", "", heading, "Ramp settings");
+    const close = el("button", "settings-close", heading, "×");
+    close.type = "button";
+    close.setAttribute("aria-label", "Close settings");
+    close.addEventListener("click", () => this._closeSettings());
+    const content = el("div", "", dialog, "Loading settings…");
+    el("p", "settings-note", dialog, "Changes apply to the next ramp.");
+    const config = this._config;
+    try {
+      dialog.showModal();
+      const helpers = await window.loadCardHelpers();
+      if (this._settingsDialog !== dialog || !this.isConnected) return;
+      const card = helpers.createCardElement({
+        type: "entities",
+        show_header_toggle: false,
+        entities: [
+          { entity: config.duration_entity, name: "Duration" },
+          { entity: config.start_current_entity, name: "Start current" },
+          { entity: config.target_current_entity, name: "Target current" },
+          { entity: config.reset_defaults_entity, name: "Reset defaults" },
+        ],
+      });
+      // Native theme initialization needs connected HA ancestry before hass.
+      content.replaceChildren(card);
+      await card.updateComplete;
+      if (this._settingsDialog !== dialog || !this.isConnected) return;
+      this._settingsCard = card;
+      card.hass = this._hass;
+    } catch (error) {
+      if (this._settingsDialog === dialog) content.textContent = `Settings unavailable: ${error?.message || "could not load native card"}`;
+    }
   }
 
   _formats() {
@@ -390,8 +503,8 @@ class VictronChargingChart extends HTMLElement {
     this._formatKey = key;
     this._format = {
       exact: date({ weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12 }),
-      amps: number({ maximumFractionDigits: 1 }),
-      signed: number({ maximumFractionDigits: 1, signDisplay: "exceptZero" }),
+      power: number({ maximumFractionDigits: 2 }),
+      signed: number({ maximumFractionDigits: 2, signDisplay: "exceptZero" }),
       percent: number({ maximumFractionDigits: 0 }),
     };
     return this._format;
@@ -399,10 +512,9 @@ class VictronChargingChart extends HTMLElement {
 
   _formatValue(key, v) {
     const f = this._formats();
-    if (key === "policy" && v === UNRESTRICTED) return "Unrestricted";
-    if (!finite(v)) return "—";
+    if (!finite(v)) return "Unavailable";
     if (key === "soc") return `${f.percent.format(v)} %`;
-    return `${(key === "current" ? f.signed : f.amps).format(v)} A`;
+    return `${(key === "battery" ? f.signed : f.power).format(v / 1000)} kW`;
   }
 
   _appendLive(key, state) {
@@ -410,10 +522,20 @@ class VictronChargingChart extends HTMLElement {
     const points = this._series[key];
     const t = state ? Date.parse(state.last_changed) : Date.now();
     if (Number.isFinite(t)) pushPoint(points, t, parseState(key, state?.state));
+    if (key === "status") {
+      const updated = state ? Date.parse(state.last_updated ?? state.last_changed) : Date.now();
+      if (Number.isFinite(updated)) pushPoint(this._series.ceiling, updated, inputCeiling(state));
+    }
     const cutoff = Date.now() - this._config.history_hours * HOUR;
     let remove = 0;
     while (remove + 1 < points.length && points[remove + 1].t < cutoff) remove++;
     if (remove) points.splice(0, remove);
+    if (key === "status") {
+      const ceiling = this._series.ceiling;
+      let old = 0;
+      while (old + 1 < ceiling.length && ceiling[old + 1].t < cutoff) old++;
+      if (old) ceiling.splice(0, old);
+    }
   }
 
   _modeChanged() {
@@ -439,7 +561,9 @@ class VictronChargingChart extends HTMLElement {
     const ids = Object.values(this._ids).map(encodeURIComponent).join(",");
     const path = `history/period/${start.toISOString()}?filter_entity_id=${ids}` +
       `&end_time=${encodeURIComponent(end.toISOString())}` +
-      "&minimal_response&no_attributes&significant_changes_only=1";
+      // Attribute-only status changes carry the accepted watt ceiling. Minimal
+      // responses or significant-only history would silently lose those steps.
+      "&significant_changes_only=0";
     try {
       const response = await this._hass.callApi("GET", path);
       if (gen !== this._gen) return;
@@ -474,13 +598,19 @@ class VictronChargingChart extends HTMLElement {
   _projection(now) {
     const status = this._status();
     const a = status?.attributes ?? {};
-    const { elapsed_seconds: elapsed, remaining_seconds: remaining, duration_seconds: duration, target_current_a: target } = a;
-    if (a.phase !== RAMPING || a.window_open !== true) return null;
-    if (![elapsed, remaining, duration, target].every(finite) || duration <= 0 || remaining <= 0) return null;
+    const {
+      elapsed_seconds: elapsed, remaining_seconds: remaining, duration_seconds: duration,
+      start_current_a: start, target_current_a: targetCurrent, input_voltage_v: voltage,
+    } = a;
+    if (a.phase !== RAMPING || a.window_open !== true || a.override === true || a.grid_available !== true || a.ready !== true) return null;
+    if (![elapsed, remaining, duration, start, targetCurrent, voltage].every(finite) ||
+        duration <= 0 || remaining <= 0 || elapsed < 0 || start < 0 || targetCurrent < start || voltage <= 0) return null;
     const anchor = Date.parse(status.last_updated);
     const end = anchor + remaining * 1000;
     if (!Number.isFinite(anchor) || end <= now) return null;
-    return { anchor, end, from: target * clamp(elapsed / duration, 0, 1), target };
+    const target = targetCurrent * voltage;
+    const from = (start + (targetCurrent - start) * clamp(elapsed / duration, 0, 1)) * voltage;
+    return { anchor, end, from, target };
   }
 
   _renderGraph() {
@@ -497,7 +627,7 @@ class VictronChargingChart extends HTMLElement {
     const t0 = now - this._config.history_hours * HOUR;
     const projection = this._projection(now);
     const t1 = projection ? projection.end : now;
-    const series = this._series ?? { status: [], current: [], bms: [], policy: [], soc: [] };
+    const series = this._series ?? { status: [], power: [], battery: [], ceiling: [], soc: [] };
 
     graphNote.className = this._historyError ? "graph-note error" : "graph-note";
     graphNote.textContent = this._historyError
@@ -506,7 +636,7 @@ class VictronChargingChart extends HTMLElement {
 
     let lo = 0;
     let hi = 0;
-    for (const key of ["current", "bms", "policy"]) {
+    for (const key of ["power", "battery", "ceiling"]) {
       for (const p of series[key]) {
         if (!plotted(key, p.v)) continue;
         lo = Math.min(lo, p.v);
@@ -519,7 +649,7 @@ class VictronChargingChart extends HTMLElement {
     const yMax = Math.max(yStep, Math.ceil(hi / yStep) * yStep);
     const X = (t) => left + ((t - t0) / (t1 - t0)) * (right - left);
     const Y = (v) => bottom - ((v - yMin) / (yMax - yMin)) * (bottom - top);
-    // SoC has its own fixed 0–100 % scale, independent of the amp axis.
+    // SoC has its own fixed 0–100 % scale, independent of power.
     const S = (v) => bottom - (v / 100) * (bottom - top);
 
     chart.setAttribute("width", width);
@@ -557,22 +687,28 @@ class VictronChargingChart extends HTMLElement {
     const socRuns = runs("soc", S, true);
     svg("path", { class: "area", d: areaPath(socRuns, bottom) }, plot);
     svg("path", { class: "trace soc", d: linePath(socRuns) }, plot);
-    svg("path", { class: "trace bms", d: linePath(runs("bms", Y, true)) }, plot);
-    svg("path", { class: "trace policy", d: linePath(runs("policy", Y, true)) }, plot);
+    svg("path", { class: "trace battery", d: linePath(runs("battery", Y, true)) }, plot);
+    svg("path", { class: "trace ceiling", d: linePath(runs("ceiling", Y, true)) }, plot);
     if (projection) {
       const d = `M${round(X(projection.anchor))},${round(Y(projection.from))}L${round(X(projection.end))},${round(Y(projection.target))}`;
-      svg("path", { class: "trace policy projection", d }, plot);
+      svg("path", { class: "trace planned projection", d }, plot);
     }
-    svg("path", { class: "trace current", d: linePath(runs("current", Y, true)) }, plot);
+    svg("path", { class: "trace power", d: linePath(runs("power", Y, true)) }, plot);
 
     const nowX = round(X(now));
     svg("line", { class: "now", x1: nowX, x2: nowX, y1: top, y2: bandY + 6 }, chart);
 
     this._geom = { left, right, top, bottom: bandY + 6, t0, t1, now, X, transitions, projection, series };
     if (this._cursor) {
+      // Do not replace a pinned inspector's DOM or selection as the rolling
+      // window moves. Its timestamp/value snapshot remains inspectable.
+      if (this._pinned) {
+        if (this._cursor.t >= t0 && this._cursor.t <= t1) this._drawCursor(this._cursor.t);
+        else this._cursorLine = null;
+        return;
+      }
       const t = clamp(this._cursor.t, t0, t1);
-      if (this._pinned && t === this._cursor.t) this._drawCursor(t);
-      else this._setCursor(t, this._cursor.transition);
+      this._setCursor(t, this._cursor.transition);
     }
   }
 
@@ -622,6 +758,25 @@ class VictronChargingChart extends HTMLElement {
     this._cursorLine = svg("line", { class: "cursor", x1: x, x2: x, y1: g.top, y2: g.bottom }, this._els.chart);
   }
 
+  _historyValue(parent, text, entityId) {
+    if (!entityId) return el("span", "", parent, text);
+    const value = el("button", "", parent, text);
+    value.type = "button";
+    value.title = "Open full history";
+    value.addEventListener("click", () => {
+      // Selecting/copying a reading must not also open a dialog.
+      const selection = this.shadowRoot.getSelection?.() ?? window.getSelection();
+      if (selection && !selection.isCollapsed) return;
+      this._hideCursor();
+      this.dispatchEvent(new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: { entityId, view: "history", large: true },
+      }));
+    });
+    return value;
+  }
+
   _setCursor(t, transition) {
     const g = this._geom;
     const { chart, tip } = this._els;
@@ -636,16 +791,20 @@ class VictronChargingChart extends HTMLElement {
       const line = el("div", "row", tip);
       el("i", `swatch ${key}`, line);
       el("span", "", line, label);
-      el("span", "", line, value);
+      const cell = el("span", "", line);
+      const source = key === "ceiling" || key === "planned" ? "status" : key;
+      this._historyValue(cell, value, this._ids[source]);
     };
     if (t > g.now) {
       const p = g.projection;
       const v = p.from + ((t - p.anchor) / (p.end - p.anchor)) * (p.target - p.from);
-      el("div", "muted", tip, "Projected ramp");
-      row("policy", SERIES.policy.label, this._formatValue("policy", Math.min(v, p.target)));
+      el("div", "muted", tip, "Plan, not an actuator floor");
+      row("planned", SERIES.planned.label, this._formatValue("planned", Math.min(v, p.target)));
     } else {
-      if (transition) el("div", "", tip, `${modeLabel(transition.from)} → ${modeLabel(transition.to)}`);
-      else el("div", "muted", tip, modeLabel(valueAt(g.series.status, t) ?? "Mode unknown"));
+      const mode = el("div", "muted", tip);
+      this._historyValue(mode, transition
+        ? `${modeLabel(transition.from)} → ${modeLabel(transition.to)}`
+        : modeLabel(valueAt(g.series.status, t)), this._ids.status);
       for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(key, valueAt(g.series[key], t)));
     }
     if (!tip.matches(":popover-open")) tip.showPopover();
@@ -662,9 +821,10 @@ window.customCardFeatures = window.customCardFeatures || [];
 if (!window.customCardFeatures.some((feature) => feature.type === TAG)) {
   window.customCardFeatures.push({
     type: TAG,
-    name: "Victron charging chart",
+    name: "Victron grid input power chart",
+    description: "Grid import, battery power, nominal input ceiling and SoC history with a planned input allowance.",
     configurable: false,
-    // Offered on any card whose entity reports a charging ramp phase.
+    // Chart-only feature for the genuine Mushroom grid-input composition.
     isSupported: (hass, context) => {
       const id = context?.entity_id;
       return typeof id === "string" && typeof hass?.states?.[id]?.attributes?.phase === "string";

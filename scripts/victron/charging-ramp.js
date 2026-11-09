@@ -1,193 +1,195 @@
-const fullCurrent = Number(env.get("FULL_CHARGE_CURRENT_A"));
-const duration = Number(env.get("RAMP_DURATION_SECONDS"));
-const stepSeconds = 10;
-const normalLimit = -1;
-// Default node-local context is cleared when its node closes.
-const state = flow.get("state") || {
-  source: null,
-  lastSource: null,
-  observedLimit: null,
-  requestedLimit: null,
-  ready: false,
-  override: false,
-  soc: null,
-  windowOpen: false,
-  elapsed: 0,
-  mode: "waiting",
+const stepSeconds = Number(env.get("RAMP_STEP_SECONDS"));
+const normalLimit = Number(env.get("NORMAL_INPUT_CURRENT_A"));
+const nominalVoltage = Number(env.get("NOMINAL_INPUT_VOLTAGE_V"));
+const state = flow.get("gridRamp") || {
+  available: null, lastAvailable: null, voltage: nominalVoltage,
+  observedLimit: null, observedIgnore: null, requestedLimit: null, sentLimit: null,
+  requestedIgnore: null, requestedPower: null, ready: false, dischargeAllowed: null,
+  configuration: null, activeSettings: null, override: false, soc: null,
+  windowOpen: false, elapsed: 0, mode: "waiting",
 };
-
+const numeric = value => typeof value === "number" && Number.isFinite(value) ? value : null;
+const flag = value => value === 1 || value === true ? true : value === 0 || value === false ? false : null;
+const settings = () => state.activeSettings || state.configuration?.values;
+const duration = () => (settings()?.duration_minutes || 0) * 60;
 function save() {
-  flow.set("state", state);
-  const windowActive = state.windowOpen;
-  const text = state.mode === "ramping"
-    ? `${state.requestedLimit}/${fullCurrent} A; ${Math.ceil((duration - state.elapsed) / 60)} min remaining`
-    : state.mode;
-  node.status({ fill: state.mode === "waiting" ? "yellow" : "green", shape: "dot", text });
-  const labels = {
-    "ramping": "Ramping",
-    "normal charging": "Normal charging",
-    "outage: ramp armed": "Waiting for grid",
-    "override: full charging": "Full charging override",
-    "generator or shore charging": "Generator / shore charging",
-  };
-  node.send([null, { payload: {
-    state: labels[state.mode] || "Waiting for data",
-    phase: state.mode,
-    elapsed_seconds: windowActive ? state.elapsed : 0,
-    remaining_seconds: windowActive ? Math.max(0, duration - state.elapsed) : 0,
-    duration_seconds: duration,
-    target_current_a: fullCurrent,
-    charging_limit_a: state.observedLimit,
-    override: state.override,
-    window_open: state.windowOpen,
-    grid_source: state.source,
-    battery_soc: state.soc,
-    ready: state.ready,
+  flow.set("gridRamp", state);
+  const active = settings(), configured = state.configuration?.values;
+  const labels = { ramping: "Ramping", "normal input": "Normal input", "override: normal input": "Input override", "outage: ramp armed": "No grid power" };
+  node.status({ fill: state.ready ? "green" : "yellow", shape: "dot", text: state.mode });
+  node.send([null, null, { payload: {
+    state: labels[state.mode] || "Waiting for data", phase: state.mode,
+    elapsed_seconds: state.windowOpen ? state.elapsed : 0,
+    remaining_seconds: state.windowOpen ? Math.max(0, duration() - state.elapsed) : 0,
+    duration_seconds: active ? duration() : null,
+    start_current_a: active?.start_current_a ?? null, target_current_a: active?.target_current_a ?? null,
+    target_power_w: active ? active.target_current_a * state.voltage : null,
+    requested_power_w: state.requestedPower, input_limit_a: state.observedLimit,
+    input_limit_w: state.observedIgnore === true ? 0 : state.observedIgnore === false && state.observedLimit !== null ? state.observedLimit * state.voltage : null,
+    input_ignored: state.observedIgnore, input_voltage_v: state.voltage,
+    configured_duration_minutes: configured?.duration_minutes ?? null,
+    configured_start_current_a: configured?.start_current_a ?? null,
+    configured_target_current_a: configured?.target_current_a ?? null,
+    defaults: state.configuration?.defaults ?? null, override: state.override,
+    window_open: state.windowOpen, grid_available: state.available, battery_soc: state.soc, ready: state.ready,
   } }]);
 }
-
+function ignore(value) {
+  state.requestedIgnore = value;
+  if (state.observedIgnore !== value) node.send([null, { payload: value ? 1 : 0 }, null]);
+}
+function writeLimit() {
+  // A successful native current write precedes reconnection.
+  if (state.requestedLimit === null || numeric(context.get("limitWrite")) !== null) return;
+  if (state.sentLimit !== state.requestedLimit) {
+    context.set("limitWrite", state.requestedLimit);
+    node.send([{ payload: state.requestedLimit }, null, null]);
+  } else if (state.requestedIgnore === false) ignore(false);
+}
+function normalInput() {
+  state.requestedPower = null;
+  if (state.requestedLimit !== normalLimit && state.observedLimit !== normalLimit) state.sentLimit = null;
+  state.requestedIgnore = false;
+  state.requestedLimit = normalLimit;
+  writeLimit();
+}
 function stopTimer() {
   const timer = context.get("timer");
   if (timer) clearInterval(timer);
   context.set("timer", null);
 }
-
-function setLimit(value) {
-  state.requestedLimit = value;
-  node.send([{ payload: value }, null]);
-  save();
-}
-
-function fullCharging() {
-  if (!state.windowOpen || state.source !== 1 || state.soc === 100 || state.elapsed >= duration) {
-    finishWindow();
-    return;
-  }
-  state.override = true;
-  state.mode = "override: full charging";
-  setLimit(normalLimit);
-}
-
 function finishWindow() {
   stopTimer();
-  state.override = false;
   state.windowOpen = false;
-  state.mode = "normal charging";
-  setLimit(normalLimit);
-}
-
-function throttleCharging() {
-  if (!state.ready || state.source !== 1) {
-    node.warn("Grid charging inputs are unavailable.");
-    return;
-  }
-  if (!state.windowOpen) {
-    state.windowOpen = true;
-    state.elapsed = 0;
-  }
   state.override = false;
+  state.activeSettings = null;
+  state.mode = "normal input";
+  normalInput();
+}
+function beginWindow() {
+  state.windowOpen = true;
+  state.elapsed = 0;
+  state.override = false;
+  state.activeSettings = state.configuration ? { ...state.configuration.values } : null;
+}
+function releaseInput() {
+  if (!state.windowOpen || state.available !== true || state.elapsed >= duration()) return finishWindow();
+  state.override = true;
+  state.mode = "override: normal input";
+  normalInput();
+}
+function applyRamp() {
+  if (!state.ready || state.available !== true || !state.windowOpen || state.override || !state.activeSettings) return;
   state.mode = "ramping";
-  setLimit(Math.round(fullCurrent * state.elapsed / duration));
-  startTimer();
-}
-
-function startTimer() {
-  if (context.get("timer")) return;
-  const timer = setInterval(() => {
-    if (!state.windowOpen) return;
-    // Timer steps preserve the ramp rate across wall-clock corrections.
-    state.elapsed = Math.min(duration, state.elapsed + stepSeconds);
-    if (state.elapsed === duration) {
-      finishWindow();
-    } else if (state.override || !state.ready || state.source !== 1) {
-      save();
-    } else {
-      setLimit(Math.round(fullCurrent * state.elapsed / duration));
-    }
-  }, stepSeconds * 1000);
-  context.set("timer", timer);
-}
-
-function applySource() {
-  if (!state.windowOpen) stopTimer();
-  if (state.override) {
-    fullCharging();
-  } else if (state.source === 1 && state.windowOpen) {
-    state.mode = "ramping";
-    setLimit(Math.round(fullCurrent * state.elapsed / duration));
-    startTimer();
-  } else if (state.source === 1) {
-    finishWindow();
-  } else if (state.source === 2 || state.source === 3) {
-    state.mode = "generator or shore charging";
-    setLimit(normalLimit);
+  const active = state.activeSettings;
+  const amps = active.start_current_a + (active.target_current_a - active.start_current_a) * state.elapsed / duration();
+  state.requestedPower = amps * state.voltage;
+  if (amps === 0) {
+    state.requestedLimit = null;
+    ignore(true);
   } else {
-    state.mode = "outage: ramp armed";
-    setLimit(0);
+    state.requestedIgnore = false;
+    state.requestedLimit = Math.min(normalLimit, amps);
+    if (state.requestedLimit === normalLimit && state.observedLimit !== normalLimit) state.sentLimit = null;
+    writeLimit();
   }
 }
-
-if (!Number.isFinite(fullCurrent) || fullCurrent <= 0 || !Number.isFinite(duration) || duration < stepSeconds) {
-  node.error("Charging ramp requires a positive inverter current limit and a duration of at least ten seconds.", msg);
-  return null;
-}
-
-if (msg.topic === "soc") {
-  state.soc = typeof msg.payload === "number" && Number.isFinite(msg.payload) &&
-    msg.payload >= 0 && msg.payload <= 100 ? msg.payload : null;
-} else if (msg.topic === "full") {
-  fullCharging();
-} else if (msg.topic === "throttle") {
-  throttleCharging();
-} else if (msg.topic === "grid") {
-  const source = msg.payload;
-  if (![0, 1, 2, 3, 240].includes(source)) {
-    state.source = null;
-    state.ready = false;
-    state.mode = "waiting for grid source";
-    setLimit(state.override ? normalLimit : 0);
-    node.error("AC input source is unavailable.", msg);
-    return null;
-  }
-  const previous = state.lastSource;
-  state.lastSource = source;
-  state.source = source;
-  if (source !== 1) {
-    stopTimer();
-    state.windowOpen = false;
-    state.override = false;
-    state.elapsed = 0;
-  } else if (previous !== 1) {
-    state.windowOpen = true;
-    state.elapsed = 0;
-  }
-  if (state.ready && previous !== source) {
-    applySource();
-  }
-} else if (msg.topic === "limit") {
-  if (typeof msg.payload !== "number" || !Number.isFinite(msg.payload) || msg.payload < normalLimit) {
-    state.observedLimit = null;
-    state.ready = false;
-    state.mode = "waiting for DVCC limit";
+function startTimer() {
+  if (context.get("timer") || !state.windowOpen || !state.activeSettings) return;
+  context.set("timer", setInterval(() => {
+    state.elapsed = Math.min(duration(), state.elapsed + stepSeconds);
+    if (state.elapsed >= duration()) finishWindow();
+    else applyRamp();
     save();
-    node.error("DVCC charging-current limit is unavailable.", msg);
+  }, stepSeconds * 1000));
+}
+function applyAvailability() {
+  if (state.available === false) {
+    state.mode = "outage: ramp armed";
+    state.requestedPower = 0;
+    state.requestedLimit = null;
+    ignore(true);
+  } else if (state.override) releaseInput();
+  else if (state.windowOpen) applyRamp();
+  else { state.mode = "normal input"; normalInput(); }
+}
+const wasReady = state.ready;
+let availabilityChanged = false;
+if (msg.topic === "configuration") {
+  state.configuration = msg.payload;
+  if (state.windowOpen && !state.activeSettings) state.activeSettings = { ...msg.payload.values };
+} else if (msg.topic === "available") {
+  state.available = flag(msg.payload);
+  if (state.available !== null) {
+    const previous = state.lastAvailable;
+    state.lastAvailable = state.available;
+    availabilityChanged = previous !== state.available;
+    if (state.available === false) {
+      stopTimer();
+      state.windowOpen = false;
+      state.activeSettings = null;
+      state.override = false;
+      state.elapsed = 0;
+    } else if (previous === false) beginWindow();
+  }
+} else if (msg.topic === "voltage") {
+  const voltage = numeric(msg.payload);
+  if (voltage !== null && voltage > 0) state.voltage = voltage;
+} else if (msg.topic === "limit") {
+  const previous = state.observedLimit;
+  state.observedLimit = numeric(msg.payload);
+  if (wasReady && state.mode === "ramping" && previous !== normalLimit && state.observedLimit === normalLimit && state.requestedLimit !== normalLimit) releaseInput();
+  if (state.requestedLimit === normalLimit && state.observedLimit !== null && state.observedLimit !== normalLimit) state.sentLimit = null;
+} else if (msg.topic === "ignore") {
+  const previous = state.observedIgnore;
+  state.observedIgnore = flag(msg.payload);
+  if (wasReady && state.mode === "ramping" && previous === true && state.observedIgnore === false && state.requestedIgnore === true) releaseInput();
+  if (state.requestedIgnore === false && state.observedIgnore === true && state.sentLimit === state.requestedLimit) ignore(false);
+} else if (msg.topic === "soc") {
+  state.soc = numeric(msg.payload);
+} else if (msg.topic === "discharge") {
+  const limit = numeric(msg.payload);
+  state.dischargeAllowed = limit === null ? null : limit > 0;
+} else if (msg.topic === "limit-write") {
+  const pending = numeric(context.get("limitWrite"));
+  const status = msg.status;
+  if (pending !== null && status?.fill === "green" && status.shape === "dot" && (status.text == null || Number(status.text) === pending)) {
+    context.set("limitWrite", null);
+    state.sentLimit = pending;
+  } else if (pending !== null && status?.fill === "red") {
+    context.set("limitWrite", null);
+    state.requestedLimit = normalLimit;
+    state.sentLimit = null;
+    state.override = state.windowOpen;
+    state.mode = "override: normal input";
+    ignore(false);
+    node.error("Input limit write failed: " + status.text);
+    save();
     return null;
   }
-  state.observedLimit = msg.payload;
-  if (state.ready && msg.payload === normalLimit &&
-      (state.mode === "ramping" || state.mode === "outage: ramp armed")) {
-    fullCharging();
-  } else if (state.override && msg.payload !== normalLimit) {
-    // An in-flight ramp write can arrive after the manual override.
-    setLimit(normalLimit);
+}
+state.ready = !!state.configuration && state.dischargeAllowed === true && state.available !== null &&
+  state.observedLimit !== null && state.observedIgnore !== null;
+if (state.dischargeAllowed === false && (state.windowOpen || state.requestedIgnore === true)) finishWindow();
+if (!state.ready) {
+  if (state.requestedIgnore === true || state.requestedLimit !== null && state.requestedLimit < normalLimit) {
+    state.override = state.windowOpen;
+    normalInput();
   }
+  state.mode = "waiting";
+} else if (!wasReady || availabilityChanged) applyAvailability();
+if (msg.topic === "full") releaseInput();
+else if (msg.topic === "throttle" && state.ready && state.available === true) {
+  if (!state.windowOpen) beginWindow();
+  state.override = false;
+  applyRamp();
 }
-
-if (!state.ready && state.source !== null && state.observedLimit !== null) {
-  state.ready = true;
-  applySource();
+writeLimit();
+if (!state.windowOpen && state.requestedLimit === normalLimit && state.requestedIgnore === false && state.sentLimit === normalLimit &&
+    state.observedLimit === normalLimit && state.observedIgnore === false && numeric(context.get("limitWrite")) === null) {
+  state.requestedLimit = null;
+  state.requestedIgnore = null;
 }
-if (state.override && state.soc === 100) finishWindow();
-if (state.windowOpen) startTimer();
+startTimer();
 save();
 return null;
