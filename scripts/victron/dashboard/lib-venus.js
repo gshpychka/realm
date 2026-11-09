@@ -13,7 +13,7 @@ const FLOW_DEADBAND = 0.5;
 /* The editor offers 0–3 anchors per side; larger YAML values are clamped. */
 const MAX_ANCHORS_PER_SIDE = 3;
 
-/* Ball radius in viewBox units (the SVG is 1000 × 600). */
+/* Ball radius at a card width of 1000 CSS pixels. */
 const DEFAULT_BALL_SIZE = 4;
 export const MIN_BALL_SIZE = 0.5;
 export const MAX_BALL_SIZE = 20;
@@ -630,6 +630,8 @@ export function checkReSize(config, isDarkTheme, appendTo) {
         cancelLines(state);
         appendTo.querySelector("#dashboard > #svg_container > #circ_container")?.replaceChildren();
         appendTo.querySelector("#dashboard > #svg_container > #path_container")?.replaceChildren();
+        const bounds = dashboard.getBoundingClientRect();
+        appendTo.querySelector("#svg_container").setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
         addLine(config, isDarkTheme, appendTo);
         checkForReverse(config, state.hass, appendTo);
     });
@@ -712,13 +714,14 @@ function creatLine(key, anchorId1, anchorId2, direction_init, isDarkTheme, appen
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", pathData);
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke-width", "2");
+    const scale = appendTo.querySelector("#dashboard").getBoundingClientRect().width / 1000;
+    path.setAttribute("stroke-width", String(Math.max(1, 2 * scale)));
 
     const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     circle.setAttribute("class", "ball");
     circle.setAttribute("cx", coords1.x);
     circle.setAttribute("cy", coords1.y);
-    circle.setAttribute("r", String(ballSize(config.param)));
+    circle.setAttribute("r", String(ballSize(config.param) * scale));
     circle.setAttribute("fill", isDarkTheme ? "url(#gradientDark)" : "url(#gradientLight)");
     circle.style.visibility = "hidden";
 
@@ -742,9 +745,9 @@ function getAnchorCoordinates(anchorId, appendTo) {
     const containerRect = container.getBoundingClientRect();
     if (!containerRect.width || !containerRect.height) return null;
 
-    // position in the 1000 × 600 viewBox
-    const relativeX = (anchorRect.left - containerRect.left + anchorRect.width / 2) * 1000 / containerRect.width;
-    const relativeY = (anchorRect.top - containerRect.top + anchorRect.height / 2) * 600 / containerRect.height;
+    // The SVG and its anchors share the card's CSS-pixel coordinate space.
+    const relativeX = anchorRect.left - containerRect.left + anchorRect.width / 2;
+    const relativeY = anchorRect.top - containerRect.top + anchorRect.height / 2;
 
     return { x: parseFloat(relativeX.toFixed(2)), y: parseFloat(relativeY.toFixed(2)) };
 }

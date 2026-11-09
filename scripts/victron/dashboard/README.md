@@ -18,7 +18,7 @@ Compact containers use a taller layout and readable minimum auto font sizes. Exp
 | :--- | :--- | :--- |
 | `theme` | `auto` (default), `light`, `dark`, `transparent` | `auto` follows the HA dark mode |
 | `param.boxCol1` / `boxCol2` / `boxCol3` | 1–4 / 1–2 / 1–4 (default 1) | Boxes per column |
-| `param.ballSize` | number, max 20 (default 4) | Flow ball radius |
+| `param.ballSize` | number, 0.5–20 (default 4) | Flow ball radius at a card width of 1000 px |
 | `styles.header` / `sensor` / `sensor2` / `footer` | px number, `<n>px/em/rem/%`, or `auto` | Font sizes; `auto` scales with the box width |
 | `colors.boxShadow` / `anchor` / `graph` / `history` / `ball` / `textMain` / `textSub` | hex, colour keyword, `rgb()`/`hsl()`, `var(--x)` | Colour overrides; other values are ignored |
 | `devices."<col>-<box>"` | `1-1` … `3-4` | One box; boxes beyond the column count are ignored |
