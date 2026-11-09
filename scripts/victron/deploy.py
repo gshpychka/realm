@@ -151,6 +151,11 @@ def owned(node, bundle):
 
 def apply_flow(client, bundle, desired):
     current = client.request("/flows")
+    existing = [node for node in current["flows"] if owned(node, bundle)]
+    if sorted(existing, key=lambda node: node["id"]) == sorted(
+        desired, key=lambda node: node["id"]
+    ):
+        return
     others = [node for node in current["flows"] if not owned(node, bundle)]
     client.request(
         "/flows", {"rev": current["rev"], "flows": others + desired}, deployment="flows"
@@ -189,6 +194,42 @@ def save_snapshot(directory, snapshot):
     ) as output:
         json.dump(snapshot, output, indent=2)
     return filename
+
+
+def configure_control(command, rest, bundle, disabled_by):
+    entity_id = bundle["homeAssistant"]["controlEntity"]
+    entity = command("config/entity_registry/get", entity_id=entity_id)
+    if entity["disabled_by"] != disabled_by:
+        command(
+            "config/entity_registry/update",
+            entity_id=entity_id,
+            disabled_by=disabled_by,
+        )
+        rest(
+            "/api/services/homeassistant/reload_config_entry",
+            {"entry_id": entity["config_entry_id"]},
+            method="POST",
+        )
+    if (
+        command("config/entity_registry/get", entity_id=entity_id)["disabled_by"]
+        != disabled_by
+    ):
+        raise RuntimeError("Victron charge-control registry readback differs")
+    if disabled_by is None:
+        for _ in range(60):
+            try:
+                control = rest("/api/states/" + entity_id)
+                if control["state"] not in ("unknown", "unavailable"):
+                    if control["attributes"]["min"] > -1:
+                        raise RuntimeError(
+                            "Victron charge control does not support the unrestricted limit"
+                        )
+                    return
+            except HTTPError as error:
+                if error.code != 404:
+                    raise
+            time.sleep(0.5)
+        raise RuntimeError("Victron charge control did not become available")
 
 
 def update_controls(command, rest, bundle, dashboard, script):
@@ -251,6 +292,9 @@ def main():
             controls = bundle["homeAssistant"]
             with home_assistant(args.ha_url) as (command, rest):
                 dashboard = command("lovelace/config", url_path=controls["dashboard"])
+                control = command(
+                    "config/entity_registry/get", entity_id=controls["controlEntity"]
+                )
                 script_path = "/api/config/script/config/" + controls["scriptId"]
                 try:
                     script = rest(script_path)
@@ -275,6 +319,7 @@ def main():
                             "limit": limit,
                             "dashboard": dashboard,
                             "script": script,
+                            "control_disabled_by": control["disabled_by"],
                         },
                     )
                     desired_dashboard = deepcopy(dashboard)
@@ -283,6 +328,7 @@ def main():
                         for view in dashboard["views"]
                         if view.get("path") != controls["view"]["path"]
                     ] + [controls["view"]]
+                    configure_control(command, rest, bundle, None)
                     update_controls(
                         command, rest, bundle, desired_dashboard, controls["script"]
                     )
@@ -320,6 +366,9 @@ def main():
                         client,
                         bundle,
                         [node for node in snapshot["flows"] if owned(node, bundle)],
+                    )
+                    configure_control(
+                        command, rest, bundle, snapshot["control_disabled_by"]
                     )
                     print(
                         json.dumps(

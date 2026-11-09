@@ -1,6 +1,7 @@
 let
   tab = "victron-charging-ramp";
   controller = "victron-charging-ramp-controller";
+  chargeLimitEntity = "number.cerbo_ess_max_charge_current";
   system = {
     service = "com.victronenergy.system";
     name = "Venus system";
@@ -185,6 +186,7 @@ in
   ];
   homeAssistant = {
     dashboard = "victron-live";
+    controlEntity = chargeLimitEntity;
     scriptId = "victron_full_charging_now";
     script = {
       alias = "Victron: full charging now";
@@ -193,10 +195,9 @@ in
       mode = "single";
       sequence = [
         {
-          action = "victron_mqtt.publish";
+          action = "number.set_value";
+          target.entity_id = chargeLimitEntity;
           data = {
-            metric_id = "system_ess_max_charge_current";
-            device_id = "0";
             value = -1;
           };
         }

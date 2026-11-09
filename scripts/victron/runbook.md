@@ -2,7 +2,7 @@
 
 The Cerbo runs the charging ramp locally in Node-RED. Grid restoration starts a 30-minute increase of the DVCC user ceiling from zero to the inverter's 140 A rating. The completed ramp restores the unrestricted user ceiling; inverter and battery-management limits remain active.
 
-`flow.nix` declares the flow and Home Assistant controls. `charging-ramp.js` owns ramp and override behavior. `deploy.py` applies these declarations through the native APIs, preserving unrelated flows and dashboard views.
+`flow.nix` declares the flow and Home Assistant controls. `charging-ramp.js` owns ramp and override behavior. `deploy.py` applies these declarations through the native APIs, preserving unrelated flows and dashboard views. Deployment enables the existing Home Assistant charging-current entity; rollback restores its original enabled state.
 
 ## Operation
 
