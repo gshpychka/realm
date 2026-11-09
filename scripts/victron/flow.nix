@@ -587,8 +587,9 @@ in
           ];
         }
         {
-          type = "custom:victron-live-card";
+          type = "vertical-stack";
           view_layout.grid-area = "flow";
+          cards = [ { type = "custom:victron-live-card"; } ];
         }
       ];
     };
