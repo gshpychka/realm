@@ -90,7 +90,8 @@ test("team conversations, attention and retained results stay readable in compac
     assert.doesNotMatch(result, /ctrl\+k tasks/);
     await pastGrace();
     await app.terminal.keyboard.press("Escape");
-    await waitMatch(app.terminal, /Archived/);
+    // The archive footer is also visible while the result panel is open.
+    await waitMatch(app.terminal, /^(?!.*RESULT · reviewer).*Archived/s);
     await app.terminal.write("\x12");
     await app.terminal.waitExit({ timeout: 10000 });
     const saved = JSON.parse(readFileSync(env.PITUITARY_UI_STATE, "utf8"));
