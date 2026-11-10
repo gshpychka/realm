@@ -2,12 +2,12 @@
 
 The Cerbo ramps total AC-input current locally in Node-RED. Grid restoration starts a linear ramp with one update per minute. Completion restores `normalInputCurrentA`; PowerAssist supplies the remaining household demand, and native inverter and battery-management limits remain active.
 
-`flow.nix` declares the flow, `rampDefaults` and single-page Victron dashboard. `charging-ramp.js` owns the active window; `ramp-settings.js` saves configuration on the Cerbo at `settingsFile`. The chart's gear opens Automatic ramp, Skip once and the next ramp's duration, starting current and target current. Saved configuration survives Home Assistant and Node-RED restarts.
+`flow.nix` declares the flow, `rampDefaults` and single-page Victron dashboard. `charging-ramp.js` owns the active window; `ramp-settings.js` saves configuration on the Cerbo at `settingsFile`. The chart's gear opens Ramp enabled, Skip once, next-ramp numbers and one Restore defaults button. Saved configuration survives Home Assistant and Node-RED restarts.
 
 ## Operation
 
 - **Skip once** reconnects grid input at its normal current limit for the current window. Automatic operation remains enabled for the next grid return. The inject button and `deploy.py full` perform the same override. Full battery SOC leaves a whole-input window active because the allowance also supplies household loads.
-- **Automatic ramp** persists its on/off state. Turning it off releases the current restriction; turning it on arms the next grid return. Numeric settings apply to the next window. Reset defaults restores those numbers and preserves the on/off choice.
+- **Ramp enabled** persists its on/off state. Turning it off releases the current restriction; turning it on arms the next grid return. Numeric settings apply to the next window. **Restore defaults** applies the declared numbers and preserves the on/off choice.
 - **Throttle** resumes an open window or starts a new configured window. It requires ready grid and battery inputs. `deploy.py throttle` performs the same action.
 - Tap the Mushroom card or its icon to skip an active ramp. Chart interaction inspects history; clicking the chart pins a selectable inspector.
 - The chart shows recorded Grid power and the active Limit, with a shared power scale and a shaded grid trace. Native current quantization and the PowerAssist minimum remain hardware-owned.

@@ -880,7 +880,7 @@ in
           type = "custom:mushroom-template-card";
           entity = statusEntity;
           primary = "Grid input";
-          secondary = "{{ 'Skip this ramp' if is_state('${statusEntity}', 'Ramping') else 'Skipped' if is_state('${statusEntity}', 'Input override') else 'Off' if state_attr('${statusEntity}', 'enabled') == false else 'No grid power' if state_attr('${statusEntity}', 'enabled') == true and state_attr('${statusEntity}', 'grid_available') == false else 'Automatic' }}";
+          secondary = "{{ 'Skip this ramp' if is_state('${statusEntity}', 'Ramping') else 'Skipped' if is_state('${statusEntity}', 'Input override') else 'Ramp off' if state_attr('${statusEntity}', 'enabled') == false else 'No grid power' if state_attr('${statusEntity}', 'enabled') == true and state_attr('${statusEntity}', 'grid_available') == false else 'Ramp enabled' }}";
           icon = "{{ 'mdi:flash' if is_state('${statusEntity}', 'Ramping') else 'mdi:gauge-low' }}";
           color = "{{ 'amber' if is_state('${statusEntity}', 'Ramping') else 'disabled' if state_attr('${statusEntity}', 'enabled') == false else 'blue' if ${gridReady} else 'disabled' }}";
           vertical = true;

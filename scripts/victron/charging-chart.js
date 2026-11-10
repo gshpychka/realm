@@ -74,6 +74,7 @@ const STYLE = `
   .settings-dialog::backdrop { background: rgb(0 0 0 / 45%); }
   .settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .settings-heading h2 { margin: 0; font-size: 20px; }
+  .settings-restore { display: block; width: fit-content; margin: 12px 16px 0 auto; }
 
   svg { display: block; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
   svg:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
@@ -325,7 +326,10 @@ class VictronChargingChart extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
-    if (this._settingsCard && this._settingsDialog?.open) this._settingsCard.hass = hass;
+    if (this._settingsCard && this._settingsDialog?.open) {
+      this._settingsCard.hass = hass;
+      if (this._settingsRestore) this._settingsRestore.disabled = !hass.states[this._config.reset_defaults_entity] || hass.states[this._config.reset_defaults_entity].state === "unavailable";
+    }
     if (!this._config) return;
     let changed = first;
     for (const [key, id] of Object.entries(this._ids)) {
@@ -446,6 +450,7 @@ class VictronChargingChart extends HTMLElement {
     const dialog = this._settingsDialog;
     this._settingsDialog = null;
     this._settingsCard = null;
+    this._settingsRestore = null;
     if (dialog?.open) dialog.close();
     dialog?.remove();
   }
@@ -477,13 +482,13 @@ class VictronChargingChart extends HTMLElement {
         type: "entities",
         show_header_toggle: false,
         entities: [
-          { entity: config.enabled_entity, name: "Automatic ramp", icon: "mdi:autorenew" },
+          { entity: config.enabled_entity, name: "Ramp enabled", icon: "mdi:autorenew" },
           { type: "button", entity: config.skip_entity, name: "Current ramp", icon: "mdi:skip-next", action_name: "Skip once", tap_action: { action: "perform-action", perform_action: config.skip_entity } },
           { type: "section", label: "Next ramp" },
           { entity: config.duration_entity, name: "Duration" },
           { entity: config.start_current_entity, name: "Start current" },
           { entity: config.target_current_entity, name: "Target current" },
-          { type: "button", entity: config.reset_defaults_entity, name: "Defaults", icon: "mdi:restore", action_name: "Reset", tap_action: { action: "perform-action", perform_action: "button.press", target: { entity_id: config.reset_defaults_entity } } },
+
         ],
       });
       // Native theme initialization needs connected HA ancestry before hass.
@@ -494,6 +499,10 @@ class VictronChargingChart extends HTMLElement {
       card.hass = this._hass;
       // The entities card's hass setter updates rows after its initial render.
       card.requestUpdate?.();
+      const restore = el("ha-button", "settings-restore", dialog, "Restore defaults");
+      this._settingsRestore = restore;
+      restore.disabled = !this._hass.states[config.reset_defaults_entity] || this._hass.states[config.reset_defaults_entity].state === "unavailable";
+      restore.addEventListener("click", () => this._hass.callService("button", "press", { entity_id: config.reset_defaults_entity }));
     } catch (error) {
       if (this._settingsDialog === dialog) content.textContent = `Settings unavailable: ${error?.message || "could not load native card"}`;
     }
