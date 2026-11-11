@@ -54,9 +54,10 @@ const STYLE = `
     --vc-border: var(--divider-color); --vc-amber: var(--warning-color);
     --vc-sage: var(--success-color); --vc-blue: var(--info-color);
 
-    display: block; width: 100%;
+    display: block; width: 100%; container-type: inline-size;
   }
-  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px 16px; padding: 4px 4px 16px; }
+  .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 16px; padding: 4px 4px 16px; }
+  @container (max-width: 480px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .summary-label { color: var(--vc-muted); font-size: 12px; line-height: 20px; }
   .summary button { display: block; appearance: none; border: 0; padding: 0; background: none; color: var(--vc-text); font: inherit; font-size: 16px; line-height: 24px; font-variant-numeric: tabular-nums; text-align: left; cursor: pointer; }
   .summary button:focus-visible { outline: 2px solid var(--primary-color); }
