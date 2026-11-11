@@ -18,6 +18,10 @@ let
     "sensor.yasno_next_planned_outage"
     "sensor.yasno_next_probable_outage"
   ];
+  outageCalendars = [
+    "calendar.yasno_planned_outages"
+    "calendar.yasno_probable_outages"
+  ];
   scheduleAutomationId = "victron_grid_ramp_schedule";
   normalInputCurrentA = 63;
   nominalInputVoltageV = 230;
@@ -871,7 +875,7 @@ in
         triggers = [
           {
             trigger = "state";
-            entity_id = outageEntities ++ [ restorationEntity ];
+            entity_id = outageEntities ++ outageCalendars ++ [ restorationEntity ];
           }
           {
             trigger = "time_pattern";
@@ -890,6 +894,15 @@ in
         conditions = [ ];
         actions = [
           {
+            action = "calendar.get_events";
+            target.entity_id = outageCalendars;
+            data = {
+              start_date_time = "{{ now().isoformat() }}";
+              end_date_time = "{{ (now() + timedelta(days=2)).isoformat() }}";
+            };
+            response_variable = "outages";
+          }
+          {
             action = "mqtt.publish";
             data = {
               topic = "${telemetryRoot}/command";
@@ -902,6 +915,14 @@ in
                   {% if at is not none and at > as_timestamp(now()) %}
                     {% set ns.times = ns.times + [at] %}
                   {% endif %}
+                {% endfor %}
+                {% for calendar in outages.values() %}
+                  {% for event in calendar.events %}
+                    {% set at = as_timestamp(event.start, none) %}
+                    {% if event.summary == 'Outage' and at is not none and at > as_timestamp(now()) %}
+                      {% set ns.times = ns.times + [at] %}
+                    {% endif %}
+                  {% endfor %}
                 {% endfor %}
                 {% set restoration = as_timestamp(states('${restorationEntity}'), none) %}
                 {{ {'command': 'schedule', 'next_outage_at': ns.times | min if ns.times else none, 'restoration_at': restoration if restoration is not none and restoration > as_timestamp(now()) else none, 'issued_at': as_timestamp(now())} | to_json }}

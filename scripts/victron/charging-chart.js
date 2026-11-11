@@ -516,6 +516,9 @@ class VictronChargingChart extends HTMLElement {
       el("i", `swatch ${key}`, item);
       el("span", "", item, SERIES[key].label);
     }
+    const estimated = el("span", "", legend);
+    el("i", "swatch soc", estimated).style.borderTopStyle = "dashed";
+    el("span", "", estimated, "Forecast");
     const range = el("select", "history-range", graph);
     range.setAttribute("aria-label", "History range");
     el("option", "", range, "Cycle").value = "cycle";
@@ -689,7 +692,10 @@ class VictronChargingChart extends HTMLElement {
     const { milestones, summaryNote } = this._els;
     const items = [];
     if (available && finite(deadline)) items.push(["tone-amber", "Charge by", this._formatTime(deadline), this._ids.status]);
-    if (model && finite(model.full_at)) items.push(["tone-blue", "Full ≈", this._formatTime(model.full_at), null]);
+    if (model && finite(model.full_at)) {
+      const fullNow = a.battery_soc >= 100 && model.full_at * 1000 <= now;
+      items.push(["tone-blue", fullNow ? "Full" : "Full ≈", fullNow ? "now" : this._formatTime(model.full_at), null]);
+    }
     const outage = model?.next_outage_at ?? a.next_outage_at;
     if (available && finite(outage)) items.push(["tone-text", "Next outage", this._formatTime(outage), this._ids.status]);
     const signature = JSON.stringify(items);
@@ -704,7 +710,7 @@ class VictronChargingChart extends HTMLElement {
     }
     const shortfall = model && finite(model.soc_at_deadline) && model.soc_at_deadline < 99.95 && finite(model.charge_deadline_at) &&
       (model.charge_deadline_at * 1000 > now || (finite(model.next_outage_at) && model.next_outage_at * 1000 > now));
-    summaryNote.className = shortfall ? "summary-note warning" : "summary-note";
+    summaryNote.className = shortfall || model && a.forecast_reason ? "summary-note warning" : "summary-note";
     summaryNote.textContent = shortfall ? `Only ${round(model.soc_at_deadline)}% estimated by charge deadline`
       : !available ? "Forecast unavailable" : typeof a.forecast_reason === "string" && a.forecast_reason.trim() ? a.forecast_reason : !model ? "Forecast unavailable" : "";
   }
@@ -712,7 +718,15 @@ class VictronChargingChart extends HTMLElement {
   _historyStart(now) {
     const fallback = now - this._config.history_hours * HOUR;
     if (this._range !== "cycle") return fallback;
-    const started = this._states.status?.attributes?.cycle_started_at;
+    let started = this._states.status?.attributes?.cycle_started_at;
+    if (!finite(started)) {
+      let previous = null;
+      for (const point of this._series?.status ?? []) {
+        if (point.v === null) continue;
+        if (point.v === "No grid power" && previous !== null && previous !== point.v) started = point.t / 1000;
+        previous = point.v;
+      }
+    }
     return finite(started) && started > 0 && started * 1000 <= now
       ? Math.max(now - MAX_HISTORY_HOURS * HOUR, started * 1000 - 15 * MINUTE) : fallback;
   }
@@ -853,11 +867,11 @@ class VictronChargingChart extends HTMLElement {
       label(`${round(v / 1000)}`, left - 5, Y(v) + (v === yMax ? 4 : -2), "end");
     }
     let legendX = left;
-    const powerLegend = [["Grid", "power", false], ["Limit", "ceiling", false], ...(model ? [["Planned limit", "ceiling", true]] : [])];
-    for (const [text, tone, estimated] of powerLegend) {
-      svg("line", { class: `trace ${tone}${estimated ? " estimated" : ""}`, x1: legendX, x2: legendX + 12, y1: powerTop - 12, y2: powerTop - 12 }, chart);
+    const powerLegend = [["Grid", "power"], ["Limit", "ceiling"]];
+    for (const [text, tone] of powerLegend) {
+      svg("line", { class: `trace ${tone}`, x1: legendX, x2: legendX + 12, y1: powerTop - 12, y2: powerTop - 12 }, chart);
       label(text, legendX + 17, powerTop - 8, "start", "plot-label");
-      legendX += text === "Planned limit" ? 94 : 56;
+      legendX += 56;
     }
     label("kW", right, powerTop - 8, "end");
     const socPlot = svg("g", { "clip-path": "url(#soc-plot)" }, chart);

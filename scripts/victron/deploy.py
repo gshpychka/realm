@@ -482,7 +482,11 @@ def publish_schedule(rest, bundle, client):
     if len(entities) != 1:
         raise RuntimeError("Expected exactly one loaded outage schedule automation")
     previous = json.loads(state(client, bundle)["msg"]).get("scheduleReceivedAt")
-    template = bundle["homeAssistant"]["scheduleAutomation"]["config"]["actions"][0][
+    actions = bundle["homeAssistant"]["scheduleAutomation"]["config"]["actions"]
+    calendar = next(
+        action for action in actions if action["action"] == "calendar.get_events"
+    )
+    template = next(action for action in actions if action["action"] == "mqtt.publish")[
         "data"
     ]["payload"]
     for _ in range(15):
@@ -493,7 +497,29 @@ def publish_schedule(rest, bundle, client):
         )
         time.sleep(1)
         observed = json.loads(state(client, bundle)["msg"])
-        expected = rest("/api/template", {"template": template}, method="POST")
+        calendar_data = {
+            key: rest(
+                "/api/template",
+                {
+                    "template": "{% set value %}"
+                    + value
+                    + "{% endset %}{{ value | to_json }}"
+                },
+                method="POST",
+            )
+            for key, value in calendar["data"].items()
+        }
+        calendar_data["entity_id"] = calendar["target"]["entity_id"]
+        outages = rest(
+            "/api/services/calendar/get_events?return_response",
+            calendar_data,
+            method="POST",
+        )["service_response"]
+        expected = rest(
+            "/api/template",
+            {"template": template, "variables": {"outages": outages}},
+            method="POST",
+        )
         received = observed.get("scheduleReceivedAt")
         if (
             received is not None
