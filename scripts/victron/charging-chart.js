@@ -54,9 +54,15 @@ const STYLE = `
     --vc-border: var(--divider-color); --vc-amber: var(--warning-color);
     --vc-sage: var(--success-color); --vc-blue: var(--info-color);
 
-    display: block; width: 100%; height: 124px;
+    display: block; width: 100%;
   }
-  .graph { position: relative; height: 100%; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px 16px; padding: 4px 4px 16px; }
+  .summary-label { color: var(--vc-muted); font-size: 12px; line-height: 20px; }
+  .summary button { display: block; appearance: none; border: 0; padding: 0; background: none; color: var(--vc-text); font: inherit; font-size: 16px; line-height: 24px; font-variant-numeric: tabular-nums; text-align: left; cursor: pointer; }
+  .summary button:focus-visible { outline: 2px solid var(--primary-color); }
+  .summary-note { padding: 0 4px 12px; color: var(--vc-amber); font-size: 13px; }
+  .summary-note:empty { display: none; }
+  .graph { position: relative; height: var(--victron-chart-height, 124px); }
   .legend { position: absolute; top: 2px; left: 4px; display: flex; gap: 12px; font-size: 14px; line-height: 18px; color: var(--vc-muted); pointer-events: none; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
   .legend [hidden] { display: none; }
@@ -65,6 +71,7 @@ const STYLE = `
     color: var(--vc-muted); cursor: pointer; width: 32px; height: 32px; font-size: 20px;
   }
   .settings-button { position: absolute; top: 2px; right: 2px; }
+  .history-range { position: absolute; top: 5px; right: 42px; border: 0; border-radius: 6px; padding: 2px 4px; background: var(--ha-card-background, var(--card-background-color)); color: var(--vc-muted); font: inherit; font-size: 13px; cursor: pointer; }
   .settings-button:focus-visible, .settings-close:focus-visible { outline: 2px solid var(--primary-color); }
   .settings-dialog {
     width: min(440px, calc(100vw - 48px)); max-height: calc(100dvh - 48px); overflow: auto;
@@ -78,7 +85,7 @@ const STYLE = `
 
   svg { display: block; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
   svg:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
-  .graph-note { position: absolute; top: 25px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
+  .graph-note { position: absolute; top: 40px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
   .graph-note.error { color: var(--error-color); }
   .tip {
     position: fixed; inset: auto; margin: 0; box-sizing: border-box;
@@ -168,7 +175,7 @@ function parseHistory(response, ids, startMs) {
     const id = Array.isArray(rows) ? rows[0]?.entity_id : undefined;
     if (typeof id === "string") rowsById.set(id, rows);
   }
-  const series = { ceiling: [] };
+  const series = { ceiling: [], details: [] };
   for (const [key, id] of Object.entries(ids)) {
     const points = [];
     for (const row of rowsById.get(id) ?? []) {
@@ -177,11 +184,25 @@ function parseHistory(response, ids, startMs) {
       if (key === "status") {
         const updated = Date.parse(row?.last_updated ?? row?.last_changed);
         if (Number.isFinite(updated)) pushPoint(series.ceiling, Math.max(updated, startMs), inputCeiling(row));
+        if (Number.isFinite(updated)) pushPoint(series.details, Math.max(updated, startMs), rampDetails(row));
       }
     }
     series[key] = points;
   }
   return series;
+}
+
+function rampDetails(state) {
+  const a = state?.attributes;
+  if (parseState("status", state?.state) === null || !a) return null;
+  return {
+    remaining: a.window_open ? a.remaining_seconds : null,
+    duration: a.window_open ? a.duration_seconds : null,
+    deadline: a.charge_deadline_at,
+    nextOutage: a.next_outage_at,
+    reason: a.completion_reason,
+
+  };
 }
 
 // Keeps first/min/max/last per pixel bucket so peaks survive; gaps are kept verbatim.
@@ -311,7 +332,19 @@ class VictronChargingChart extends HTMLElement {
     }
     this._closeSettings();
     this._config = { ...config, ...settings, history_hours: hours };
+    this._historyKey = `victron-ramp-history:${config.status_entity}`;
+    try {
+      const saved = Number(localStorage.getItem(this._historyKey));
+      if ([2, 6, 12, 24].includes(saved)) this._config.history_hours = saved;
+    } catch {}
+    if (![...this._els.range.options].some(option => Number(option.value) === this._config.history_hours)) {
+      const option = el("option", "", this._els.range, `${this._config.history_hours} h`);
+      option.value = this._config.history_hours;
+    }
+    this._els.range.value = String(this._config.history_hours);
     this._ids = Object.fromEntries(Object.entries(ENTITY_OPTIONS).map(([key, option]) => [key, config[option]]));
+    this._summaryRows = null;
+    this._els.summary.replaceChildren();
     this._states = {};
     this._series = null;
     this._historyAt = 0;
@@ -399,6 +432,8 @@ class VictronChargingChart extends HTMLElement {
   _build() {
     const root = this.attachShadow({ mode: "open" });
     el("style", "", root, STYLE);
+    const summary = el("div", "summary", root);
+    const summaryNote = el("div", "summary-note", root);
     const graph = el("div", "graph", root);
     const chart = svg("svg", { tabindex: 0, role: "group" }, graph);
     chart.setAttribute("aria-label", "Grid power and input limit history. Click to pin the inspector; arrow keys move it, Page Up and Page Down jump between mode changes.");
@@ -425,6 +460,23 @@ class VictronChargingChart extends HTMLElement {
       el("i", `swatch ${key}`, item);
       el("span", "", item, SERIES[key].label);
     }
+    const range = el("select", "history-range", graph);
+    range.setAttribute("aria-label", "History range");
+    for (const hours of [2, 6, 12, 24]) {
+      const option = el("option", "", range, `${hours} h`);
+      option.value = String(hours);
+    }
+    range.addEventListener("change", () => {
+      this._config.history_hours = Number(range.value);
+      try { localStorage.setItem(this._historyKey, range.value); } catch {}
+      this._hideCursor();
+      this._series = null;
+      this._historyAt = 0;
+      this._gen++;
+      this._loading = false;
+      this._maybeLoad();
+      this._scheduleRender();
+    });
     const settings = el("button", "settings-button", graph, "⚙");
     settings.type = "button";
     settings.title = "Ramp settings";
@@ -443,7 +495,7 @@ class VictronChargingChart extends HTMLElement {
     tip.addEventListener("toggle", (event) => {
       if (event.newState === "closed") this._hideCursor();
     });
-    this._els = { graph, chart, graphNote, legend, tip };
+    this._els = { graph, chart, graphNote, legend, tip, summary, summaryNote, range };
   }
 
   _closeSettings() {
@@ -533,6 +585,9 @@ class VictronChargingChart extends HTMLElement {
     this._formatKey = key;
     this._format = {
       exact: date({ weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12 }),
+      clock: date({ hour: "2-digit", minute: "2-digit", hour12 }),
+      day: date({ year: "numeric", month: "2-digit", day: "2-digit" }),
+      dated: date({ weekday: "short", hour: "2-digit", minute: "2-digit", hour12 }),
       power: number({ maximumFractionDigits: 2 }),
 
     };
@@ -545,6 +600,36 @@ class VictronChargingChart extends HTMLElement {
     return `${f.power.format(v / 1000)} kW`;
   }
 
+  _formatTime(seconds) {
+    if (!finite(seconds)) return "—";
+    const f = this._formats(), at = seconds * 1000;
+    return (f.day.format(at) === f.day.format(Date.now()) ? f.clock : f.dated).format(at);
+  }
+
+  _renderSummary() {
+    const state = this._states.status, a = state?.attributes ?? {};
+    if (!this._summaryRows) {
+      this._summaryRows = {};
+      for (const [key, label] of [["limit", "Limit"], ["remaining", "Remaining"], ["deadline", "Charge by"], ["outage", "Next outage"]]) {
+        const row = el("div", "", this._els.summary);
+        el("div", "summary-label", row, label);
+        this._summaryRows[key] = this._historyValue(row, "—", this._ids.status);
+      }
+    }
+    const available = parseState("status", state?.state) !== null;
+    const deadline = finite(a.charge_deadline_at) ? a.charge_deadline_at
+      : finite(a.next_outage_at) && finite(this._config.outage_margin_seconds) ? a.next_outage_at - this._config.outage_margin_seconds : null;
+    const values = {
+      limit: available && a.input_ignored === true ? "Disconnected" : available && finite(a.input_limit_a) ? `${round(a.input_limit_a)} A` : "—",
+      remaining: available && state.state === "Ramping" && finite(a.remaining_seconds) ? `${Math.ceil(a.remaining_seconds / 60)} min` : "—",
+      deadline: available ? this._formatTime(deadline) : "—",
+      outage: available ? this._formatTime(a.next_outage_at) : "—",
+    };
+    for (const [key, text] of Object.entries(values)) if (this._summaryRows[key].textContent !== text) this._summaryRows[key].textContent = text;
+    const details = rampDetails(state);
+    this._els.summaryNote.textContent = state?.state === "Ramping" && finite(details?.duration) ? `${Math.ceil(details.duration / 60)} min ramp` : details?.reason === "charge deadline" ? "Ended for charging" : "";
+  }
+
   _appendLive(key, state) {
     if (!this._series) return;
     const points = this._series[key];
@@ -553,16 +638,18 @@ class VictronChargingChart extends HTMLElement {
     if (key === "status") {
       const updated = state ? Date.parse(state.last_updated ?? state.last_changed) : Date.now();
       if (Number.isFinite(updated)) pushPoint(this._series.ceiling, updated, inputCeiling(state));
+      if (Number.isFinite(updated)) pushPoint(this._series.details, updated, rampDetails(state));
     }
     const cutoff = Date.now() - this._config.history_hours * HOUR;
     let remove = 0;
     while (remove + 1 < points.length && points[remove + 1].t < cutoff) remove++;
     if (remove) points.splice(0, remove);
     if (key === "status") {
-      const ceiling = this._series.ceiling;
-      let old = 0;
-      while (old + 1 < ceiling.length && ceiling[old + 1].t < cutoff) old++;
-      if (old) ceiling.splice(0, old);
+      for (const points of [this._series.ceiling, this._series.details]) {
+        let old = 0;
+        while (old + 1 < points.length && points[old + 1].t < cutoff) old++;
+        if (old) points.splice(0, old);
+      }
     }
   }
 
@@ -619,19 +706,20 @@ class VictronChargingChart extends HTMLElement {
   }
 
   _renderGraph() {
+    this._renderSummary();
     const { chart, graphNote, legend } = this._els;
     const width = this._width;
     const height = this._height;
     if (!width || !height) return;
     const left = 2;
     const right = width - 2;
-    const top = 25;
+    const top = 38;
     const bottom = height - 11;
     const bandY = bottom + 4;
     const now = Date.now();
     const t0 = now - this._config.history_hours * HOUR;
     const t1 = now;
-    const series = this._series ?? { status: [], power: [], ceiling: [] };
+    const series = this._series ?? { status: [], power: [], ceiling: [], details: [] };
     // Active ramp ceilings share the power scale; the normal connection rating stays inspectable.
     const displayed = { ...series, ceiling: series.ceiling.map(p => ({
       t: p.t, v: valueAt(series.status, p.t) === "Ramping" ? p.v : null,
@@ -793,7 +881,7 @@ class VictronChargingChart extends HTMLElement {
       el("i", `swatch ${key}`, line);
       el("span", "", line, label);
       const cell = el("span", "", line);
-      const source = key === "ceiling" ? "status" : key;
+      const source = Object.hasOwn(this._ids, key) ? key : "status";
       this._historyValue(cell, value, this._ids[source]);
     };
     const mode = el("div", "muted", tip);
@@ -801,6 +889,14 @@ class VictronChargingChart extends HTMLElement {
       ? `${modeLabel(transition.from)} → ${modeLabel(transition.to)}`
       : modeLabel(valueAt(g.series.status, t)), this._ids.status);
     for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(valueAt(g.series[key], t)));
+    const details = valueAt(g.series.details ?? [], t);
+    if (details) {
+      if (finite(details.remaining)) row("tone-text", "Remaining", `${Math.ceil(details.remaining / 60)} min`);
+      if (finite(details.duration)) row("tone-text", "Duration", `${Math.ceil(details.duration / 60)} min`);
+      if (finite(details.deadline)) row("tone-text", "Charge by", this._formatTime(details.deadline));
+      if (finite(details.nextOutage)) row("tone-text", "Next outage", this._formatTime(details.nextOutage));
+      if (details.reason === "charge deadline") el("div", "muted", tip, "Ended for charging");
+    }
     if (!tip.matches(":popover-open")) tip.showPopover();
     this._positionTip();
   }
@@ -816,6 +912,126 @@ class VictronChargingChart extends HTMLElement {
   }
 }
 
+class VictronRampCard extends HTMLElement {
+  constructor() {
+    super();
+    const root = this.attachShadow({ mode: "open" });
+    el("style", "", root, `
+      :host { display: block; position: relative; max-width: 100%; box-sizing: border-box; }
+      .card { width: 100%; }
+      .resize { position: absolute; bottom: 3px; right: 3px; width: 28px; height: 28px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: var(--secondary-text-color); cursor: nwse-resize; touch-action: none; }
+      .resize:focus-visible { outline: 2px solid var(--primary-color); }
+      .resize svg { width: 100%; height: 100%; stroke: currentColor; stroke-width: 1.5; }
+    `);
+    this._container = el("div", "card", root);
+    const handle = el("button", "resize", root);
+    handle.type = "button";
+    handle.setAttribute("aria-label", "Resize chart");
+    const icon = svg("svg", { viewBox: "0 0 20 20", "aria-hidden": "true" }, handle);
+    for (const n of [4, 9, 14]) svg("line", { x1: n, y1: 17, x2: 17, y2: n }, icon);
+    handle.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || !event.isPrimary || this._drag) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const width = this.getBoundingClientRect().width;
+      this._drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, width, height: this._size.height, maxWidth: this.parentElement?.clientWidth || width };
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener("pointermove", event => {
+      if (this._drag?.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const drag = this._drag;
+      this._size = {
+        width: clamp(drag.width + event.clientX - drag.x, Math.min(280, drag.maxWidth), drag.maxWidth),
+        height: clamp(drag.height + event.clientY - drag.y, 120, 800),
+      };
+      this._applySize();
+    });
+    const finish = event => {
+      if (this._drag?.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      this._drag = null;
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      this._saveSize();
+    };
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+    handle.addEventListener("lostpointercapture", finish);
+    handle.addEventListener("click", event => event.stopPropagation());
+    handle.addEventListener("keydown", event => {
+      const delta = { ArrowLeft: [-32, 0], ArrowRight: [32, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] }[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const maxWidth = this.parentElement?.clientWidth || this.getBoundingClientRect().width;
+      this._size = {
+        width: clamp(this.getBoundingClientRect().width + delta[0], Math.min(280, maxWidth), maxWidth),
+        height: clamp(this._size.height + delta[1], 120, 800),
+      };
+      this._applySize();
+      this._saveSize();
+    });
+  }
+
+  setConfig(config) {
+    if (config?.card?.type !== "custom:mushroom-template-card" || typeof config.card.entity !== "string") throw new Error("A Mushroom ramp card is required.");
+    this._config = config;
+    this._storageKey = `victron-ramp-size:${config.card.entity}`;
+    this._size = { width: null, height: 220 };
+    try {
+      const saved = JSON.parse(localStorage.getItem(this._storageKey));
+      if (finite(saved?.width) && saved.width > 0) this._size.width = saved.width;
+      if (finite(saved?.height)) this._size.height = clamp(saved.height, 120, 800);
+    } catch {}
+    this._applySize();
+    if (this.isConnected) this._createCard();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._card) this._card.hass = hass;
+  }
+
+  connectedCallback() { if (this._config) this._createCard(); }
+  disconnectedCallback() { this._generation = (this._generation || 0) + 1; this._drag = null; }
+  getCardSize() { return Math.ceil(((this._size?.height ?? 220) + 160) / 50); }
+
+  _applySize() {
+    this.style.width = this._size.width === null ? "100%" : `${this._size.width}px`;
+    this.style.setProperty("--victron-chart-height", `${this._size.height}px`);
+  }
+
+  _saveSize() {
+    try { localStorage.setItem(this._storageKey, JSON.stringify(this._size)); } catch {}
+  }
+
+  async _createCard() {
+    const generation = this._generation = (this._generation || 0) + 1;
+    try {
+      const helpers = await window.loadCardHelpers();
+      if (generation !== this._generation || !this.isConnected) return;
+      const card = helpers.createCardElement(this._config.card);
+      this._card = card;
+      this._container.replaceChildren(card);
+      await card.updateComplete;
+      if (generation !== this._generation || !this.isConnected) return;
+      if (this._hass) card.hass = this._hass;
+      card.requestUpdate?.();
+    } catch (error) {
+      if (generation !== this._generation || !this.isConnected) return;
+      this._card = null;
+      const message = el("ha-card", "", null);
+      message.style.padding = "16px";
+      message.textContent = `Ramp chart unavailable: ${error?.message || "could not load card"}`;
+      this._container.replaceChildren(message);
+    }
+  }
+}
+
+if (!customElements.get("victron-ramp-card")) customElements.define("victron-ramp-card", VictronRampCard);
+window.customCards = window.customCards || [];
+if (!window.customCards.some(card => card.type === "victron-ramp-card")) window.customCards.push({ type: "victron-ramp-card", name: "Victron input ramp", description: "Resizable ramp history and charging deadlines." });
 if (!customElements.get(TAG)) customElements.define(TAG, VictronChargingChart);
 window.customCardFeatures = window.customCardFeatures || [];
 if (!window.customCardFeatures.some((feature) => feature.type === TAG)) {

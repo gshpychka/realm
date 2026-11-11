@@ -9,7 +9,8 @@ The Cerbo ramps total AC-input current locally in Node-RED. Grid restoration aft
 - **Skip once** reconnects grid input at its normal current limit for the current window. Automatic operation remains enabled for the next grid return. The inject button and `deploy.py full` perform the same override. Full battery SOC leaves a whole-input window active because the allowance also supplies household loads.
 - **Ramp enabled** persists its on/off state. Turning it off releases the current restriction; turning it on arms the next grid return. Numeric settings apply to the next window. **Restore defaults** applies the declared numbers and preserves the on/off choice.
 - **Throttle** resumes an open window or starts a new configured window. It requires ready grid and battery inputs. `deploy.py throttle` performs the same action.
-- Tap the Mushroom card or its icon to skip an active ramp. Chart interaction inspects history; clicking the chart pins a selectable inspector.
+- The ramp card sits below the main Victron overview. Its corner handle resizes width and graph height by pointer, touch or arrow keys; dimensions and history range stay in that browser. The card shows input limit, remaining time, effective ramp duration, charge deadline and next outage. A deadline-ended ramp carries its reason.
+- Chart interaction inspects recorded history; clicking pins a selectable inspector with historical ramp timing and deadlines. The range selector covers recent windows. The heading is read-only; Skip once remains an explicit action in Ramp settings.
 - The chart shows recorded Grid power and the active Limit, with a shared power scale and a shaded grid trace. Native current quantization and the PowerAssist minimum remain hardware-owned.
 - Recorder history belongs to Home Assistant. Live timing arrives through its MQTT broker and expires after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
 - Automatic ramps require a continuous outage of at least `minimumOutageMinutes`. Shorter outages restore normal input. Manual Throttle starts remain available. An already-present grid starts in normal operation when Node-RED starts.
@@ -47,7 +48,7 @@ Supply the GX local-network password in `VICTRON_PASSWORD` and the existing Home
 
 Initial telemetry setup also requires the existing Home Assistant broker credentials in `MQTT_USERNAME` and `MQTT_PASSWORD`. Node-RED owns the broker credential store; subsequent deployments reuse it.
 
-Install Mushroom and Layout Card through HACS. Mushroom owns the card and its actions; Layout Card keeps the compact card above the full-width power-flow view.
+Install Mushroom and Layout Card through HACS. Mushroom owns the ramp heading and feature composition; Layout Card places its resizable wrapper below the power-flow view.
 
 `charging-chart.js` is a chart feature registered as a content-addressed data URI. History and the native settings popup use the authenticated Home Assistant frontend connection. The native `victron_toggle_charging` script skips an active ramp. Existing entity and script identifiers retain their names.
 

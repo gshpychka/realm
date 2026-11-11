@@ -944,51 +944,50 @@ in
       path = "overview";
       type = "custom:grid-layout";
       layout = {
-        grid-template-columns = "minmax(0, 620px) 240px";
-        grid-template-areas = ''"flow charging" "flow ."'';
-        grid-template-rows = "252px auto";
+        grid-template-columns = "minmax(0, 620px)";
+        grid-template-areas = ''"flow" "charging"'';
+        grid-template-rows = "auto auto";
         justify-content = "center";
         align-items = "start";
         grid-gap = "16px";
-        mediaquery."(max-width: 900px)" = {
-          grid-template-columns = "minmax(0, 1fr) minmax(0, 240px) minmax(0, 1fr)";
-          grid-template-areas = ''". charging ." "flow flow flow"'';
-        };
+
       };
       cards = [
-        {
-          type = "custom:mushroom-template-card";
-          entity = statusEntity;
-          primary = "Grid input";
-          secondary = "{{ 'Skip this ramp' if is_state('${statusEntity}', 'Ramping') else 'Skipped' if is_state('${statusEntity}', 'Input override') else 'Ramp off' if state_attr('${statusEntity}', 'enabled') == false else 'No grid power' if state_attr('${statusEntity}', 'enabled') == true and state_attr('${statusEntity}', 'grid_available') == false else 'Ramp enabled' }}";
-          icon = "{{ 'mdi:flash' if is_state('${statusEntity}', 'Ramping') else 'mdi:gauge-low' }}";
-          color = "{{ 'amber' if is_state('${statusEntity}', 'Ramping') else 'disabled' if state_attr('${statusEntity}', 'enabled') == false else 'blue' if ${gridReady} else 'disabled' }}";
-          vertical = true;
-          features_position = "bottom";
-          tap_action = {
-            action = "perform-action";
-            perform_action = "script.${controlScript}";
-          };
-          icon_tap_action = {
-            action = "perform-action";
-            perform_action = "script.${controlScript}";
-          };
-          hold_action.action = "more-info";
-          view_layout.grid-area = "charging";
-          features = [
-            {
-              type = "custom:victron-charging-chart";
-              status_entity = statusEntity;
-              power_entity = "sensor.multiplus_input_power_l1";
-
-              history_hours = 2;
-            }
-          ];
-        }
         {
           type = "vertical-stack";
           view_layout.grid-area = "flow";
           cards = [ { type = "custom:victron-system-card"; } ];
+        }
+        {
+          type = "custom:victron-ramp-card";
+          view_layout.grid-area = "charging";
+          card = {
+            type = "custom:mushroom-template-card";
+            entity = statusEntity;
+            primary = "Input ramp";
+            secondary = "{{ 'Ramping' if is_state('${statusEntity}', 'Ramping') else 'Skipped' if is_state('${statusEntity}', 'Input override') else 'Ramp off' if state_attr('${statusEntity}', 'enabled') == false else 'No grid power' if state_attr('${statusEntity}', 'enabled') == true and state_attr('${statusEntity}', 'grid_available') == false else 'Ramp enabled' }}";
+            icon = "{{ 'mdi:flash' if is_state('${statusEntity}', 'Ramping') else 'mdi:gauge-low' }}";
+            color = "{{ 'amber' if is_state('${statusEntity}', 'Ramping') else 'disabled' if state_attr('${statusEntity}', 'enabled') == false else 'blue' if ${gridReady} else 'disabled' }}";
+            vertical = false;
+            features_position = "bottom";
+            tap_action = {
+              action = "none";
+            };
+            icon_tap_action = {
+              action = "more-info";
+            };
+            hold_action.action = "more-info";
+            features = [
+              {
+                type = "custom:victron-charging-chart";
+                status_entity = statusEntity;
+                power_entity = "sensor.multiplus_input_power_l1";
+
+                history_hours = 12;
+                outage_margin_seconds = outageMarginMinutes * 60;
+              }
+            ];
+          };
         }
       ];
     };
