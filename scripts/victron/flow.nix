@@ -9,6 +9,7 @@ let
   };
   settingsFile = "/data/home/nodered/.node-red/realm-grid-ramp.json";
   rampStepSeconds = 60;
+  minimumOutageMinutes = 30;
   normalInputCurrentA = 63;
   nominalInputVoltageV = 230;
   inputLimitEntity = "number.multiplus_current_limit";
@@ -319,7 +320,7 @@ in
       type = "tab";
       label = "Grid input ramp";
       disabled = false;
-      info = "A grid-input ramp uses its saved duration, starting current and target current. Defaults are ${toString rampDefaults.duration_minutes} minutes, ${toString rampDefaults.start_current_a} A and ${toString rampDefaults.target_current_a} A. Numeric edits apply to the next ramp; automatic-ramp enable changes apply immediately. Reset restores only numeric defaults. The inverter enforces its native current floor; completion restores the normal input limit.";
+      info = "Grid restoration after at least ${toString minimumOutageMinutes} minutes without mains starts a ramp. A grid-input ramp uses its saved duration, starting current and target current. Defaults are ${toString rampDefaults.duration_minutes} minutes, ${toString rampDefaults.start_current_a} A and ${toString rampDefaults.target_current_a} A. Numeric edits apply to the next ramp; automatic-ramp enable changes apply immediately. Reset restores only numeric defaults. The inverter enforces its native current floor; completion restores the normal input limit.";
       env = [
         {
           name = "DEFAULT_ENABLED";
@@ -349,6 +350,11 @@ in
         {
           name = "RAMP_STEP_SECONDS";
           value = toString rampStepSeconds;
+          type = "num";
+        }
+        {
+          name = "MINIMUM_OUTAGE_SECONDS";
+          value = toString (minimumOutageMinutes * 60);
           type = "num";
         }
         {

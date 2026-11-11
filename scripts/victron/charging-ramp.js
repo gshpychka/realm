@@ -1,8 +1,9 @@
 const stepSeconds = Number(env.get("RAMP_STEP_SECONDS"));
+const minimumOutageMs = Number(env.get("MINIMUM_OUTAGE_SECONDS")) * 1000;
 const normalLimit = Number(env.get("NORMAL_INPUT_CURRENT_A"));
 const nominalVoltage = Number(env.get("NOMINAL_INPUT_VOLTAGE_V"));
 const state = flow.get("gridRamp") || {
-  available: null, lastAvailable: null, voltage: nominalVoltage,
+  available: null, lastAvailable: null, outageStartedAt: null, voltage: nominalVoltage,
   observedLimit: null, observedIgnore: null, requestedLimit: null, sentLimit: null,
   requestedIgnore: null, requestedPower: null, ready: false, dischargeAllowed: null,
   configuration: null, activeSettings: null, override: false, soc: null,
@@ -130,12 +131,16 @@ if (msg.topic === "configuration") {
     state.lastAvailable = state.available;
     availabilityChanged = previous !== state.available;
     if (state.available === false) {
+      if (state.outageStartedAt == null) state.outageStartedAt = Date.now();
       stopTimer();
       state.windowOpen = false;
       state.activeSettings = null;
       state.override = false;
       state.elapsed = 0;
-    } else if (previous === false) beginWindow();
+    } else {
+      if (previous === false && state.outageStartedAt != null && Date.now() - state.outageStartedAt >= minimumOutageMs) beginWindow();
+      state.outageStartedAt = null;
+    }
   }
 } else if (msg.topic === "voltage") {
   const voltage = numeric(msg.payload);

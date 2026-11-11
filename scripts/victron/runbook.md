@@ -1,6 +1,6 @@
 # Victron GX
 
-The Cerbo ramps total AC-input current locally in Node-RED. Grid restoration starts a linear ramp with one update per minute. Completion restores `normalInputCurrentA`; PowerAssist supplies the remaining household demand, and native inverter and battery-management limits remain active.
+The Cerbo ramps total AC-input current locally in Node-RED. Grid restoration after at least `minimumOutageMinutes` without mains starts a linear ramp with one update per minute. Completion restores `normalInputCurrentA`; PowerAssist supplies the remaining household demand, and native inverter and battery-management limits remain active.
 
 `flow.nix` declares the flow, `rampDefaults` and single-page Victron dashboard. `charging-ramp.js` owns the active window; `ramp-settings.js` saves configuration on the Cerbo at `settingsFile`. The chart's gear opens Ramp enabled, Skip once, next-ramp numbers and one Restore defaults button. Saved configuration survives Home Assistant and Node-RED restarts.
 
@@ -12,7 +12,7 @@ The Cerbo ramps total AC-input current locally in Node-RED. Grid restoration sta
 - Tap the Mushroom card or its icon to skip an active ramp. Chart interaction inspects history; clicking the chart pins a selectable inspector.
 - The chart shows recorded Grid power and the active Limit, with a shared power scale and a shaded grid trace. Native current quantization and the PowerAssist minimum remain hardware-owned.
 - Recorder history belongs to Home Assistant. Live timing arrives through its MQTT broker and expires after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
-- An outage arms a fresh ramp. An already-present grid starts in normal operation when Node-RED starts.
+- Automatic ramps require a continuous outage of at least `minimumOutageMinutes`. Shorter outages restore normal input. Manual Throttle starts remain available. An already-present grid starts in normal operation when Node-RED starts.
 - Flow redeployments preserve in-memory ramp progress and overrides.
 - Flow memory holds the active window; node memory holds its timer and pending current write.
 - A zero allowance isolates AC input. A positive allowance reconnects after its native current-write completion. Physical mains availability is independent of input isolation. A disabled BMS discharge allowance releases the restriction.
