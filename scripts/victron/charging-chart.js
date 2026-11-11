@@ -385,6 +385,7 @@ class VictronChargingChart extends HTMLElement {
     }
     this._closeSettings();
     this._config = { ...config, ...settings, history_hours: hours };
+    this._cycleHistoryHours = hours;
     this._historyKey = `victron-ramp-history:${config.status_entity}`;
     this._range = "cycle";
     try {
@@ -716,7 +717,7 @@ class VictronChargingChart extends HTMLElement {
   }
 
   _historyStart(now) {
-    const fallback = now - this._config.history_hours * HOUR;
+    const fallback = now - (this._range === "cycle" ? this._cycleHistoryHours : this._config.history_hours) * HOUR;
     if (this._range !== "cycle") return fallback;
     let started = this._states.status?.attributes?.cycle_started_at;
     if (!finite(started)) {
