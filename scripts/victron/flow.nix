@@ -419,12 +419,13 @@ in
       {
         topic = "voltage";
         type = "vebus";
-        name = "Input voltage";
+        name = "AC bus voltage";
         service = vebus;
         path = {
-          path = "/Ac/ActiveIn/L1/V";
+          # The inverter maintains the AC bus voltage during mains loss.
+          path = "/Ac/Out/L1/V";
           type = "float";
-          name = "Input voltage (V)";
+          name = "AC output voltage (V)";
         };
         y = 120;
       }
