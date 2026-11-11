@@ -1,11 +1,11 @@
-// Recorded grid power and active input limits.
+// Recorded battery charge and grid input, with controller-owned estimates.
 
 const TAG = "victron-charging-chart";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const ENTITY_OPTIONS = {
   status: "status_entity",
   power: "power_entity",
-
+  soc: "soc_entity",
 };
 const SETTINGS_ENTITIES = {
   enabled_entity: "switch.victron_grid_ramp_enabled",
@@ -16,7 +16,7 @@ const SETTINGS_ENTITIES = {
   reset_defaults_entity: "button.victron_grid_ramp_reset_defaults",
 };
 const REQUIRED = [...Object.values(ENTITY_OPTIONS), "history_hours"];
-const NUMERIC = ["power", "ceiling"];
+const NUMERIC = ["soc", "power", "ceiling"];
 // Bounds the recorder query; long windows are additionally decimated per pixel.
 const MAX_HISTORY_HOURS = 168;
 
@@ -44,6 +44,7 @@ const MODE_TONES = {
 };
 const modeLabel = (mode) => Object.hasOwn(MODE_TONES, mode) ? mode : "Mode unavailable";
 const SERIES = {
+  soc: { label: "SoC", unit: "%" },
   power: { label: "Grid", unit: "W" },
   ceiling: { label: "Limit", unit: "W" },
 };
@@ -56,15 +57,21 @@ const STYLE = `
 
     display: block; width: 100%; container-type: inline-size;
   }
-  .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 16px; padding: 4px 4px 16px; }
-  @container (max-width: 480px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  .summary-label { color: var(--vc-muted); font-size: 12px; line-height: 20px; }
-  .summary button { display: block; appearance: none; border: 0; padding: 0; background: none; color: var(--vc-text); font: inherit; font-size: 16px; line-height: 24px; font-variant-numeric: tabular-nums; text-align: left; cursor: pointer; }
-  .summary button:focus-visible { outline: 2px solid var(--primary-color); }
-  .summary-note { padding: 0 4px 12px; color: var(--vc-amber); font-size: 13px; }
+  .milestones { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px 4px 2px; font-size: 12px; line-height: 20px; color: var(--vc-muted); font-variant-numeric: tabular-nums; }
+  .milestones > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .milestones > span::before { content: ""; width: 5px; height: 5px; margin-right: 1px; border-radius: 50%; background: var(--tone); }
+  .milestones button { appearance: none; padding: 0; border: 0; background: none; color: var(--vc-text); font: inherit; font-weight: 500; cursor: pointer; }
+  .milestones button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .milestones > span > span:last-child { color: var(--vc-text); font-weight: 500; }
+  .current-ramp { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 4px 4px 0; color: var(--vc-muted); font-size: 12px; line-height: 20px; }
+  .current-ramp:empty { display: none; }
+  .current-ramp button { appearance: none; border: 0; padding: 0; background: none; color: var(--vc-text); font: inherit; cursor: pointer; }
+  .current-ramp button:focus-visible { outline: 2px solid var(--primary-color); }
+  .summary-note { padding: 4px 4px 2px; color: var(--vc-muted); font-size: 12px; line-height: 18px; }
+  .summary-note.warning { color: var(--vc-amber); }
   .summary-note:empty { display: none; }
-  .graph { position: relative; height: var(--victron-chart-height, 124px); }
-  .legend { position: absolute; top: 2px; left: 4px; display: flex; gap: 12px; font-size: 14px; line-height: 18px; color: var(--vc-muted); pointer-events: none; }
+  .graph { position: relative; height: var(--victron-chart-height, 280px); min-height: 220px; }
+  .legend { position: absolute; top: 7px; left: 4px; display: flex; gap: 12px; font-size: 14px; line-height: 20px; color: var(--vc-muted); pointer-events: none; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
   .legend [hidden] { display: none; }
   .settings-button, .settings-close {
@@ -86,7 +93,7 @@ const STYLE = `
 
   svg { display: block; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
   svg:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
-  .graph-note { position: absolute; top: 40px; left: 4px; font-size: 14px; color: var(--vc-muted); pointer-events: none; }
+  .graph-note { position: absolute; top: 48px; left: 34px; right: 8px; font-size: 12px; line-height: 18px; color: var(--vc-muted); pointer-events: none; overflow-wrap: anywhere; }
   .graph-note.error { color: var(--error-color); }
   .tip {
     position: fixed; inset: auto; margin: 0; box-sizing: border-box;
@@ -105,17 +112,26 @@ const STYLE = `
   .swatch { width: 12px; border-top: 2px solid var(--tone); }
   .tone-amber, .ceiling { --tone: var(--vc-amber); }
   .tone-sage, .power { --tone: var(--vc-sage); }
-  .tone-blue { --tone: var(--vc-blue); }
+  .tone-blue, .soc { --tone: var(--vc-blue); }
   .tone-text { --tone: var(--vc-text); }
   .tone-muted { --tone: var(--vc-muted); }
 
   .gridline { stroke: var(--vc-border); stroke-width: 1; }
-  .band { fill: var(--tone); opacity: 0.75; }
   .marker { stroke: var(--vc-text); stroke-opacity: 0.28; stroke-dasharray: 2 3; }
   .now { stroke: var(--vc-text); stroke-opacity: 0.35; }
   .trace { fill: none; stroke: var(--tone); stroke-linejoin: round; stroke-linecap: round; }
   .trace.power { stroke-width: 2; }
-  .trace.ceiling { stroke-width: 1.5; stroke-dasharray: 4 3; stroke-linecap: butt; }
+  .trace.ceiling { stroke-width: 1.5; }
+  .trace.soc { stroke-width: 2; }
+  .trace.estimated { stroke-dasharray: 5 4; stroke-linecap: butt; }
+  .axis-label { fill: var(--vc-muted); font-size: 10px; font-family: inherit; font-variant-numeric: tabular-nums; }
+  .plot-label { fill: var(--vc-muted); font-size: 11px; font-family: inherit; }
+  .future-shade { fill: var(--vc-blue); fill-opacity: 0.025; }
+  .milestone { stroke: var(--vc-muted); stroke-opacity: 0.5; stroke-dasharray: 2 4; }
+  .milestone.full { stroke: var(--vc-blue); }
+  .milestone.deadline { stroke: var(--vc-amber); }
+  .milestone.outage { stroke: var(--vc-text); }
+
   .area { fill: var(--vc-sage); fill-opacity: 0.1; }
   .cursor { stroke: var(--vc-text); stroke-opacity: 0.6; }
 `;
@@ -143,7 +159,7 @@ function parseState(key, state) {
   if (typeof state !== "string" || state === "unavailable" || state === "unknown" || state.trim() === "") return null;
   if (key === "status") return state;
   const n = Number(state);
-  if (!Number.isFinite(n)) return null;
+  if (!Number.isFinite(n) || (key === "soc" && (n < 0 || n > 100))) return null;
 
   return n;
 }
@@ -156,6 +172,42 @@ function inputCeiling(state) {
   const a = state?.attributes;
   if (parseState("status", state?.state) === null || !a || !finite(a.input_limit_w) || a.input_limit_w < 0) return null;
   return a.input_limit_w;
+}
+
+// Timestamps and SoC remain those of the model; redraws never advance its origin.
+function forecastFor(state, now) {
+  if (parseState("status", state?.state) === null) return null;
+  const model = state?.attributes?.forecast;
+  if (!model || !finite(model.generated_at) || now - model.generated_at * 1000 > 150_000 || model.generated_at * 1000 > now + 30_000) return null;
+  if (!finite(model.consumption_w) || model.consumption_w < 0 || !finite(model.capacity_wh) || model.capacity_wh <= 0 ||
+      !finite(model.charging_power_w) || model.charging_power_w <= 0 || !Array.isArray(model.points) || model.points.length < 2 || model.points.length > 3000) return null;
+  let previous = -Infinity;
+  for (const point of model.points) {
+    if (!Array.isArray(point) || point.length !== 3 || !point.every(finite) || point[0] <= previous || point[0] <= 0 || point[0] * 1000 > 8.64e15 ||
+        point[1] < 0 || point[1] > 100 || point[2] < 0) return null;
+    previous = point[0];
+  }
+  if (model.points[0][0] * 1000 > now + 30_000 || model.points.at(-1)[0] * 1000 <= now) return null;
+  for (const key of ["charge_deadline_at", "next_outage_at", "restoration_at", "ramp_start_at", "ramp_end_at", "full_at"]) {
+    if (model[key] != null && (!finite(model[key]) || model[key] <= 0 || model[key] * 1000 > 8.64e15)) return null;
+  }
+  if (model.soc_at_deadline != null && (!finite(model.soc_at_deadline) || model.soc_at_deadline < 0 || model.soc_at_deadline > 100)) return null;
+  return model;
+}
+
+function forecastValue(model, t, column) {
+  const points = model?.points;
+  if (!points?.length || t < points[0][0] * 1000 || t > points.at(-1)[0] * 1000) return null;
+  let lo = 0, hi = points.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (points[mid][0] * 1000 <= t) lo = mid;
+    else hi = mid - 1;
+  }
+  const a = points[lo], b = points[lo + 1];
+  if (!b || t === a[0] * 1000 || column === 2) return a[column];
+  const part = (t / 1000 - a[0]) / (b[0] - a[0]);
+  return a[column] + (b[column] - a[column]) * part;
 }
 
 function pushPoint(points, t, v) {
@@ -334,18 +386,22 @@ class VictronChargingChart extends HTMLElement {
     this._closeSettings();
     this._config = { ...config, ...settings, history_hours: hours };
     this._historyKey = `victron-ramp-history:${config.status_entity}`;
+    this._range = "cycle";
     try {
-      const saved = Number(localStorage.getItem(this._historyKey));
-      if ([2, 6, 12, 24].includes(saved)) this._config.history_hours = saved;
+      const saved = localStorage.getItem(this._historyKey);
+      if (["2", "6", "12", "24"].includes(saved)) {
+        this._range = saved;
+        this._config.history_hours = Number(saved);
+      }
     } catch {}
     if (![...this._els.range.options].some(option => Number(option.value) === this._config.history_hours)) {
       const option = el("option", "", this._els.range, `${this._config.history_hours} h`);
       option.value = this._config.history_hours;
     }
-    this._els.range.value = String(this._config.history_hours);
+    this._els.range.value = this._range;
     this._ids = Object.fromEntries(Object.entries(ENTITY_OPTIONS).map(([key, option]) => [key, config[option]]));
-    this._summaryRows = null;
-    this._els.summary.replaceChildren();
+    this._milestoneSignature = null;
+    this._currentSignature = null;
     this._states = {};
     this._series = null;
     this._historyAt = 0;
@@ -433,11 +489,10 @@ class VictronChargingChart extends HTMLElement {
   _build() {
     const root = this.attachShadow({ mode: "open" });
     el("style", "", root, STYLE);
-    const summary = el("div", "summary", root);
-    const summaryNote = el("div", "summary-note", root);
+
     const graph = el("div", "graph", root);
     const chart = svg("svg", { tabindex: 0, role: "group" }, graph);
-    chart.setAttribute("aria-label", "Grid power and input limit history. Click to pin the inspector; arrow keys move it, Page Up and Page Down jump between mode changes.");
+    chart.setAttribute("aria-label", "Battery charge history and estimate above grid power and input limit, on one timeline. Click to pin the inspector; arrow keys move it, Page Up and Page Down jump between mode changes.");
     // Click/tap pins until light dismiss; hover only previews and never moves a pinned inspector.
     chart.addEventListener("click", (e) => {
       this._pinned = true;
@@ -456,19 +511,21 @@ class VictronChargingChart extends HTMLElement {
     });
     const graphNote = el("div", "graph-note", graph);
     const legend = el("div", "legend", graph);
-    for (const key of NUMERIC) {
+    for (const key of ["soc"]) {
       const item = el("span", "", legend);
       el("i", `swatch ${key}`, item);
       el("span", "", item, SERIES[key].label);
     }
     const range = el("select", "history-range", graph);
     range.setAttribute("aria-label", "History range");
+    el("option", "", range, "Cycle").value = "cycle";
     for (const hours of [2, 6, 12, 24]) {
       const option = el("option", "", range, `${hours} h`);
       option.value = String(hours);
     }
     range.addEventListener("change", () => {
-      this._config.history_hours = Number(range.value);
+      this._range = range.value;
+      if (range.value !== "cycle") this._config.history_hours = Number(range.value);
       try { localStorage.setItem(this._historyKey, range.value); } catch {}
       this._hideCursor();
       this._series = null;
@@ -496,7 +553,10 @@ class VictronChargingChart extends HTMLElement {
     tip.addEventListener("toggle", (event) => {
       if (event.newState === "closed") this._hideCursor();
     });
-    this._els = { graph, chart, graphNote, legend, tip, summary, summaryNote, range };
+    const currentRamp = el("div", "current-ramp", root);
+    const milestones = el("div", "milestones", root);
+    const summaryNote = el("div", "summary-note", root);
+    this._els = { graph, chart, graphNote, legend, tip, summaryNote, milestones, currentRamp, range };
   }
 
   _closeSettings() {
@@ -595,6 +655,10 @@ class VictronChargingChart extends HTMLElement {
     return this._format;
   }
 
+  _formatSoc(v) {
+    return finite(v) ? `${round(v)}%` : "Unavailable";
+  }
+
   _formatValue(v) {
     const f = this._formats();
     if (!finite(v)) return "Unavailable";
@@ -607,28 +671,50 @@ class VictronChargingChart extends HTMLElement {
     return (f.day.format(at) === f.day.format(Date.now()) ? f.clock : f.dated).format(at);
   }
 
-  _renderSummary() {
+  _renderAnnotations(model, now) {
     const state = this._states.status, a = state?.attributes ?? {};
-    if (!this._summaryRows) {
-      this._summaryRows = {};
-      for (const [key, label] of [["limit", "Limit"], ["remaining", "Remaining"], ["deadline", "Charge by"], ["outage", "Next outage"]]) {
-        const row = el("div", "", this._els.summary);
-        el("div", "summary-label", row, label);
-        this._summaryRows[key] = this._historyValue(row, "—", this._ids.status);
-      }
-    }
     const available = parseState("status", state?.state) !== null;
-    const deadline = finite(a.charge_deadline_at) ? a.charge_deadline_at
-      : finite(a.next_outage_at) && finite(this._config.outage_margin_seconds) ? a.next_outage_at - this._config.outage_margin_seconds : null;
-    const values = {
-      limit: available && a.input_ignored === true ? "Disconnected" : available && finite(a.input_limit_a) ? `${round(a.input_limit_a)} A` : "—",
-      remaining: available && state.state === "Ramping" && finite(a.remaining_seconds) ? `${Math.ceil(a.remaining_seconds / 60)} min` : "—",
-      deadline: available ? this._formatTime(deadline) : "—",
-      outage: available ? this._formatTime(a.next_outage_at) : "—",
-    };
-    for (const [key, text] of Object.entries(values)) if (this._summaryRows[key].textContent !== text) this._summaryRows[key].textContent = text;
-    const details = rampDetails(state);
-    this._els.summaryNote.textContent = state?.state === "Ramping" && finite(details?.duration) ? `${Math.ceil(details.duration / 60)} min ramp` : details?.reason === "charge deadline" ? "Ended for charging" : "";
+    const current = [];
+    if (available && (a.input_ignored === true || finite(a.input_limit_a))) current.push(`Limit ${a.input_ignored === true ? 0 : round(a.input_limit_a)} A`);
+    if (available && a.window_open && finite(a.remaining_seconds)) current.push(`${Math.ceil(a.remaining_seconds / 60)} min left`);
+    if (available && a.window_open && finite(a.duration_seconds)) current.push(`${Math.ceil(a.duration_seconds / 60)} min ramp`);
+    const currentSignature = JSON.stringify(current);
+    if (this._currentSignature !== currentSignature) {
+      this._els.currentRamp.replaceChildren();
+      for (const text of current) this._historyValue(this._els.currentRamp, text, this._ids.status);
+      this._currentSignature = currentSignature;
+    }
+    const deadline = model?.charge_deadline_at ?? (finite(a.charge_deadline_at) ? a.charge_deadline_at
+      : finite(a.next_outage_at) && finite(this._config.outage_margin_seconds) ? a.next_outage_at - this._config.outage_margin_seconds : null);
+    const { milestones, summaryNote } = this._els;
+    const items = [];
+    if (available && finite(deadline)) items.push(["tone-amber", "Charge by", this._formatTime(deadline), this._ids.status]);
+    if (model && finite(model.full_at)) items.push(["tone-blue", "Full ≈", this._formatTime(model.full_at), null]);
+    const outage = model?.next_outage_at ?? a.next_outage_at;
+    if (available && finite(outage)) items.push(["tone-text", "Next outage", this._formatTime(outage), this._ids.status]);
+    const signature = JSON.stringify(items);
+    if (signature !== this._milestoneSignature) {
+      milestones.replaceChildren();
+      for (const [tone, label, value, entity] of items) {
+        const item = el("span", tone, milestones);
+        el("span", "", item, label);
+        this._historyValue(item, value, entity);
+      }
+      this._milestoneSignature = signature;
+    }
+    const shortfall = model && finite(model.soc_at_deadline) && model.soc_at_deadline < 99.95 && finite(model.charge_deadline_at) &&
+      (model.charge_deadline_at * 1000 > now || (finite(model.next_outage_at) && model.next_outage_at * 1000 > now));
+    summaryNote.className = shortfall ? "summary-note warning" : "summary-note";
+    summaryNote.textContent = shortfall ? `Only ${round(model.soc_at_deadline)}% estimated by charge deadline`
+      : !available ? "Forecast unavailable" : typeof a.forecast_reason === "string" && a.forecast_reason.trim() ? a.forecast_reason : !model ? "Forecast unavailable" : "";
+  }
+
+  _historyStart(now) {
+    const fallback = now - this._config.history_hours * HOUR;
+    if (this._range !== "cycle") return fallback;
+    const started = this._states.status?.attributes?.cycle_started_at;
+    return finite(started) && started > 0 && started * 1000 <= now
+      ? Math.max(now - MAX_HISTORY_HOURS * HOUR, started * 1000 - 15 * MINUTE) : fallback;
   }
 
   _appendLive(key, state) {
@@ -641,7 +727,7 @@ class VictronChargingChart extends HTMLElement {
       if (Number.isFinite(updated)) pushPoint(this._series.ceiling, updated, inputCeiling(state));
       if (Number.isFinite(updated)) pushPoint(this._series.details, updated, rampDetails(state));
     }
-    const cutoff = Date.now() - this._config.history_hours * HOUR;
+    const cutoff = this._historyStart(Date.now());
     let remove = 0;
     while (remove + 1 < points.length && points[remove + 1].t < cutoff) remove++;
     if (remove) points.splice(0, remove);
@@ -673,7 +759,7 @@ class VictronChargingChart extends HTMLElement {
     const gen = this._gen;
     this._loading = true;
     const end = new Date();
-    const start = new Date(end.getTime() - this._config.history_hours * HOUR);
+    const start = new Date(this._historyStart(end.getTime()));
     const ids = Object.values(this._ids).map(encodeURIComponent).join(",");
     const path = `history/period/${start.toISOString()}?filter_entity_id=${ids}` +
       `&end_time=${encodeURIComponent(end.toISOString())}` +
@@ -707,100 +793,147 @@ class VictronChargingChart extends HTMLElement {
   }
 
   _renderGraph() {
-    this._renderSummary();
-    const { chart, graphNote, legend } = this._els;
-    const width = this._width;
-    const height = this._height;
-    if (!width || !height) return;
-    const left = 2;
-    const right = width - 2;
-    const top = 38;
-    const bottom = height - 11;
-    const bandY = bottom + 4;
     const now = Date.now();
-    const t0 = now - this._config.history_hours * HOUR;
-    const t1 = now;
-    const series = this._series ?? { status: [], power: [], ceiling: [], details: [] };
-    // Active ramp ceilings share the power scale; the normal connection rating stays inspectable.
-    const displayed = { ...series, ceiling: series.ceiling.map(p => ({
-      t: p.t, v: valueAt(series.status, p.t) === "Ramping" ? p.v : null,
-    })) };
-    legend.lastElementChild.hidden = !displayed.ceiling.some(p => finite(p.v));
-
+    const model = forecastFor(this._states.status, now);
+    this._renderAnnotations(model, now);
+    const { chart, graphNote } = this._els;
+    const width = this._width, height = this._height;
+    if (!width || !height) return;
+    const left = 30, right = width - 8;
+    const top = 44, bottom = height - 36;
+    const socBottom = top + (bottom - top - 38) * 0.66;
+    const powerTop = socBottom + 34;
+    const t1 = model ? model.points.at(-1)[0] * 1000 : now;
+    let t0 = this._historyStart(now);
+    // Keep the coming window legible in Cycle; explicit hour ranges stay exact.
+    if (model && this._range === "cycle") t0 = Math.max(t0, now - Math.max(30 * MINUTE, (t1 - now) * 1.5));
+    const series = this._series ?? { status: [], soc: [], power: [], ceiling: [], details: [] };
+    const displayed = series;
     graphNote.className = this._historyError ? "graph-note error" : "graph-note";
-    graphNote.textContent = this._historyError
-      ? `History unavailable: ${this._historyError}`
-      : this._series ? "" : "Loading history…";
+    graphNote.textContent = this._historyError ? `History unavailable: ${this._historyError}` : this._series ? "" : "Loading history…";
 
-    let lo = 0;
-    let hi = 0;
-    for (const key of NUMERIC) {
+    let lo = 0, hi = 0;
+    for (const key of ["power", "ceiling"]) {
       for (const p of displayed[key]) {
-        if (!plotted(key, p.v)) continue;
+        if (p.t > now || !plotted(key, p.v)) continue;
         lo = Math.min(lo, p.v);
         hi = Math.max(hi, p.v);
       }
     }
-
-    const yStep = niceStep(hi - lo || 10, Math.max(2, Math.floor((bottom - top) / 44)));
+    if (model) for (const p of model.points) if (p[0] * 1000 >= now) hi = Math.max(hi, p[2]);
+    const yStep = niceStep(hi - lo || 1000, 2);
     const yMin = Math.floor(lo / yStep) * yStep;
     const yMax = Math.max(yStep, Math.ceil(hi / yStep) * yStep);
     const X = (t) => left + ((t - t0) / (t1 - t0)) * (right - left);
-    const Y = (v) => bottom - ((v - yMin) / (yMax - yMin)) * (bottom - top);
-
+    const Y = (v) => bottom - ((v - yMin) / (yMax - yMin)) * (bottom - powerTop);
+    const S = (v) => socBottom - v / 100 * (socBottom - top);
+    const nowX = round(X(now));
 
     chart.setAttribute("width", width);
     chart.setAttribute("height", height);
     chart.setAttribute("viewBox", `0 0 ${width} ${height}`);
     chart.replaceChildren();
-    const clip = svg("clipPath", { id: "plot" }, svg("defs", {}, chart));
-    svg("rect", { x: left, y: 0, width: right - left, height }, clip);
-
-    for (let v = yMin; v <= yMax + yStep / 2; v += yStep) {
+    const defs = svg("defs", {}, chart);
+    for (const [id, y, h] of [["soc-plot", top, socBottom - top], ["power-plot", powerTop, bottom - powerTop]]) {
+      const clip = svg("clipPath", { id }, defs);
+      svg("rect", { x: left, y, width: right - left, height: h }, clip);
+    }
+    const label = (text, x, y, anchor = "start", className = "axis-label") => {
+      const node = svg("text", { x: round(x), y: round(y), "text-anchor": anchor, class: className }, chart);
+      node.textContent = text;
+      return node;
+    };
+    if (model) svg("rect", { class: "future-shade", x: nowX, y: top, width: Math.max(0, right - nowX), height: bottom - top }, chart);
+    for (const v of [0, 100]) {
+      svg("line", { class: "gridline", x1: left, x2: right, y1: round(S(v)), y2: round(S(v)) }, chart);
+      label(`${v}%`, left - 5, S(v) + (v ? 4 : -2), "end");
+    }
+    for (const v of [yMin, yMax]) {
       svg("line", { class: "gridline", x1: left, x2: right, y1: round(Y(v)), y2: round(Y(v)) }, chart);
+      label(`${round(v / 1000)}`, left - 5, Y(v) + (v === yMax ? 4 : -2), "end");
     }
-
-    const plot = svg("g", { "clip-path": "url(#plot)" }, chart);
-    const status = series.status;
+    let legendX = left;
+    const powerLegend = [["Grid", "power", false], ["Limit", "ceiling", false], ...(model ? [["Planned limit", "ceiling", true]] : [])];
+    for (const [text, tone, estimated] of powerLegend) {
+      svg("line", { class: `trace ${tone}${estimated ? " estimated" : ""}`, x1: legendX, x2: legendX + 12, y1: powerTop - 12, y2: powerTop - 12 }, chart);
+      label(text, legendX + 17, powerTop - 8, "start", "plot-label");
+      legendX += text === "Planned limit" ? 94 : 56;
+    }
+    label("kW", right, powerTop - 8, "end");
+    const socPlot = svg("g", { "clip-path": "url(#soc-plot)" }, chart);
+    const powerPlot = svg("g", { "clip-path": "url(#power-plot)" }, chart);
     const transitions = [];
-    status.forEach((p, i) => {
-      if (p.v === null) return;
-      const next = status[i + 1];
-      const x1 = Math.max(X(p.t), left);
-      const x2 = X(next ? next.t : Math.max(now, p.t));
-      if (x2 > x1) {
-        svg("rect", { class: `band tone-${MODE_TONES[p.v] ?? "muted"}`, x: round(x1), y: bandY, width: round(x2 - x1), height: 6 }, plot);
-      }
-      const prev = status[i - 1];
-      if (prev && prev.v !== null && prev.v !== p.v && p.t >= t0) transitions.push({ t: p.t, from: prev.v, to: p.v });
+    series.status.forEach((p, i) => {
+      const prev = series.status[i - 1];
+      if (prev && prev.v !== null && p.v !== null && prev.v !== p.v && p.t >= t0 && p.t <= now) transitions.push({ t: p.t, from: prev.v, to: p.v });
     });
-    for (const { t } of transitions) {
-      svg("line", { class: "marker", x1: round(X(t)), x2: round(X(t)), y1: top, y2: bandY + 6 }, plot);
-    }
-
+    for (const { t } of transitions) svg("line", { class: "marker", x1: round(X(t)), x2: round(X(t)), y1: powerTop, y2: bottom }, powerPlot);
     const buckets = Math.max(1, Math.round(right - left));
-    const runs = (key, scale, isStep) =>
-      traceRuns(decimate(displayed[key], key, t0, now, buckets), key, now, isStep, X, scale);
-    const gridRuns = runs("power", Y, true);
-    svg("path", { class: "area", d: areaPath(gridRuns, Y(0)) }, plot);
-    svg("path", { class: "trace ceiling", d: linePath(runs("ceiling", Y, true)) }, plot);
-    svg("path", { class: "trace power", d: linePath(gridRuns) }, plot);
-
-    const nowX = round(X(now));
-    svg("line", { class: "now", x1: nowX, x2: nowX, y1: top, y2: bandY + 6 }, chart);
-
-    this._geom = { left, right, top, bottom: bandY + 6, t0, t1, now, X, transitions, series };
+    const runs = (key, scale) => traceRuns(decimate(displayed[key].filter(p => p.t <= now), key, t0, now, buckets), key, now, true, X, scale);
+    const gridRuns = runs("power", Y);
+    svg("path", { class: "area", d: areaPath(gridRuns, Y(0)) }, powerPlot);
+    svg("path", { class: "trace ceiling", d: linePath(runs("ceiling", Y)) }, powerPlot);
+    svg("path", { class: "trace power", d: linePath(gridRuns) }, powerPlot);
+    svg("path", { class: "trace soc", d: linePath(runs("soc", S)) }, socPlot);
+    if (model) {
+      // Interpolate only within the supplied model, never from live SoC or a
+      // frontend charging formula. Past model samples are not drawn as history.
+      const future = [
+        [now, forecastValue(model, now, 1), forecastValue(model, now, 2)],
+        ...model.points.filter(p => p[0] * 1000 > now).map(p => [p[0] * 1000, p[1], p[2]]),
+      ].filter(p => finite(p[1]) && finite(p[2]));
+      svg("path", { class: "trace soc estimated", d: linePath([future.map(p => [X(p[0]), S(p[1])])]) }, socPlot);
+      const planned = [];
+      future.forEach((p, i) => {
+        if (i) planned.push([X(p[0]), Y(future[i - 1][2])]);
+        planned.push([X(p[0]), Y(p[2])]);
+      });
+      svg("path", { class: "trace ceiling estimated", d: linePath([planned]) }, powerPlot);
+      if (finite(model.ramp_start_at) && finite(model.ramp_end_at)) {
+        const start = clamp(X(model.ramp_start_at * 1000), left, right);
+        const end = clamp(X(model.ramp_end_at * 1000), left, right);
+        if (end > start) {
+          svg("rect", { class: "tone-amber", x: start, y: bottom + 5, width: end - start, height: 3, fill: "var(--tone)", opacity: 0.65 }, chart);
+          if (end - start > 28) label("Ramp", (start + end) / 2, bottom + 18, "middle");
+        }
+      }
+      const markers = [["deadline", model.charge_deadline_at], ["full", model.full_at], ["outage", model.next_outage_at]];
+      for (const [kind, time] of markers) {
+        const t = time * 1000;
+        if (!finite(time) || t < t0 || t > t1) continue;
+        const x = round(X(t));
+        svg("line", { class: `milestone ${kind}`, x1: x, x2: x, y1: top, y2: bottom }, chart);
+        // Small distinct caps connect the markers to the literal labels below.
+        svg("circle", { class: kind === "deadline" ? "tone-amber" : kind === "full" ? "tone-blue" : "tone-text", cx: x, cy: top, r: 2.5, fill: "var(--tone)" }, chart);
+      }
+    }
+    svg("line", { class: "now", x1: nowX, x2: nowX, y1: top - 4, y2: bottom }, chart);
+    label("Now", clamp(nowX, left + 12, right - 12), top - 8, "middle");
+    const f = this._formats();
+    const tick = (t) => (f.day.format(t) === f.day.format(now) ? f.clock : f.dated).format(t);
+    const startText = tick(t0), endText = tick(t1);
+    label(startText, left, height - 5);
+    label(endText, right, height - 5, "end");
+    // Reserve space for localized day labels and 12-hour clocks as well.
+    const startSpace = Math.max(62, startText.length * 6 + 18);
+    const endSpace = Math.max(62, endText.length * 6 + 18);
+    const hasNowTick = nowX - left > startSpace && right - nowX > endSpace;
+    if (hasNowTick) label(f.clock.format(now), nowX, height - 5, "middle");
+    for (const fraction of [0.25, 0.5, 0.75]) {
+      const t = t0 + fraction * (t1 - t0), x = X(t);
+      if (width < 480 || x - left < startSpace || right - x < endSpace || (hasNowTick && Math.abs(x - nowX) < 72)) continue;
+      label(f.clock.format(t), x, height - 5, "middle");
+    }
+    this._geom = { left, right, top, bottom, t0, t1, now, X, Y, S, transitions, series, model };
     if (this._cursor) {
-      // Do not replace a pinned inspector's DOM or selection as the rolling
-      // window moves. Its timestamp/value snapshot remains inspectable.
+      // Keep a pinned inspector's DOM and text selection during live updates.
       if (this._pinned) {
         if (this._cursor.t >= t0 && this._cursor.t <= t1) this._drawCursor(this._cursor.t);
         else this._cursorLine = null;
         this._positionTip();
         return;
       }
-      const t = clamp(this._cursor.t, t0, t1);
-      this._setCursor(t, this._cursor.transition);
+      this._setCursor(clamp(this._cursor.t, t0, t1), this._cursor.transition);
     }
   }
 
@@ -847,7 +980,11 @@ class VictronChargingChart extends HTMLElement {
     const g = this._geom;
     const x = round(g.X(t));
     this._cursorLine?.remove();
-    this._cursorLine = svg("line", { class: "cursor", x1: x, x2: x, y1: g.top, y2: g.bottom }, this._els.chart);
+    this._cursorLine = svg("g", {}, this._els.chart);
+    svg("line", { class: "cursor", x1: x, x2: x, y1: g.top, y2: g.bottom }, this._cursorLine);
+    const future = t > g.now;
+    const soc = future ? forecastValue(g.model, t, 1) : valueAt(g.series.soc, t);
+    if (finite(soc)) svg("circle", { class: "soc", cx: x, cy: round(g.S(soc)), r: 3.5, fill: "var(--tone)", stroke: "var(--ha-card-background, var(--card-background-color))", "stroke-width": 1.5 }, this._cursorLine);
   }
 
   _historyValue(parent, text, entityId) {
@@ -877,19 +1014,28 @@ class VictronChargingChart extends HTMLElement {
     this._drawCursor(t);
     tip.replaceChildren();
     el("div", "when", tip, f.exact.format(t));
+    const future = t > g.now;
     const row = (key, label, value) => {
       const line = el("div", "row", tip);
       el("i", `swatch ${key}`, line);
       el("span", "", line, label);
       const cell = el("span", "", line);
       const source = Object.hasOwn(this._ids, key) ? key : "status";
-      this._historyValue(cell, value, this._ids[source]);
+      this._historyValue(cell, value, future ? null : this._ids[source]);
     };
+    if (future) {
+      row("soc", "Estimated SoC", this._formatSoc(forecastValue(g.model, t, 1)));
+      row("tone-muted", "Expected consumption", this._formatValue(g.model?.consumption_w));
+      row("ceiling", "Planned limit", this._formatValue(forecastValue(g.model, t, 2)));
+      if (!tip.matches(":popover-open")) tip.showPopover();
+      this._positionTip();
+      return;
+    }
     const mode = el("div", "muted", tip);
     this._historyValue(mode, transition
       ? `${modeLabel(transition.from)} → ${modeLabel(transition.to)}`
       : modeLabel(valueAt(g.series.status, t)), this._ids.status);
-    for (const key of NUMERIC) row(key, SERIES[key].label, this._formatValue(valueAt(g.series[key], t)));
+    for (const key of NUMERIC) row(key, SERIES[key].label, key === "soc" ? this._formatSoc(valueAt(g.series[key], t)) : this._formatValue(valueAt(g.series[key], t)));
     const details = valueAt(g.series.details ?? [], t);
     if (details) {
       if (finite(details.remaining)) row("tone-text", "Remaining", `${Math.ceil(details.remaining / 60)} min`);
@@ -945,7 +1091,7 @@ class VictronRampCard extends HTMLElement {
       const drag = this._drag;
       this._size = {
         width: clamp(drag.width + event.clientX - drag.x, Math.min(280, drag.maxWidth), drag.maxWidth),
-        height: clamp(drag.height + event.clientY - drag.y, 120, 800),
+        height: clamp(drag.height + event.clientY - drag.y, 220, 800),
       };
       this._applySize();
     });
@@ -968,7 +1114,7 @@ class VictronRampCard extends HTMLElement {
       const maxWidth = this.parentElement?.clientWidth || this.getBoundingClientRect().width;
       this._size = {
         width: clamp(this.getBoundingClientRect().width + delta[0], Math.min(280, maxWidth), maxWidth),
-        height: clamp(this._size.height + delta[1], 120, 800),
+        height: clamp(this._size.height + delta[1], 220, 800),
       };
       this._applySize();
       this._saveSize();
@@ -980,11 +1126,11 @@ class VictronRampCard extends HTMLElement {
     this._config = config;
     this._card = null;
     this._storageKey = `victron-ramp-size:${config.card.entity}`;
-    this._size = { width: null, height: 220 };
+    this._size = { width: null, height: 280 };
     try {
       const saved = JSON.parse(localStorage.getItem(this._storageKey));
       if (finite(saved?.width) && saved.width > 0) this._size.width = saved.width;
-      if (finite(saved?.height)) this._size.height = clamp(saved.height, 120, 800);
+      if (finite(saved?.height)) this._size.height = clamp(saved.height, 220, 800);
     } catch {}
     this._applySize();
     if (this.isConnected) this._createCard();
@@ -997,7 +1143,7 @@ class VictronRampCard extends HTMLElement {
 
   connectedCallback() { if (this._config && !this._card) this._createCard(); }
   disconnectedCallback() { this._generation = (this._generation || 0) + 1; this._drag = null; }
-  getCardSize() { return Math.ceil(((this._size?.height ?? 220) + 160) / 50); }
+  getCardSize() { return Math.ceil(((this._size?.height ?? 280) + 160) / 50); }
 
   _applySize() {
     this.style.width = this._size.width === null ? "100%" : `${this._size.width}px`;
@@ -1040,7 +1186,7 @@ if (!window.customCardFeatures.some((feature) => feature.type === TAG)) {
   window.customCardFeatures.push({
     type: TAG,
     name: "Victron grid input power chart",
-    description: "Grid power and the active input limit.",
+    description: "Battery charge, grid input and planned charging.",
     configurable: false,
     // Chart-only feature for the genuine Mushroom grid-input composition.
     isSupported: (hass, context) => {

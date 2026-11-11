@@ -493,14 +493,13 @@ def publish_schedule(rest, bundle, client):
         )
         time.sleep(1)
         observed = json.loads(state(client, bundle)["msg"])
-        expected = rest("/api/template", {"template": template}, method="POST")[
-            "next_outage_at"
-        ]
+        expected = rest("/api/template", {"template": template}, method="POST")
         received = observed.get("scheduleReceivedAt")
         if (
             received is not None
             and received != previous
-            and observed.get("nextOutageAt") == expected
+            and observed.get("nextOutageAt") == expected["next_outage_at"]
+            and observed.get("restorationAt") == expected["restoration_at"]
         ):
             return
     raise RuntimeError("Local controller did not receive the current outage schedule")

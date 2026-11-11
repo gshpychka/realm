@@ -11,9 +11,9 @@ let
   rampStepSeconds = 60;
   minimumOutageMinutes = 30;
   outageMarginMinutes = 30;
-  # Conservative recharge budget includes the final charging stage.
-  rechargeMinutesPerPercent = 3;
-  rechargeTailMinutes = 10;
+  assumedChargingPowerW = 6500;
+  consumptionWindowMinutes = 15;
+  restorationEntity = "sensor.yasno_next_power";
   outageEntities = [
     "sensor.yasno_next_planned_outage"
     "sensor.yasno_next_probable_outage"
@@ -372,13 +372,13 @@ in
           type = "num";
         }
         {
-          name = "RECHARGE_SECONDS_PER_PERCENT";
-          value = toString (rechargeMinutesPerPercent * 60);
+          name = "ASSUMED_CHARGING_POWER_W";
+          value = toString assumedChargingPowerW;
           type = "num";
         }
         {
-          name = "RECHARGE_TAIL_SECONDS";
-          value = toString (rechargeTailMinutes * 60);
+          name = "CONSUMPTION_WINDOW_SECONDS";
+          value = toString (consumptionWindowMinutes * 60);
           type = "num";
         }
         {
@@ -472,7 +472,54 @@ in
         };
         y = 340;
       }
-
+      {
+        topic = "battery-capacity";
+        type = "battery";
+        name = "Installed battery capacity";
+        service = battery;
+        path = {
+          path = "/InstalledCapacity";
+          type = "float";
+          name = "Installed capacity (Ah)";
+        };
+        y = 900;
+      }
+      {
+        topic = "battery-voltage";
+        type = "battery";
+        name = "Battery voltage";
+        service = battery;
+        path = {
+          path = "/Dc/0/Voltage";
+          type = "float";
+          name = "Battery voltage (V)";
+        };
+        y = 960;
+      }
+      {
+        topic = "battery-power";
+        type = "system";
+        name = "Battery power";
+        service = system;
+        path = {
+          path = "/Dc/Battery/Power";
+          type = "float";
+          name = "Battery power (W)";
+        };
+        y = 1020;
+      }
+      {
+        topic = "grid-power";
+        type = "vebus";
+        name = "Grid input power";
+        service = vebus;
+        path = {
+          path = "/Ac/ActiveIn/L1/P";
+          type = "float";
+          name = "Grid input power (W)";
+        };
+        y = 1080;
+      }
     ]
   )
   ++ [
@@ -544,7 +591,9 @@ in
             typeof command.issued_at !== "number" || !Number.isFinite(command.issued_at)) return null;
         const age = Date.now() / 1000 - command.issued_at;
         if (Math.abs(age) > ${toString commandMaxAgeSeconds}) return null;
-        return {topic: command.command, payload: command.next_outage_at};
+        return {topic: command.command, payload: command.command === "schedule" ? {
+          next_outage_at: command.next_outage_at, restoration_at: command.restoration_at,
+        } : undefined};
       '';
       outputs = 1;
       timeout = 0;
@@ -559,7 +608,7 @@ in
       type = "function";
       z = tab;
       name = "Configurable input ramp";
-      func = builtins.readFile ./charging-ramp.js;
+      func = builtins.readFile ./charging-forecast.js + "\n" + builtins.readFile ./charging-ramp.js;
       initialize = ''
         context.set("timer", null);
         context.set("limitWrite", null);
@@ -816,13 +865,13 @@ in
       config = {
         id = scheduleAutomationId;
         alias = "Victron: publish outage schedule";
-        description = "Send the next planned or probable outage to the local grid-input controller.";
+        description = "Send the next outage and grid-restoration times to the local grid-input controller.";
         initial_state = true;
         mode = "restart";
         triggers = [
           {
             trigger = "state";
-            entity_id = outageEntities;
+            entity_id = outageEntities ++ [ restorationEntity ];
           }
           {
             trigger = "time_pattern";
@@ -854,7 +903,8 @@ in
                     {% set ns.times = ns.times + [at] %}
                   {% endif %}
                 {% endfor %}
-                {{ {'command': 'schedule', 'next_outage_at': ns.times | min if ns.times else none, 'issued_at': as_timestamp(now())} | to_json }}
+                {% set restoration = as_timestamp(states('${restorationEntity}'), none) %}
+                {{ {'command': 'schedule', 'next_outage_at': ns.times | min if ns.times else none, 'restoration_at': restoration if restoration is not none and restoration > as_timestamp(now()) else none, 'issued_at': as_timestamp(now())} | to_json }}
               '';
             };
           }
@@ -982,7 +1032,7 @@ in
                 type = "custom:victron-charging-chart";
                 status_entity = statusEntity;
                 power_entity = "sensor.multiplus_input_power_l1";
-
+                soc_entity = "sensor.battery_charge";
                 history_hours = 12;
                 outage_margin_seconds = outageMarginMinutes * 60;
               }
