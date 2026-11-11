@@ -13,6 +13,8 @@ The Cerbo ramps total AC-input current locally in Node-RED. Grid restoration aft
 - The chart shows recorded Grid power and the active Limit, with a shared power scale and a shaded grid trace. Native current quantization and the PowerAssist minimum remain hardware-owned.
 - Recorder history belongs to Home Assistant. Live timing arrives through its MQTT broker and expires after 45 seconds without telemetry. Charging decisions run locally on the Cerbo.
 - Automatic ramps require a continuous outage of at least `minimumOutageMinutes`. Shorter outages restore normal input. Manual Throttle starts remain available. An already-present grid starts in normal operation when Node-RED starts.
+- The saved duration is the maximum ramp length. Every minute, actual SOC determines a conservative estimate of full-charge time using `rechargeMinutesPerPercent` and `rechargeTailMinutes`. The remaining ramp counts as charging delay. Its length only decreases to reserve that budget before the next outage, with `outageMarginMinutes` to spare; an exhausted budget restores normal input immediately. The charging estimate is not a guarantee.
+- Home Assistant publishes the earliest future planned or probable outage every minute and on schedule, startup and broker-connection changes. The Cerbo caches that timestamp and owns the deadline locally. An earlier schedule tightens an active deadline; a later or missing schedule never extends it. Without a known next outage, the saved maximum duration applies.
 - Flow redeployments preserve in-memory ramp progress and overrides.
 - Flow memory holds the active window; node memory holds its timer and pending current write.
 - A zero allowance isolates AC input. A positive allowance reconnects after its native current-write completion. Physical mains availability is independent of input isolation. A disabled BMS discharge allowance releases the restriction.
@@ -58,7 +60,7 @@ scripts/victron/deploy.py throttle
 
 HTTPS uses the GX certificate pin in `flow.nix`. Credentials stay outside the repository. Tokens remain in process memory and are revoked after each command.
 
-Deploy policy and its controls together with `deploy`; use `frontend` for presentation-only updates after policy is deployed. Deployment prints a private snapshot path under `~/.local/state/victron-node-red/`. Rollback restores normal input and the captured owned flow, scripts, frontend resource, registry flags and overview:
+Deploy policy and its controls together with `deploy`; use `frontend` for presentation-only updates after policy is deployed. Deployment prints a private snapshot path under `~/.local/state/victron-node-red/`. Rollback restores normal input and the captured owned flow, schedule publisher, scripts, frontend resource, registry flags and overview:
 
 ```sh
 scripts/victron/deploy.py rollback --backup /path/to/snapshot.json

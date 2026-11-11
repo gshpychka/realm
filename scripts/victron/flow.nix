@@ -10,6 +10,15 @@ let
   settingsFile = "/data/home/nodered/.node-red/realm-grid-ramp.json";
   rampStepSeconds = 60;
   minimumOutageMinutes = 30;
+  outageMarginMinutes = 30;
+  # Conservative recharge budget includes the final charging stage.
+  rechargeMinutesPerPercent = 3;
+  rechargeTailMinutes = 10;
+  outageEntities = [
+    "sensor.yasno_next_planned_outage"
+    "sensor.yasno_next_probable_outage"
+  ];
+  scheduleAutomationId = "victron_grid_ramp_schedule";
   normalInputCurrentA = 63;
   nominalInputVoltageV = 230;
   inputLimitEntity = "number.multiplus_current_limit";
@@ -358,6 +367,21 @@ in
           type = "num";
         }
         {
+          name = "OUTAGE_MARGIN_SECONDS";
+          value = toString (outageMarginMinutes * 60);
+          type = "num";
+        }
+        {
+          name = "RECHARGE_SECONDS_PER_PERCENT";
+          value = toString (rechargeMinutesPerPercent * 60);
+          type = "num";
+        }
+        {
+          name = "RECHARGE_TAIL_SECONDS";
+          value = toString (rechargeTailMinutes * 60);
+          type = "num";
+        }
+        {
           name = "NORMAL_INPUT_CURRENT_A";
           value = toString normalInputCurrentA;
           type = "num";
@@ -516,11 +540,11 @@ in
       name = "Fresh input request";
       func = ''
         const command = msg.payload;
-        if (msg.retain || !command || !["full", "throttle"].includes(command.command) ||
+        if (msg.retain || !command || !["full", "throttle", "schedule"].includes(command.command) ||
             typeof command.issued_at !== "number" || !Number.isFinite(command.issued_at)) return null;
         const age = Date.now() / 1000 - command.issued_at;
         if (Math.abs(age) > ${toString commandMaxAgeSeconds}) return null;
-        return {topic: command.command};
+        return {topic: command.command, payload: command.next_outage_at};
       '';
       outputs = 1;
       timeout = 0;
@@ -787,6 +811,56 @@ in
     }
   ];
   homeAssistant = {
+    scheduleAutomation = {
+      id = scheduleAutomationId;
+      config = {
+        id = scheduleAutomationId;
+        alias = "Victron: publish outage schedule";
+        description = "Send the next planned or probable outage to the local grid-input controller.";
+        initial_state = true;
+        mode = "restart";
+        triggers = [
+          {
+            trigger = "state";
+            entity_id = outageEntities;
+          }
+          {
+            trigger = "time_pattern";
+            minutes = "/1";
+          }
+          {
+            trigger = "homeassistant";
+            event = "start";
+          }
+          {
+            trigger = "mqtt";
+            topic = "${telemetryRoot}/availability";
+            payload = "online";
+          }
+        ];
+        conditions = [ ];
+        actions = [
+          {
+            action = "mqtt.publish";
+            data = {
+              topic = "${telemetryRoot}/command";
+              qos = 1;
+              retain = false;
+              payload = ''
+                {% set ns = namespace(times=[]) %}
+                {% for entity in ${builtins.toJSON outageEntities} %}
+                  {% set at = as_timestamp(states(entity), none) %}
+                  {% if at is not none and at > as_timestamp(now()) %}
+                    {% set ns.times = ns.times + [at] %}
+                  {% endif %}
+                {% endfor %}
+                {{ {'command': 'schedule', 'next_outage_at': ns.times | min if ns.times else none, 'issued_at': as_timestamp(now())} | to_json }}
+              '';
+            };
+          }
+        ];
+      };
+    };
     dashboard = "victron-live";
     controlEntity = inputLimitEntity;
     controlEntities = [

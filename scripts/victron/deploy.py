@@ -348,9 +348,19 @@ def full_charging(client, bundle):
 
 
 def throttle_charging(client, bundle):
+    previous_completion = json.loads(state(client, bundle)["msg"]).get("completedAt")
     client.request("/inject/" + bundle["throttleId"], {})
     for _ in range(30):
         controller = json.loads(state(client, bundle)["msg"])
+        if (
+            controller["mode"] == "normal input"
+            and controller.get("completionReason") == "charge deadline"
+            and controller.get("completedAt") != previous_completion
+            and controller.get("windowOpen") is False
+            and current_limit(client, bundle) == bundle["normalInputCurrentA"]
+            and input_ignored(client, bundle) == 0
+        ):
+            return
         active = controller.get("activeSettings")
         if (
             controller["mode"] == "ramping"
@@ -427,6 +437,73 @@ def configure_control(command, rest, bundle, disabled_by):
             time.sleep(0.5)
         else:
             raise RuntimeError("Victron input control did not become available")
+
+
+def read_schedule(rest, bundle):
+    declaration = bundle["homeAssistant"]["scheduleAutomation"]
+    try:
+        return rest("/api/config/automation/config/" + declaration["id"])
+    except HTTPError as error:
+        if error.code != 404:
+            raise
+        return None
+
+
+def update_schedule(rest, bundle, desired):
+    declaration = bundle["homeAssistant"]["scheduleAutomation"]
+    path = "/api/config/automation/config/" + declaration["id"]
+    current = read_schedule(rest, bundle)
+    if desired is None:
+        if current is not None:
+            rest(path, method="DELETE")
+    elif current is None or any(
+        current.get(key) != value for key, value in desired.items()
+    ):
+        rest(path, desired, method="POST")
+    actual = read_schedule(rest, bundle)
+    if (desired is None and actual is not None) or (
+        desired is not None
+        and (
+            actual is None
+            or any(actual.get(key) != value for key, value in desired.items())
+        )
+    ):
+        raise RuntimeError("Outage schedule automation readback differs")
+
+
+def publish_schedule(rest, bundle, client):
+    config_id = bundle["homeAssistant"]["scheduleAutomation"]["id"]
+    entities = [
+        state["entity_id"]
+        for state in rest("/api/states")
+        if state["entity_id"].startswith("automation.")
+        and state.get("attributes", {}).get("id") == config_id
+    ]
+    if len(entities) != 1:
+        raise RuntimeError("Expected exactly one loaded outage schedule automation")
+    previous = json.loads(state(client, bundle)["msg"]).get("scheduleReceivedAt")
+    template = bundle["homeAssistant"]["scheduleAutomation"]["config"]["actions"][0][
+        "data"
+    ]["payload"]
+    for _ in range(15):
+        rest(
+            "/api/services/automation/trigger",
+            {"entity_id": entities[0], "skip_condition": False},
+            method="POST",
+        )
+        time.sleep(1)
+        observed = json.loads(state(client, bundle)["msg"])
+        expected = rest("/api/template", {"template": template}, method="POST")[
+            "next_outage_at"
+        ]
+        received = observed.get("scheduleReceivedAt")
+        if (
+            received is not None
+            and received != previous
+            and observed.get("nextOutageAt") == expected
+        ):
+            return
+    raise RuntimeError("Local controller did not receive the current outage schedule")
 
 
 def read_scripts(rest, controls):
@@ -708,6 +785,7 @@ def main():
                             "resource": resource,
                             "frontend_resource": energy_resource,
                             "control_disabled_by": control_disabled_by,
+                            "schedule": read_schedule(rest, bundle),
                         },
                     )
                     desired_dashboard = deepcopy(dashboard)
@@ -727,7 +805,11 @@ def main():
                         command, bundle, upload_frontend(bundle), FRONTEND_KEY
                     )
                     configure_control(command, rest, bundle, None)
+                    update_schedule(
+                        rest, bundle, controls["scheduleAutomation"]["config"]
+                    )
                     apply_flow(client, bundle, bundle["flows"], mqtt_credentials)
+                    publish_schedule(rest, bundle, client)
                     wait_for_telemetry(rest, bundle)
                     update_controls(
                         command,
@@ -751,6 +833,7 @@ def main():
                     )
                 else:
                     full_charging(client, bundle)
+                    update_schedule(rest, bundle, snapshot.get("schedule"))
                     configure_resource(
                         command, bundle, snapshot["frontend_resource"], FRONTEND_KEY
                     )

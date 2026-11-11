@@ -1,5 +1,8 @@
 const stepSeconds = Number(env.get("RAMP_STEP_SECONDS"));
 const minimumOutageMs = Number(env.get("MINIMUM_OUTAGE_SECONDS")) * 1000;
+const outageMarginSeconds = Number(env.get("OUTAGE_MARGIN_SECONDS"));
+const rechargeSecondsPerPercent = Number(env.get("RECHARGE_SECONDS_PER_PERCENT"));
+const rechargeTailSeconds = Number(env.get("RECHARGE_TAIL_SECONDS"));
 const normalLimit = Number(env.get("NORMAL_INPUT_CURRENT_A"));
 const nominalVoltage = Number(env.get("NOMINAL_INPUT_VOLTAGE_V"));
 const state = flow.get("gridRamp") || {
@@ -7,13 +10,16 @@ const state = flow.get("gridRamp") || {
   observedLimit: null, observedIgnore: null, requestedLimit: null, sentLimit: null,
   requestedIgnore: null, requestedPower: null, ready: false, dischargeAllowed: null,
   configuration: null, activeSettings: null, override: false, soc: null,
+  nextOutageAt: null, scheduleReceivedAt: null, chargeDeadlineAt: null, windowDuration: null,
+  completionReason: null, completedAt: null,
   windowOpen: false, elapsed: 0, mode: "waiting",
 };
 const numeric = value => typeof value === "number" && Number.isFinite(value) ? value : null;
 const flag = value => value === 1 || value === true ? true : value === 0 || value === false ? false : null;
 const settings = () => state.activeSettings || state.configuration?.values;
 const enabled = () => state.configuration?.values.enabled !== false;
-const duration = () => (settings()?.duration_minutes || 0) * 60;
+const duration = () => state.windowOpen && numeric(state.windowDuration) !== null ? state.windowDuration : (settings()?.duration_minutes || 0) * 60;
+const rechargeSeconds = () => state.soc === null ? null : state.soc >= 100 ? 0 : (100 - state.soc) * rechargeSecondsPerPercent + rechargeTailSeconds;
 function save() {
   flow.set("gridRamp", state);
   const active = settings(), configured = state.configuration?.values;
@@ -35,6 +41,10 @@ function save() {
     configured_target_current_a: configured?.target_current_a ?? null,
     defaults: state.configuration?.defaults ?? null, override: state.override,
     window_open: state.windowOpen, grid_available: state.available, battery_soc: state.soc, ready: state.ready,
+    next_outage_at: state.nextOutageAt ?? null, charge_deadline_at: state.chargeDeadlineAt ?? null,
+    schedule_received_at: state.scheduleReceivedAt ?? null,
+    completion_reason: state.completionReason ?? null,
+    recharge_seconds: rechargeSeconds(),
   } }]);
 }
 function ignore(value) {
@@ -61,20 +71,27 @@ function stopTimer() {
   if (timer) clearInterval(timer);
   context.set("timer", null);
 }
-function finishWindow() {
+function finishWindow(reason = null) {
   stopTimer();
+  state.completionReason = reason;
+  state.completedAt = Date.now() / 1000;
   state.windowOpen = false;
   state.override = false;
   state.activeSettings = null;
+  state.windowDuration = null;
+  state.chargeDeadlineAt = null;
   state.mode = enabled() ? "normal input" : "disabled";
   normalInput();
 }
 function beginWindow() {
   if (!enabled()) return;
   state.windowOpen = true;
+  state.completionReason = null;
   state.elapsed = 0;
   state.override = false;
   state.activeSettings = state.configuration ? { ...state.configuration.values } : null;
+  state.windowDuration = state.activeSettings ? state.activeSettings.duration_minutes * 60 : null;
+  state.chargeDeadlineAt = state.nextOutageAt == null ? null : state.nextOutageAt - outageMarginSeconds;
 }
 function releaseInput() {
   if (!state.windowOpen || state.available !== true || state.elapsed >= duration()) return finishWindow();
@@ -84,6 +101,14 @@ function releaseInput() {
 }
 function applyRamp() {
   if (!enabled() || !state.ready || state.available !== true || !state.windowOpen || state.override || !state.activeSettings) return;
+  if (state.chargeDeadlineAt != null) {
+    const recharge = rechargeSeconds();
+    if (recharge === null) return finishWindow();
+    // The remaining ramp counts as charging delay.
+    const spare = Math.floor((state.chargeDeadlineAt - Date.now() / 1000 - recharge) / stepSeconds) * stepSeconds;
+    state.windowDuration = Math.min(duration(), state.elapsed + Math.max(0, spare));
+    if (state.elapsed >= duration()) return finishWindow("charge deadline");
+  }
   state.mode = "ramping";
   const active = state.activeSettings;
   const amps = active.start_current_a + (active.target_current_a - active.start_current_a) * state.elapsed / duration();
@@ -135,11 +160,23 @@ if (msg.topic === "configuration") {
       stopTimer();
       state.windowOpen = false;
       state.activeSettings = null;
+      state.windowDuration = null;
+      state.chargeDeadlineAt = null;
       state.override = false;
       state.elapsed = 0;
     } else {
       if (previous === false && state.outageStartedAt != null && Date.now() - state.outageStartedAt >= minimumOutageMs) beginWindow();
       state.outageStartedAt = null;
+    }
+  }
+} else if (msg.topic === "schedule") {
+  const next = numeric(msg.payload);
+  if (msg.payload === null || next !== null && next > 0) {
+    state.nextOutageAt = next;
+    state.scheduleReceivedAt = Date.now() / 1000;
+    if (state.windowOpen && next !== null) {
+      const deadline = next - outageMarginSeconds;
+      state.chargeDeadlineAt = state.chargeDeadlineAt == null ? deadline : Math.min(state.chargeDeadlineAt, deadline);
     }
   }
 } else if (msg.topic === "voltage") {
