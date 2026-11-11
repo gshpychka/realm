@@ -977,6 +977,7 @@ class VictronRampCard extends HTMLElement {
   setConfig(config) {
     if (config?.card?.type !== "custom:mushroom-template-card" || typeof config.card.entity !== "string") throw new Error("A Mushroom ramp card is required.");
     this._config = config;
+    this._card = null;
     this._storageKey = `victron-ramp-size:${config.card.entity}`;
     this._size = { width: null, height: 220 };
     try {
@@ -993,7 +994,7 @@ class VictronRampCard extends HTMLElement {
     if (this._card) this._card.hass = hass;
   }
 
-  connectedCallback() { if (this._config) this._createCard(); }
+  connectedCallback() { if (this._config && !this._card) this._createCard(); }
   disconnectedCallback() { this._generation = (this._generation || 0) + 1; this._drag = null; }
   getCardSize() { return Math.ceil(((this._size?.height ?? 220) + 160) / 50); }
 
@@ -1012,10 +1013,10 @@ class VictronRampCard extends HTMLElement {
       const helpers = await window.loadCardHelpers();
       if (generation !== this._generation || !this.isConnected) return;
       const card = helpers.createCardElement(this._config.card);
-      this._card = card;
       this._container.replaceChildren(card);
       await card.updateComplete;
       if (generation !== this._generation || !this.isConnected) return;
+      this._card = card;
       if (this._hass) card.hass = this._hass;
       card.requestUpdate?.();
     } catch (error) {
