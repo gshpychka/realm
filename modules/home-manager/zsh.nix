@@ -258,6 +258,16 @@ in
           source "$bin" "$@"
         }
 
+        # Export the profile picked in fob as this shell's AWS profile.
+        fob() {
+          if (( $# )); then
+            command fob "$@"
+          else
+            local profile
+            profile="$(command fob)" && export AWS_PROFILE="$profile"
+          fi
+        }
+
         # fzf history search with prefix filtering
         # when ctrl+r is pressed:
         # - empty buffer: fuzzy search all history
