@@ -65,7 +65,7 @@ scripts/victron/deploy.py frontend
 scripts/victron/deploy.py frontend-rollback --backup /path/to/frontend-snapshot.json
 ```
 
-These actions own the dashboard frontend, its scripts and resources. Charging policy, device registry and GX runtime remain unchanged. Refresh the HA page after deploying a frontend resource. The copied frontend's Apache-2.0 license and upstream attribution live in `dashboard/LICENSE` and `dashboard/NOTICE`.
+These actions own the dashboard frontend, its scripts and resources. Charging policy, device registry and GX runtime remain unchanged. Refresh the HA page after deploying a frontend resource. The copied frontend's Apache-2.0 license and upstream attribution are embedded in `dashboard/victron-energy-card.js`; the logo's source attribution is embedded in its SVG.
 
 ## Deployment
 

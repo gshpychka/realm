@@ -1,6 +1,6 @@
 // Derived from www/lang-en.js of jayjojayson/hass-victron-vrm-api 2.0
 // (commit 017c7dc0c6956c6602c5678f2b339a514257a1e1), Apache-2.0.
-// Modified for the standalone victron-energy-card; see NOTICE.
+// Modified for the standalone victron-energy-card; license and attribution: victron-energy-card.js.
 
 export default {
   tab1Render: {

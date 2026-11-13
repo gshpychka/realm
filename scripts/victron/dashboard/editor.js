@@ -1,6 +1,6 @@
 // Derived from www/editor.js of jayjojayson/hass-victron-vrm-api 2.0
 // (commit 017c7dc0c6956c6602c5678f2b339a514257a1e1), Apache-2.0.
-// Modified for the standalone victron-energy-card; changes are listed in NOTICE.
+// Modified for the standalone victron-energy-card; license and attribution are in victron-energy-card.js.
 
 import { css } from "./css-editor.js";
 import * as libEditor from "./lib-editor.js";

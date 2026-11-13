@@ -1,7 +1,7 @@
 // Derived from www/css-light.js of jayjojayson/hass-victron-vrm-api 2.0
 // (commit 017c7dc0c6956c6602c5678f2b339a514257a1e1), Apache-2.0.
 // Modified for the standalone victron-energy-card (rendered inside the card's
-// shadow root, so selectors need no per-instance scope); see NOTICE.
+// shadow root, so selectors need no per-instance scope); license and attribution: victron-energy-card.js.
 
 export function cssDataLight() {
     return `

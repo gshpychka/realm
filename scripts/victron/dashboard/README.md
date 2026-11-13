@@ -1,6 +1,6 @@
 # victron-energy-card
 
-Venus OS GUI v2 style power-flow card for Home Assistant. A modified copy of the card from [hass-victron-vrm-api](https://github.com/jayjojayson/hass-victron-vrm-api) (Apache-2.0); see `NOTICE` and `LICENSE`.
+Venus OS GUI v2 style power-flow card for Home Assistant. A modified copy of the card from [hass-victron-vrm-api](https://github.com/jayjojayson/hass-victron-vrm-api) (Apache-2.0). The license and upstream attribution are embedded in `victron-energy-card.js`.
 
 The card displays any Home Assistant entity from any integration. It reads `hass.states` and the recorder history endpoint. It never calls services. Tapping a box opens Home Assistant's more-info dialog.
 
@@ -8,7 +8,7 @@ Compact containers use a taller layout and readable minimum auto font sizes. Exp
 
 ## Files
 
-`victron-energy-card.js` is the module entry point. It registers `custom:victron-energy-card` and its visual editor, `victron-energy-card-editor`. It imports the other nine modules relative to its own URL, so all ten files must be served from one directory: `lib-venus.js`, `editor.js`, `lib-editor.js`, `css-dark.js`, `css-light.js`, `css-editor.js` and `lang-{en,de,fr}.js`. The card loads no external assets.
+`victron-energy-card.js` registers `custom:victron-energy-card` and its visual editor, `victron-energy-card-editor`. Its relative JavaScript imports and the system card's logo are served from the same directory. Editor labels are English.
 
 ## Configuration
 

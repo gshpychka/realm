@@ -31,7 +31,7 @@ FRONTEND_KEY = "victron-energy-card"
 
 def frontend_resource(bundle):
     assets = bundle["homeAssistant"]["frontendAssets"]
-    if not {FRONTEND_KEY + ".js", "LICENSE", "NOTICE"} <= assets.keys() or any(
+    if FRONTEND_KEY + ".js" not in assets or any(
         not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name)
         or not isinstance(source, str)
         for name, source in assets.items()
