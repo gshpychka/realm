@@ -11,7 +11,6 @@ in
   };
   piPackages = pkgs.callPackage ./pi-packages { };
   voice-broker = pkgs.callPackage ./voice-broker { };
-  datameter = pkgs.callPackage ./datameter.nix { };
   pituitary = pkgs.callPackage ./pituitary { };
   dura = pkgs.callPackage ./dura { };
 }
