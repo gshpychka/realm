@@ -8,11 +8,56 @@ let
     target_current_a = 43.5;
   };
   settingsFile = "/data/home/nodered/.node-red/realm-grid-ramp.json";
+  learningFile = "/data/home/nodered/.node-red/realm-grid-learning.json";
   rampStepSeconds = 60;
   minimumOutageMinutes = 30;
   outageMarginMinutes = 30;
   assumedChargingPowerW = 6500;
   consumptionWindowMinutes = 15;
+  forecastTargetProbability = 0.9;
+  acquisitionScript = ''
+    import dbus, json, time
+    bus = dbus.SystemBus()
+    def value(service, path):
+        return bus.get_object(service, path, introspect=False).GetValue(dbus_interface="com.victronenergy.BusItem", timeout=2)
+    def items(service):
+        raw = bus.get_object(service, "/", introspect=False).GetItems(dbus_interface="com.victronenergy.BusItem", timeout=3)
+        return {"/" + str(key).lstrip("/"): entry.get("Value") for key, entry in raw.items()}
+    system = items("com.victronenergy.system")
+    names = list(bus.list_names())
+    def resolve(prefix, instance, preferred=None):
+        candidates = sorted(str(name) for name in names if str(name).startswith(prefix + "."))
+        if preferred in candidates:
+            candidates.remove(preferred)
+            candidates.insert(0, preferred)
+        if len(candidates) > 16:
+            raise RuntimeError("Too many native service candidates")
+        for name in candidates:
+            if int(value(name, "/DeviceInstance")) == instance:
+                return name
+        raise RuntimeError("Native service instance unavailable")
+    battery_name = resolve("com.victronenergy.battery", ${builtins.elemAt (builtins.match ".*/([0-9]+)" battery.service) 0}, str(system.get("/ActiveBmsService", "")))
+    vebus_name = resolve("com.victronenergy.vebus", ${builtins.elemAt (builtins.match ".*/([0-9]+)" vebus.service) 0}, str(system.get("/VebusService", "")))
+    battery = items(battery_name)
+    vebus = items(vebus_name)
+    values = {
+        "batteryService": system.get("/ActiveBatteryService"),
+        "batteryConnected": battery.get("/Connected"),
+        "soc": system.get("/Dc/Battery/Soc"), "batterySoc": battery.get("/Soc"),
+        "batteryCapacity": battery.get("/InstalledCapacity"), "batteryHealth": battery.get("/Soh"),
+        "batteryVoltage": battery.get("/Dc/0/Voltage"), "batteryCurrent": battery.get("/Dc/0/Current"),
+        "batteryPower": system.get("/Dc/Battery/Power"),
+        "batteryChargeLimit": battery.get("/Info/MaxChargeCurrent"),
+        "available": vebus.get("/Ac/State/AcIn1Available"),
+        "observedIgnore": vebus.get("/Ac/State/IgnoreAcIn1"),
+        "observedLimit": vebus.get("/Ac/In/1/CurrentLimit"),
+        "gridPower": vebus.get("/Ac/ActiveIn/L1/P"), "gridCurrent": vebus.get("/Ac/ActiveIn/L1/I"),
+        "voltage": vebus.get("/Ac/Out/L1/V"),
+        "dischargeLimit": battery.get("/Info/MaxDischargeCurrent"),
+    }
+    values = {key: None if isinstance(val, dbus.Array) and not val else val for key, val in values.items()}
+    print(json.dumps({"acquired_at": time.time(), "values": values}, allow_nan=False))
+  '';
   restorationEntity = "sensor.yasno_next_power";
   outageEntities = [
     "sensor.yasno_next_planned_outage"
@@ -313,7 +358,7 @@ in
   ignoreStatePath = "/Ac/State/IgnoreAcIn1";
   inherit normalInputCurrentA;
   stateKey = "gridRamp";
-  inherit rampDefaults settingsFile;
+  inherit rampDefaults settingsFile learningFile;
   telemetry = {
     inherit brokerId sensors discovery;
     settingsEntities = builtins.map (item: item.entityId) (settingNumbers ++ [ enabledSwitch ]);
@@ -363,6 +408,21 @@ in
         {
           name = "RAMP_STEP_SECONDS";
           value = toString rampStepSeconds;
+          type = "num";
+        }
+        {
+          name = "RAMP_LEARNING_FILE";
+          value = learningFile;
+          type = "str";
+        }
+        {
+          name = "BATTERY_SERVICE";
+          value = battery.service;
+          type = "str";
+        }
+        {
+          name = "FORECAST_TARGET_PROBABILITY";
+          value = toString forecastTargetProbability;
           type = "num";
         }
         {
@@ -529,6 +589,62 @@ in
   )
   ++ [
     {
+      id = "${tab}-acquire";
+      type = "inject";
+      z = tab;
+      name = "Acquire native forecast snapshot";
+      props = [ { p = "payload"; } ];
+      payloadType = "date";
+      repeat = "60";
+      once = true;
+      onceDelay = 1;
+      x = 160;
+      y = 1560;
+      wires = [ [ "${tab}-acquire-exec" ] ];
+    }
+    {
+      id = "${tab}-acquire-exec";
+      type = "exec";
+      z = tab;
+      name = "Read local DBus (15 second bound)";
+      command = "exec /usr/bin/python3 -c '" + builtins.replaceStrings [ "'" ] [ "'\\''" ] acquisitionScript + "'";
+      addpay = false;
+      append = "";
+      useSpawn = "false";
+      timer = "15";
+      winHide = false;
+      oldrc = false;
+      x = 430;
+      y = 1560;
+      wires = [ [ "${tab}-acquire-result" ] [ ] [ "${tab}-acquire-error" ] ];
+    }
+    {
+      id = "${tab}-acquire-result";
+      type = "change";
+      z = tab;
+      name = "Physical snapshot";
+      rules = [ { t = "set"; p = "topic"; pt = "msg"; to = "physical-snapshot"; tot = "str"; } ];
+      x = 700;
+      y = 1560;
+      wires = [ [ controller ] ];
+    }
+    {
+      id = "${tab}-acquire-error";
+      type = "function";
+      z = tab;
+      name = "Acquisition failure";
+      func = ''
+        return msg.payload?.code === 0 ? null : { topic: "physical-error" };
+      '';
+      outputs = 1;
+      timeout = 0;
+      noerr = 0;
+      libs = [ ];
+      x = 700;
+      y = 1620;
+      wires = [ [ controller ] ];
+    }
+    {
       id = "victron-charging-ramp-full";
       type = "inject";
       z = tab;
@@ -613,7 +729,12 @@ in
       type = "function";
       z = tab;
       name = "Configurable input ramp";
-      func = builtins.readFile ./charging-forecast.js + "\n" + builtins.readFile ./charging-ramp.js;
+      func =
+        builtins.readFile ./charging-learning.js
+        + "\n"
+        + builtins.readFile ./charging-forecast.js
+        + "\n"
+        + builtins.readFile ./charging-ramp.js;
       initialize = ''
         context.set("timer", null);
         context.set("limitWrite", null);
@@ -626,7 +747,12 @@ in
       outputs = 3;
       timeout = 0;
       noerr = 0;
-      libs = [ ];
+      libs = [
+        {
+          var = "fs";
+          module = "fs";
+        }
+      ];
       x = 650;
       y = 180;
       wires = [

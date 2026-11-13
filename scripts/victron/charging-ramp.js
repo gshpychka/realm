@@ -19,16 +19,23 @@ const flag = value => value === 1 || value === true ? true : value === 0 || valu
 const settings = () => state.activeSettings || state.configuration?.values;
 const enabled = () => state.configuration?.values.enabled !== false;
 const duration = () => state.windowOpen && numeric(state.windowDuration) !== null ? state.windowDuration : (settings()?.duration_minutes || 0) * 60;
-const gridImportW = () => state.available === false || state.observedIgnore === true ? 0 : numeric(state.gridPower);
-function forecastDataReason() {
-  if (numeric(state.soc) === null || state.soc < 0 || state.soc > 100) return "Battery SOC unavailable";
-  if (!(state.batteryCapacity > 0) || !(state.batteryVoltage > 0) || numeric(state.batteryCapacity * state.batteryVoltage) === null) return "Battery capacity or voltage unavailable";
-  if (numeric(state.batteryPower) === null || gridImportW() === null ||
-      numeric(gridImportW() - state.batteryPower) === null) return "Battery or grid power unavailable";
-  if (state.available === null) return "Grid availability unknown";
+
+function forecastDataReason(sample) {
+  const age = Date.now() / 1000 - (state.physical?.acquired_at ?? -Infinity);
+  if (!(age >= 0 && age <= 180)) return "Native source acquisition unavailable or stale";
+  if (!state.ready || sample.available !== state.available || sample.dischargeAllowed !== true ||
+      numeric(sample.observedLimit) === null || sample.observedIgnore === null) return "Physical decision inputs unready";
+  if (sample.batteryService !== env.get("BATTERY_SERVICE")) return "Selected battery service differs from forecast BMS";
+  if (sample.batteryConnected !== 1) return "Battery BMS connection unavailable";
+  if (numeric(sample.soc) === null || sample.soc < 0 || sample.soc > 100 ||
+      numeric(sample.batterySoc) === null || Math.abs(sample.soc - sample.batterySoc) > 1) return "Battery SOC unavailable or inconsistent";
+  if (!(sample.batteryCapacity > 0) || !(sample.batteryVoltage > 0) || numeric(sample.batteryCapacity * sample.batteryVoltage) === null) return "Battery capacity or voltage unavailable";
+  const importW = sample.available === false || sample.observedIgnore === true ? 0 : numeric(sample.gridPower);
+  if (numeric(sample.batteryPower) === null || importW === null || numeric(importW - sample.batteryPower) === null) return "Battery or grid power unavailable";
+  if (sample.available === null) return "Grid availability unknown";
   if (numeric(assumedChargingPowerW) === null || !(assumedChargingPowerW > 0) ||
       numeric(consumptionWindowSeconds) === null || !(consumptionWindowSeconds > 0) ||
-      numeric(normalLimit * state.voltage) === null || !(normalLimit * state.voltage > 0)) return "Forecast configuration unavailable";
+      numeric(normalLimit * sample.voltage) === null || !(normalLimit * sample.voltage > 0)) return "Forecast configuration unavailable";
   if (state.available === false && !(state.restorationAt > Date.now() / 1000)) return "Future restoration time unavailable";
   return null;
 }
@@ -40,33 +47,30 @@ function clearForecast(reason) {
 }
 function reassess(force = false) {
   const now = Date.now() / 1000;
-  const reason = forecastDataReason();
-  const measuredConsumption = gridImportW() - state.batteryPower;
-  const pairValid = numeric(state.batteryPower) !== null && gridImportW() !== null &&
-    state.available !== null && numeric(measuredConsumption) !== null;
-  if (state.consumptionSampleAt == null || now - state.consumptionSampleAt >= 60) {
-    const value = pairValid ? Math.max(0, measuredConsumption) : null;
-    const samples = state.consumptionSamples || [];
-    samples.push({ at: now, value });
-    const cutoff = now - consumptionWindowSeconds;
-    while (samples.length > 1 && samples[1].at <= cutoff) samples.shift();
-    state.consumptionSamples = samples;
-    state.consumptionSampleAt = now;
-  }
+  const values = state.physical?.values || {};
+  const sample = { ...state, ...Object.fromEntries(Object.values(measurementFields).map(key => [key,
+    key === "batteryService" ? values[key] ?? null : numeric(values[key])])),
+    soc: numeric(values.soc), available: flag(values.available), observedIgnore: flag(values.observedIgnore),
+    observedLimit: numeric(values.observedLimit), voltage: numeric(values.voltage),
+    dischargeAllowed: numeric(values.dischargeLimit) === null ? null : values.dischargeLimit > 0,
+    measurementAt: Object.fromEntries(Object.keys(values).map(key => [key, state.physical.acquired_at])),
+  };
+  const reason = forecastDataReason(sample);
+  const importW = sample.available === false || sample.observedIgnore === true ? 0 : numeric(sample.gridPower);
+  const measuredConsumption = importW === null || numeric(sample.batteryPower) === null ? NaN : importW - sample.batteryPower;
+  const learning = chargingLearning(sample, now, {
+    filename: env.get("RAMP_LEARNING_FILE"), batteryService: env.get("BATTERY_SERVICE"),
+    consumptionW: Math.max(0, measuredConsumption), chargingPowerW: assumedChargingPowerW,
+    normalPowerW: normalLimit * sample.voltage, normalLimit,
+    decisionReady: reason === null, observationAt: state.physical?.acquired_at ?? null,
+    recentSeconds: consumptionWindowSeconds, probability: Number(env.get("FORECAST_TARGET_PROBABILITY")),
+  });
+  state.learning = { ...learning.telemetry, decision_ready: reason === null,
+    source_acquired_at: state.physical?.acquired_at ?? null };
   if (reason) { clearForecast(reason); return; }
   if (!force && !state.forecastDirty && state.forecastAssessedAt != null && now - state.forecastAssessedAt < 60) return;
   state.forecastAssessedAt = now;
   state.forecastDirty = false;
-  const samples = state.consumptionSamples || [];
-  let integral = 0, seconds = 0;
-  for (let index = 0; index < samples.length; index++) {
-    const sample = samples[index];
-    const end = index + 1 < samples.length ? samples[index + 1].at : now;
-    const weight = Math.max(0, end - Math.max(now - consumptionWindowSeconds, sample.at));
-    if (sample.value !== null) { integral += sample.value * weight; seconds += weight; }
-  }
-  const consumptionW = seconds > 0 ? integral / seconds :
-    Math.max(0, measuredConsumption);
   let ramp = null;
   if (enabled() && state.available === true && state.ready && state.windowOpen && !state.override && state.activeSettings) {
     ramp = { startAt: now - state.elapsed, duration: duration(), solveAt: now,
@@ -82,9 +86,9 @@ function reassess(force = false) {
   if (!state.windowOpen && state.chargeDeadlineAt != null && state.chargeDeadlineAt + outageMarginSeconds <= now) state.chargeDeadlineAt = null;
   if (state.chargeDeadlineAt != null && nextDeadline !== null) state.chargeDeadlineAt = Math.min(state.chargeDeadlineAt, nextDeadline);
   const deadlineAt = state.chargeDeadlineAt ?? nextDeadline;
-  const result = chargingForecast({ now, capacityWh: state.batteryCapacity * state.batteryVoltage,
-    soc: state.soc, consumptionW, chargingPowerW: assumedChargingPowerW,
-    normalPowerW: normalLimit * state.voltage, voltage: state.voltage,
+  const result = chargingForecast({ now, capacityWh: learning.capacityAh("charge") * sample.batteryVoltage,
+    soc: sample.soc, learning, batteryVoltage: sample.batteryVoltage,
+    normalPowerW: normalLimit * sample.voltage, voltage: sample.voltage,
     nextOutageAt, restorationAt: state.restorationAt ?? null,
     deadlineAt, available: state.available, ramp });
   if (ramp && state.available === true) {
@@ -92,6 +96,7 @@ function reassess(force = false) {
     state.deadlineLimited = result.duration <= state.elapsed;
   }
   state.forecast = result.forecast;
+  learning.observe(result.forecast);
   state.forecastReason = result.reason;
   state.rechargeSeconds = result.rechargeSeconds;
   return true;
@@ -122,6 +127,7 @@ function save() {
     completion_reason: state.completionReason ?? null,
     recharge_seconds: state.rechargeSeconds ?? null,
     forecast: state.forecast ?? null, forecast_reason: state.forecastReason ?? null,
+    learning: state.learning ?? null,
     restoration_at: state.restorationAt ?? null, cycle_started_at: state.cycleStartedAt ?? null,
   } }]);
 }
@@ -222,18 +228,31 @@ function applyAvailability() {
   else { state.mode = "normal input"; normalInput(); }
 }
 const measurementFields = { "battery-capacity": "batteryCapacity", "battery-voltage": "batteryVoltage",
-  "battery-power": "batteryPower", "grid-power": "gridPower" };
+  "battery-power": "batteryPower", "grid-power": "gridPower", "battery-current": "batteryCurrent",
+  "battery-health": "batteryHealth", "battery-soc": "batterySoc", "grid-current": "gridCurrent",
+  "battery-charge-limit": "batteryChargeLimit", "battery-connected": "batteryConnected",
+  "battery-service": "batteryService" };
 if (Object.prototype.hasOwnProperty.call(measurementFields, msg.topic)) {
-  state[measurementFields[msg.topic]] = numeric(msg.payload);
-  const reason = forecastDataReason();
-  if (reason) clearForecast(reason);
+  state[measurementFields[msg.topic]] = msg.topic === "battery-service" ?
+    (typeof msg.payload === "string" ? msg.payload : null) : numeric(msg.payload);
   flow.set("gridRamp", state);
   return null;
 }
 const wasReady = state.ready;
 const wasEnabled = enabled();
 let availabilityChanged = false;
-if (msg.topic === "configuration") {
+if (msg.topic === "physical-snapshot" || msg.topic === "physical-error") {
+  state.physical = null;
+  if (msg.topic === "physical-snapshot") {
+    try {
+      const snapshot = JSON.parse(msg.payload);
+      const age = Date.now() / 1000 - snapshot.acquired_at;
+      if (numeric(snapshot.acquired_at) !== null && age >= 0 && age <= 180 &&
+          snapshot.values && typeof snapshot.values === "object" && !Array.isArray(snapshot.values)) state.physical = snapshot;
+    } catch (_) { /* An incomplete native acquisition cannot supply a forecast. */ }
+  }
+  state.forecastDirty = true;
+} else if (msg.topic === "configuration") {
   if (JSON.stringify(state.configuration) !== JSON.stringify(msg.payload)) state.forecastDirty = true;
   state.configuration = msg.payload;
   if (state.windowOpen && !state.activeSettings) state.activeSettings = { ...msg.payload.values };
