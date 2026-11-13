@@ -16,7 +16,7 @@ let
         ./internal
       ];
     };
-    vendorHash = "sha256-xOlIj/36J5wg+NKKZOanc2atHldgz8ZLw9mwxyhB8zM=";
+    vendorHash = "sha256-VvyjLzqTaKN7kWO0O3mjHYFMoc1zmWcLX0W546azp7U=";
     env.CGO_ENABLED = 0;
     meta.platforms = lib.platforms.linux;
     ldflags = [
