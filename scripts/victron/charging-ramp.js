@@ -190,7 +190,11 @@ function releaseInput() {
 function applyRamp() {
   if (!enabled() || !state.ready || state.available !== true || !state.windowOpen || state.override || !state.activeSettings) return;
   reassess();
-  if (state.chargeDeadlineAt != null && state.forecast === null) return finishWindow("forecast unavailable");
+  if (state.forecast === null) {
+    state.mode = "waiting";
+    normalInput();
+    return;
+  }
   if (state.deadlineLimited || state.elapsed >= duration()) return finishWindow("charge deadline");
   state.mode = "ramping";
   const active = state.activeSettings;

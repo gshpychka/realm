@@ -144,7 +144,9 @@ let
       ];
       x = 390;
       inherit (spec) y;
-      wires = [ [ controller ] ];
+      wires = [
+        ([ controller ] ++ (if spec.topic == "available" then [ "${tab}-acquire-exec" ] else [ ]))
+      ];
     }
   ];
   sensors =
