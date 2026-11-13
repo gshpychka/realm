@@ -47,7 +47,7 @@
   ];
   networking.hostName = "reaper";
   nixpkgs.hostPlatform = "x86_64-linux";
-  system.stateVersion = "24.05";
+  system.stateVersion = "26.11";
 
   networking = {
     usePredictableInterfaceNames = true;
@@ -135,6 +135,8 @@
     docker = {
       enable = true;
       storageDriver = "overlay2";
+      # Keep containers running while the rootful Docker daemon restarts.
+      daemon.settings.live-restore = true;
       rootless = {
         enable = true;
         setSocketVariable = true;

@@ -220,8 +220,6 @@
           (self.nixosConfigurations.harbor.extendModules {
             modules = [
               "${nixpkgs}/nixos/modules/installer/sd-card/sd-image-aarch64.nix"
-              # harbor's root is ext4; the image does not need ZFS imports
-              { boot.zfs.forceImportRoot = false; }
             ];
           }).config.system.build.sdImage;
       };

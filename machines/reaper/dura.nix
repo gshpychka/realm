@@ -4,7 +4,6 @@ let
 in
 {
   networking.hostId = "91e0f444";
-  boot.zfs.forceImportRoot = false;
 
   services.bay = {
     network.address = "10.80.0.1/24";

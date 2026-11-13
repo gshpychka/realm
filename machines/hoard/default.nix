@@ -44,7 +44,7 @@
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
-  system.stateVersion = "24.11";
+  system.stateVersion = "26.11";
 
   services.openssh.enable = true;
 

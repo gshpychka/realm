@@ -14,7 +14,7 @@ let
   };
   host = pkgs.nixos {
     imports = [ ../modules/system/nixos/dura.nix ];
-    system.stateVersion = "26.05";
+    system.stateVersion = "26.11";
     users.users.alice.isNormalUser = true;
     services.bay = {
       package = bayPackage;

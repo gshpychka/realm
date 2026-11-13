@@ -58,5 +58,5 @@
   };
 
   my.terminfo.enable = true;
-  system.stateVersion = 4;
+  system.stateVersion = 7;
 }

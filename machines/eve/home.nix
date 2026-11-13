@@ -36,12 +36,9 @@
           tools.enable = true;
           zsh.enable = true;
         };
-        # copy apps intead of linking
-        targets.darwin.copyApps.enable = true;
-        targets.darwin.linkApps.enable = false;
         home = {
           file.".hushlogin".text = "";
-          stateVersion = "22.11";
+          stateVersion = "26.11";
           packages = with pkgs; [
             yubikey-manager
           ];

@@ -161,7 +161,6 @@ in
       enable = true;
       enableCompletion = true;
       autocd = true;
-      dotDir = "${config.xdg.configHome}/zsh";
       defaultKeymap = "viins";
       autosuggestion = {
         enable = true;

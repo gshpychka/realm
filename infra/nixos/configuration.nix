@@ -25,7 +25,7 @@ in
 
   virtualisation.googleComputeImage.efi = true;
 
-  system.stateVersion = "25.11";
+  system.stateVersion = "26.11";
 
   services.openssh = {
     enable = true;

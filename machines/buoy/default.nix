@@ -33,7 +33,7 @@
 
   networking.hostName = "buoy";
   nixpkgs.hostPlatform = "x86_64-linux";
-  system.stateVersion = "25.11";
+  system.stateVersion = "26.11";
 
   virtualisation.googleComputeImage.efi = true;
 

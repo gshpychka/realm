@@ -14,7 +14,7 @@ let
         home = {
           username = "check";
           homeDirectory = "/home/check";
-          stateVersion = "25.05";
+          stateVersion = "26.11";
         };
         programs.pituitary = {
           enable = true;

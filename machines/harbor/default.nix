@@ -28,7 +28,7 @@
 
   networking.hostName = "harbor";
   nixpkgs.hostPlatform = "aarch64-linux";
-  system.stateVersion = "22.11";
+  system.stateVersion = "26.11";
 
   my.user = "pi";
 

@@ -45,7 +45,6 @@ inputs.nixpkgs.lib.nixos.runTest {
           ];
         };
         networking.hostId = "8425e349";
-        boot.zfs.forceImportRoot = false;
         boot.kernelParams = [ "zfs.zfs_arc_max=536870912" ];
         networking.interfaces.eth2.ipv4.addresses = lib.mkForce [
           {

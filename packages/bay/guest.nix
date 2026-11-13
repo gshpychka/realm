@@ -34,7 +34,7 @@ in
 {
   imports = [ "${modulesPath}/virtualisation/incus-virtual-machine.nix" ];
 
-  system.stateVersion = "26.05";
+  system.stateVersion = "26.11";
 
   # sessions are reached through incus exec only
   services.openssh.enable = false;

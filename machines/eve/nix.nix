@@ -1,4 +1,7 @@
 {
+  # Match the build group used by this machine's Nix installation.
+  ids.gids.nixbld = 30000;
+
   nix = {
     settings = {
       # originally motivated by https://github.com/NixOS/nixpkgs/pull/369588?new_mergebox=true#issuecomment-2566272567

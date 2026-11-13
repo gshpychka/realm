@@ -124,8 +124,7 @@ in
               home = {
                 username = gw.user;
                 homeDirectory = gatewayHome;
-                # First HM generation for this service account, not the host's age.
-                stateVersion = "26.05";
+                stateVersion = "26.11";
               };
               programs.claude-code = {
                 enable = true;

@@ -30,9 +30,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    # ZFS holds Bay's session pool and needs a host ID; reaper boots from ext4, so there is no root pool to import
+    # ZFS holds Bay's session pool and needs a host ID.
     networking.hostId = "91e0f444";
-    boot.zfs.forceImportRoot = false;
 
     # sops.secrets."bay/ntfy-token" = {
     #   sopsFile = ../../secrets/reaper/bay.yaml;
