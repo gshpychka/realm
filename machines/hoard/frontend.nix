@@ -25,7 +25,6 @@ in
     enable = true;
     services = {
       home.port = ports.home;
-      glances.port = ports.glances;
       maintainerr.port = ports.maintainerr;
       qbittorrent.port = ports.qbittorrent;
       sabnzbd = {

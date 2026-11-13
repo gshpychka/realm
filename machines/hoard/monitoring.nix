@@ -6,21 +6,6 @@ let
   inherit ((import ./ports.nix { inherit config; })) ports;
 in
 {
-
-  # Use the new glances module
-  my.glances = {
-    enable = true;
-    openFirewall = false; # Let nginx handle external access
-    # Explicitly specify network interface
-    networkInterfaces = [ "enp1s0" ];
-    # Monitor specific mount points
-    filesystems = [
-      "/mnt/hoard"
-      "/mnt/oasis"
-      "/"
-    ];
-  };
-
   services = {
     homepage-dashboard = {
       enable = true;
@@ -29,93 +14,6 @@ in
       };
       allowedHosts = config.services.nginx.virtualHosts.home.serverName;
       environmentFiles = [ config.sops.templates."homepage-dashboard.env".path ];
-      widgets =
-        let
-          glancesBase = {
-            url = "http://127.0.0.1:${toString ports.glances}";
-            version = 4;
-          };
-        in
-        [
-          # System Overview
-          {
-            glances = glancesBase // {
-              metric = "info";
-              refreshInterval = 5000;
-            };
-          }
-          # CPU Usage with History
-          {
-            glances = glancesBase // {
-              metric = "cpu";
-              refreshInterval = 2000;
-              pointsLimit = 30;
-              chart = true;
-            };
-          }
-          # Memory Usage with History
-          {
-            glances = glancesBase // {
-              metric = "memory";
-              refreshInterval = 2000;
-              pointsLimit = 30;
-              chart = true;
-            };
-          }
-          # CPU Temperature
-          {
-            glances = glancesBase // {
-              metric = "sensor:Package id 0"; # May need adjustment based on your sensors
-              refreshInterval = 5000;
-              pointsLimit = 20;
-              chart = true;
-            };
-          }
-          # File System Usage with History
-          {
-            glances = glancesBase // {
-              metric = "fs:/mnt/hoard";
-              refreshInterval = 30000;
-              pointsLimit = 20;
-              chart = true;
-              diskUnits = "bytes";
-            };
-          }
-          {
-            glances = glancesBase // {
-              metric = "fs:/mnt/oasis";
-              refreshInterval = 30000;
-              pointsLimit = 20;
-              chart = true;
-              diskUnits = "bytes";
-            };
-          }
-          {
-            glances = glancesBase // {
-              metric = "fs:/";
-              refreshInterval = 30000;
-              pointsLimit = 20;
-              chart = true;
-              diskUnits = "bytes";
-            };
-          }
-          # Network Usage
-          {
-            glances = glancesBase // {
-              metric = "network:enp1s0";
-              refreshInterval = 2000;
-              pointsLimit = 30;
-              chart = true;
-            };
-          }
-          # Top Processes
-          {
-            glances = glancesBase // {
-              metric = "process";
-              refreshInterval = 5000;
-            };
-          }
-        ];
       services = [
         {
           "Streaming" = [

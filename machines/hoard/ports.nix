@@ -6,7 +6,6 @@
   # All service ports in one place, as integers, referencing the owning
   # module's option wherever one exists.
   ports = {
-    glances = config.services.glances.port;
     qbittorrent = config.services.qbittorrent.webuiPort;
     home = config.services.homepage-dashboard.listenPort;
     # sabnzbd's port lives in its stateful sabnzbd.ini

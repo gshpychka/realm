@@ -34,7 +34,6 @@
     ./jovian
     ./kokoro.nix
     ./whisper.nix
-    ./monitoring.nix
     ./netconsole.nix
     ./home.nix
     ./openwebui.nix
