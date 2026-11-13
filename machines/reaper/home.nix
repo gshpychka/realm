@@ -35,11 +35,16 @@
           zsh.enable = true;
         };
 
-        # kodi authorizes reaper's TPM key, which logs in with no forwarded agent
-        programs.ssh.settings.kodi-tpm = lib.hm.dag.entryBefore [ "kodi" ] {
-          header = "Match final host kodi,kodi.${config.my.domain}";
-          IdentityAgent = config.my.tpmSshKey.socket;
-        };
+        # reaper's TPM key logs in with no forwarded agent wherever a host authorizes it
+        programs.ssh.settings = lib.mapAttrs' (
+          name: _:
+          lib.nameValuePair "${name}-tpm" (
+            lib.hm.dag.entryBefore [ name ] {
+              header = "Match final host ${name},${name}.${config.my.domain}";
+              IdentityAgent = config.my.tpmSshKey.socket;
+            }
+          )
+        ) (lib.filterAttrs (_: h: lib.elem config.my.sshKeys.reaper h.authorizedKeys) config.my.hosts);
 
         home.packages = with pkgs; [ ];
 

@@ -144,6 +144,20 @@
         voiceArea = "Room";
         homeAssistantDeviceId = "9290a2568e3df21ba0fd2d663249c0ca";
       };
+      # Victron Cerbo GX. dnsmasq withholds a reserved address inside the dynamic range from other clients.
+      cerbo = {
+        lanIp = "192.168.1.236";
+        mac = "E8:5C:5F:06:F5:70";
+        sshUser = "root";
+        sshSettings = {
+          ForwardAgent = false;
+          SetEnv.TERM = "xterm-256color";
+        };
+        authorizedKeys = with config.my.sshKeys; [
+          main
+          reaper
+        ];
+      };
 
       # ssh-only entries (not on the LAN / no static lease)
       iso = {

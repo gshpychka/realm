@@ -95,3 +95,14 @@ scripts/victron/deploy.py rollback --backup /path/to/snapshot.json
 Restart Node-RED before deploying after a rollback.
 
 Native API contract: <https://nodered.org/docs/api/admin/methods/post/flows/>.
+
+## SSH
+
+`ssh cerbo` logs in as root with the keys in `my.hosts.cerbo.authorizedKeys` from `modules/common/hosts.nix`. Root's keys live on `/data` and survive firmware updates; a firmware update resets the root password.
+
+Bootstrap follows <https://www.victronenergy.com/live/ccgx:root_access>: Superuser access level, a root password and SSH on LAN. This command writes the declared keys and locks password login; the first run authenticates with the root password:
+
+```sh
+nix eval --raw .#nixosConfigurations.reaper.config.my.hosts.cerbo.authorizedKeys --apply 'ks: builtins.concatStringsSep "\n" ks + "\n"' |
+  ssh cerbo 'mkdir -p ~/.ssh && cat > ~/.ssh/authorized_keys && echo "root:*" | chpasswd -e'
+```
