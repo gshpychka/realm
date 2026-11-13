@@ -23,8 +23,6 @@ class VictronEnergyCardEditor extends HTMLElement {
         this._config = withDefaults(config);
         if (isEcho) return;
 
-        libEditor.loadTranslations(this);
-
         if (!this.shadowRoot) {
 
             this.attachShadow({ mode: "open" });
@@ -55,7 +53,6 @@ class VictronEnergyCardEditor extends HTMLElement {
         this.renderTabContent();
     }
 
-    // tab labels in the HA language
     updateTabLabels() {
         if (!this.shadowRoot) return;
         this.shadowRoot.querySelectorAll("#tab-group .vrm-tab").forEach((tab) => {
@@ -82,7 +79,6 @@ class VictronEnergyCardEditor extends HTMLElement {
     }
 
     set hass(hass) {
-        const languageChanged = libEditor.languageOf(hass) !== libEditor.languageOf(this._hass);
         const first = !this._hass;
         this._hass = hass;
         if (!this.shadowRoot) return;
@@ -91,12 +87,7 @@ class VictronEnergyCardEditor extends HTMLElement {
             el.hass = hass;
         });
 
-        // The first hass brings the language and the units the gauge switch
-        // depends on; afterwards only a language change re-renders.
-        if (this._config && (first || languageChanged)) {
-            libEditor.loadTranslations(this);
-            this.renderTabContent();
-        }
+        if (this._config && first) this.renderTabContent();
     }
 
     get hass() {

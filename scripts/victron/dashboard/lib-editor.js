@@ -8,8 +8,6 @@
 // Entity selectors are unfiltered: any entity of any integration is accepted.
 
 import en from "./lang-en.js";
-import de from "./lang-de.js";
-import fr from "./lang-fr.js";
 import { esc, isTrue, parseAnchors, visibleBoxIds, ballSize, MIN_BALL_SIZE, MAX_BALL_SIZE } from "./lib-venus.js";
 
 /* Event listeners already attached to an element (avoid duplicates) */
@@ -22,21 +20,8 @@ const MAX_ANCHORS_PER_SIDE = 3;
 /**************************************/
 /* Translations                       */
 /**************************************/
-const LANGUAGES = { de, en, fr };
-let translations = en;
-
-/* "de", "en-GB", "fr-CA" … → base language */
-export function languageOf(hass) {
-    const full = hass?.language || hass?.locale?.language || "en";
-    return String(full).toLowerCase().split(/[-_]/)[0];
-}
-
-export function loadTranslations(appendTo) {
-    translations = LANGUAGES[languageOf(appendTo._hass)] || en;
-}
-
 export function t(func, key) {
-    return translations?.[func]?.[key] || en?.[func]?.[key] || key;
+    return en?.[func]?.[key] || key;
 }
 
 /**

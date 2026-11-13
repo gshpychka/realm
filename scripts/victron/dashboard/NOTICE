@@ -23,8 +23,6 @@ panel are local components; the Victron logo has a separate source attribution:
   upstream www/css-light.js       -> css-light.js
   upstream www/css-editor.js      -> css-editor.js
   upstream www/lang-en.js         -> lang-en.js
-  upstream www/lang-de.js         -> lang-de.js
-  upstream www/lang-fr.js         -> lang-fr.js
 
 Substantive local modifications
 -------------------------------
