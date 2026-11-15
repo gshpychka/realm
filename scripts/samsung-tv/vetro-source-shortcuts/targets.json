@@ -1,0 +1,22 @@
+{
+  "kodi": {
+    "label": "Kodi — HDMI 3 / soundbar HDMI 1",
+    "sourceType": 15,
+    "depthPort": 1
+  },
+  "pc": {
+    "label": "PC — HDMI 1",
+    "sourceType": 13,
+    "depthPort": 0
+  },
+  "xbox": {
+    "label": "Xbox — HDMI 2",
+    "sourceType": 14,
+    "depthPort": 0
+  },
+  "chromecast": {
+    "label": "Chromecast — HDMI 4",
+    "sourceType": 16,
+    "depthPort": 0
+  }
+}
