@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  inputs,
   ...
 }:
 let
@@ -10,7 +11,23 @@ in
 {
   services.hermes-agent = {
     enable = true;
+    package = inputs.hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default.override {
+      # The Python source builds the runtime wheel independently of the command wrapper.
+      callPackage =
+        path: args:
+        pkgs.callPackage path (
+          args
+          // lib.optionalAttrs (args ? pythonSrc) {
+            pythonSrc = pkgs.applyPatches {
+              name = "hermes-automatic-memory-source";
+              src = args.pythonSrc;
+              patches = [ ./hermes-agent/background-memory-approval.patch ];
+            };
+          }
+        );
+    };
     settings = {
+      memory.write_approval = false;
       updates.check = false;
       timezone = config.time.timeZone;
       approvals.mode = "off";
