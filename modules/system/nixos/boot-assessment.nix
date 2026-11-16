@@ -24,6 +24,12 @@ in
       }
     ];
 
+    # A successful boot stays assessed after its loader entry is pruned.
+    systemd.services.systemd-bless-boot = {
+      unitConfig.ConditionPathExists = "!/run/boot-assessment-complete";
+      serviceConfig.ExecStartPost = "${pkgs.coreutils}/bin/touch /run/boot-assessment-complete";
+    };
+
     # Upstream systemd-bless-boot.service requires this target. Do not use the
     # all-services health check: optional disks and workloads may fail safely.
     systemd.targets.boot-complete = {
