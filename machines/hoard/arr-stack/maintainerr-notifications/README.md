@@ -1,4 +1,4 @@
-# Maintainerr notification compatibility patch
+# Maintainerr compatibility patch
 
 The host module deploys Maintainerr with Nix OCI containers. The locked
 nixpkgs tree has no Maintainerr NixOS service module. Upstream 3.8.0 accepts
@@ -33,17 +33,21 @@ cleanup-reason filter.
   immediately after that step. So a removal failure or abort later in the same run
   cannot hide an add that already happened; partial changes list only verified
   items; an unreadable membership list reports nothing rather than guessing.
-- MEDIA_HANDLED emission and all media/state operations are unchanged.
+- Failed Seerr metadata requests abort rule evaluation before collection synchronization.
+  The getter propagates lookup errors, and the comparator propagates evaluation
+  errors to the executor's native failure handler. Existing memberships and countdowns
+  survive an outage; successful responses without requests retain normal rule behavior.
+- MEDIA_HANDLED emission and successful media actions retain upstream behavior.
 - Telegram gains optional messageThreadId, only used by a failure-only notifier
   routed to the existing Status topic. Ordinary messages keep their destination.
-- The source image digest and four patched source hashes are pinned. On upgrade the
+- The source image digest and patched source hashes are pinned. On upgrade the
   compatibility patch fails closed and must be reviewed or removed if upstream
   has fixed the underlying issues. Source maps remain upstream maps, so patched
   line offsets can differ slightly in stack traces.
 
 No proxy, notification framework, new scheduler, rule migration or DB rewriting.
 The preStart hook extracts source from an **unstarted** image, validates hashes,
-and mounts only four modules read-only.
+and mounts the patched modules read-only.
 
 ## Small declarative settings boundary
 
@@ -63,7 +67,7 @@ replace the SQLite database.
 ## Rollback / deployment
 
 The [NixOS declaration](../maintainerr.nix) owns the image pin, patch preparation,
-read-only mounts, and notifier reconciliation. Deploy through hoard's normal
+read-only mounts, failed-evaluation handling, and notifier reconciliation. Deploy through hoard's normal
 NixOS activation workflow. The service prepares and verifies the patch before
 starting the container, then reconciles the owned notifier after startup.
 

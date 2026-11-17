@@ -1,5 +1,4 @@
-// Narrow compatibility patch for the pinned Maintainerr 3.8.0 image.
-// No media action, selection, schedule, or database code is changed.
+// Compatibility fixes for the pinned Maintainerr image.
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
@@ -121,6 +120,24 @@ const specs = [
     replacements: [[executorBefore, executorAfter]],
   },
   {
+    file: 'seerr-getter.service.js',
+    sha256: 'd37469049b373459c979b476d64801fd3c664ab33a92bcab2750032be11c9ba8',
+    replacements: [
+      ['            const mediaResponse = tvMediaResponse ?? movieMediaResponse;',
+        '            const mediaResponse = tvMediaResponse ?? movieMediaResponse;\n            if (tmdbId && !mediaResponse) {\n                throw new Error(`Seerr metadata request failed for ${libItem.title}`);\n            }'],
+      ['            this.logger.debug(`Seerr-Getter - Action failed for \'${libItem.title}\' with id \'${libItem.id}\'`, error);\n            return undefined;',
+        '            this.logger.debug(`Seerr-Getter - Action failed for \'${libItem.title}\' with id \'${libItem.id}\'`, error);\n            throw error;'],
+    ],
+  },
+  {
+    file: 'rule.comparator.service.js',
+    sha256: '1d605fed5bb612e16480a8bfdbd14d32bce2aae68bc8a88fb3317f4dd519d92a',
+    replacements: [[
+      '            this.logger.debug(`Something went wrong while running rule ${rulegroup.name}`, error);',
+      '            this.logger.debug(`Something went wrong while running rule ${rulegroup.name}`, error);\n            throw error;',
+    ]],
+  },
+  {
     file: 'telegram.js',
     sha256: 'b844987f9857fc9ca427e092f15ff8013d0ccd0896ff5b67b9912f0a7385e696',
     replacements: [[
@@ -133,7 +150,7 @@ function patch(file, source) {
   const spec = specs.find(s => s.file === file);
   if (!spec) throw Error('Unknown patch target: ' + file);
   if (createHash('sha256').update(source).digest('hex') !== spec.sha256) {
-    throw Error('Upstream source changed; review notification patch before upgrading: ' + file);
+    throw Error('Upstream source changed; review compatibility patch before upgrading: ' + file);
   }
   for (const [before, after] of spec.replacements) {
     if (source.split(before).length !== 2) throw Error('Patch anchor not unique: ' + file);
@@ -147,6 +164,6 @@ if (require.main === module) {
   // Validate every input before writing any output.
   const outputs = specs.map(s => [s.file, patch(s.file, fs.readFileSync(path.join(directory, s.file), 'utf8'))]);
   for (const [file, source] of outputs) fs.writeFileSync(path.join(directory, file), source, { mode: 0o444 });
-  console.log('Applied Maintainerr notification-only patch to ' + outputs.length + ' version-verified modules.');
+  console.log('Applied Maintainerr compatibility patch to ' + outputs.length + ' version-verified modules.');
 }
 module.exports = { patch, specs };
