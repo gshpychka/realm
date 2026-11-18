@@ -1,5 +1,5 @@
 # Bootstrap:
-# nix build .#harbor-sd-image
+# nix build .#packages.aarch64-linux.harbor-sd-image
 # flash result/sd-image/*.img.zst to SD, boot harbor
 # ssh -A pi@192.168.1.2
 # nix-shell -p ssh-to-age --run 'ssh-to-age -i /etc/ssh/ssh_host_ed25519_key.pub'   # → harbor_host
