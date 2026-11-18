@@ -26,19 +26,16 @@ in
     after = [ "network-online.target" ];
     path = [
       pkgs.iproute2
-      pkgs.iputils
       pkgs.jq
     ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      Restart = "on-failure";
-      RestartSec = "10s";
+      # start once the receiver answers; the ping also resolves its MAC over ARP
+      ExecCondition = "${pkgs.iputils}/bin/ping -q -c 1 -W 2 ${receiverIp}";
     };
     script = ''
-      # netconsole builds Ethernet frames itself and needs the receiver's MAC,
-      # resolved here through ARP
-      ping -c 1 -W 2 ${receiverIp} > /dev/null
+      # netconsole builds Ethernet frames itself and needs the receiver's MAC
       mac=$(ip -j neigh show ${receiverIp} dev ${interface} | jq -er '.[0].lladdr')
 
       # a target only accepts settings while disabled, and rejects disabling
@@ -63,5 +60,11 @@ in
         echo 0 > ${target}/enabled
       fi
     '';
+  };
+
+  # retries netconsole while the receiver doesn't answer
+  systemd.timers.netconsole = {
+    wantedBy = [ "timers.target" ];
+    timerConfig.OnUnitInactiveSec = "10s";
   };
 }
