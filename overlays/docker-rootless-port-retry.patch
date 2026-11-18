@@ -1,0 +1,251 @@
+From 733652a12d8b63bb9220966f0b9e29f93f30f4a5 Mon Sep 17 00:00:00 2001
+From: Andrew Liu <andrewjliu22@gmail.com>
+Date: Thu, 18 Jun 2026 17:33:10 -0700
+Subject: [PATCH] libnet/portmappers/nat: retry host-namespace bind on
+ EADDRINUSE in rootless
+
+In rootless mode, MapPorts performs two binds in different network
+namespaces. OSAllocator.RequestPortsInRange reserves a port and probes
+it with bind(2) in the daemon's (child) namespace, retrying on
+EADDRINUSE. configPortDriver then asks rootlesskit to bind the same host
+port in the host (parent) namespace, which has a separate port table.
+
+A dynamic port that is free in the child namespace can still be in use
+in the host namespace, and only the host bind sees that. The child-side
+retry does not help, so concurrent container starts that request
+ephemeral host ports intermittently fail with:
+
+  cannot expose port X: listen tcp 0.0.0.0:X: bind: address already in use
+
+Retry the whole allocate-and-bind cycle when the port driver reports
+EADDRINUSE and the host port is dynamic. The allocator round-robins via
+its last-allocated pointer (which ReleasePort does not reset), so each
+attempt picks a different port and the retry converges. Fixed host ports
+are not retried, since the allocator would just pick the same port. The
+errno is flattened to a string across the rootlesskit IPC boundary, so
+it is matched by message as well as with errors.Is.
+
+This path is only exercised in rootless mode (pdc != nil); rootful
+behavior is unchanged.
+
+Signed-off-by: Andrew Liu <andrewjliu22@gmail.com>
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ .../portmappers/nat/mapper_linux.go           | 84 ++++++++++++++-----
+ .../portmappers/nat/mapper_linux_test.go      | 74 ++++++++++++++++
+ 2 files changed, 139 insertions(+), 19 deletions(-)
+
+diff --git a/daemon/libnetwork/portmappers/nat/mapper_linux.go b/daemon/libnetwork/portmappers/nat/mapper_linux.go
+index 1630c66aaa4f9..3451934c221df 100644
+--- a/daemon/libnetwork/portmappers/nat/mapper_linux.go
++++ b/daemon/libnetwork/portmappers/nat/mapper_linux.go
+@@ -8,6 +8,8 @@ import (
+ 	"net/netip"
+ 	"slices"
+ 	"strconv"
++	"strings"
++	"syscall"
+ 
+ 	"github.com/containerd/log"
+ 	"github.com/moby/moby/v2/daemon/libnetwork/internal/rlkclient"
+@@ -19,6 +21,11 @@ import (
+ 
+ const driverName = "nat"
+ 
++// maxHostBindAttempts bounds how many times MapPorts retries the
++// allocate-and-bind cycle when the rootlesskit host-namespace bind collides
++// with a dynamic port that is already in use in the host namespace.
++const maxHostBindAttempts = 10
++
+ type PortDriverClient interface {
+ 	ChildHostIP(proto string, hostIP netip.Addr) netip.Addr
+ 	AddPort(ctx context.Context, proto string, hostIP, childIP netip.Addr, hostPort int) (func() error, error)
+@@ -88,31 +95,60 @@ func (pm PortMapper) MapPorts(ctx context.Context, cfg []portmapperapi.PortBindi
+ 	})
+ 
+ 	pa := portallocator.NewOSAllocator()
+-	allocatedPort, socks, err := pa.RequestPortsInRange(addrs, proto, int(hostPort), int(hostPortEnd))
+-	if err != nil {
+-		return nil, err
+-	}
+ 
+-	for i := range cfg {
+-		pb := portmapperapi.PortBinding{
+-			PortBinding: cfg[i].PortBinding.Copy(),
+-			BoundSocket: socks[i],
+-			ChildHostIP: cfg[i].ChildHostIP,
++	// In rootless mode the OS allocator's bind probe runs in the daemon's
++	// (child) network namespace, while the port driver (rootlesskit) binds the
++	// same host port in the host (parent) namespace, which has a separate port
++	// table. A port that is free in the child namespace can therefore still
++	// collide in the host namespace, and the allocator's own retry does not see
++	// that. When the host port is dynamic, retry the whole allocate-and-bind
++	// cycle so a fresh port is chosen; the allocator round-robins, so each
++	// attempt picks a different port (issue #52903).
++	dynamicPort := hostPort == 0 || hostPort != hostPortEnd
++	for attempt := 0; ; attempt++ {
++		allocatedPort, socks, err := pa.RequestPortsInRange(addrs, proto, int(hostPort), int(hostPortEnd))
++		if err != nil {
++			return nil, err
+ 		}
+-		pb.PortBinding.HostPort = uint16(allocatedPort)
+-		pb.PortBinding.HostPortEnd = pb.HostPort
+ 
+-		childHIP, _ := netip.AddrFromSlice(cfg[i].ChildHostIP)
+-		pb.NAT = netip.AddrPortFrom(childHIP.Unmap(), pb.PortBinding.HostPort)
++		bindings = bindings[:0]
++		for i := range cfg {
++			pb := portmapperapi.PortBinding{
++				PortBinding: cfg[i].PortBinding.Copy(),
++				BoundSocket: socks[i],
++				ChildHostIP: cfg[i].ChildHostIP,
++			}
++			pb.PortBinding.HostPort = uint16(allocatedPort)
++			pb.PortBinding.HostPortEnd = pb.HostPort
+ 
+-		bindings = append(bindings, pb)
+-	}
++			childHIP, _ := netip.AddrFromSlice(cfg[i].ChildHostIP)
++			pb.NAT = netip.AddrPortFrom(childHIP.Unmap(), pb.PortBinding.HostPort)
+ 
+-	if err := configPortDriver(ctx, bindings, pm.pdc); err != nil {
+-		return nil, err
+-	}
++			bindings = append(bindings, pb)
++		}
++
++		err = configPortDriver(ctx, bindings, pm.pdc)
++		if err == nil {
++			return bindings, nil
++		}
++		if !dynamicPort || !isAddrInUse(err) || attempt >= maxHostBindAttempts-1 {
++			return nil, err
++		}
+ 
+-	return bindings, nil
++		// The host-namespace bind collided on a dynamic port. Release this
++		// attempt's bindings (closing the child-namespace probe sockets and
++		// freeing the allocator reservation) and retry with a new port.
++		if uErr := pm.UnmapPorts(ctx, bindings); uErr != nil {
++			log.G(ctx).WithFields(log.Fields{
++				"pbs":   bindings,
++				"error": uErr,
++			}).Warn("Failed to release port bindings before retry")
++		}
++		log.G(ctx).WithFields(log.Fields{
++			"port":    allocatedPort,
++			"attempt": attempt + 1,
++		}).Debug("Host-namespace port collision in rootless mode, retrying with a new port")
++	}
+ }
+ 
+ func (pm PortMapper) UnmapPorts(ctx context.Context, pbs []portmapperapi.PortBinding) error {
+@@ -155,6 +191,16 @@ func setChildHostIP(pdc PortDriverClient, req portmapperapi.PortBindingReq) (por
+ // configPortDriver passes the port binding's details to rootlesskit, and updates the
+ // port binding with callbacks to remove the rootlesskit config (or marks the binding as
+ // unsupported by rootlesskit).
++// isAddrInUse reports whether err is, or wraps, an EADDRINUSE error. The
++// rootlesskit port driver communicates over IPC and flattens the errno into a
++// string, so errors.Is alone is not sufficient and the message is also matched.
++func isAddrInUse(err error) bool {
++	if errors.Is(err, syscall.EADDRINUSE) {
++		return true
++	}
++	return strings.Contains(err.Error(), "address already in use")
++}
++
+ func configPortDriver(ctx context.Context, pbs []portmapperapi.PortBinding, pdc PortDriverClient) error {
+ 	for i := range pbs {
+ 		b := pbs[i]
+diff --git a/daemon/libnetwork/portmappers/nat/mapper_linux_test.go b/daemon/libnetwork/portmappers/nat/mapper_linux_test.go
+index 9e9bd268de849..bcb7fc75d2c78 100644
+--- a/daemon/libnetwork/portmappers/nat/mapper_linux_test.go
++++ b/daemon/libnetwork/portmappers/nat/mapper_linux_test.go
+@@ -1,6 +1,10 @@
+ package nat
+ 
+ import (
++	"context"
++	"errors"
++	"net"
++	"net/netip"
+ 	"testing"
+ 
+ 	"github.com/moby/moby/v2/daemon/libnetwork/portmapperapi"
+@@ -9,6 +13,76 @@ import (
+ 	is "gotest.tools/v3/assert/cmp"
+ )
+ 
++// fakePortDriverClient stands in for the rootlesskit port driver. AddPort
++// returns failErr for the first failN calls (simulating a host-namespace bind
++// collision) and records the host port it was asked to bind on each call.
++type fakePortDriverClient struct {
++	childIP netip.Addr
++	failN   int
++	failErr error
++	ports   []int
++}
++
++func (f *fakePortDriverClient) ChildHostIP(_ string, _ netip.Addr) netip.Addr {
++	return f.childIP
++}
++
++func (f *fakePortDriverClient) AddPort(_ context.Context, _ string, _, _ netip.Addr, hostPort int) (func() error, error) {
++	f.ports = append(f.ports, hostPort)
++	if len(f.ports) <= f.failN {
++		return nil, f.failErr
++	}
++	return func() error { return nil }, nil
++}
++
++// errAddrInUse mimics the error rootlesskit surfaces over IPC: the errno is
++// flattened into the message rather than wrapped.
++var errAddrInUse = errors.New("error while calling RootlessKit PortManager.AddPort(): listen tcp 0.0.0.0:0: bind: address already in use")
++
++func TestMapPortsRetriesHostNamespaceCollision(t *testing.T) {
++	f := &fakePortDriverClient{
++		childIP: netip.MustParseAddr("127.0.0.1"),
++		failN:   1,
++		failErr: errAddrInUse,
++	}
++	pm := &PortMapper{pdc: f}
++	// Dynamic host port (HostPort == 0), so a retry is allowed to pick a new one.
++	cfg := []portmapperapi.PortBindingReq{{PortBinding: types.PortBinding{Proto: types.TCP, Port: 80, HostIP: net.IPv4zero}}}
++
++	pbs, err := pm.MapPorts(t.Context(), cfg)
++	assert.NilError(t, err)
++	assert.Check(t, is.Len(pbs, 1))
++	assert.Check(t, is.Len(f.ports, 2)) // failed once, retried once
++	assert.Check(t, f.ports[0] != f.ports[1], "retry should pick a different host port")
++	assert.NilError(t, pm.UnmapPorts(t.Context(), pbs))
++}
++
++func TestMapPortsNoRetryForFixedPort(t *testing.T) {
++	// Grab a free port to use as a fixed (non-dynamic) host port.
++	l, err := net.Listen("tcp", "127.0.0.1:0")
++	assert.NilError(t, err)
++	fixed := l.Addr().(*net.TCPAddr).Port
++	assert.NilError(t, l.Close())
++
++	f := &fakePortDriverClient{
++		childIP: netip.MustParseAddr("127.0.0.1"),
++		failN:   maxHostBindAttempts, // would always fail if retried
++		failErr: errAddrInUse,
++	}
++	pm := &PortMapper{pdc: f}
++	cfg := []portmapperapi.PortBindingReq{{PortBinding: types.PortBinding{
++		Proto:       types.TCP,
++		Port:        80,
++		HostIP:      net.IPv4zero,
++		HostPort:    uint16(fixed),
++		HostPortEnd: uint16(fixed),
++	}}}
++
++	_, err = pm.MapPorts(t.Context(), cfg)
++	assert.Check(t, is.ErrorContains(err, "address already in use"))
++	assert.Check(t, is.Len(f.ports, 1), "a fixed host port must not be retried")
++}
++
+ func TestBindHostPortsError(t *testing.T) {
+ 	cfg := []portmapperapi.PortBindingReq{
+ 		{
