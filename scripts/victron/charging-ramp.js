@@ -178,7 +178,7 @@ function beginWindow() {
   state.override = false;
   state.activeSettings = state.configuration ? { ...state.configuration.values } : null;
   state.windowDuration = state.activeSettings ? state.activeSettings.duration_minutes * 60 : null;
-  state.chargeDeadlineAt = state.nextOutageAt == null ? null : state.nextOutageAt - outageMarginSeconds;
+  state.chargeDeadlineAt = state.nextOutageAt > Date.now() / 1000 ? state.nextOutageAt - outageMarginSeconds : null;
 }
 function releaseInput() {
   if (!state.windowOpen || state.available !== true || state.elapsed >= duration()) return finishWindow();
@@ -289,7 +289,7 @@ if (msg.topic === "physical-snapshot" || msg.topic === "physical-error") {
   const schedule = msg.payload;
   const validTime = value => value === null || numeric(value) !== null && value > 0;
   if (schedule && validTime(schedule.next_outage_at) && validTime(schedule.restoration_at)) {
-    const next = schedule.next_outage_at;
+    const next = schedule.next_outage_at > Date.now() / 1000 ? schedule.next_outage_at : null;
     if (state.nextOutageAt !== next || state.restorationAt !== schedule.restoration_at) state.forecastDirty = true;
     state.nextOutageAt = next;
     state.restorationAt = schedule.restoration_at;
