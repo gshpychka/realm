@@ -23,6 +23,12 @@ in
     firewall.logRefusedConnections = false;
   };
 
+  services.avahi = {
+    openFirewall = false;
+    settings.server.allow-interfaces = [ primaryLanInterface ];
+  };
+  networking.firewall.interfaces.${primaryLanInterface}.allowedUDPPorts = [ 5353 ];
+
   systemd.network = {
     enable = true;
 
