@@ -346,7 +346,7 @@ let
   };
 in
 {
-  host = "192.168.1.236";
+  host = "venus.local";
   certificateSha256 = "5ccd906f466267bc05cc30717fc5f570bfe9213e8ea4f8b0f1ab3de12f6d12aa";
   tabId = tab;
   controllerId = controller;
@@ -609,7 +609,8 @@ in
       type = "exec";
       z = tab;
       name = "Read local DBus (15 second bound)";
-      command = "exec /usr/bin/python3 -c '" + builtins.replaceStrings [ "'" ] [ "'\\''" ] acquisitionScript + "'";
+      command =
+        "exec /usr/bin/python3 -c '" + builtins.replaceStrings [ "'" ] [ "'\\''" ] acquisitionScript + "'";
       addpay = false;
       append = "";
       useSpawn = "false";
@@ -618,14 +619,26 @@ in
       oldrc = false;
       x = 430;
       y = 1560;
-      wires = [ [ "${tab}-acquire-result" ] [ ] [ "${tab}-acquire-error" ] ];
+      wires = [
+        [ "${tab}-acquire-result" ]
+        [ ]
+        [ "${tab}-acquire-error" ]
+      ];
     }
     {
       id = "${tab}-acquire-result";
       type = "change";
       z = tab;
       name = "Physical snapshot";
-      rules = [ { t = "set"; p = "topic"; pt = "msg"; to = "physical-snapshot"; tot = "str"; } ];
+      rules = [
+        {
+          t = "set";
+          p = "topic";
+          pt = "msg";
+          to = "physical-snapshot";
+          tot = "str";
+        }
+      ];
       x = 700;
       y = 1560;
       wires = [ [ controller ] ];
@@ -882,7 +895,7 @@ in
       type = "mqtt-broker";
       z = tab;
       name = "Home Assistant telemetry";
-      broker = "homeassistant.glib.sh";
+      broker = "homeassistant.local";
       port = 1883;
       clientid = "realm-victron-charging-ramp";
       autoConnect = true;
