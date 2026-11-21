@@ -1,6 +1,7 @@
 # DaVinci Resolve project database, shared by the Resolve installs on eve and
 # reaper (Windows). In Resolve: Project Manager → Project Libraries → Add →
-# Network, host hoard, user `resolve`, password from secrets/hoard/resolve.yaml.
+# Network, host hoard.local, user `resolve`, password from
+# secrets/hoard/resolve.yaml.
 # The role can create databases, so each project library is created from
 # Resolve itself.
 {

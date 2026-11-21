@@ -1,7 +1,18 @@
+# LAN hosts resolve .local names and publish their own address as
+# <hostName>.local over multicast DNS.
 { config, lib, ... }:
 {
-  services.avahi = lib.mkIf ((config.my.hosts.${config.networking.hostName}.lanIp or null) != null) {
-    enable = true;
-    nssmdns4 = true;
+  config = lib.mkIf ((config.my.hosts.${config.networking.hostName}.lanIp or null) != null) {
+    services.avahi = {
+      enable = true;
+      nssmdns4 = true;
+      settings.publish = {
+        disable-publishing = false;
+        publish-addresses = true;
+      };
+    };
+
+    # avahi owns the mDNS port
+    services.resolved.settings.Resolve.MulticastDNS = lib.mkIf config.services.resolved.enable false;
   };
 }
