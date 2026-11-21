@@ -20,12 +20,13 @@ let
   backupRetention = 10;
   postgresql = config.services.postgresql.package;
   psql = "${postgresql}/bin/psql";
+  postgresUser = config.systemd.services.postgresql.serviceConfig.User;
 in
 {
   sops.secrets.resolve-db-password = {
     sopsFile = ../../secrets/hoard/resolve.yaml;
     key = "resolve-db-password";
-    owner = config.systemd.services.postgresql.serviceConfig.User;
+    owner = postgresUser;
     restartUnits = [ config.systemd.services.resolve-db-password.name ];
   };
 
@@ -61,7 +62,7 @@ in
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      User = config.systemd.services.postgresql.serviceConfig.User;
+      User = postgresUser;
     };
     # psql's backtick \set reads the secret, keeping it out of the process arguments
     script = ''
@@ -95,7 +96,7 @@ in
     ];
     serviceConfig = {
       Type = "oneshot";
-      User = config.systemd.services.postgresql.serviceConfig.User;
+      User = postgresUser;
       StateDirectory = "resolve-db-backup";
     };
     script = ''
@@ -134,15 +135,17 @@ in
     '';
   };
 
-  # Creates the postgres-owned backup directory on the array whenever the array
-  # is mounted at activation. The directory persists on the array across boots.
+  # Creates the postgres-owned backup directory on the array and grants postgres
+  # traversal of the array root through an ACL, whenever the array is mounted at
+  # activation. Both persist on the array across boots.
   system.activationScripts.resolve-db-backup-dir = {
     # the postgres user exists once the users snippet has run
     deps = [ "users" ];
     text = ''
       if ${pkgs.util-linux}/bin/mountpoint --quiet ${arrayMountPoint}; then
+        ${pkgs.acl}/bin/setfacl --modify user:${postgresUser}:x ${arrayMountPoint}
         ${pkgs.coreutils}/bin/install --directory \
-          --owner=${config.systemd.services.postgresql.serviceConfig.User} \
+          --owner=${postgresUser} \
           --mode=0700 ${backupDir}
       fi
     '';
