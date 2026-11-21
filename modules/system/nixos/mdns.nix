@@ -9,6 +9,8 @@
       settings.publish = {
         disable-publishing = false;
         publish-addresses = true;
+        # AAAA records follow the host's IPv6 setting
+        publish-aaaa-on-ipv4 = config.networking.enableIPv6;
       };
     };
 
