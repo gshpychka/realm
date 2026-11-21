@@ -41,6 +41,7 @@
     ./hermes-agent.nix
     ./hermes-ssh-key.nix
     ./voice-broker.nix
+    ./resolve-db.nix
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
