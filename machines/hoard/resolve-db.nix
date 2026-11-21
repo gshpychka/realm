@@ -32,11 +32,7 @@ in
     enable = true;
     package = pkgs.postgresql_18;
     enableTCPIP = true;
-    settings = {
-      port = 5432;
-      # pg_last_committed_xact() reports the latest write, which gates backups
-      track_commit_timestamp = true;
-    };
+    settings.port = 5432;
     authentication = ''
       host all ${role} ${config.my.lan.cidr} scram-sha-256
     '';
@@ -51,7 +47,7 @@ in
     ];
   };
 
-  # LAN interface only; the secondary WAN interface carries a public address
+  # opens the port on the LAN interface
   networking.firewall.interfaces.${lanInterface}.allowedTCPPorts = [
     config.services.postgresql.settings.port
   ];
@@ -75,9 +71,9 @@ in
     '';
   };
 
-  # Dumps every project library when anything was written since the previous
-  # run; idle days produce no dump. Read-only sessions allocate no transaction
-  # id, so they leave the commit timestamp unchanged.
+  # Dumps every project library to plain SQL on the SSD and compares the digest
+  # of the dumps with the last stored run. A changed digest stores the
+  # compressed dumps on the array as a new run.
   systemd.services.resolve-db-backup = {
     description = "Dump the Resolve project libraries after changes";
     requires = [ "postgresql.service" ];
@@ -94,6 +90,7 @@ in
       postgresql
       pkgs.coreutils
       pkgs.findutils
+      pkgs.zstd
     ];
     serviceConfig = {
       Type = "oneshot";
@@ -102,22 +99,33 @@ in
     };
     script = ''
       set -euo pipefail
-      stamp_file="$STATE_DIRECTORY/last-commit"
-      # empty when nothing has been written since track_commit_timestamp was enabled
-      last_commit=$(psql --tuples-only --no-align --command \
-        'SELECT (pg_last_committed_xact()).timestamp')
-      if [ -z "$last_commit" ] || [ "$last_commit" = "$(cat "$stamp_file" 2>/dev/null || true)" ]; then
+      # reads one database name per line, keeping names with spaces whole
+      mapfile -t databases < <(psql --tuples-only --no-align --command \
+        "SELECT datname FROM pg_database WHERE datdba = '${role}'::regrole")
+      [ "''${#databases[@]}" -gt 0 ] || exit 0
+
+      staging="$STATE_DIRECTORY/staging"
+      digest_file="$STATE_DIRECTORY/digest"
+      rm --recursive --force "$staging"
+      mkdir "$staging"
+      for db in "''${databases[@]}"; do
+        # a fixed \restrict key keeps identical data producing identical dumps
+        pg_dump --format=plain --restrict-key=${role} --file="$staging/$db.sql" "$db"
+      done
+      # the digest covers every dump's name and contents
+      digest=$(cd "$staging" && sha256sum -- *.sql | sha256sum)
+      if [ "$digest" = "$(cat "$digest_file" 2>/dev/null || true)" ]; then
+        rm --recursive "$staging"
         exit 0
       fi
 
       run_dir="${backupDir}/$(date --utc +%Y%m%dT%H%M%SZ)"
-      mkdir --parents "$run_dir"
-      databases=$(psql --tuples-only --no-align --command \
-        "SELECT datname FROM pg_database WHERE datdba = '${role}'::regrole")
-      for db in $databases; do
-        pg_dump --format=custom --file="$run_dir/$db.dump" "$db"
+      mkdir "$run_dir"
+      for dump in "$staging"/*.sql; do
+        zstd --quiet "$dump" -o "$run_dir/$(basename "$dump").zst"
       done
-      printf '%s' "$last_commit" > "$stamp_file"
+      printf '%s' "$digest" > "$digest_file"
+      rm --recursive "$staging"
 
       find "${backupDir}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
         | sort | head --lines=-${toString backupRetention} \
