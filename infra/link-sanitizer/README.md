@@ -8,6 +8,13 @@ ClearURLs, AdGuard, Brave and Firefox catalog. An
 `Receiver` Lambda's function URL, which queues each reply on SQS for the
 `Sender` Lambda to deliver through the Bot API.
 
+The sender reserves each original chat/message pair atomically in DynamoDB with
+a seven-day TTL. Duplicate webhook and queue deliveries share that reservation.
+Telegram's explicit 4xx rejections release it for another attempt; server errors
+and uncertain delivery outcomes retain it. This favors duplicate suppression:
+a crash after reservation, a lost send response or a failed reservation release
+can leave a message without a reply. Queued messages expire after four days.
+
 ## Deploy
 
 From this directory, in the infra shell:

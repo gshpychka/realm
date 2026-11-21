@@ -46,12 +46,17 @@ export interface SetWebhookParams {
 
 const ApiResponse = Schema.Union([
   Schema.Struct({ ok: Schema.Literal(true) }),
-  Schema.Struct({ ok: Schema.Literal(false), description: Schema.String }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    description: Schema.String,
+    error_code: Schema.optionalKey(Schema.Number),
+  }),
 ]);
 
 export class BotApiError extends Data.TaggedError("BotApiError")<{
   readonly method: string;
   readonly description: string;
+  readonly delivery: "rejected" | "unknown";
 }> {}
 
 // https://core.telegram.org/bots/api#making-requests
@@ -65,13 +70,30 @@ const callBotApi = (token: Redacted.Redacted<string>, method: string, params: ob
         signal,
       }).then((response) => response.json()),
     // the request URL embeds the token, so the cause stays out of the error
-    catch: () => new BotApiError({ method, description: "request failed" }),
+    catch: () => new BotApiError({ method, description: "request failed", delivery: "unknown" }),
   }).pipe(
-    Effect.flatMap(Schema.decodeUnknownEffect(ApiResponse)),
+    Effect.flatMap((response) =>
+      Schema.decodeUnknownEffect(ApiResponse)(response).pipe(
+        Effect.mapError(
+          () => new BotApiError({ method, description: "invalid response", delivery: "unknown" }),
+        ),
+      ),
+    ),
     Effect.flatMap((response) =>
       response.ok
         ? Effect.void
-        : Effect.fail(new BotApiError({ method, description: response.description })),
+        : Effect.fail(
+            new BotApiError({
+              method,
+              description: response.description,
+              delivery:
+                response.error_code !== undefined &&
+                response.error_code >= 400 &&
+                response.error_code < 500
+                  ? "rejected"
+                  : "unknown",
+            }),
+          ),
     ),
   );
 
