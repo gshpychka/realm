@@ -938,7 +938,7 @@ class LiveSession:
 
     def _log_event(self, event: Any) -> None:
         if event.type not in _AUDIO_EVENTS:
-            log.info("openai: %r", event)
+            log.info("openai: %s", event.type)
 
     def _flush_transcripts(self) -> None:
         """Transcripts arrive as fragments with no end marker; log each side's run as a line."""
