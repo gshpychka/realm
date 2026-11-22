@@ -12,10 +12,10 @@ this creates it through Home Assistant's own supported APIs (home-assistant/core
   pipeline's speech recognition and languages, unchanged, that agent, and no
   TTS: GPT-Live speaks.
 
-It only ever creates. Something that already exists is checked, never changed:
-a difference is reported for a person to resolve. The preferred pipeline and
-every other agent, pipeline and exposure stay as they are. It writes a backup
-of what it read before creating anything, and changes nothing without --apply.
+It creates the home-only configuration and enables its integration-disabled
+conversation entity. User-disabled entities and existing configuration differences
+require operator resolution. The preferred pipeline and every other agent,
+pipeline and exposure stay as they are. It writes a backup before applying changes.
 The token is read from stdin and never printed.
 
     sudo cat /run/secrets/voice-broker/home-assistant-token |
@@ -216,6 +216,27 @@ class _HomeAssistant:
         }
         return State(pipelines["pipelines"], pipelines.get("preferred_pipeline"), openai, agents)
 
+    async def agent_entity(self, entity_id: str) -> dict[str, Any] | None:
+        """The home-only conversation entity's registry record."""
+        registry = await self.call("config/entity_registry/list")
+        return next((row for row in registry if row["entity_id"] == entity_id), None)
+
+    async def ensure_agent_available(self, entry_id: str, entity_id: str) -> None:
+        """The home-only agent is enabled and registered for conversation requests."""
+        entity = await self.agent_entity(entity_id)
+        if entity is None or entity.get("config_entry_id") != entry_id:
+            raise SetupError(f"agent {entity_id} has no matching entity registry entry")
+        if entity.get("disabled_by") not in (None, "integration"):
+            raise SetupError(f"agent {entity_id} is disabled by {entity['disabled_by']}; left as it is")
+        if entity.get("disabled_by") == "integration":
+            await self.call("config/entity_registry/update", entity_id=entity_id, disabled_by=None)
+        agents = await self.call("conversation/agent/list")
+        if not any(agent["id"] == entity_id for agent in agents["agents"]):
+            self.rest("POST", "/api/services/homeassistant/reload_config_entry", {"entry_id": entry_id})
+            agents = await self.call("conversation/agent/list")
+            if not any(agent["id"] == entity_id for agent in agents["agents"]):
+                raise SetupError(f"agent {entity_id} is not registered after reloading its integration")
+
     def create_agent(self, entry_id: str, name: str) -> None:
         flow = self.rest(
             "POST",
@@ -239,7 +260,7 @@ class _HomeAssistant:
             self.rest("DELETE", f"/api/config/config_entries/subentries/flow/{flow['flow_id']}")
 
 
-def _backup(directory: Path, state: State) -> Path:
+def _backup(directory: Path, state: State, agent_entity: dict[str, Any] | None) -> Path:
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     # microseconds: a dry run right after --apply, within the same second, must not collide
     path = directory / f"ha-voice-setup-before-{datetime.now().astimezone().strftime('%Y%m%dT%H%M%S.%f')}.json"
@@ -251,6 +272,7 @@ def _backup(directory: Path, state: State) -> Path:
                 "preferred_pipeline": state.preferred_pipeline,
                 "openai_entries": state.openai_entries,
                 "agents_by_subentry": state.agents_by_subentry,
+                "agent_entity": agent_entity,
             },
             f,
             indent=1,
@@ -262,17 +284,26 @@ async def _run(args: argparse.Namespace, token: str) -> None:
     async with _HomeAssistant(args.url, token) as ha:
         before = await ha.state()
         steps = plan(before, args.name, args.source_pipeline)
-        print(f"backup: {_backup(args.backup_dir, before)}")
+        entity = await ha.agent_entity(steps.agent_entity) if steps.agent_entity else None
+        print(f"backup: {_backup(args.backup_dir, before, entity)}")
         print(f"agent {args.name!r}: {'create' if steps.create_agent else f'exists as {steps.agent_entity}'}")
         print(f"pipeline {args.name!r}: {'create' if steps.pipeline else 'exists, matching'}")
         if steps.pipeline:
             print(f"  {json.dumps(steps.pipeline)}")
+        if entity:
+            print(f"agent entity disabled_by: {entity.get('disabled_by')}")
         if not args.apply:
-            print("dry run: nothing changed; --apply creates the above")
+            print("dry run: --apply creates missing configuration, enables an integration-disabled home agent,")
+            print(
+                "and reloads its OpenAI integration if the agent is not registered; user-disabled entities stay unchanged"
+            )
             return
         if steps.create_agent:
             ha.create_agent(steps.entry_id, args.name)
         steps = await wait_for_agent(ha.state, args.name, args.source_pipeline)
+        if steps.agent_entity is None:
+            raise SetupError("the home-only agent has no conversation entity")
+        await ha.ensure_agent_available(steps.entry_id, steps.agent_entity)
         if steps.pipeline is not None:
             created = await ha.call(
                 "assist_pipeline/pipeline/create", **steps.pipeline, conversation_engine=steps.agent_entity

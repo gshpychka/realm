@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from pathlib import Path
+from weakref import WeakKeyDictionary
 
 from openai import AsyncOpenAI
 from websockets.asyncio.server import Server, ServerConnection, serve
@@ -64,6 +65,8 @@ class Broker:
         self._config = config
         self._agent = create_agent(config.agent)
         self._devices = {d.address: _DeviceState(d, EchoCanceller(MIC_RATE)) for d in config.devices}
+        self._by_mac = {state.device.mac: state for state in self._devices.values()}
+        self._authorized: WeakKeyDictionary[ServerConnection, _DeviceState] = WeakKeyDictionary()
         openai = AsyncOpenAI(api_key=config.openai_api_key)
         self._connect = live_connector(openai)
         # The one classifier, gating (routing) or only shadowing (parallel): config.load allows one mode.
@@ -119,8 +122,27 @@ class Broker:
         current = self._devices[address].current
         return current is not None and not current.done()
 
+    def _recognize(self, address: str) -> _DeviceState | None:
+        try:
+            # Only complete Ethernet neighbors identify directly attached IPv4 peers.
+            neighbors = {
+                columns[3].lower()
+                for line in Path("/proc/net/arp").read_text().splitlines()[1:]
+                if len(columns := line.split()) == 6
+                and columns[0] == address
+                and int(columns[1], 16) == 1
+                and int(columns[2], 16) & 2
+            }
+        except (OSError, ValueError) as error:
+            log.warning("cannot read LAN neighbors: %s", error)
+            return None
+        if len(neighbors) != 1:
+            return None
+        return self._by_mac.get(neighbors.pop())
+
     def _authorize(self, connection: ServerConnection, request: Request) -> Response | None:
-        if connection.remote_address[0] not in self._devices:
+        state = self._recognize(connection.remote_address[0])
+        if state is None:
             log.warning("rejected connection from unknown address %s", connection.remote_address)
             return connection.respond(HTTPStatus.FORBIDDEN, "unknown device\n")
         expected = f"Bearer {self._config.device_token}"
@@ -128,10 +150,11 @@ class Broker:
         if not hmac.compare_digest(given.encode(), expected.encode()):
             log.warning("rejected connection from %s", connection.remote_address)
             return connection.respond(HTTPStatus.UNAUTHORIZED, "unauthorized\n")
+        self._authorized[connection] = state
         return None
 
     async def _handle(self, device: ServerConnection) -> None:
-        state = self._devices[device.remote_address[0]]
+        state = self._authorized.pop(device)
         _device_name.set(state.device.name)
         if state.current is not None and not state.current.done():
             log.info("new conversation replaces the running one")
@@ -143,7 +166,7 @@ class Broker:
         except (TimeoutError, ProtocolError, ConnectionClosed) as e:
             log.warning("no valid start from %s: %r", device.remote_address, e)
             return
-        opening = self._calls.answer(device.remote_address[0])
+        opening = self._calls.answer(state.device.address)
         if opening is None:
             log.info("woken by %s", start.wake_word)
         else:

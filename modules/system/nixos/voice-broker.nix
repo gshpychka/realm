@@ -19,7 +19,7 @@ let
   hermesSocket = "/run/voice-broker-hermes/agent.sock";
   json = pkgs.formats.json { };
   voicePes = lib.filterAttrs (_: host: host.voiceArea != null) config.my.hosts;
-  voicePeIps = map (host: host.lanIp) (lib.attrValues voicePes);
+  voicePeMacs = lib.filter (mac: mac != null) (map (host: host.mac) (lib.attrValues voicePes));
   nftables = config.networking.firewall.backend == "nftables";
 
   gated = cfg.mode == "gated";
@@ -404,6 +404,12 @@ in
             message = "my.voice-broker.overflow requires the openclaw backend.";
           }
           {
+            assertion = lib.all (
+              host: host.mac != null && builtins.match "([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}" host.mac != null
+            ) (lib.attrValues voicePes);
+            message = "my.voice-broker requires a valid my.hosts.<name>.mac for every Voice PE.";
+          }
+          {
             assertion =
               cfg.mode == "consult"
               || lib.all (host: host.homeAssistantDeviceId != null) (lib.attrValues voicePes);
@@ -438,6 +444,7 @@ in
             name: host:
             {
               inherit name;
+              inherit (host) mac;
               address = host.lanIp;
               area = host.voiceArea;
               call_action = callAction host;
@@ -548,11 +555,13 @@ in
         # Only the Voice PEs may open conversations: every one is billed to the OpenAI key.
         networking.firewall = {
           extraInputRules = lib.mkIf (nftables && voicePes != { }) ''
-            ip saddr { ${lib.concatStringsSep ", " voicePeIps} } tcp dport ${toString cfg.port} accept
+            ip saddr ${config.my.lan.cidr} ether saddr { ${lib.concatStringsSep ", " voicePeMacs} } tcp dport ${toString cfg.port} accept
           '';
-          extraCommands = lib.mkIf (!nftables && voicePes != { }) ''
-            iptables -A nixos-fw -p tcp -s ${lib.concatStringsSep "," voicePeIps} --dport ${toString cfg.port} -j nixos-fw-accept
-          '';
+          extraCommands = lib.mkIf (!nftables && voicePes != { }) (
+            lib.concatMapStringsSep "\n" (mac: ''
+              iptables -A nixos-fw -p tcp -s ${config.my.lan.cidr} -m mac --mac-source ${mac} --dport ${toString cfg.port} -j nixos-fw-accept
+            '') voicePeMacs
+          );
         };
       }
 

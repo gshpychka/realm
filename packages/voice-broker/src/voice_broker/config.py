@@ -17,6 +17,7 @@ What happens to a delegated request is one of three modes, by which of
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -134,12 +135,13 @@ class Device:
     """A Voice PE allowed to open conversations."""
 
     name: str
-    # The address it connects from.
+    # Configured address used as the call-correlation key.
     address: str
     # The room it stands in.
     area: str
     # The Home Assistant action that makes it open a conversation.
     call_action: str
+    mac: str = field(kw_only=True)
     # Its ESPHome device in Home Assistant's device registry, which its home
     # requests or speech are run as; None while Home Assistant takes neither.
     home_assistant_device_id: str | None = None
@@ -409,14 +411,24 @@ def _home_assistant(raw: dict[str, Any]) -> HomeAssistantAudio:
 
 
 def _device(raw: dict[str, Any]) -> Device:
+    mac = raw["mac"]
+    if not isinstance(mac, str) or re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", mac) is None:
+        raise ValueError("devices.mac must be a colon-separated Ethernet MAC address")
     return Device(
-        raw["name"], raw["address"], raw["area"], raw["call_action"], raw.get("home_assistant_device_id") or None
+        raw["name"],
+        raw["address"],
+        raw["area"],
+        raw["call_action"],
+        raw.get("home_assistant_device_id") or None,
+        mac=mac.lower(),
     )
 
 
 def load(path: Path) -> Config:
     raw = json.loads(path.read_text())
     devices = [_device(d) for d in raw["devices"]]
+    if len({d.mac for d in devices}) != len(devices):
+        raise ValueError("devices.mac must be unique")
     if "decisions_shadow" in raw:
         # 6c02e0d's top-level shadow, never deployed; a config naming it must not pass silently.
         raise ValueError("decisions_shadow is home_assistant.shadow now")

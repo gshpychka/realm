@@ -91,9 +91,8 @@ before deploying hoard with `nixos-switch`.
    nixos-rebuild switch --flake .#hoard --target-host hoard --sudo
    ```
 
-   Restart each Voice PE from Home Assistant so it picks up its static lease;
-   the broker only accepts those addresses. Home Assistant finds them again
-   through zeroconf.
+   The broker identifies each Voice PE by its registered LAN MAC and bearer
+   token. Home Assistant follows device addresses through zeroconf.
 
 ## Offline Nix firmware
 
@@ -258,11 +257,14 @@ sudo cat /run/secrets/voice-broker/home-assistant-token |
 
 Run it without `--apply` first. That run only reads Home Assistant, writes a
 0600 backup of the pipelines and agents, and prints what it would create. Then
-run it again with `--apply`. It only ever creates, and is safe to re-run:
+run it again with `--apply`. It creates matching configuration and ensures the
+home-only agent is registered:
 - It copies speech recognition and language from "Remote" unchanged.
-- It sets no TTS and does not touch the preferred pipeline.
-- It never changes or replaces an existing agent, pipeline or exposure.
-- If something differs, it stops and says what.
+- It sets no TTS and preserves the preferred pipeline.
+- It enables an integration-disabled home-only conversation entity and reloads
+  its integration when registration is pending.
+- User-disabled entities and existing configuration differences require operator
+  resolution. Other agents, pipelines and exposure settings remain unchanged.
 
 Check the result in Settings → Voice assistants → "Voice broker home".
 
