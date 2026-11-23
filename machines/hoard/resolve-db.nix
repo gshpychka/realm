@@ -1,11 +1,12 @@
 # DaVinci Resolve project database, shared by the Resolve installs on eve and
 # reaper (Windows). In Resolve: Project Manager → Project Libraries → Add →
-# Network, host hoard.local, user `resolve`, password from
-# secrets/hoard/resolve.yaml.
+# Network, host hoard.local on the LAN or hoard's tailnet address elsewhere,
+# user `resolve`, password from secrets/hoard/resolve.yaml.
 # The role can create databases, so each project library is created from
 # Resolve itself.
 {
   config,
+  lib,
   pkgs,
   utils,
   ...
@@ -13,6 +14,8 @@
 let
   role = "resolve";
   lanInterface = config.systemd.network.networks."10-primary".matchConfig.Name;
+  # Tailscale assigns every tailnet address from this range
+  tailnetCidr = "100.64.0.0/10";
   arrayMountPoint = config.fileSystems."/mnt/hoard".mountPoint;
   arrayMountUnit = "${utils.escapeSystemdPath arrayMountPoint}.mount";
   backupDir = "${arrayMountPoint}/backups/resolve-db";
@@ -37,6 +40,7 @@ in
     settings.port = 5432;
     authentication = ''
       host all ${role} ${config.my.lan.cidr} scram-sha-256
+      host all ${role} ${tailnetCidr} scram-sha-256
     '';
     ensureUsers = [
       {
@@ -49,10 +53,16 @@ in
     ];
   };
 
-  # opens the port on the LAN interface
-  networking.firewall.interfaces.${lanInterface}.allowedTCPPorts = [
-    config.services.postgresql.settings.port
-  ];
+  # opens the port on the LAN and tailnet interfaces
+  networking.firewall.interfaces =
+    lib.genAttrs
+      [
+        lanInterface
+        config.services.tailscale.interfaceName
+      ]
+      (_: {
+        allowedTCPPorts = [ config.services.postgresql.settings.port ];
+      });
 
   systemd.services.resolve-db-password = {
     description = "Set the password of the Resolve database role";

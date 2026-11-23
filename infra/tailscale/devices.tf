@@ -5,7 +5,7 @@ locals {
   device = { for d in data.tailscale_devices.all.devices : split(".", d.name)[0] => d }
 
   # machines whose node keys stay valid indefinitely.
-  non_expiring = ["harbor", "reaper"]
+  non_expiring = ["harbor", "reaper", "hoard"]
 }
 
 resource "tailscale_device_key" "non_expiring" {

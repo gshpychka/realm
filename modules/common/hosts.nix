@@ -100,6 +100,7 @@
         lanIp = "192.168.1.3";
         mac = "E8:FF:1E:D6:89:EB";
         enableSubdomains = true;
+        tailscalePort = 41643;
       };
       reaper = {
         lanIp = "192.168.1.4";

@@ -58,6 +58,14 @@
     age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
   };
 
+  # enrolled once with `sudo tailscale up`, which prints a login URL; the node
+  # key persists in /var/lib/tailscale
+  my.tailscale = {
+    enable = true;
+    magicDns = false;
+    authKeySopsFile = null;
+  };
+
   my.acme.enable = true;
 
   my.onedrive.enable = true;
