@@ -45,7 +45,7 @@ export const stripTracking = (link: string): string | undefined => {
   // Telegram also marks links without a scheme (example.com/page)
   const url = schemePattern.test(link) ? link : `https://${link}`;
   const cleaned = sanitizeFully(url);
-  return cleaned === url ? undefined : cleaned;
+  return cleaned === url || cleaned === new URL(url).href ? undefined : cleaned;
 };
 
 /** The message's links that carry tracking, cleaned of it. */
