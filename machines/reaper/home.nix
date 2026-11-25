@@ -17,7 +17,13 @@
           btop.enable = true;
           cachePrune.enable = true;
           direnv.enable = true;
-          git.enable = true;
+          git = {
+            enable = true;
+            signing = {
+              key = config.my.sshKeys.reaper;
+              agent = config.my.tpmSshKey.socket;
+            };
+          };
           gpg.enable = true;
           neovim.enable = true;
           nh.enable = true;

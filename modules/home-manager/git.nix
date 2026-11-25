@@ -2,6 +2,7 @@
   config,
   lib,
   osConfig,
+  pkgs,
   ...
 }:
 let
@@ -10,6 +11,21 @@ in
 {
   options.my.git = {
     enable = lib.mkEnableOption "Git version control";
+    signing = {
+      # Run once:
+      #   nix run nixpkgs#gh -- auth refresh -s write:ssh_signing_key
+      #   nix eval --raw .#nixosConfigurations.<host>.config.home-manager.users.<user>.my.git.signing.key | nix run nixpkgs#gh -- ssh-key add --type signing --title <host>
+      key = lib.mkOption {
+        type = lib.types.str;
+        default = osConfig.my.sshKeys.main;
+        description = "SSH public key commits are signed with";
+      };
+      agent = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Socket of the SSH agent holding the signing key, or null for the default signer";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -25,8 +41,15 @@ in
         enable = true;
         signing = {
           format = "ssh";
-          key = osConfig.my.sshKeys.main;
+          # git reads a literal key only after a `ssh-` or `key::` prefix
+          key = "key::${cfg.signing.key}";
           signByDefault = true;
+          signer =
+            lib.mkIf (cfg.signing.agent != null)
+              "${pkgs.writeShellScript "agent-ssh-sign" ''
+                # ssh-keygen with the arguments git passes, signing through the configured agent
+                SSH_AUTH_SOCK=${cfg.signing.agent} exec ${lib.getExe' pkgs.openssh "ssh-keygen"} "$@"
+              ''}";
         };
 
         settings = {
