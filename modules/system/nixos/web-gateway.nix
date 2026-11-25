@@ -360,6 +360,9 @@ in
       };
     })
     (lib.mkIf cfg.enable {
+      networking.hosts."127.0.0.1" =
+        map serviceDomain (lib.attrNames cfg.services) ++ lib.optional ssoOn authDomain;
+
       assertions = [
         {
           assertion = config.security.acme.certs ? ${fqdn};
