@@ -13,7 +13,8 @@ Reads one JSON spec per target app and converges the declared resources:
 - custom filters (the saved filters of the UI's lists, kept server-side),
   matched by id while it holds the same list type, otherwise by type + label;
 - settings singletons such as config/naming, config/host or delayprofile/1;
-- quality definitions, matched by quality name;
+- quality definitions, matched by quality name; on Sonarr v5 their size
+  limits go to every profile item of that quality, which owns them there;
 - fields of existing quality profiles, matched by name (never created here:
   Recyclarr owns the profiles and their custom formats).
 Only declared keys are compared and written; every other key and every
@@ -145,6 +146,8 @@ EMPTY_ONLY_SETTINGS = {"proxyUsername", "proxyPassword", "sslCertPassword"}
 REDACTED = "<redacted>"
 # Radarr's tag label rule (Sonarr has none; lowercase is what both store)
 TAG_LABEL = re.compile(r"[a-z0-9-]+")
+# A quality's nullable size limits (MB per minute)
+SIZE_KEYS = {"minSize", "maxSize", "preferredSize"}
 
 
 def log(message):
@@ -951,8 +954,26 @@ def plan_settings(api, plan, settings):
             )
 
 
+def sizes_in_profiles(api, plan):
+    """Whether the running app stores size limits on quality profile items."""
+    status = read_once(api, plan, "/system/status")
+    try:
+        major = int(str(status["version"]).split(".")[0])
+    except (KeyError, TypeError, ValueError):
+        plan.problems.append("system/status: no readable app version")
+        return None
+    return status.get("appName") == "Sonarr" and major >= 5
+
+
 def plan_quality_definitions(api, plan, definitions):
+    """Declared size limits owned by quality profile items."""
     live = {d["quality"]["name"]: d for d in read(api, plan, "/qualitydefinition")}
+    in_profiles = False
+    if any(SIZE_KEYS & set(values) for values in definitions.values()):
+        in_profiles = sizes_in_profiles(api, plan)
+        if in_profiles is None:
+            return {}
+    profile_sizes = {}
     for name, values in definitions.items():
         current = live.get(name)
         if current is None:
@@ -961,12 +982,11 @@ def plan_quality_definitions(api, plan, definitions):
         desired = copy.deepcopy(current)
         changed = []
         for key, value in values.items():
+            if in_profiles and key in SIZE_KEYS:
+                # Sonarr v5 persists size limits only on profile items.
+                profile_sizes.setdefault(name, {})[key] = value
             # Nullable size limits are omitted from the API response when unset.
-            if (
-                key not in current
-                and key not in {"minSize", "maxSize", "preferredSize"}
-                and value is not None
-            ):
+            elif key not in current and key not in SIZE_KEYS:
                 plan.problems.append(
                     f"quality definition '{name}': unknown key '{key}'"
                 )
@@ -975,6 +995,10 @@ def plan_quality_definitions(api, plan, definitions):
                 desired[key] = value
                 changed.append(key)
         if changed:
+            if in_profiles:
+                # Non-null definition sizes propagate to every profile on PUT.
+                for key in SIZE_KEYS:
+                    desired.pop(key, None)
             plan.write(
                 "PUT",
                 f"/qualitydefinition/{current['id']}",
@@ -983,24 +1007,48 @@ def plan_quality_definitions(api, plan, definitions):
             )
     for name in sorted(set(live) - set(definitions)):
         plan.notes.append(f"quality definition '{name}' is not declared; left as is")
+    return profile_sizes
 
 
-def plan_quality_profiles(api, plan, profiles):
-    live = {p["name"]: p for p in read(api, plan, "/qualityprofile")}
-    for name, values in profiles.items():
-        current = live.get(name)
-        if current is None:
-            # Recyclarr creates the profile; the next run sets these fields
-            plan.notes.append(f"quality profile '{name}' does not exist yet; skipped")
-            continue
+def quality_leaves(items):
+    """A profile's quality items, also those nested in groups (a group has no quality)."""
+    for item in items:
+        if item.get("quality"):
+            yield item
+        else:
+            yield from quality_leaves(item.get("items", []))
+
+
+def plan_quality_profiles(api, plan, profiles, sizes):
+    """Converge declared profile fields and per-quality size limits together."""
+    live = read(api, plan, "/qualityprofile")
+    for name in sorted(set(profiles) - {p["name"] for p in live}):
+        # Recyclarr creates the profile; the next run sets these fields
+        plan.notes.append(f"quality profile '{name}' does not exist yet; skipped")
+    matched = set()
+    for current in live:
+        name = current["name"]
         desired = copy.deepcopy(current)
         changed = []
-        for key, value in values.items():
+        for key, value in profiles.get(name, {}).items():
             if key not in current:
                 plan.problems.append(f"quality profile '{name}': unknown key '{key}'")
+            elif key == "items" and sizes:
+                plan.problems.append(
+                    f"quality profile '{name}': 'items' can't be declared while "
+                    "quality definitions set the items' sizes"
+                )
             elif current[key] != value:
                 desired[key] = value
                 changed.append(key)
+        for leaf in quality_leaves(desired.get("items", [])):
+            quality = leaf["quality"]["name"]
+            for key, value in sizes.get(quality, {}).items():
+                matched.add(quality)
+                # an absent size is null ("no limit")
+                if leaf.get(key) != value:
+                    leaf[key] = value
+                    changed.append(f"{quality} {key}")
         if changed:
             plan.write(
                 "PUT",
@@ -1008,6 +1056,8 @@ def plan_quality_profiles(api, plan, profiles):
                 desired,
                 f"update quality profile '{name}' (id {current['id']}): {', '.join(changed)}",
             )
+    for quality in sorted(set(sizes) - matched):
+        plan.notes.append(f"quality '{quality}' is in no profile; its sizes not set")
 
 
 def find_custom_filter(existing, spec):
@@ -1097,10 +1147,11 @@ def make_plan(api, spec, secrets):
             plan_custom_filters(api, plan, spec["customFilters"])
         if spec.get("settings"):
             plan_settings(api, plan, spec["settings"])
+        sizes = {}
         if spec.get("qualityDefinitions"):
-            plan_quality_definitions(api, plan, spec["qualityDefinitions"])
-        if spec.get("qualityProfiles"):
-            plan_quality_profiles(api, plan, spec["qualityProfiles"])
+            sizes = plan_quality_definitions(api, plan, spec["qualityDefinitions"])
+        if spec.get("qualityProfiles") or sizes:
+            plan_quality_profiles(api, plan, spec.get("qualityProfiles", {}), sizes)
     except ApiError as err:
         plan.problems.append(str(err))
     return plan
