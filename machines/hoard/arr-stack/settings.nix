@@ -340,7 +340,6 @@ in
           movieImages = true;
         })
         (consumer 4 "Emby (Legacy)" "MediaBrowserMetadata" { movieMetadata = true; })
-        (consumer 5 "Kometa" "KometaMetadata" { deprecated = true; })
       ];
     };
     sonarr = {
@@ -478,7 +477,6 @@ in
           seriesPlexMatchFile = true;
           episodeMappings = true;
         })
-        (consumer 5 "Kometa" "KometaMetadata" { deprecated = true; })
       ];
       # MB per minute; null is no limit
       qualityDefinitions = {

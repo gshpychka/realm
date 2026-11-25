@@ -961,7 +961,12 @@ def plan_quality_definitions(api, plan, definitions):
         desired = copy.deepcopy(current)
         changed = []
         for key, value in values.items():
-            if key not in current and value is not None:
+            # Nullable size limits are omitted from the API response when unset.
+            if (
+                key not in current
+                and key not in {"minSize", "maxSize", "preferredSize"}
+                and value is not None
+            ):
                 plan.problems.append(
                     f"quality definition '{name}': unknown key '{key}'"
                 )
