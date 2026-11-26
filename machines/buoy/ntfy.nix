@@ -20,6 +20,15 @@ in
       auth-default-access = "deny-all";
       # ntfy.sh relays a content-free poll request to wake the iOS/Android apps
       upstream-base-url = "https://ntfy.sh";
+      # Run once:
+      #   keys=$(nix run nixpkgs#ntfy-sh -- webpush keys)
+      #   printf '%s\n' "$keys" | sed -n 's/^web-push-private-key: /ntfy-web-push-private-key: /p' \
+      #     | sops --encrypt --filename-override secrets/buoy/ntfy-web-push.yaml --input-type yaml --output-type yaml /dev/stdin \
+      #     > secrets/buoy/ntfy-web-push.yaml
+      #   printf '%s\n' "$keys" | sed -n 's/^web-push-public-key: //p'
+      web-push-public-key = "BMOXVoata6kqPN5HlXwnrLLYIfD8Ljf02J3l81bxMyDpdNQ3xpfcqmeVcmR_wm7Rtshy9_pFGznSpKL3SLkRs98";
+      web-push-file = "/var/lib/ntfy-sh/webpush.db";
+      web-push-email-address = "ntfy@${config.my.domain}";
       auth-access = [
         "reader:${config.my.notifications.topic}:read-only"
       ]
@@ -39,6 +48,7 @@ in
     ntfy-gatus-password-hash.sopsFile = ../../secrets/buoy/ntfy.yaml;
     ntfy-gatus-token.sopsFile = ../../secrets/buoy/ntfy.yaml;
     ntfy-reader-password-hash.sopsFile = ../../secrets/buoy/ntfy.yaml;
+    ntfy-web-push-private-key.sopsFile = ../../secrets/buoy/ntfy-web-push.yaml;
   }
   // lib.listToAttrs (
     lib.concatMap (
@@ -74,6 +84,7 @@ in
             host: ",${notificationAccount host}:${secret (notificationSecret host "ntfy-token")}"
           )
         }
+        NTFY_WEB_PUSH_PRIVATE_KEY=${secret "ntfy-web-push-private-key"}
       '';
     restartUnits = [ "ntfy-sh.service" ];
   };
