@@ -51,6 +51,12 @@
   # handle auth in NixOS, not GCP
   security.googleOsLogin.enable = lib.mkForce false;
 
+  # nixpkgs' GCE image build copies a channel into root's profile
+  systemd.tmpfiles.rules = [
+    "R /root/.nix-defexpr/channels"
+    "R /nix/var/nix/profiles/per-user/root/channels*"
+  ];
+
   users = {
     mutableUsers = false;
     users.${config.my.user} = {
