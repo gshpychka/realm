@@ -30,7 +30,6 @@ in
     # use `sudo --non-interactive`
     home.sessionVariables = {
       NH_ELEVATION_STRATEGY = "passwordless";
-      NH_SHOW_ACTIVATION_LOGS = "1";
     };
 
     programs.zsh.initContent = lib.mkIf cfg.enableZshIntegration ''
