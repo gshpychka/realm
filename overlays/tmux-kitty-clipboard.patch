@@ -1,0 +1,741 @@
+From 665979bb50809e6e5139405d405d5e68bcf5612c Mon Sep 17 00:00:00 2001
+From: Glib Shpychka <23005347+gshpychka@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 11:25:04 +0200
+Subject: [PATCH] Support the kitty clipboard protocol (OSC 5522) with paste
+ events
+
+Panes can turn on paste events (mode 5522) and read or write the client
+terminal's clipboard with OSC 5522, as the protocol's section on
+multiplexers describes:
+https://sw.kovidgoyal.net/kitty/clipboard/#support-for-terminal-multiplexers
+
+tmux detects support with a DECRQM query for mode 5522 (feature
+"osc5522"). It sets the mode on the client terminal while the active pane
+has it and no prompt or overlay takes input. Paste events carry no id and
+go to the active pane.
+
+A pane's read or write goes to the most recently active client with the
+feature, under an id of tmux's own. Replies with that id return to the
+pane with the pane's id restored. One request is in flight at a time;
+another gets EBUSY, and ENOSYS when no client has the feature. A request
+ends on DONE, an error status, the client's exit, or 30 seconds without a
+packet.
+---
+ input.c         | 288 +++++++++++++++++++++++++++++++++++++++++++++---
+ screen.c        |   2 +
+ server-client.c |   4 +
+ tmux.h          |   6 +-
+ tty-features.c  |   8 ++
+ tty-keys.c      | 139 +++++++++++++++++------
+ tty.c           |  12 ++
+ 7 files changed, 411 insertions(+), 48 deletions(-)
+
+diff --git a/input.c b/input.c
+index 2fef558..02a42dd 100644
+--- a/input.c
++++ b/input.c
+@@ -154,6 +154,7 @@ static void	input_start_request_timer(struct input_ctx *);
+ static struct input_request *input_make_request(struct input_ctx *,
+ 		    enum input_request_type);
+ static void	input_free_request(struct input_request *);
++static struct client *input_find_client(struct window_pane *, int);
+ static int	input_add_request(struct input_ctx *, enum input_request_type,
+ 		    int);
+ static int	input_split(struct input_ctx *);
+@@ -169,6 +170,7 @@ static void	input_osc_10(struct input_ctx *, const char *);
+ static void	input_osc_11(struct input_ctx *, const char *);
+ static void	input_osc_12(struct input_ctx *, const char *);
+ static void	input_osc_52(struct input_ctx *, const char *);
++static void	input_osc_5522(struct input_ctx *, const char *);
+ static void	input_osc_104(struct input_ctx *, const char *);
+ static void	input_osc_110(struct input_ctx *, const char *);
+ static void	input_osc_111(struct input_ctx *, const char *);
+@@ -1713,6 +1715,9 @@ input_csi_dispatch(struct input_ctx *ictx)
+ 		case 2031:	/* theme update notifications */
+ 			n = (s->mode & MODE_THEME_UPDATES) ? 1 : 2;
+ 			break;
++		case 5522:	/* paste events */
++			n = (s->mode & MODE_PASTEEVENTS) ? 1 : 2;
++			break;
+ 		default:
+ 			n = 0;
+ 			break;
+@@ -1986,6 +1991,9 @@ input_csi_dispatch_rm_private(struct input_ctx *ictx)
+ 			if (ictx->wp != NULL)
+ 				ictx->wp->flags &= ~PANE_THEMECHANGED;
+ 			break;
++		case 5522:
++			screen_write_mode_clear(sctx, MODE_PASTEEVENTS);
++			break;
+ 		default:
+ 			log_debug("%s: unknown '%c'", __func__, ictx->ch);
+ 			break;
+@@ -2091,6 +2099,9 @@ input_csi_dispatch_sm_private(struct input_ctx *ictx)
+ 		case 2026:
+ 			screen_write_start_sync(ictx->wp);
+ 			break;
++		case 5522:
++			screen_write_mode_set(sctx, MODE_PASTEEVENTS);
++			break;
+ 		default:
+ 			log_debug("%s: unknown '%c'", __func__, ictx->ch);
+ 			break;
+@@ -2772,6 +2783,9 @@ input_exit_osc(struct input_ctx *ictx)
+ 	case 133:
+ 		input_osc_133(ictx, p);
+ 		break;
++	case 5522:
++		input_osc_5522(ictx, p);
++		break;
+ 	default:
+ 		log_debug("%s: unknown '%u'", __func__, option);
+ 		break;
+@@ -3442,6 +3456,238 @@ input_osc_52(struct input_ctx *ictx, const char *p)
+ 	}
+ }
+ 
++/*
++ * The kitty clipboard protocol (OSC 5522) request in flight. The clipboard is
++ * a single resource, so one pane at a time may have a request with a client
++ * terminal. The request carries tmux's own id, which the terminal echoes, so
++ * replies are told apart from paste events and routed back to the pane.
++ */
++static struct {
++	struct client		*c;
++	u_int			 pane;
++	enum input_end_type	 end;
++	char			*id;	/* the pane's own id, if any */
++	int			 write;
++	u_int			 seq;
++	struct event		 timer;
++} input_osc5522_request;
++
++/* Seconds without a packet before a request stops holding the clipboard. */
++#define INPUT_OSC5522_TIMEOUT 30
++
++/* Find a metadata value in an OSC 5522 packet body. */
++static const char *
++input_osc5522_get(const char *body, size_t len, const char *key, size_t *vlen)
++{
++	const char	*meta_end, *entry, *next;
++	size_t		 keylen = strlen(key);
++
++	if ((meta_end = memchr(body, ';', len)) == NULL)
++		meta_end = body + len;
++	for (entry = body; entry < meta_end; entry = next + 1) {
++		if ((next = memchr(entry, ':', meta_end - entry)) == NULL)
++			next = meta_end;
++		if ((size_t)(next - entry) > keylen &&
++		    strncmp(entry, key, keylen) == 0 &&
++		    entry[keylen] == '=') {
++			*vlen = next - entry - keylen - 1;
++			return (entry + keylen + 1);
++		}
++	}
++	return (NULL);
++}
++
++/* Whether a metadata value is the given string. */
++static int
++input_osc5522_is(const char *value, size_t vlen, const char *s)
++{
++	return (value != NULL && vlen == strlen(s) &&
++	    strncmp(value, s, vlen) == 0);
++}
++
++/* Build an OSC 5522 packet from a body with its id replaced. */
++static char *
++input_osc5522_packet(const char *body, size_t len, const char *id,
++    enum input_end_type end)
++{
++	const char	*meta_end, *entry, *next;
++	char		*meta, *tmp, *packet;
++
++	if ((meta_end = memchr(body, ';', len)) == NULL)
++		meta_end = body + len;
++	meta = xstrdup("");
++	for (entry = body; entry < meta_end; entry = next + 1) {
++		if ((next = memchr(entry, ':', meta_end - entry)) == NULL)
++			next = meta_end;
++		if (next - entry >= 3 && strncmp(entry, "id=", 3) == 0)
++			continue;
++		xasprintf(&tmp, "%s%s%.*s", meta, *meta == '\0' ? "" : ":",
++		    (int)(next - entry), entry);
++		free(meta);
++		meta = tmp;
++	}
++	if (id != NULL) {
++		xasprintf(&tmp, "%s%sid=%s", meta, *meta == '\0' ? "" : ":",
++		    id);
++		free(meta);
++		meta = tmp;
++	}
++	xasprintf(&packet, "\033]5522;%s%.*s%s", meta,
++	    (int)(body + len - meta_end), meta_end,
++	    end == INPUT_END_BEL ? "\007" : "\033\\");
++	free(meta);
++	return (packet);
++}
++
++/* Release the clipboard from the request in flight. */
++static void
++input_osc5522_clear(void)
++{
++	if (evtimer_initialized(&input_osc5522_request.timer))
++		evtimer_del(&input_osc5522_request.timer);
++	free(input_osc5522_request.id);
++	input_osc5522_request.id = NULL;
++	input_osc5522_request.c = NULL;
++}
++
++/* Request timer. The terminal stopped answering. */
++static void
++input_osc5522_timer_callback(__unused int fd, __unused short events,
++    __unused void *arg)
++{
++	log_debug("%s: request %u timed out", __func__,
++	    input_osc5522_request.seq);
++	input_osc5522_clear();
++}
++
++/* Restart the request timer. */
++static void
++input_osc5522_start_timer(void)
++{
++	struct timeval	tv = { .tv_sec = INPUT_OSC5522_TIMEOUT };
++
++	if (!evtimer_initialized(&input_osc5522_request.timer)) {
++		evtimer_set(&input_osc5522_request.timer,
++		    input_osc5522_timer_callback, NULL);
++	}
++	evtimer_add(&input_osc5522_request.timer, &tv);
++}
++
++/* Answer a pane's OSC 5522 request with an error status. */
++static void
++input_osc5522_error(struct input_ctx *ictx, const char *type, size_t tlen,
++    const char *id, const char *status)
++{
++	char	*body, *packet;
++
++	xasprintf(&body, "type=%.*s:status=%s", (int)tlen, type, status);
++	packet = input_osc5522_packet(body, strlen(body), id, ictx->input_end);
++	input_send_reply(ictx, packet);
++	free(packet);
++	free(body);
++}
++
++/* Handle the OSC 5522 sequence for the kitty clipboard protocol. */
++static void
++input_osc_5522(struct input_ctx *ictx, const char *p)
++{
++	struct window_pane	*wp = ictx->wp;
++	struct client		*c;
++	const char		*type, *id;
++	size_t			 len = strlen(p), tlen, idlen;
++	char			*paneid = NULL, *packet, tmuxid[32];
++
++	if (wp == NULL)
++		return;
++	if ((type = input_osc5522_get(p, len, "type", &tlen)) == NULL)
++		return;
++	if ((id = input_osc5522_get(p, len, "id", &idlen)) != NULL)
++		paneid = xstrndup(id, idlen);
++
++	if (input_osc5522_is(type, tlen, "read") ||
++	    input_osc5522_is(type, tlen, "write")) {
++		/* A new request takes the clipboard if it is free. */
++		c = input_find_client(wp, TERM_PASTEEVENTS);
++		if (c == NULL || input_osc5522_request.c != NULL) {
++			input_osc5522_error(ictx, type, tlen, paneid,
++			    c == NULL ? "ENOSYS" : "EBUSY");
++			free(paneid);
++			return;
++		}
++		input_osc5522_request.c = c;
++		input_osc5522_request.pane = wp->id;
++		input_osc5522_request.end = ictx->input_end;
++		input_osc5522_request.id = paneid;
++		input_osc5522_request.write = input_osc5522_is(type, tlen,
++		    "write");
++		input_osc5522_request.seq++;
++	} else if (input_osc5522_is(type, tlen, "wdata") ||
++	    input_osc5522_is(type, tlen, "walias")) {
++		/* Data continues the pane's own write. */
++		free(paneid);
++		c = input_osc5522_request.c;
++		if (c == NULL ||
++		    !input_osc5522_request.write ||
++		    input_osc5522_request.pane != wp->id)
++			return;
++	} else {
++		free(paneid);
++		return;
++	}
++
++	xsnprintf(tmuxid, sizeof tmuxid, "tmux-%u", input_osc5522_request.seq);
++	packet = input_osc5522_packet(p, len, tmuxid, INPUT_END_ST);
++	tty_puts(&c->tty, packet);
++	free(packet);
++	input_osc5522_start_timer();
++}
++
++/*
++ * Handle an OSC 5522 packet from a client terminal: a reply to the request in
++ * flight, or a paste event for the active pane.
++ */
++void
++input_osc5522_receive(struct client *c, const char *body, size_t len)
++{
++	struct window_pane	*wp;
++	const char		*id, *status;
++	size_t			 idlen, slen;
++	char			*packet, tmuxid[32];
++
++	log_debug("%s: %.*s", __func__, (int)len, body);
++
++	if ((id = input_osc5522_get(body, len, "id", &idlen)) == NULL) {
++		wp = c->session->curw->window->active;
++		if (~wp->screen->mode & MODE_PASTEEVENTS)
++			return;
++		packet = input_osc5522_packet(body, len, NULL, INPUT_END_ST);
++		input_send_reply(wp->ictx, packet);
++		free(packet);
++		return;
++	}
++
++	xsnprintf(tmuxid, sizeof tmuxid, "tmux-%u", input_osc5522_request.seq);
++	if (input_osc5522_request.c != c ||
++	    !input_osc5522_is(id, idlen, tmuxid))
++		return;
++
++	wp = window_pane_find_by_id(input_osc5522_request.pane);
++	if (wp != NULL) {
++		packet = input_osc5522_packet(body, len,
++		    input_osc5522_request.id, input_osc5522_request.end);
++		input_send_reply(wp->ictx, packet);
++		free(packet);
++	}
++
++	/* DONE or an error status (E...) ends the request. */
++	status = input_osc5522_get(body, len, "status", &slen);
++	if (input_osc5522_is(status, slen, "DONE") ||
++	    (status != NULL && slen != 0 && *status == 'E'))
++		input_osc5522_clear();
++	else
++		input_osc5522_start_timer();
++}
++
+ /* Handle the OSC 104 sequence for unsetting (multiple) palette entries. */
+ static void
+ input_osc_104(struct input_ctx *ictx, const char *p)
+@@ -3579,33 +3825,45 @@ input_free_request(struct input_request *ir)
+ 	free(ir);
+ }
+ 
+-/* Add a request. */
+-static int
+-input_add_request(struct input_ctx *ictx, enum input_request_type type, int idx)
++/*
++ * Find the most recently active client showing a pane whose terminal has the
++ * given flags.
++ */
++static struct client *
++input_find_client(struct window_pane *wp, int termflags)
+ {
+-	struct window_pane	*wp = ictx->wp;
+-	struct window		*w;
+-	struct client		*c = NULL, *loop;
+-	struct input_request	*ir;
+-	char			 s[64];
+-
+-	if (wp == NULL)
+-		return (-1);
+-	w = wp->window;
++	struct client	*c = NULL, *loop;
+ 
+ 	TAILQ_FOREACH(loop, &clients, entry) {
+ 		if (loop->flags & CLIENT_UNATTACHEDFLAGS)
+ 			continue;
+-		if (loop->session == NULL || !session_has(loop->session, w))
++		if (loop->session == NULL ||
++		    !session_has(loop->session, wp->window))
+ 			continue;
+ 		if (~loop->tty.flags & TTY_STARTED)
+ 			continue;
++		if ((loop->tty.term->flags & termflags) != termflags)
++			continue;
+ 		if (c == NULL)
+ 			c = loop;
+ 		else if (timercmp(&loop->activity_time, &c->activity_time, >))
+ 			c = loop;
+ 	}
+-	if (c == NULL)
++	return (c);
++}
++
++/* Add a request. */
++static int
++input_add_request(struct input_ctx *ictx, enum input_request_type type, int idx)
++{
++	struct window_pane	*wp = ictx->wp;
++	struct client		*c;
++	struct input_request	*ir;
++	char			 s[64];
++
++	if (wp == NULL)
++		return (-1);
++	if ((c = input_find_client(wp, 0)) == NULL)
+ 		return (-1);
+ 
+ 	ir = input_make_request(ictx, type);
+@@ -3716,6 +3974,8 @@ input_cancel_requests(struct client *c)
+ 
+ 	TAILQ_FOREACH_SAFE(ir, &c->input_requests, centry, ir1)
+ 		input_free_request(ir);
++	if (input_osc5522_request.c == c)
++		input_osc5522_clear();
+ }
+ 
+ /* Report current theme. */
+diff --git a/screen.c b/screen.c
+index f9ca89a..33d12e4 100644
+--- a/screen.c
++++ b/screen.c
+@@ -841,6 +841,8 @@ screen_mode_to_string(int mode)
+ 		strlcat(tmp, "KEYS_EXTENDED_2,", sizeof tmp);
+ 	if (mode & MODE_THEME_UPDATES)
+ 		strlcat(tmp, "THEME_UPDATES,", sizeof tmp);
++	if (mode & MODE_PASTEEVENTS)
++		strlcat(tmp, "PASTEEVENTS,", sizeof tmp);
+ 	if (mode & MODE_SYNC)
+ 		strlcat(tmp, "SYNC,", sizeof tmp);
+ 	if (*tmp != '\0')
+diff --git a/server-client.c b/server-client.c
+index 9508809..b92dda0 100644
+--- a/server-client.c
++++ b/server-client.c
+@@ -2311,6 +2311,10 @@ server_client_reset_state(struct client *c)
+ 	if (c->overlay_draw == NULL && prompt)
+ 		mode &= ~MODE_BRACKETPASTE;
+ 
++	/* Clear paste events if a prompt or overlay takes input; they go to the pane. */
++	if (c->overlay_draw != NULL || prompt)
++		mode &= ~MODE_PASTEEVENTS;
++
+ 	/* Set the terminal mode and reset attributes. */
+ 	tty_update_mode(tty, mode, s);
+ 	tty_reset(tty);
+diff --git a/tmux.h b/tmux.h
+index b53dae8..185af0a 100644
+--- a/tmux.h
++++ b/tmux.h
+@@ -697,6 +697,7 @@ enum tty_code_code {
+ #define MODE_KEYS_EXTENDED_2 0x40000
+ #define MODE_THEME_UPDATES 0x80000
+ #define MODE_SYNC 0x100000
++#define MODE_PASTEEVENTS 0x200000
+ 
+ #define ALL_MODES 0xffffff
+ #define ALL_MOUSE_MODES (MODE_MOUSE_STANDARD|MODE_MOUSE_BUTTON|MODE_MOUSE_ALL)
+@@ -1741,6 +1742,7 @@ struct tty_term {
+ #define TERM_SIXEL 0x40
+ #define TERM_INVALIDMS 0x80
+ #define TERM_NOREPLACE 0x100
++#define TERM_PASTEEVENTS 0x200
+ 	int		 flags;
+ 
+ 	LIST_ENTRY(tty_term) entry;
+@@ -1821,8 +1823,9 @@ struct tty {
+ #define TTY_WAITBG 0x4000
+ #define TTY_BRACKETPASTE 0x8000
+ #define TTY_HAVESYNC 0x10000
++#define TTY_HAVEPASTEEVENTS 0x20000
+ #define TTY_ALL_REQUEST_FLAGS \
+-	(TTY_HAVEDA|TTY_HAVEDA2|TTY_HAVEXDA|TTY_HAVESYNC)
++	(TTY_HAVEDA|TTY_HAVEDA2|TTY_HAVEXDA|TTY_HAVESYNC|TTY_HAVEPASTEEVENTS)
+ 	int		 flags;
+ 
+ 	struct tty_term	*term;
+@@ -3451,6 +3454,7 @@ void	 input_reply_clipboard(struct bufferevent *, const char *, size_t,
+ void	 input_set_buffer_size(size_t);
+ void	 input_request_reply(struct client *, enum input_request_type, void *);
+ void	 input_cancel_requests(struct client *);
++void	 input_osc5522_receive(struct client *, const char *, size_t);
+ 
+ /* input-key.c */
+ void	 input_key_build(void);
+diff --git a/tty-features.c b/tty-features.c
+index 7d8568b..6ea4cd8 100644
+--- a/tty-features.c
++++ b/tty-features.c
+@@ -93,6 +93,13 @@ static const struct tty_feature tty_feature_clipboard = {
+ 	0
+ };
+ 
++/* Terminal has the kitty clipboard protocol (OSC 5522) with paste events. */
++static const struct tty_feature tty_feature_osc5522 = {
++	"osc5522",
++	NULL,
++	TERM_PASTEEVENTS
++};
++
+ /* Terminal supports OSC 8 hyperlinks. */
+ static const char *tty_feature_hyperlinks_capabilities[] = {
+ #if defined (__OpenBSD__) || (defined(NCURSES_VERSION_MAJOR) && \
+@@ -402,6 +409,7 @@ static const struct tty_feature *const tty_features[] = {
+ 	&tty_feature_margins,
+ 	&tty_feature_mouse,
+ 	&tty_feature_osc7,
++	&tty_feature_osc5522,
+ 	&tty_feature_overline,
+ 	&tty_feature_progressbar,
+ 	&tty_feature_rectfill,
+diff --git a/tty-keys.c b/tty-keys.c
+index 7125dca..dcbfbb0 100644
+--- a/tty-keys.c
++++ b/tty-keys.c
+@@ -53,13 +53,15 @@ static int	tty_keys_mouse(struct tty *, const char *, size_t, size_t *,
+ 		    struct mouse_event *);
+ static int	tty_keys_clipboard(struct tty *, const char *, size_t,
+ 		    size_t *);
++static int	tty_keys_osc5522(struct tty *, const char *, size_t, size_t *);
+ static int	tty_keys_device_attributes(struct tty *, const char *, size_t,
+ 		    size_t *);
+ static int	tty_keys_device_attributes2(struct tty *, const char *, size_t,
+ 		    size_t *);
+ static int	tty_keys_extended_device_attributes(struct tty *, const char *,
+ 		    size_t, size_t *);
+-static int	tty_keys_sync(struct tty *, const char *, size_t, size_t *);
++static int	tty_keys_mode_report(struct tty *, const char *, size_t,
++		    size_t *);
+ static int	tty_keys_palette(struct tty *, const char *, size_t, size_t *);
+ 
+ /* A key tree entry. */
+@@ -750,6 +752,7 @@ tty_keys_next(struct tty *tty)
+ 	size_t			 len, size;
+ 	cc_t			 bspace;
+ 	int			 delay, expired = 0, n, bg = tty->bg;
++	int			 osc5522 = 0;
+ 	key_code		 key, onlykey;
+ 	struct mouse_event	 m = { 0 };
+ 	struct key_event	*event;
+@@ -782,8 +785,20 @@ tty_keys_next(struct tty *tty)
+ 		goto partial_key;
+ 	}
+ 
+-	/* Is this a synchronized update mode response? */
+-	switch (tty_keys_sync(tty, buf, len, &size)) {
++	/* Is this a kitty clipboard protocol packet? */
++	switch (tty_keys_osc5522(tty, buf, len, &size)) {
++	case 0:		/* yes */
++		key = KEYC_UNKNOWN;
++		goto complete_key;
++	case -1:	/* no, or not valid */
++		break;
++	case 1:		/* partial */
++		osc5522 = 1;
++		goto partial_key;
++	}
++
++	/* Is this a mode report for a mode tmux queried? */
++	switch (tty_keys_mode_report(tty, buf, len, &size)) {
+ 	case 0:		/* yes */
+ 		key = KEYC_UNKNOWN;
+ 		goto complete_key;
+@@ -1007,6 +1022,11 @@ partial_key:
+ 		if (delay < 500)
+ 			delay = 500;
+ 	}
++	if (osc5522) {
++		log_debug("%s: increasing delay (partial OSC 5522)", c->name);
++		if (delay < 500)
++			delay = 500;
++	}
+ 	tv.tv_sec = delay / 1000;
+ 	tv.tv_usec = (delay % 1000) * 1000L;
+ 
+@@ -1544,53 +1564,106 @@ tty_keys_device_attributes(struct tty *tty, const char *buf, size_t len,
+ }
+ 
+ /*
+- * Handle a synchronized update mode response. Returns 0 for success, -1 for
+- * failure, 1 for partial.
++ * Handle a kitty clipboard protocol (OSC 5522) packet. Returns 0 for success,
++ * -1 for failure, 1 for partial.
+  */
+ static int
+-tty_keys_sync(struct tty *tty, const char *buf, size_t len, size_t *size)
++tty_keys_osc5522(struct tty *tty, const char *buf, size_t len, size_t *size)
+ {
+-	struct client		*c = tty->client;
+-	static const char	 prefix[] = "\033[?2026;";
+-	size_t			 i;
+-	int			 status;
++	static const char	 prefix[] = "\033]5522;";
++	size_t			 i, end;
+ 
+ 	*size = 0;
+-	if (tty->flags & TTY_HAVESYNC)
+-		return (-1);
+-
+-	/* The response is always \033[?2026;Ps$y. */
+ 	for (i = 0; i < (sizeof prefix) - 1; i++) {
+ 		if (i == len)
+ 			return (1);
+ 		if (buf[i] != prefix[i])
+ 			return (-1);
+ 	}
+-	if (i == len)
+-		return (1);
+-	if (buf[i] < '0' || buf[i] > '4')
+-		return (-1);
+-	status = buf[i++] - '0';
+-	if (i == len)
+-		return (1);
+-	if (buf[i++] != '$')
+-		return (-1);
+-	if (i == len)
+-		return (1);
+-	if (buf[i++] != 'y')
+-		return (-1);
+-	*size = i;
+ 
+-	if (status == 1 || status == 2 || status == 3) {
+-		tty_parse_client_features(c, "sync", ",");
+-		tty_update_features(tty);
++	/* Find the terminator, BEL or ST. */
++	for (end = i; end < len; end++) {
++		if (buf[end] == '\007') {
++			*size = end + 1;
++			break;
++		}
++		if (buf[end] == '\033' && end + 1 < len && buf[end + 1] == '\\') {
++			*size = end + 2;
++			break;
++		}
+ 	}
+-	log_debug("%s: received DECRPM %.*s", c->name, (int)*size, buf);
+-	tty->flags |= TTY_HAVESYNC;
++	if (*size == 0)
++		return (1);
+ 
++	input_osc5522_receive(tty->client, buf + i, end - i);
+ 	return (0);
+ }
+ 
++/*
++ * Handle a mode report (DECRPM) for a mode queried to detect a feature.
++ * Returns 0 for success, -1 for failure, 1 for partial.
++ */
++static int
++tty_keys_mode_report(struct tty *tty, const char *buf, size_t len,
++    size_t *size)
++{
++	static const struct {
++		const char	*prefix;
++		const char	*feature;
++		int		 flag;
++	} modes[] = {
++		{ "\033[?2026;", "sync", TTY_HAVESYNC },
++		{ "\033[?5522;", "osc5522", TTY_HAVEPASTEEVENTS }
++	};
++	struct client	*c = tty->client;
++	const char	*prefix;
++	size_t		 i;
++	u_int		 j;
++	int		 status, partial = 0;
++
++	*size = 0;
++	for (j = 0; j < nitems(modes); j++) {
++		if (tty->flags & modes[j].flag)
++			continue;
++		prefix = modes[j].prefix;
++
++		/* The response is always the prefix then Ps$y. */
++		for (i = 0; prefix[i] != '\0'; i++) {
++			if (i == len || buf[i] != prefix[i])
++				break;
++		}
++		if (prefix[i] != '\0') {
++			if (i == len)
++				partial = 1;
++			continue;
++		}
++		if (i == len)
++			return (1);
++		if (buf[i] < '0' || buf[i] > '4')
++			return (-1);
++		status = buf[i++] - '0';
++		if (i == len)
++			return (1);
++		if (buf[i++] != '$')
++			return (-1);
++		if (i == len)
++			return (1);
++		if (buf[i++] != 'y')
++			return (-1);
++		*size = i;
++
++		if (status == 1 || status == 2 || status == 3) {
++			tty_parse_client_features(c, modes[j].feature, ",");
++			tty_update_features(tty);
++		}
++		log_debug("%s: received DECRPM %.*s", c->name, (int)*size, buf);
++		tty->flags |= modes[j].flag;
++
++		return (0);
++	}
++	return (partial ? 1 : -1);
++}
++
+ /*
+  * Handle secondary device attributes input. Returns 0 for success, -1 for
+  * failure, 1 for partial.
+diff --git a/tty.c b/tty.c
+index c630e8c..e1957f2 100644
+--- a/tty.c
++++ b/tty.c
+@@ -417,6 +417,8 @@ tty_send_requests(struct tty *tty)
+ 			tty_puts(tty, "\033[>q");
+ 		if (~tty->flags & TTY_HAVESYNC)
+ 			tty_puts(tty, "\033[?2026$p");
++		if (~tty->flags & TTY_HAVEPASTEEVENTS)
++			tty_puts(tty, "\033[?5522$p");
+ 		tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
+ 		tty->flags |= (TTY_WAITBG|TTY_WAITFG);
+ 	} else
+@@ -502,6 +504,8 @@ tty_stop_tty(struct tty *tty)
+ 	}
+ 	if (tty_term_has(tty->term, TTYC_DSBP))
+ 		tty_raw(tty, tty_term_string(tty->term, TTYC_DSBP));
++	if (tty->term->flags & TERM_PASTEEVENTS)
++		tty_raw(tty, "\033[?5522l");
+ 
+ 	tty_raw(tty, tty_term_string(tty->term, TTYC_DSESC));
+ 	tty_raw(tty, tty_term_string(tty->term, TTYC_DSFCS));
+@@ -887,6 +891,8 @@ tty_update_mode(struct tty *tty, int mode, struct screen *s)
+ 
+ 	if (tty->flags & TTY_NOCURSOR)
+ 		mode &= ~MODE_CURSOR;
++	if (~term->flags & TERM_PASTEEVENTS)
++		mode &= ~MODE_PASTEEVENTS;
+ 
+ 	if (tty_update_cursor(tty, mode, s) & MODE_CURSOR_BLINKING)
+ 		mode |= MODE_CURSOR_BLINKING;
+@@ -917,6 +923,12 @@ tty_update_mode(struct tty *tty, int mode, struct screen *s)
+ 		else if (mode & MODE_MOUSE_STANDARD)
+ 			tty_puts(tty, "\033[?1000h");
+ 	}
++	if ((changed & MODE_PASTEEVENTS) && (term->flags & TERM_PASTEEVENTS)) {
++		if (mode & MODE_PASTEEVENTS)
++			tty_puts(tty, "\033[?5522h");
++		else
++			tty_puts(tty, "\033[?5522l");
++	}
+ 	tty->mode = mode;
+ }
+ 
+-- 
+2.56.0
+
