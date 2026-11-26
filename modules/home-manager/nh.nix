@@ -27,8 +27,8 @@ in
       };
     };
 
-    # use `sudo --non-interactive`
     home.sessionVariables = {
+      # use `sudo --non-interactive`
       NH_ELEVATION_STRATEGY = "passwordless";
     };
 
