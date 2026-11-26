@@ -224,13 +224,23 @@ in
           local rc=$?
           # /dev/tty keeps the sequences out of redirected output
           {
+            print -n '\e[0m'     # text attributes (color, bold, reverse) reset
             print -n '\e[?25h'   # show the cursor (DECTCEM)
+            print -n '\e[?7h'    # line wrapping on (DECAWM)
+            print -n '\e[?2026l' # synchronized output off
             print -n '\e[?9l'    # X10 mouse tracking off
             print -n '\e[?1000l' # normal mouse tracking off
             print -n '\e[?1002l' # button-event mouse tracking off
             print -n '\e[?1003l' # any-event mouse tracking off
+            print -n '\e[?1005l' # UTF-8 mouse encoding off
             print -n '\e[?1006l' # SGR mouse encoding off
+            print -n '\e[?1015l' # urxvt mouse encoding off
             print -n '\e[?1004l' # focus in/out reporting off
+            print -n '\e[?2004l' # bracketed paste off
+            print -n '\e[?2031l' # color palette (light/dark) change reporting off
+            print -n '\e[?2048l' # in-band window resize reporting off
+            print -n '\e[?1l'    # normal cursor keys (DECCKM)
+            print -n '\e>'       # numeric keypad (DECKPNM)
             print -n '\e[>4m'    # xterm modifyOtherKeys reset
             print -n '\e[=0;1u'  # kitty keyboard protocol flags set to 0
           } 2>/dev/null >/dev/tty
