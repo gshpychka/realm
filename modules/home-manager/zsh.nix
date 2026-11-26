@@ -230,6 +230,7 @@ in
             print -n '\e[?1002l' # button-event mouse tracking off
             print -n '\e[?1003l' # any-event mouse tracking off
             print -n '\e[?1006l' # SGR mouse encoding off
+            print -n '\e[?1004l' # focus in/out reporting off
             print -n '\e[>4m'    # xterm modifyOtherKeys reset
             print -n '\e[=0;1u'  # kitty keyboard protocol flags set to 0
           } 2>/dev/null >/dev/tty
