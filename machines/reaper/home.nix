@@ -16,6 +16,7 @@
           ai.enable = true;
           btop.enable = true;
           cachePrune.enable = true;
+          clipboard.readFromClient = true;
           direnv.enable = true;
           git = {
             enable = true;

@@ -15,6 +15,7 @@
         my = {
           ai.enable = true;
           btop.enable = true;
+          clipboard.shareWith = [ "reaper" ];
           direnv.enable = true;
           finicky.enable = true;
           ghostty.enable = true;

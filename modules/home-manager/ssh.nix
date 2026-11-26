@@ -11,6 +11,11 @@ in
 {
   options.my.ssh = {
     enable = lib.mkEnableOption "SSH client configuration";
+    hostSettings = lib.mkOption {
+      type = lib.types.attrsOf lib.types.attrs;
+      default = { };
+      description = "Extra ssh_config keys for fleet hosts on this machine, by host name";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -31,7 +36,7 @@ in
             # Tailscale MagicDNS names take the form <host>.<tailnet>.ts.net
             tailnetSuffix = "ts.net";
             hostBlock =
-              h: extra:
+              name: h: extra:
               lib.hm.dag.entryBefore [ "local" "remote" ] (
                 {
                   User = if h.sshUser != null then h.sshUser else osConfig.my.user;
@@ -39,10 +44,11 @@ in
                 }
                 // extra
                 // h.sshSettings
+                // cfg.hostSettings.${name} or { }
               );
             fleetBlocks = lib.mapAttrs (
               name: h:
-              hostBlock h {
+              hostBlock name h {
                 header = "Match final host ${name},${name}.${domain},${name}.*.${tailnetSuffix}";
               }
             ) osConfig.my.hosts;
@@ -52,7 +58,7 @@ in
             tailnetBlocks = lib.mapAttrs' (
               name: h:
               lib.nameValuePair "${name}-ts" (
-                hostBlock h {
+                hostBlock name h {
                   header = "Match final host ${name}-ts,${name}-ts.${domain}";
                   HostName = h.tailscaleIp;
                 }

@@ -193,7 +193,11 @@
   services = {
     pcscd.enable = true;
     udev.packages = [ pkgs.yubikey-personalization ];
-    openssh.enable = true;
+    openssh = {
+      enable = true;
+      # a new connection's forwarded Unix socket replaces the one an earlier connection left behind
+      settings.StreamLocalBindUnlink = true;
+    };
     nginx = {
       enable = true;
       recommendedTlsSettings = true;
