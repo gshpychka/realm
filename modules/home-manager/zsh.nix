@@ -99,7 +99,6 @@ in
           "$git_status"
           "$docker_context"
           "$lua"
-          "$python"
           "$terraform"
           "$nix_shell"
           "$sudo"
