@@ -1,48 +1,119 @@
-From 665979bb50809e6e5139405d405d5e68bcf5612c Mon Sep 17 00:00:00 2001
+From a1c7e86771d122db22db9126795fb22d8708523d Mon Sep 17 00:00:00 2001
 From: Glib Shpychka <23005347+gshpychka@users.noreply.github.com>
 Date: Thu, 26 Nov 2026 11:25:04 +0200
 Subject: [PATCH] Support the kitty clipboard protocol (OSC 5522) with paste
  events
 
-Panes can turn on paste events (mode 5522) and read or write the client
-terminal's clipboard with OSC 5522, as the protocol's section on
-multiplexers describes:
+Panes can turn on paste events (mode 5522) and read and write the
+clipboard with OSC 5522, as the protocol's section on multiplexers
+describes:
 https://sw.kovidgoyal.net/kitty/clipboard/#support-for-terminal-multiplexers
 
 tmux detects support with a DECRQM query for mode 5522 (feature
-"osc5522"). It sets the mode on the client terminal while the active pane
-has it and no prompt or overlay takes input. Paste events carry no id and
-go to the active pane.
+"osc5522", capabilities Enpe and Dspe). It sets the mode on the client
+terminal while the active pane has it and no prompt or overlay is open.
+Paste events carry no id and go to the active pane.
 
-A pane's read or write goes to the most recently active client with the
-feature, under an id of tmux's own. Replies with that id return to the
-pane with the pane's id restored. One request is in flight at a time;
-another gets EBUSY, and ENOSYS when no client has the feature. A request
-ends on DONE, an error status, the client's exit, or 30 seconds without a
-packet.
+A pane's OSC 5522 read or write is a request to the most recently used
+client, sent under an id of tmux's own. Replies with that id go back to
+the pane with the pane's id restored. A request stays open until DONE or
+an error status and times out after 30 seconds without a packet. It
+doesn't hold back the pane's other replies. A client has one request at a
+time, so another pane gets EBUSY, and a pane's new request replaces its
+unfinished one.
+
+The clipboard options apply as they do for OSC 52. A write needs
+set-clipboard on, and its text/plain data creates a paste buffer. Without
+a client that supports the protocol, tmux completes the write itself. A
+read follows get-clipboard: off refuses it with EPERM, buffer answers with
+the newest paste buffer as text/plain, and request and both relay it;
+both also creates a paste buffer from its text/plain data. A read with the
+one-time password of a paste event the pane received is always relayed.
+A relayed read gets ENOSYS when the client doesn't support the protocol.
 ---
- input.c         | 288 +++++++++++++++++++++++++++++++++++++++++++++---
+ format.c        |   1 +
+ input.c         | 603 ++++++++++++++++++++++++++++++++++++++++++++++--
  screen.c        |   2 +
  server-client.c |   4 +
- tmux.h          |   6 +-
- tty-features.c  |   8 ++
- tty-keys.c      | 139 +++++++++++++++++------
- tty.c           |  12 ++
- 7 files changed, 411 insertions(+), 48 deletions(-)
+ tmux.1          |  19 ++
+ tmux.h          |   8 +-
+ tty-features.c  |  13 ++
+ tty-keys.c      | 140 ++++++++---
+ tty-term.c      |   2 +
+ tty.c           |  12 +
+ 10 files changed, 756 insertions(+), 48 deletions(-)
 
+diff --git a/format.c b/format.c
+index 26a64f9..91607f3 100644
+--- a/format.c
++++ b/format.c
+@@ -2173,6 +2173,7 @@ format_cb_pane_private_modes(struct format_tree *ft)
+ 		{ MODE_BRACKETPASTE,	2004 },	/* bracketed paste */
+ 		{ MODE_SYNC,		2026 },	/* synchronized output */
+ 		{ MODE_THEME_UPDATES,	2031 },	/* theme update notifications */
++		{ MODE_PASTEEVENTS,	5522 },	/* paste events */
+ 	};
+ 	int	 mode;
+ 	char	*value = NULL, *tmp;
 diff --git a/input.c b/input.c
-index 2fef558..02a42dd 100644
+index 2fef558..5018016 100644
 --- a/input.c
 +++ b/input.c
-@@ -154,6 +154,7 @@ static void	input_start_request_timer(struct input_ctx *);
+@@ -74,6 +74,31 @@ struct input_request {
+ };
+ #define INPUT_REQUEST_TIMEOUT 500
+ 
++/*
++ * An OSC 5522 request gets many replies, matched by an id of tmux's own, and
++ * may wait on a permission prompt. It times out after this long without a
++ * packet.
++ */
++#define INPUT_REQUEST_OSC5522_TIMEOUT 30000
++
++/* OSC 5522 request state. */
++struct input_osc_5522_state {
++	char	*id;		/* the pane's own id */
++	int	 write;
++	int	 buffer;	/* text/plain data makes a paste buffer */
++
++	/* text/plain data: base64 for a write, decoded for a read */
++	char	*text;
++	size_t	 textlen;
++};
++
++/* OSC 5522 reply data. */
++struct input_request_osc5522_data {
++	const char	*buf;
++	size_t		 len;
++	int		 idx;
++};
++
+ /* Input parser cell. */
+ struct input_cell {
+ 	struct grid_cell	cell;
+@@ -139,6 +164,9 @@ struct input_ctx {
+ 	u_int				 request_count;
+ 	struct event			 request_timer;
+ 
++	/* One-time password of the last OSC 5522 paste event. */
++	char				*paste_pw;
++
+ 	/*
+ 	 * All input received since we were last in the ground state. Sent to
+ 	 * control clients on connection.
+@@ -154,8 +182,11 @@ static void	input_start_request_timer(struct input_ctx *);
  static struct input_request *input_make_request(struct input_ctx *,
  		    enum input_request_type);
  static void	input_free_request(struct input_request *);
-+static struct client *input_find_client(struct window_pane *, int);
++static int	input_request_pending(struct input_ctx *);
++static struct client *input_find_client(struct window_pane *);
  static int	input_add_request(struct input_ctx *, enum input_request_type,
  		    int);
++static void	input_request_osc_5522_reply(struct input_request *, void *);
  static int	input_split(struct input_ctx *);
-@@ -169,6 +170,7 @@ static void	input_osc_10(struct input_ctx *, const char *);
+ static int	input_get(struct input_ctx *, u_int, int, int);
+ static void	input_set_state(struct input_ctx *,
+@@ -169,6 +200,7 @@ static void	input_osc_10(struct input_ctx *, const char *);
  static void	input_osc_11(struct input_ctx *, const char *);
  static void	input_osc_12(struct input_ctx *, const char *);
  static void	input_osc_52(struct input_ctx *, const char *);
@@ -50,7 +121,24 @@ index 2fef558..02a42dd 100644
  static void	input_osc_104(struct input_ctx *, const char *);
  static void	input_osc_110(struct input_ctx *, const char *);
  static void	input_osc_111(struct input_ctx *, const char *);
-@@ -1713,6 +1715,9 @@ input_csi_dispatch(struct input_ctx *ictx)
+@@ -914,6 +946,7 @@ input_free(struct input_ctx *ictx)
+ 	TAILQ_FOREACH_SAFE(ir, &ictx->requests, entry, ir1)
+ 		input_free_request(ir);
+ 	event_del(&ictx->request_timer);
++	free(ictx->paste_pw);
+ 
+ 	free(ictx->input_buf);
+ 	evbuffer_free(ictx->since_ground);
+@@ -1183,7 +1216,7 @@ input_reply(struct input_ctx *ictx, int add, const char *fmt, ...)
+ 	xvasprintf(&reply, fmt, ap);
+ 	va_end(ap);
+ 
+-	if (add && !TAILQ_EMPTY(&ictx->requests)) {
++	if (add && input_request_pending(ictx)) {
+ 		ir = input_make_request(ictx, INPUT_REQUEST_QUEUE);
+ 		ir->data = reply;
+ 	} else {
+@@ -1713,6 +1746,9 @@ input_csi_dispatch(struct input_ctx *ictx)
  		case 2031:	/* theme update notifications */
  			n = (s->mode & MODE_THEME_UPDATES) ? 1 : 2;
  			break;
@@ -60,7 +148,7 @@ index 2fef558..02a42dd 100644
  		default:
  			n = 0;
  			break;
-@@ -1986,6 +1991,9 @@ input_csi_dispatch_rm_private(struct input_ctx *ictx)
+@@ -1986,6 +2022,9 @@ input_csi_dispatch_rm_private(struct input_ctx *ictx)
  			if (ictx->wp != NULL)
  				ictx->wp->flags &= ~PANE_THEMECHANGED;
  			break;
@@ -70,7 +158,7 @@ index 2fef558..02a42dd 100644
  		default:
  			log_debug("%s: unknown '%c'", __func__, ictx->ch);
  			break;
-@@ -2091,6 +2099,9 @@ input_csi_dispatch_sm_private(struct input_ctx *ictx)
+@@ -2091,6 +2130,9 @@ input_csi_dispatch_sm_private(struct input_ctx *ictx)
  		case 2026:
  			screen_write_start_sync(ictx->wp);
  			break;
@@ -80,7 +168,7 @@ index 2fef558..02a42dd 100644
  		default:
  			log_debug("%s: unknown '%c'", __func__, ictx->ch);
  			break;
-@@ -2772,6 +2783,9 @@ input_exit_osc(struct input_ctx *ictx)
+@@ -2772,6 +2814,9 @@ input_exit_osc(struct input_ctx *ictx)
  	case 133:
  		input_osc_133(ictx, p);
  		break;
@@ -90,41 +178,25 @@ index 2fef558..02a42dd 100644
  	default:
  		log_debug("%s: unknown '%u'", __func__, option);
  		break;
-@@ -3442,6 +3456,238 @@ input_osc_52(struct input_ctx *ictx, const char *p)
+@@ -3442,6 +3487,490 @@ input_osc_52(struct input_ctx *ictx, const char *p)
  	}
  }
  
-+/*
-+ * The kitty clipboard protocol (OSC 5522) request in flight. The clipboard is
-+ * a single resource, so one pane at a time may have a request with a client
-+ * terminal. The request carries tmux's own id, which the terminal echoes, so
-+ * replies are told apart from paste events and routed back to the pane.
-+ */
-+static struct {
-+	struct client		*c;
-+	u_int			 pane;
-+	enum input_end_type	 end;
-+	char			*id;	/* the pane's own id, if any */
-+	int			 write;
-+	u_int			 seq;
-+	struct event		 timer;
-+} input_osc5522_request;
++/* Next id for an OSC 5522 request. */
++static int	input_osc_5522_next;
 +
-+/* Seconds without a packet before a request stops holding the clipboard. */
-+#define INPUT_OSC5522_TIMEOUT 30
-+
-+/* Find a metadata value in an OSC 5522 packet body. */
++/* Find a metadata value in an OSC 5522 packet. */
 +static const char *
-+input_osc5522_get(const char *body, size_t len, const char *key, size_t *vlen)
++input_osc_5522_get(const char *buf, size_t len, const char *key, size_t *vlen)
 +{
-+	const char	*meta_end, *entry, *next;
++	const char	*end, *entry, *next;
 +	size_t		 keylen = strlen(key);
 +
-+	if ((meta_end = memchr(body, ';', len)) == NULL)
-+		meta_end = body + len;
-+	for (entry = body; entry < meta_end; entry = next + 1) {
-+		if ((next = memchr(entry, ':', meta_end - entry)) == NULL)
-+			next = meta_end;
++	if ((end = memchr(buf, ';', len)) == NULL)
++		end = buf + len;
++	for (entry = buf; entry < end; entry = next + 1) {
++		if ((next = memchr(entry, ':', end - entry)) == NULL)
++			next = end;
 +		if ((size_t)(next - entry) > keylen &&
 +		    strncmp(entry, key, keylen) == 0 &&
 +		    entry[keylen] == '=') {
@@ -135,26 +207,56 @@ index 2fef558..02a42dd 100644
 +	return (NULL);
 +}
 +
-+/* Whether a metadata value is the given string. */
++/* Whether an OSC 5522 metadata value is the given string. */
 +static int
-+input_osc5522_is(const char *value, size_t vlen, const char *s)
++input_osc_5522_is(const char *value, size_t vlen, const char *s)
 +{
 +	return (value != NULL && vlen == strlen(s) &&
 +	    strncmp(value, s, vlen) == 0);
 +}
 +
++/* Decode base64 from an OSC 5522 packet. */
++static char *
++input_osc_5522_decode(const char *value, size_t vlen, size_t *outlen)
++{
++	char	*copy;
++	u_char	*out;
++	size_t	 size = ((vlen + 3) / 4) * 3;
++	int	 n;
++
++	copy = xstrndup(value, vlen);
++	out = xmalloc(size + 1);
++	n = b64_pton(copy, out, size);
++	free(copy);
++	if (n == -1) {
++		free(out);
++		return (NULL);
++	}
++	out[n] = '\0';
++	*outlen = n;
++	return ((char *)out);
++}
++
++/* Whether a MIME type is plain text. */
++static int
++input_osc_5522_text_type(const char *type)
++{
++	return (strcmp(type, "text/plain") == 0 ||
++	    strncmp(type, "text/plain;", 11) == 0);
++}
++
 +/* Build an OSC 5522 packet from a body with its id replaced. */
 +static char *
-+input_osc5522_packet(const char *body, size_t len, const char *id,
++input_osc_5522_packet(const char *buf, size_t len, const char *id,
 +    enum input_end_type end)
 +{
 +	const char	*meta_end, *entry, *next;
 +	char		*meta, *tmp, *packet;
 +
-+	if ((meta_end = memchr(body, ';', len)) == NULL)
-+		meta_end = body + len;
++	if ((meta_end = memchr(buf, ';', len)) == NULL)
++		meta_end = buf + len;
 +	meta = xstrdup("");
-+	for (entry = body; entry < meta_end; entry = next + 1) {
++	for (entry = buf; entry < meta_end; entry = next + 1) {
 +		if ((next = memchr(entry, ':', meta_end - entry)) == NULL)
 +			next = meta_end;
 +		if (next - entry >= 3 && strncmp(entry, "id=", 3) == 0)
@@ -171,187 +273,458 @@ index 2fef558..02a42dd 100644
 +		meta = tmp;
 +	}
 +	xasprintf(&packet, "\033]5522;%s%.*s%s", meta,
-+	    (int)(body + len - meta_end), meta_end,
++	    (int)(buf + len - meta_end), meta_end,
 +	    end == INPUT_END_BEL ? "\007" : "\033\\");
 +	free(meta);
 +	return (packet);
 +}
 +
-+/* Release the clipboard from the request in flight. */
++/* Send an OSC 5522 packet to a pane under the pane's own id. */
 +static void
-+input_osc5522_clear(void)
++input_osc_5522_send(struct input_ctx *ictx, const char *buf, size_t len,
++    const char *id, enum input_end_type end)
 +{
-+	if (evtimer_initialized(&input_osc5522_request.timer))
-+		evtimer_del(&input_osc5522_request.timer);
-+	free(input_osc5522_request.id);
-+	input_osc5522_request.id = NULL;
-+	input_osc5522_request.c = NULL;
-+}
++	char	*packet;
 +
-+/* Request timer. The terminal stopped answering. */
-+static void
-+input_osc5522_timer_callback(__unused int fd, __unused short events,
-+    __unused void *arg)
-+{
-+	log_debug("%s: request %u timed out", __func__,
-+	    input_osc5522_request.seq);
-+	input_osc5522_clear();
-+}
-+
-+/* Restart the request timer. */
-+static void
-+input_osc5522_start_timer(void)
-+{
-+	struct timeval	tv = { .tv_sec = INPUT_OSC5522_TIMEOUT };
-+
-+	if (!evtimer_initialized(&input_osc5522_request.timer)) {
-+		evtimer_set(&input_osc5522_request.timer,
-+		    input_osc5522_timer_callback, NULL);
-+	}
-+	evtimer_add(&input_osc5522_request.timer, &tv);
-+}
-+
-+/* Answer a pane's OSC 5522 request with an error status. */
-+static void
-+input_osc5522_error(struct input_ctx *ictx, const char *type, size_t tlen,
-+    const char *id, const char *status)
-+{
-+	char	*body, *packet;
-+
-+	xasprintf(&body, "type=%.*s:status=%s", (int)tlen, type, status);
-+	packet = input_osc5522_packet(body, strlen(body), id, ictx->input_end);
++	packet = input_osc_5522_packet(buf, len, id, end);
 +	input_send_reply(ictx, packet);
 +	free(packet);
-+	free(body);
++}
++
++/* Reply to a pane's OSC 5522 request with a status. */
++static void
++input_osc_5522_status(struct input_ctx *ictx, const char *type,
++    const char *id, const char *status, enum input_end_type end)
++{
++	char	*buf;
++
++	xasprintf(&buf, "type=%s:status=%s", type, status);
++	input_osc_5522_send(ictx, buf, strlen(buf), id, end);
++	free(buf);
++}
++
++/* Send data to a pane as OSC 5522 read data, in chunks of 4096 bytes. */
++static void
++input_osc_5522_data(struct input_ctx *ictx, const char *id, const char *mime,
++    const char *data, size_t len)
++{
++	char	 chunk[((4096 + 2) / 3) * 4 + 1], *b64mime, *buf;
++	size_t	 i, n, mlen = strlen(mime), size = ((mlen + 2) / 3) * 4 + 1;
++
++	b64mime = xmalloc(size);
++	b64_ntop(mime, mlen, b64mime, size);
++	for (i = 0; i < len; i += n) {
++		n = (len - i > 4096) ? 4096 : len - i;
++		b64_ntop(data + i, n, chunk, sizeof chunk);
++		xasprintf(&buf, "type=read:status=DATA:mime=%s;%s", b64mime,
++		    chunk);
++		input_osc_5522_send(ictx, buf, strlen(buf), id,
++		    ictx->input_end);
++		free(buf);
++	}
++	free(b64mime);
++}
++
++/* Answer an OSC 5522 read with the newest paste buffer, as text/plain. */
++static void
++input_osc_5522_buffer_reply(struct input_ctx *ictx, const char *buf,
++    size_t len, const char *id)
++{
++	struct paste_buffer	*pb;
++	const char		*payload, *data;
++	char			*types, *next, *type;
++	size_t			 tlen, dlen;
++
++	input_osc_5522_status(ictx, "read", id, "OK", ictx->input_end);
++	pb = paste_get_top(NULL);
++	payload = memchr(buf, ';', len);
++	if (pb != NULL && payload != NULL) {
++		payload++;
++		types = input_osc_5522_decode(payload, buf + len - payload,
++		    &tlen);
++		next = types;
++		while (next != NULL && (type = strsep(&next, " \t\r\n"))) {
++			if (strcmp(type, ".") == 0) {
++				input_osc_5522_data(ictx, id, ".",
++				    "text/plain", 10);
++				break;
++			}
++			if (input_osc_5522_text_type(type)) {
++				data = paste_buffer_data(pb, &dlen);
++				input_osc_5522_data(ictx, id, type, data, dlen);
++				break;
++			}
++		}
++		free(types);
++	}
++	input_osc_5522_status(ictx, "read", id, "DONE", ictx->input_end);
++}
++
++/* Add the text/plain data in an OSC 5522 packet to a request's buffer. */
++static void
++input_osc_5522_collect(struct input_osc_5522_state *os, const char *buf,
++    size_t len)
++{
++	const char	*mime, *data;
++	char		*decoded = NULL, *type;
++	size_t		 mlen, dlen, tlen;
++
++	if (!os->buffer)
++		return;
++	if ((mime = input_osc_5522_get(buf, len, "mime", &mlen)) == NULL)
++		return;
++	if ((type = input_osc_5522_decode(mime, mlen, &tlen)) == NULL)
++		return;
++	if (!input_osc_5522_text_type(type)) {
++		free(type);
++		return;
++	}
++	free(type);
++	if ((data = memchr(buf, ';', len)) == NULL)
++		return;
++	data++;
++	dlen = buf + len - data;
++
++	/* A read sends padded chunks; a write pads only the whole. */
++	if (!os->write) {
++		decoded = input_osc_5522_decode(data, dlen, &dlen);
++		data = decoded;
++	}
++	if (data == NULL || os->textlen + dlen > input_buffer_size) {
++		free(os->text);
++		os->text = NULL;
++		os->textlen = 0;
++		os->buffer = 0;
++	} else {
++		os->text = xrealloc(os->text, os->textlen + dlen + 1);
++		memcpy(os->text + os->textlen, data, dlen);
++		os->textlen += dlen;
++		os->text[os->textlen] = '\0';
++	}
++	free(decoded);
++}
++
++/* Create a paste buffer from a request's text/plain data. */
++static void
++input_osc_5522_paste(struct input_osc_5522_state *os)
++{
++	char	*data;
++	size_t	 len;
++
++	if (!os->buffer || os->text == NULL)
++		return;
++	if (os->write) {
++		data = input_osc_5522_decode(os->text, os->textlen, &len);
++		free(os->text);
++	} else {
++		data = os->text;
++		len = os->textlen;
++	}
++	os->text = NULL;
++	os->textlen = 0;
++	if (data != NULL && len != 0)
++		paste_add(NULL, data, len);
++	else
++		free(data);
++}
++
++/* Free OSC 5522 request state. */
++static void
++input_osc_5522_free(struct input_osc_5522_state *os)
++{
++	free(os->id);
++	free(os->text);
++}
++
++/* Find a pane's OSC 5522 request. */
++static struct input_request *
++input_osc_5522_find(struct input_ctx *ictx)
++{
++	struct input_request	*ir;
++
++	TAILQ_FOREACH(ir, &ictx->requests, entry) {
++		if (ir->type == INPUT_REQUEST_OSC5522)
++			return (ir);
++	}
++	return (NULL);
++}
++
++/* Whether a client has an OSC 5522 request in flight. */
++static int
++input_osc_5522_busy(struct client *c)
++{
++	struct input_request	*ir;
++
++	TAILQ_FOREACH(ir, &c->input_requests, centry) {
++		if (ir->type == INPUT_REQUEST_OSC5522)
++			return (1);
++	}
++	return (0);
++}
++
++/* Send a pane's OSC 5522 packet to the request's client under tmux's id. */
++static void
++input_osc_5522_forward(struct input_request *ir, const char *buf, size_t len)
++{
++	char	 id[32], *packet;
++
++	ir->t = get_timer();
++	if (ir->c == NULL)
++		return;
++	xsnprintf(id, sizeof id, "tmux-%d", ir->idx);
++	packet = input_osc_5522_packet(buf, len, id, INPUT_END_ST);
++	tty_puts(&ir->c->tty, packet);
++	free(packet);
++}
++
++/* Handle OSC 5522 write data, which continues the pane's write request. */
++static void
++input_osc_5522_wdata(struct input_ctx *ictx, const char *p, size_t len)
++{
++	struct input_request		*ir;
++	struct input_osc_5522_state	*os;
++	const char			*type;
++	size_t				 tlen, mlen;
++
++	if ((ir = input_osc_5522_find(ictx)) == NULL)
++		return;
++	os = ir->data;
++	if (!os->write)
++		return;
++	input_osc_5522_collect(os, p, len);
++	input_osc_5522_forward(ir, p, len);
++
++	/* The last packet is wdata with no MIME type. */
++	type = input_osc_5522_get(p, len, "type", &tlen);
++	if (!input_osc_5522_is(type, tlen, "wdata") ||
++	    input_osc_5522_get(p, len, "mime", &mlen) != NULL)
++		return;
++	input_osc_5522_paste(os);
++	if (ir->c == NULL) {
++		input_osc_5522_status(ictx, "write", os->id, "DONE", ir->end);
++		input_free_request(ir);
++	}
 +}
 +
 +/* Handle the OSC 5522 sequence for the kitty clipboard protocol. */
 +static void
 +input_osc_5522(struct input_ctx *ictx, const char *p)
 +{
-+	struct window_pane	*wp = ictx->wp;
-+	struct client		*c;
-+	const char		*type, *id;
-+	size_t			 len = strlen(p), tlen, idlen;
-+	char			*paneid = NULL, *packet, tmuxid[32];
++	struct window_pane		*wp = ictx->wp;
++	struct input_request		*ir;
++	struct input_osc_5522_state	*os;
++	struct client			*c;
++	const char			*type, *v, *what;
++	size_t				 len = strlen(p), tlen, vlen;
++	char				*id = NULL;
++	int				 write, state, buffer = 0;
 +
++	/* Replies go to a pane, so popups are ignored. */
 +	if (wp == NULL)
 +		return;
-+	if ((type = input_osc5522_get(p, len, "type", &tlen)) == NULL)
++	if ((type = input_osc_5522_get(p, len, "type", &tlen)) == NULL)
 +		return;
-+	if ((id = input_osc5522_get(p, len, "id", &idlen)) != NULL)
-+		paneid = xstrndup(id, idlen);
-+
-+	if (input_osc5522_is(type, tlen, "read") ||
-+	    input_osc5522_is(type, tlen, "write")) {
-+		/* A new request takes the clipboard if it is free. */
-+		c = input_find_client(wp, TERM_PASTEEVENTS);
-+		if (c == NULL || input_osc5522_request.c != NULL) {
-+			input_osc5522_error(ictx, type, tlen, paneid,
-+			    c == NULL ? "ENOSYS" : "EBUSY");
-+			free(paneid);
-+			return;
-+		}
-+		input_osc5522_request.c = c;
-+		input_osc5522_request.pane = wp->id;
-+		input_osc5522_request.end = ictx->input_end;
-+		input_osc5522_request.id = paneid;
-+		input_osc5522_request.write = input_osc5522_is(type, tlen,
-+		    "write");
-+		input_osc5522_request.seq++;
-+	} else if (input_osc5522_is(type, tlen, "wdata") ||
-+	    input_osc5522_is(type, tlen, "walias")) {
-+		/* Data continues the pane's own write. */
-+		free(paneid);
-+		c = input_osc5522_request.c;
-+		if (c == NULL ||
-+		    !input_osc5522_request.write ||
-+		    input_osc5522_request.pane != wp->id)
-+			return;
-+	} else {
-+		free(paneid);
++	if (input_osc_5522_is(type, tlen, "wdata") ||
++	    input_osc_5522_is(type, tlen, "walias")) {
++		input_osc_5522_wdata(ictx, p, len);
 +		return;
 +	}
++	write = input_osc_5522_is(type, tlen, "write");
++	if (!write && !input_osc_5522_is(type, tlen, "read"))
++		return;
++	what = write ? "write" : "read";
++	if ((v = input_osc_5522_get(p, len, "id", &vlen)) != NULL)
++		id = xstrndup(v, vlen);
 +
-+	xsnprintf(tmuxid, sizeof tmuxid, "tmux-%u", input_osc5522_request.seq);
-+	packet = input_osc5522_packet(p, len, tmuxid, INPUT_END_ST);
-+	tty_puts(&c->tty, packet);
-+	free(packet);
-+	input_osc5522_start_timer();
++	/* A new request replaces the pane's unfinished one. */
++	if ((ir = input_osc_5522_find(ictx)) != NULL)
++		input_free_request(ir);
++
++	if (write) {
++		if (options_get_number(global_options, "set-clipboard") != 2) {
++			input_osc_5522_status(ictx, what, id, "EPERM",
++			    ictx->input_end);
++			goto out;
++		}
++		buffer = 1;
++	} else {
++		/*
++		 * A read with the password of the last paste event follows
++		 * the user's paste, so goes to the terminal whatever
++		 * get-clipboard says.
++		 */
++		state = options_get_number(global_options, "get-clipboard");
++		v = input_osc_5522_get(p, len, "pw", &vlen);
++		if (ictx->paste_pw != NULL &&
++		    input_osc_5522_is(v, vlen, ictx->paste_pw)) {
++			free(ictx->paste_pw);
++			ictx->paste_pw = NULL;
++		} else if (state == 0) {
++			input_osc_5522_status(ictx, what, id, "EPERM",
++			    ictx->input_end);
++			goto out;
++		} else if (state == 1) {
++			input_osc_5522_buffer_reply(ictx, p, len, id);
++			goto out;
++		}
++		buffer = (state == 3);
++	}
++
++	/* Without a terminal to relay to, tmux takes a write by itself. */
++	c = input_find_client(wp);
++	if (c != NULL && !tty_term_has(c->tty.term, TTYC_ENPE))
++		c = NULL;
++	if (c == NULL && !write) {
++		input_osc_5522_status(ictx, what, id, "ENOSYS",
++		    ictx->input_end);
++		goto out;
++	}
++	if (c != NULL && input_osc_5522_busy(c)) {
++		input_osc_5522_status(ictx, what, id, "EBUSY", ictx->input_end);
++		goto out;
++	}
++
++	os = xcalloc(1, sizeof *os);
++	os->id = id;
++	os->write = write;
++	os->buffer = buffer;
++
++	ir = input_make_request(ictx, INPUT_REQUEST_OSC5522);
++	ir->idx = input_osc_5522_next;
++	input_osc_5522_next = (input_osc_5522_next + 1) % INT_MAX;
++	ir->end = ictx->input_end;
++	ir->data = os;
++	if (c != NULL) {
++		ir->c = c;
++		TAILQ_INSERT_TAIL(&c->input_requests, ir, centry);
++	}
++	input_osc_5522_forward(ir, p, len);
++	return;
++
++out:
++	free(id);
 +}
 +
 +/*
-+ * Handle an OSC 5522 packet from a client terminal: a reply to the request in
-+ * flight, or a paste event for the active pane.
++ * Handle an OSC 5522 packet from a client: a reply to a request, or a paste
++ * event for the active pane.
 + */
 +void
-+input_osc5522_receive(struct client *c, const char *body, size_t len)
++input_osc_5522_receive(struct client *c, const char *buf, size_t len)
 +{
-+	struct window_pane	*wp;
-+	const char		*id, *status;
-+	size_t			 idlen, slen;
-+	char			*packet, tmuxid[32];
++	struct input_request_osc5522_data	 od;
++	struct window_pane			*wp;
++	const char				*id, *pw, *errstr;
++	size_t					 idlen, pwlen;
++	char					*copy;
 +
-+	log_debug("%s: %.*s", __func__, (int)len, body);
-+
-+	if ((id = input_osc5522_get(body, len, "id", &idlen)) == NULL) {
++	if ((id = input_osc_5522_get(buf, len, "id", &idlen)) == NULL) {
 +		wp = c->session->curw->window->active;
 +		if (~wp->screen->mode & MODE_PASTEEVENTS)
 +			return;
-+		packet = input_osc5522_packet(body, len, NULL, INPUT_END_ST);
-+		input_send_reply(wp->ictx, packet);
-+		free(packet);
++		if ((pw = input_osc_5522_get(buf, len, "pw", &pwlen)) != NULL) {
++			free(wp->ictx->paste_pw);
++			wp->ictx->paste_pw = xstrndup(pw, pwlen);
++		}
++		input_osc_5522_send(wp->ictx, buf, len, NULL, INPUT_END_ST);
 +		return;
 +	}
 +
-+	xsnprintf(tmuxid, sizeof tmuxid, "tmux-%u", input_osc5522_request.seq);
-+	if (input_osc5522_request.c != c ||
-+	    !input_osc5522_is(id, idlen, tmuxid))
++	if (idlen <= 5 || strncmp(id, "tmux-", 5) != 0)
 +		return;
++	copy = xstrndup(id + 5, idlen - 5);
++	od.idx = strtonum(copy, 0, INT_MAX, &errstr);
++	free(copy);
++	if (errstr != NULL)
++		return;
++	od.buf = buf;
++	od.len = len;
++	input_request_reply(c, INPUT_REQUEST_OSC5522, &od);
++}
 +
-+	wp = window_pane_find_by_id(input_osc5522_request.pane);
-+	if (wp != NULL) {
-+		packet = input_osc5522_packet(body, len,
-+		    input_osc5522_request.id, input_osc5522_request.end);
-+		input_send_reply(wp->ictx, packet);
-+		free(packet);
-+	}
++/* Handle an OSC 5522 reply: send it to the pane under the pane's own id. */
++static void
++input_request_osc_5522_reply(struct input_request *ir, void *data)
++{
++	struct input_request_osc5522_data	*od = data;
++	struct input_osc_5522_state		*os = ir->data;
++	const char				*status;
++	size_t					 slen;
 +
-+	/* DONE or an error status (E...) ends the request. */
-+	status = input_osc5522_get(body, len, "status", &slen);
-+	if (input_osc5522_is(status, slen, "DONE") ||
-+	    (status != NULL && slen != 0 && *status == 'E'))
-+		input_osc5522_clear();
-+	else
-+		input_osc5522_start_timer();
++	input_osc_5522_send(ir->ictx, od->buf, od->len, os->id, ir->end);
++	ir->t = get_timer();
++	if (!os->write)
++		input_osc_5522_collect(os, od->buf, od->len);
++
++	/* DONE or an error status ends the request. */
++	status = input_osc_5522_get(od->buf, od->len, "status", &slen);
++	if (input_osc_5522_is(status, slen, "DONE")) {
++		if (!os->write)
++			input_osc_5522_paste(os);
++	} else if (status == NULL || slen == 0 || *status != 'E')
++		return;
++	input_free_request(ir);
 +}
 +
  /* Handle the OSC 104 sequence for unsetting (multiple) palette entries. */
  static void
  input_osc_104(struct input_ctx *ictx, const char *p)
-@@ -3579,33 +3825,45 @@ input_free_request(struct input_request *ir)
+@@ -3522,10 +4051,14 @@ input_request_timer_callback(__unused int fd, __unused short events, void *arg)
+ {
+ 	struct input_ctx	*ictx = arg;
+ 	struct input_request	*ir, *ir1;
+-	uint64_t		 t = get_timer();
++	uint64_t		 t = get_timer(), timeout;
+ 
+ 	TAILQ_FOREACH_SAFE(ir, &ictx->requests, entry, ir1) {
+-		if (ir->t >= t - INPUT_REQUEST_TIMEOUT)
++		if (ir->type == INPUT_REQUEST_OSC5522)
++			timeout = INPUT_REQUEST_OSC5522_TIMEOUT;
++		else
++			timeout = INPUT_REQUEST_TIMEOUT;
++		if (ir->t >= t - timeout)
+ 			continue;
+ 		if (ir->type == INPUT_REQUEST_QUEUE)
+ 			input_send_reply(ir->ictx, ir->data);
+@@ -3575,28 +4108,39 @@ input_free_request(struct input_request *ir)
+ 	ictx->request_count--;
+ 	TAILQ_REMOVE(&ictx->requests, ir, entry);
+ 
++	if (ir->type == INPUT_REQUEST_OSC5522)
++		input_osc_5522_free(ir->data);
+ 	free(ir->data);
  	free(ir);
  }
  
 -/* Add a request. */
--static int
--input_add_request(struct input_ctx *ictx, enum input_request_type type, int idx)
 +/*
-+ * Find the most recently active client showing a pane whose terminal has the
-+ * given flags.
++ * Whether a pane has a request that later replies must wait behind. OSC 5522
++ * requests take no part in reply order.
 + */
-+static struct client *
-+input_find_client(struct window_pane *wp, int termflags)
+ static int
+-input_add_request(struct input_ctx *ictx, enum input_request_type type, int idx)
++input_request_pending(struct input_ctx *ictx)
  {
 -	struct window_pane	*wp = ictx->wp;
 -	struct window		*w;
 -	struct client		*c = NULL, *loop;
--	struct input_request	*ir;
+ 	struct input_request	*ir;
 -	char			 s[64];
--
+ 
 -	if (wp == NULL)
 -		return (-1);
 -	w = wp->window;
++	TAILQ_FOREACH(ir, &ictx->requests, entry) {
++		if (ir->type != INPUT_REQUEST_OSC5522)
++			return (1);
++	}
++	return (0);
++}
++
++/* Find the most recently active client showing a pane. */
++static struct client *
++input_find_client(struct window_pane *wp)
++{
 +	struct client	*c = NULL, *loop;
  
  	TAILQ_FOREACH(loop, &clients, entry) {
@@ -363,10 +736,7 @@ index 2fef558..02a42dd 100644
  			continue;
  		if (~loop->tty.flags & TTY_STARTED)
  			continue;
-+		if ((loop->tty.term->flags & termflags) != termflags)
-+			continue;
- 		if (c == NULL)
- 			c = loop;
+@@ -3605,7 +4149,21 @@ input_add_request(struct input_ctx *ictx, enum input_request_type type, int idx)
  		else if (timercmp(&loop->activity_time, &c->activity_time, >))
  			c = loop;
  	}
@@ -385,19 +755,53 @@ index 2fef558..02a42dd 100644
 +
 +	if (wp == NULL)
 +		return (-1);
-+	if ((c = input_find_client(wp, 0)) == NULL)
++	if ((c = input_find_client(wp)) == NULL)
  		return (-1);
  
  	ir = input_make_request(ictx, type);
-@@ -3716,6 +3974,8 @@ input_cancel_requests(struct client *c)
+@@ -3622,6 +4180,7 @@ input_add_request(struct input_ctx *ictx, enum input_request_type type, int idx)
+ 	case INPUT_REQUEST_CLIPBOARD:
+ 		tty_putcode_ss(&c->tty, TTYC_MS, "", "?");
+ 		break;
++	case INPUT_REQUEST_OSC5522:
+ 	case INPUT_REQUEST_QUEUE:
+ 		break;
+ 	}
+@@ -3669,9 +4228,19 @@ input_request_reply(struct client *c, enum input_request_type type, void *data)
+ {
+ 	struct input_request			*ir, *ir1, *found = NULL;
+ 	struct input_request_palette_data	*pd = data;
++	struct input_request_osc5522_data	*od = data;
+ 	int					 complete = 0;
  
- 	TAILQ_FOREACH_SAFE(ir, &c->input_requests, centry, ir1)
- 		input_free_request(ir);
-+	if (input_osc5522_request.c == c)
-+		input_osc5522_clear();
- }
+ 	TAILQ_FOREACH_SAFE(ir, &c->input_requests, centry, ir1) {
++		/* OSC 5522 replies are matched to their request by id. */
++		if (ir->type == INPUT_REQUEST_OSC5522 ||
++		    type == INPUT_REQUEST_OSC5522) {
++			if (ir->type == type && ir->idx == od->idx) {
++				found = ir;
++				break;
++			}
++			continue;
++		}
+ 		if (ir->type != type) {
+ 			input_free_request(ir);
+ 			continue;
+@@ -3691,8 +4260,14 @@ input_request_reply(struct client *c, enum input_request_type type, void *data)
+ 	}
+ 	if (found == NULL)
+ 		return;
++	if (type == INPUT_REQUEST_OSC5522) {
++		input_request_osc_5522_reply(found, data);
++		return;
++	}
  
- /* Report current theme. */
+ 	TAILQ_FOREACH_SAFE(ir, &found->ictx->requests, entry, ir1) {
++		if (ir->type == INPUT_REQUEST_OSC5522)
++			continue;
+ 		if (complete && ir->type != INPUT_REQUEST_QUEUE)
+ 			break;
+ 		if (ir->type == INPUT_REQUEST_QUEUE)
 diff --git a/screen.c b/screen.c
 index f9ca89a..33d12e4 100644
 --- a/screen.c
@@ -412,25 +816,92 @@ index f9ca89a..33d12e4 100644
  		strlcat(tmp, "SYNC,", sizeof tmp);
  	if (*tmp != '\0')
 diff --git a/server-client.c b/server-client.c
-index 9508809..b92dda0 100644
+index 9508809..2827fbb 100644
 --- a/server-client.c
 +++ b/server-client.c
 @@ -2311,6 +2311,10 @@ server_client_reset_state(struct client *c)
  	if (c->overlay_draw == NULL && prompt)
  		mode &= ~MODE_BRACKETPASTE;
  
-+	/* Clear paste events if a prompt or overlay takes input; they go to the pane. */
++	/* Clear paste events if at the prompt or an overlay is open. */
 +	if (c->overlay_draw != NULL || prompt)
 +		mode &= ~MODE_PASTEEVENTS;
 +
  	/* Set the terminal mode and reset attributes. */
  	tty_update_mode(tty, mode, s);
  	tty_reset(tty);
+diff --git a/tmux.1 b/tmux.1
+index b307484..e3faab6 100644
+--- a/tmux.1
++++ b/tmux.1
+@@ -4998,6 +4998,13 @@ is the same as
+ .Ic request
+ but also creates a paste buffer.
+ .Pp
++The same applies to reads with the kitty clipboard protocol (OSC 5522), where
++.Ic buffer
++offers the newest paste buffer as text/plain.
++A read with the one-time password of a paste event
++.Nm
++passed to the application is always sent to the most recently used client.
++.Pp
+ See also the
+ .Ic set\-clipboard
+ option.
+@@ -5045,6 +5052,13 @@ If
+ will neither accept the clipboard escape sequence nor attempt to set the
+ clipboard.
+ .Pp
++With
++.Ic on ,
++applications may also write the clipboard with the kitty clipboard protocol
++(OSC 5522).
++Text/plain data creates a buffer, and the write is passed to the most recently
++used client if its terminal supports the protocol.
++.Pp
+ Note that this feature needs to be enabled in
+ .Xr xterm 1
+ by setting the resource:
+@@ -5118,6 +5132,8 @@ Supports DECSLRM margins.
+ Supports
+ .Xr xterm 1
+ mouse sequences.
++.It osc5522
++Supports the kitty clipboard protocol (OSC 5522) with paste events.
+ .It osc7
+ Supports the OSC 7 working directory extension.
+ .It overline
+@@ -8984,6 +9000,9 @@ Disable and enable focus reporting.
+ These are set automatically if the
+ .Em XT
+ capability is present.
++.It Em \&Dspe , \&Enpe
++Disable and enable paste events for the kitty clipboard protocol
++(OSC 5522).
+ .It Em \&Hls
+ Set or clear a hyperlink annotation.
+ .It Em \&Nobr
 diff --git a/tmux.h b/tmux.h
-index b53dae8..185af0a 100644
+index b53dae8..b2d6ce5 100644
 --- a/tmux.h
 +++ b/tmux.h
-@@ -697,6 +697,7 @@ enum tty_code_code {
+@@ -467,6 +467,7 @@ enum tty_code_code {
+ 	TTYC_DSESC,
+ 	TTYC_DSFCS,
+ 	TTYC_DSMG,
++	TTYC_DSPE,
+ 	TTYC_E3,
+ 	TTYC_ECH,
+ 	TTYC_ED,
+@@ -478,6 +479,7 @@ enum tty_code_code {
+ 	TTYC_ENESC,
+ 	TTYC_ENFCS,
+ 	TTYC_ENMG,
++	TTYC_ENPE,
+ 	TTYC_FSL,
+ 	TTYC_HLS,
+ 	TTYC_HOME,
+@@ -697,6 +699,7 @@ enum tty_code_code {
  #define MODE_KEYS_EXTENDED_2 0x40000
  #define MODE_THEME_UPDATES 0x80000
  #define MODE_SYNC 0x100000
@@ -438,52 +909,57 @@ index b53dae8..185af0a 100644
  
  #define ALL_MODES 0xffffff
  #define ALL_MOUSE_MODES (MODE_MOUSE_STANDARD|MODE_MOUSE_BUTTON|MODE_MOUSE_ALL)
-@@ -1741,6 +1742,7 @@ struct tty_term {
- #define TERM_SIXEL 0x40
- #define TERM_INVALIDMS 0x80
- #define TERM_NOREPLACE 0x100
-+#define TERM_PASTEEVENTS 0x200
- 	int		 flags;
+@@ -1241,6 +1244,7 @@ struct window_mode_entry {
+ enum input_request_type {
+ 	INPUT_REQUEST_PALETTE,
+ 	INPUT_REQUEST_CLIPBOARD,
++	INPUT_REQUEST_OSC5522,
+ 	INPUT_REQUEST_QUEUE
+ };
  
- 	LIST_ENTRY(tty_term) entry;
-@@ -1821,8 +1823,9 @@ struct tty {
+@@ -1821,8 +1825,9 @@ struct tty {
  #define TTY_WAITBG 0x4000
  #define TTY_BRACKETPASTE 0x8000
  #define TTY_HAVESYNC 0x10000
-+#define TTY_HAVEPASTEEVENTS 0x20000
++#define TTY_HAVEOSC5522 0x20000
  #define TTY_ALL_REQUEST_FLAGS \
 -	(TTY_HAVEDA|TTY_HAVEDA2|TTY_HAVEXDA|TTY_HAVESYNC)
-+	(TTY_HAVEDA|TTY_HAVEDA2|TTY_HAVEXDA|TTY_HAVESYNC|TTY_HAVEPASTEEVENTS)
++	(TTY_HAVEDA|TTY_HAVEDA2|TTY_HAVEXDA|TTY_HAVESYNC|TTY_HAVEOSC5522)
  	int		 flags;
  
  	struct tty_term	*term;
-@@ -3451,6 +3454,7 @@ void	 input_reply_clipboard(struct bufferevent *, const char *, size_t,
+@@ -3451,6 +3456,7 @@ void	 input_reply_clipboard(struct bufferevent *, const char *, size_t,
  void	 input_set_buffer_size(size_t);
  void	 input_request_reply(struct client *, enum input_request_type, void *);
  void	 input_cancel_requests(struct client *);
-+void	 input_osc5522_receive(struct client *, const char *, size_t);
++void	 input_osc_5522_receive(struct client *, const char *, size_t);
  
  /* input-key.c */
  void	 input_key_build(void);
 diff --git a/tty-features.c b/tty-features.c
-index 7d8568b..6ea4cd8 100644
+index 7d8568b..1787c7c 100644
 --- a/tty-features.c
 +++ b/tty-features.c
-@@ -93,6 +93,13 @@ static const struct tty_feature tty_feature_clipboard = {
+@@ -93,6 +93,18 @@ static const struct tty_feature tty_feature_clipboard = {
  	0
  };
  
 +/* Terminal has the kitty clipboard protocol (OSC 5522) with paste events. */
++static const char *const tty_feature_osc5522_capabilities[] = {
++	"Enpe=\\E[?5522h",
++	"Dspe=\\E[?5522l",
++	NULL
++};
 +static const struct tty_feature tty_feature_osc5522 = {
 +	"osc5522",
-+	NULL,
-+	TERM_PASTEEVENTS
++	tty_feature_osc5522_capabilities,
++	0
 +};
 +
  /* Terminal supports OSC 8 hyperlinks. */
  static const char *tty_feature_hyperlinks_capabilities[] = {
  #if defined (__OpenBSD__) || (defined(NCURSES_VERSION_MAJOR) && \
-@@ -402,6 +409,7 @@ static const struct tty_feature *const tty_features[] = {
+@@ -402,6 +414,7 @@ static const struct tty_feature *const tty_features[] = {
  	&tty_feature_margins,
  	&tty_feature_mouse,
  	&tty_feature_osc7,
@@ -492,14 +968,14 @@ index 7d8568b..6ea4cd8 100644
  	&tty_feature_progressbar,
  	&tty_feature_rectfill,
 diff --git a/tty-keys.c b/tty-keys.c
-index 7125dca..dcbfbb0 100644
+index 7125dca..192f879 100644
 --- a/tty-keys.c
 +++ b/tty-keys.c
 @@ -53,13 +53,15 @@ static int	tty_keys_mouse(struct tty *, const char *, size_t, size_t *,
  		    struct mouse_event *);
  static int	tty_keys_clipboard(struct tty *, const char *, size_t,
  		    size_t *);
-+static int	tty_keys_osc5522(struct tty *, const char *, size_t, size_t *);
++static int	tty_keys_osc_5522(struct tty *, const char *, size_t, size_t *);
  static int	tty_keys_device_attributes(struct tty *, const char *, size_t,
  		    size_t *);
  static int	tty_keys_device_attributes2(struct tty *, const char *, size_t,
@@ -527,7 +1003,7 @@ index 7125dca..dcbfbb0 100644
 -	/* Is this a synchronized update mode response? */
 -	switch (tty_keys_sync(tty, buf, len, &size)) {
 +	/* Is this a kitty clipboard protocol packet? */
-+	switch (tty_keys_osc5522(tty, buf, len, &size)) {
++	switch (tty_keys_osc_5522(tty, buf, len, &size)) {
 +	case 0:		/* yes */
 +		key = KEYC_UNKNOWN;
 +		goto complete_key;
@@ -555,7 +1031,7 @@ index 7125dca..dcbfbb0 100644
  	tv.tv_sec = delay / 1000;
  	tv.tv_usec = (delay % 1000) * 1000L;
  
-@@ -1544,53 +1564,106 @@ tty_keys_device_attributes(struct tty *tty, const char *buf, size_t len,
+@@ -1544,53 +1564,107 @@ tty_keys_device_attributes(struct tty *tty, const char *buf, size_t len,
  }
  
  /*
@@ -566,14 +1042,14 @@ index 7125dca..dcbfbb0 100644
   */
  static int
 -tty_keys_sync(struct tty *tty, const char *buf, size_t len, size_t *size)
-+tty_keys_osc5522(struct tty *tty, const char *buf, size_t len, size_t *size)
++tty_keys_osc_5522(struct tty *tty, const char *buf, size_t len, size_t *size)
  {
 -	struct client		*c = tty->client;
 -	static const char	 prefix[] = "\033[?2026;";
 -	size_t			 i;
 -	int			 status;
 +	static const char	 prefix[] = "\033]5522;";
-+	size_t			 i, end;
++	size_t			 i, end, terminator = 0;
  
  	*size = 0;
 -	if (tty->flags & TTY_HAVESYNC)
@@ -607,20 +1083,21 @@ index 7125dca..dcbfbb0 100644
 +	/* Find the terminator, BEL or ST. */
 +	for (end = i; end < len; end++) {
 +		if (buf[end] == '\007') {
-+			*size = end + 1;
++			terminator = 1;
 +			break;
 +		}
-+		if (buf[end] == '\033' && end + 1 < len && buf[end + 1] == '\\') {
-+			*size = end + 2;
++		if (end > i && buf[end - 1] == '\033' && buf[end] == '\\') {
++			terminator = 2;
 +			break;
 +		}
  	}
 -	log_debug("%s: received DECRPM %.*s", c->name, (int)*size, buf);
 -	tty->flags |= TTY_HAVESYNC;
-+	if (*size == 0)
++	if (end == len)
 +		return (1);
++	*size = end + 1;
  
-+	input_osc5522_receive(tty->client, buf + i, end - i);
++	input_osc_5522_receive(tty->client, buf + i, end + 1 - terminator - i);
  	return (0);
  }
  
@@ -638,7 +1115,7 @@ index 7125dca..dcbfbb0 100644
 +		int		 flag;
 +	} modes[] = {
 +		{ "\033[?2026;", "sync", TTY_HAVESYNC },
-+		{ "\033[?5522;", "osc5522", TTY_HAVEPASTEEVENTS }
++		{ "\033[?5522;", "osc5522", TTY_HAVEOSC5522 }
 +	};
 +	struct client	*c = tty->client;
 +	const char	*prefix;
@@ -692,15 +1169,35 @@ index 7125dca..dcbfbb0 100644
  /*
   * Handle secondary device attributes input. Returns 0 for success, -1 for
   * failure, 1 for partial.
+diff --git a/tty-term.c b/tty-term.c
+index 1ac078c..2e99d31 100644
+--- a/tty-term.c
++++ b/tty-term.c
+@@ -94,6 +94,7 @@ static const struct tty_term_code_entry tty_term_codes[] = {
+ 	[TTYC_DSFCS] = { TTYCODE_STRING, "Dsfcs" },
+ 	[TTYC_DSBP] = { TTYCODE_STRING, "Dsbp" },
+ 	[TTYC_DSMG] = { TTYCODE_STRING, "Dsmg" },
++	[TTYC_DSPE] = { TTYCODE_STRING, "Dspe" },
+ 	[TTYC_E3] = { TTYCODE_STRING, "E3" },
+ 	[TTYC_ECH] = { TTYCODE_STRING, "ech" },
+ 	[TTYC_ED] = { TTYCODE_STRING, "ed" },
+@@ -105,6 +106,7 @@ static const struct tty_term_code_entry tty_term_codes[] = {
+ 	[TTYC_ENESC] = { TTYCODE_STRING, "Enesc" },
+ 	[TTYC_ENFCS] = { TTYCODE_STRING, "Enfcs" },
+ 	[TTYC_ENMG] = { TTYCODE_STRING, "Enmg" },
++	[TTYC_ENPE] = { TTYCODE_STRING, "Enpe" },
+ 	[TTYC_FSL] = { TTYCODE_STRING, "fsl" },
+ 	[TTYC_HLS] = { TTYCODE_STRING, "Hls" },
+ 	[TTYC_HOME] = { TTYCODE_STRING, "home" },
 diff --git a/tty.c b/tty.c
-index c630e8c..e1957f2 100644
+index c630e8c..64d17e3 100644
 --- a/tty.c
 +++ b/tty.c
 @@ -417,6 +417,8 @@ tty_send_requests(struct tty *tty)
  			tty_puts(tty, "\033[>q");
  		if (~tty->flags & TTY_HAVESYNC)
  			tty_puts(tty, "\033[?2026$p");
-+		if (~tty->flags & TTY_HAVEPASTEEVENTS)
++		if (~tty->flags & TTY_HAVEOSC5522)
 +			tty_puts(tty, "\033[?5522$p");
  		tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
  		tty->flags |= (TTY_WAITBG|TTY_WAITFG);
@@ -709,8 +1206,8 @@ index c630e8c..e1957f2 100644
  	}
  	if (tty_term_has(tty->term, TTYC_DSBP))
  		tty_raw(tty, tty_term_string(tty->term, TTYC_DSBP));
-+	if (tty->term->flags & TERM_PASTEEVENTS)
-+		tty_raw(tty, "\033[?5522l");
++	if (tty_term_has(tty->term, TTYC_DSPE))
++		tty_raw(tty, tty_term_string(tty->term, TTYC_DSPE));
  
  	tty_raw(tty, tty_term_string(tty->term, TTYC_DSESC));
  	tty_raw(tty, tty_term_string(tty->term, TTYC_DSFCS));
@@ -718,7 +1215,7 @@ index c630e8c..e1957f2 100644
  
  	if (tty->flags & TTY_NOCURSOR)
  		mode &= ~MODE_CURSOR;
-+	if (~term->flags & TERM_PASTEEVENTS)
++	if (!tty_term_has(term, TTYC_ENPE))
 +		mode &= ~MODE_PASTEEVENTS;
  
  	if (tty_update_cursor(tty, mode, s) & MODE_CURSOR_BLINKING)
@@ -727,11 +1224,11 @@ index c630e8c..e1957f2 100644
  		else if (mode & MODE_MOUSE_STANDARD)
  			tty_puts(tty, "\033[?1000h");
  	}
-+	if ((changed & MODE_PASTEEVENTS) && (term->flags & TERM_PASTEEVENTS)) {
++	if ((changed & MODE_PASTEEVENTS) && tty_term_has(term, TTYC_ENPE)) {
 +		if (mode & MODE_PASTEEVENTS)
-+			tty_puts(tty, "\033[?5522h");
++			tty_putcode(tty, TTYC_ENPE);
 +		else
-+			tty_puts(tty, "\033[?5522l");
++			tty_putcode(tty, TTYC_DSPE);
 +	}
  	tty->mode = mode;
  }
