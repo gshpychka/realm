@@ -447,10 +447,14 @@
             let
               pkgs = nixpkgs.legacyPackages.${system};
               piExtensionTypes = pkgs.callPackage ./packages/pi-extension-types.nix { };
+              # the PTY harness's private tmux server is Realm's own tmux
+              agentShell = import ./packages/pituitary/shell.nix {
+                pkgs = pkgs.extend (import ./overlays/tmux.nix);
+              };
             in
             {
-              pituitary = import ./packages/pituitary/shell.nix { inherit pkgs; };
-              dura = import ./packages/pituitary/shell.nix { inherit pkgs; };
+              pituitary = agentShell;
+              dura = agentShell;
               default = pkgs.mkShell {
                 buildInputs = [
                   pkgs.nixd

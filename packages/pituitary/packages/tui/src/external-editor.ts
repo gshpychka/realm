@@ -8,7 +8,10 @@ import type { CliRenderer } from "@opentui/core";
  * The draft after the operator edits it in `$PITUITARY_EDITOR`, `$VISUAL`, `$EDITOR`, or vi, with the UI
  * handing the terminal over for the duration. `null` when the editor fails.
  */
-export function editExternally(renderer: CliRenderer, draft: string): string | null {
+export function editExternally(
+  renderer: Pick<CliRenderer, "suspend" | "resume">,
+  draft: string,
+): string | null {
   let dir: string | undefined;
   let suspended = false;
   try {

@@ -1,4 +1,11 @@
-import type { CommandResult, SessionCommand, SessionEvent, SessionState, SessionStats } from "./protocol.ts";
+import type {
+  CommandResult,
+  ImageContent,
+  SessionCommand,
+  SessionEvent,
+  SessionState,
+  SessionStats,
+} from "./protocol.ts";
 
 /** A conversation's presentation port. Each backend owns its connection and process lifetime. */
 export interface ConversationLink {
@@ -6,7 +13,7 @@ export interface ConversationLink {
   onClose(listener: (reason: string) => void): () => void;
   getSnapshot(): Promise<SessionSnapshot>;
   call<C extends SessionCommand>(command: C): Promise<CommandResult<C["type"]>>;
-  prompt(message: string, streamingBehavior?: "steer" | "followUp"): Promise<void>;
+  prompt(message: string, streamingBehavior?: "steer" | "followUp", images?: ImageContent[]): Promise<void>;
   abort(): Promise<void>;
   abortRetry(): Promise<void>;
   getState(): Promise<SessionState>;

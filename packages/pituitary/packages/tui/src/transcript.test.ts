@@ -20,7 +20,7 @@ const reply = (id: string, parts: Partial<AssistantEntry> = {}): AssistantEntry 
   ...parts,
 });
 
-const user = (id: string): Extract<Entry, { kind: "user" }> => ({ kind: "user", id, text: id });
+const user = (id: string): Extract<Entry, { kind: "user" }> => ({ kind: "user", id, text: id, images: 0 });
 
 /** Each item as its kind and what it holds, for comparing at a glance. */
 const shape = (items: Item[]) =>

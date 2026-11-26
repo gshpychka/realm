@@ -3,6 +3,7 @@ import { type ClientRequest, request } from "node:http";
 import {
   type CommandResult,
   type ConversationLink,
+  type ImageContent,
   JsonLineDecoder,
   type SessionCommand,
   type SessionEvent,
@@ -248,8 +249,12 @@ export class ConversationClient implements ConversationLink {
   call<C extends SessionCommand>(command: C): Promise<CommandResult<C["type"]>> {
     return this.send(command) as Promise<CommandResult<C["type"]>>;
   }
-  async prompt(message: string, streamingBehavior?: "steer" | "followUp"): Promise<void> {
-    await this.call({ type: "prompt", message, streamingBehavior });
+  async prompt(
+    message: string,
+    streamingBehavior?: "steer" | "followUp",
+    images?: ImageContent[],
+  ): Promise<void> {
+    await this.call({ type: "prompt", message, streamingBehavior, images });
   }
   async abort(): Promise<void> {
     await this.call({ type: "abort" });

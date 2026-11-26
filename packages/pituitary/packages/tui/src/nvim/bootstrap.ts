@@ -9,15 +9,17 @@ export const HIGHLIGHTS: Record<string, Record<string, string | boolean>> = {
   SpecialKey: { fg: palette.muted },
   Folded: { fg: theme.dim },
   PiPlaceholder: { fg: theme.dim },
+  PiImage: { fg: theme.image, bg: theme.imageTint },
+  PiImageEdge: { fg: theme.imageTint },
 };
 
 /**
- * Lua that makes a fresh nvim the draft's editor, run with the channel to report on and the
- * highlight groups to draw in. It defines `pi_draft`, the calls the engine makes, and reports
- * the draft as a `draft` notification whenever it changes.
+ * Lua that makes a fresh nvim the draft's editor, run with the channel to report on, the
+ * highlight groups to draw in, and the image chip. It defines `pi_draft`, the calls the engine
+ * makes, and reports the draft as a `draft` notification whenever it changes.
  */
 export const BOOTSTRAP = `
-local channel, highlights = ...
+local channel, highlights, chip = ...
 vim.o.swapfile = false
 vim.o.undofile = false
 vim.o.shada = ""
@@ -105,6 +107,43 @@ vim.api.nvim_create_autocmd(
   { callback = mark_placeholder }
 )
 
+-- An image is one character from U+100000 on, which takes one cell. A chip stands in its place,
+-- naming the image by the order the draft's images first appear in, as the prompt numbers them.
+-- The chip's start covers the character's own cell and the rest follows it, so the cursor stands
+-- before the chip or after it.
+local images = vim.api.nvim_create_namespace("pi_images")
+
+local function mark_images()
+  vim.api.nvim_buf_clear_namespace(0, images, 0, -1)
+  local numbers, count = {}, 0
+  for row, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+    local from = 1
+    while true do
+      -- U+100000 to U+10FFFF in UTF-8
+      local first, last = line:find("\\244[\\128-\\143][\\128-\\191][\\128-\\191]", from)
+      if not first then break end
+      local id = vim.fn.char2nr(line:sub(first, last))
+      if not numbers[id] then
+        count = count + 1
+        numbers[id] = count
+      end
+      vim.api.nvim_buf_set_extmark(0, images, row - 1, first - 1, {
+        virt_text = { { chip.start, "PiImageEdge" } },
+        virt_text_pos = "overlay",
+      })
+      -- Text typed straight after the chip goes after the rest of it.
+      vim.api.nvim_buf_set_extmark(0, images, row - 1, last, {
+        virt_text = { { chip.label .. numbers[id], "PiImage" }, { chip.stop, "PiImageEdge" } },
+        virt_text_pos = "inline",
+        right_gravity = false,
+      })
+      from = last + 1
+    end
+  end
+end
+
+vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, { callback = mark_images })
+
 -- startinsert takes effect only once nvim next reads input, so a request can land in
 -- between; a key enters insert mode in order with the requests after it.
 local function insert(at_end)
@@ -113,6 +152,7 @@ end
 
 local function replace(lines, row, col)
   vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+  mark_images()
   local line = lines[row + 1] or ""
   local byte = vim.str_byteindex(line, "utf-16", math.min(col, vim.str_utfindex(line, "utf-16")), false)
   vim.api.nvim_win_set_cursor(0, { row + 1, byte })

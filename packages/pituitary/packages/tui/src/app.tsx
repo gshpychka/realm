@@ -2,6 +2,7 @@ import type { BoxRenderable, KeyEvent, ScrollBoxRenderable } from "@opentui/core
 import { usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } from "@opentui/react";
 import { type ConversationLink, plain } from "@pituitary/session";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Attachments } from "./attachments.ts";
 import { BUILTINS, builtin, type Command, PI_COMMANDS } from "./commands/commands.ts";
 import { runCommand } from "./commands/run-command.ts";
 import { Conversation, type Display } from "./components/conversation.tsx";
@@ -29,6 +30,7 @@ import { usePullRequest } from "./github/use-pull-request.ts";
 import { type Action, actionFor, type Keymap, loadKeymap } from "./keymap.ts";
 import { KeymapProvider, keyHint } from "./keymap-context.tsx";
 import { modelTitle } from "./model-names.ts";
+import { PasteEvents } from "./paste-events.ts";
 import type { PiUiPort } from "./pi.ts";
 import { PiWidgets, usePiUI } from "./pi-ui.tsx";
 import { remains } from "./remains.ts";
@@ -136,6 +138,24 @@ export function App({
   const { width: screenColumns, height: screenRows } = useTerminalDimensions();
   const keymap = useMemo(() => keys ?? loadKeymap(), [keys]);
   const editor = useRef<EditorHandle | null>(null);
+  const [attachments] = useState(() => new Attachments());
+  const pastes = useRef<PasteEvents | null>(null);
+  useEffect(() => {
+    const events = new PasteEvents(renderer, () => editor.current?.takesImages() ?? false);
+    pastes.current = events;
+    return events.dispose;
+  }, [renderer]);
+  /** The terminal handed to another program and back; its pastes go to that program meanwhile. */
+  const handoff = {
+    suspend: () => {
+      pastes.current?.pause();
+      renderer.suspend();
+    },
+    resume: () => {
+      renderer.resume();
+      pastes.current?.resume();
+    },
+  };
   const piUI = usePiUI(extensionUI, editor, renderer, session.notify);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const lastInterrupt = useRef(0);
@@ -456,7 +476,8 @@ export function App({
       command("model");
       return;
     }
-    void send(text, { followUp }).then((accepted) => {
+    const prompt = attachments.resolve(text);
+    void send(prompt.text, { followUp, images: prompt.images }).then((accepted) => {
       if (!accepted && !editor.current?.text()) editor.current?.set(text);
     });
   };
@@ -592,14 +613,14 @@ export function App({
         result ? `thinking: ${result.level}` : "this model has no thinking levels",
       ),
     "app.editor.external": (_key, text) => {
-      const edited = editExternally(renderer, text);
+      const edited = editExternally(handoff, text);
       if (edited !== null) editor.current?.set(edited);
       else flash("external editor failed; your draft is unchanged");
       return true;
     },
     "app.suspend": () => {
-      renderer.suspend();
-      process.once("SIGCONT", () => renderer.resume());
+      handoff.suspend();
+      process.once("SIGCONT", handoff.resume);
       process.kill(process.pid, "SIGTSTP");
       return true;
     },
@@ -814,6 +835,7 @@ export function App({
             ) : (
               <Editor
                 ref={editor}
+                attachments={attachments}
                 onSubmit={submit}
                 steering={view.running}
                 focused={!away}

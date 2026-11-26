@@ -293,7 +293,9 @@ function isolatedTmux() {
   writeFileSync(
     config,
     `source-file ${quote(join(REPO, "../../modules/home-manager/tmux/tmux.conf"))}\n` +
-      'set -g default-terminal "tmux-256color"\nset -g status off\n',
+      'set -g default-terminal "tmux-256color"\nset -g status off\n' +
+      // The PTY's emulator answers the paste-event mode query with no such mode; Ghostty has it.
+      'set -as terminal-features ",xterm-ghostty:osc5522"\n',
   );
   return {
     command: ["tmux", "-S", socket, "-f", config, "new-session", "-s", "ui"],

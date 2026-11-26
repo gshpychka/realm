@@ -2,6 +2,7 @@ import {
   type ConversationLink,
   EventPacer,
   emptySession,
+  type ImageContent,
   note,
   reduce,
   restore,
@@ -18,7 +19,7 @@ export interface SessionController {
   state: SessionState | null;
   stats: SessionStats | null;
   closed: string | null;
-  send(text: string, options?: { followUp?: boolean }): Promise<boolean>;
+  send(text: string, options?: { followUp?: boolean; images?: ImageContent[] }): Promise<boolean>;
   abort(): void;
   interrupt(): Promise<string>;
   abortRetry(): void;
@@ -151,11 +152,11 @@ export function useSession(link: ConversationLink): SessionController {
     [],
   );
   const send = useCallback(
-    async (text: string, options: { followUp?: boolean } = {}) => {
+    async (text: string, options: { followUp?: boolean; images?: ImageContent[] } = {}) => {
       if (!text.trim()) return true;
       const own = generation.current;
       try {
-        await link.prompt(text, options.followUp ? "followUp" : "steer");
+        await link.prompt(text, options.followUp ? "followUp" : "steer", options.images);
         return true;
       } catch (error) {
         if (own === generation.current) notify("error", describe(error));

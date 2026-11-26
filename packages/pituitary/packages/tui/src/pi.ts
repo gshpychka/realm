@@ -3,6 +3,7 @@ import {
   type CommandResult,
   type ConversationLink,
   encodeJsonLine,
+  type ImageContent,
   JsonLineDecoder,
   type SessionCommand,
   type SessionEvent,
@@ -141,8 +142,17 @@ export class PiConversation implements ConversationLink, PiUiPort {
   async call<C extends SessionCommand>(command: C): Promise<CommandResult<C["type"]>> {
     return (await this.send(command)) as CommandResult<C["type"]>;
   }
-  async prompt(message: string, streamingBehavior?: "steer" | "followUp"): Promise<void> {
-    await this.send({ type: "prompt", message, ...(streamingBehavior ? { streamingBehavior } : {}) });
+  async prompt(
+    message: string,
+    streamingBehavior?: "steer" | "followUp",
+    images?: ImageContent[],
+  ): Promise<void> {
+    await this.send({
+      type: "prompt",
+      message,
+      ...(streamingBehavior ? { streamingBehavior } : {}),
+      ...(images?.length ? { images } : {}),
+    });
   }
   async abort(): Promise<void> {
     await this.send({ type: "abort" });

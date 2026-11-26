@@ -60,6 +60,11 @@ Drag to select and copy conversation text, including warnings, errors, queued
 messages, and task results. Controls, keyboard hints, and decorative marks stay
 outside the selection.
 
+Pasting an image puts a chip such as `image 1` in the draft. The prompt names the
+image `[image 1]` and sends it along, and deleting the chip drops the image. Image
+pastes need a terminal with the kitty clipboard protocol's paste events, such as
+Ghostty 1.4 or kitty. Through tmux they need Realm's tmux, which relays them.
+
 Standard extension dialogs, notifications, status text, widgets, commands, and prompt
 completions appear in Pituitary. Extensions that render custom stock-terminal
 components need Pi's interactive screen; that rendering API is outside Pi RPC.

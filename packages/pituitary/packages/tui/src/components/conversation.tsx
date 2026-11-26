@@ -12,8 +12,10 @@ import {
   useRef,
   useState,
 } from "react";
+import { IMAGE_TOKEN } from "../attachments.ts";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
+import { IMAGE_CHIP } from "../image-chip.ts";
 import type { Action } from "../keymap.ts";
 import { keyHint, useKeyHint, useKeymap } from "../keymap-context.tsx";
 import { palette, theme } from "../theme.ts";
@@ -51,6 +53,32 @@ export interface Display {
   escapes: string;
 }
 
+/** A message's text, with `[image N]` drawn as a chip for each of the `images` it carries. */
+function withImageChips(text: string, images: number): ReactNode {
+  if (images === 0) return text;
+  const parts: ReactNode[] = [];
+  let from = 0;
+  for (const match of text.matchAll(IMAGE_TOKEN)) {
+    const n = Number(match[1]);
+    if (n < 1 || n > images) continue;
+    parts.push(
+      text.slice(from, match.index),
+      <span key={`${match.index}-start`} fg={theme.imageTint}>
+        {IMAGE_CHIP.start}
+      </span>,
+      <span key={`${match.index}-label`} fg={theme.image} bg={theme.imageTint}>
+        {`${IMAGE_CHIP.label}${n}`}
+      </span>,
+      <span key={`${match.index}-stop`} fg={theme.imageTint}>
+        {IMAGE_CHIP.stop}
+      </span>,
+    );
+    from = match.index + match[0].length;
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
+
 /** An entry the conversation draws as it is, which is any but the model's replies. */
 type Plain = Exclude<Item, Work | Reply>;
 
@@ -69,7 +97,7 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
           <text selectable={false} fg={theme.user} flexShrink={0}>
             ▌{" "}
           </text>
-          <text fg={theme.assistant}>{entry.text}</text>
+          <text fg={theme.assistant}>{withImageChips(entry.text, entry.images)}</text>
         </box>
       );
     case "custom":

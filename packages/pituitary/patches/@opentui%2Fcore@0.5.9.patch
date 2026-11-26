@@ -140,3 +140,17 @@ index 3ed4085..3eced70 100644
      this.recalculateBarProps();
      if (stickyStart && stickyScroll) {
        this.applyStickyStart(stickyStart);
+diff --git a/renderer.d.ts b/renderer.d.ts
+index dbbcfa8..836d4ee 100644
+--- a/renderer.d.ts
++++ b/renderer.d.ts
+@@ -396,7 +396,8 @@ export declare class CliRenderer extends EventEmitter implements RenderContext {
+     clearHitGridScissorRects(): void;
+     get widthMethod(): WidthMethod;
+     get frameId(): number;
+-    private writeOut;
++    /** Writes to the terminal in order with rendered frames. */
++    writeOut(chunk: string): boolean;
+     private scheduleRenderAfterFeedIdle;
+     private handleNativeRenderRejection;
+     private reportNativeRenderFailure;

@@ -63,8 +63,9 @@ protocol tests inspect complete synchronized frames directly and through a priva
 real tmux server. Terminal-type fixtures do not claim to launch GUI emulators.
 
 The OpenTUI patch in `patches/` fixes pending-highlight visibility, wrapped measurement,
-and disabled-scrollbar first-frame displacement. Keep it until the corresponding
-rendering evidence passes without it.
+and disabled-scrollbar first-frame displacement. Keep those fixes until the corresponding
+rendering evidence passes without them. The patch also types the renderer's `writeOut`
+as public, since paste events write their terminal sequences through it.
 
 The mascot is one fire rendered by `components/mascot.tsx`; views provide slots through
 `MascotSlot`. `e2e/helpers/fire.ts` identifies its captured cells. A PTY read can arrive

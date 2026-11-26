@@ -1,5 +1,5 @@
 import type { SessionSnapshot } from "./client.ts";
-import { contentToText, type SessionEvent } from "./protocol.ts";
+import { contentToText, imageCount, type SessionEvent } from "./protocol.ts";
 
 export type Phase = "idle" | "streaming" | "compacting" | "retrying";
 
@@ -26,6 +26,8 @@ export interface UserEntry {
   kind: "user";
   id: string;
   text: string;
+  /** Images the message carries, which its text names `[image 1]` onward. */
+  images: number;
 }
 
 export interface AssistantEntry {
@@ -566,7 +568,12 @@ export function transcript(state: SessionView): string {
 function startMessage(state: SessionView, message: Message): SessionView {
   switch (message.role) {
     case "user":
-      return append(state, (id) => ({ kind: "user", id, text: contentToText(message.content) }));
+      return append(state, (id) => ({
+        kind: "user",
+        id,
+        text: contentToText(message.content),
+        images: imageCount(message.content),
+      }));
     case "assistant":
       return append(state, (id) => ({
         kind: "assistant",

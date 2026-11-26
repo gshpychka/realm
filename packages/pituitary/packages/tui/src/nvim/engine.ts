@@ -1,3 +1,4 @@
+import { IMAGE_CHIP } from "../image-chip.ts";
 import * as profile from "../profile.ts";
 import { BOOTSTRAP, HIGHLIGHTS } from "./bootstrap.ts";
 import { NvimRpc } from "./rpc.ts";
@@ -113,7 +114,7 @@ export class DraftEngine {
     });
     this.ready = this.rpc
       .request("nvim_get_api_info")
-      .then((info) => this.lua(BOOTSTRAP, [(info as [number])[0], HIGHLIGHTS]))
+      .then((info) => this.lua(BOOTSTRAP, [(info as [number])[0], HIGHLIGHTS, IMAGE_CHIP]))
       .then(() => profile.mark("nvim-ready"));
     // A failure to start also closes the session, which is where callers hear of it.
     this.ready.catch(() => {});

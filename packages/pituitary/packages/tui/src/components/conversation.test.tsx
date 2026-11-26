@@ -13,7 +13,7 @@ test("a narrow reply includes every wrapped row beside its mark in its first fra
     () => new Promise(() => {}),
   );
   const entries: Entry[] = [
-    { kind: "user", id: "question", text: WORDS },
+    { kind: "user", id: "question", text: WORDS, images: 0 },
     {
       kind: "assistant",
       id: "answer",
@@ -57,7 +57,7 @@ test("narrowing a long reply keeps its wrapped tail in view", async () => {
     () => new Promise(() => {}),
   );
   const entries: Entry[] = [
-    { kind: "user", id: "question", text: "go" },
+    { kind: "user", id: "question", text: "go", images: 0 },
     {
       kind: "assistant",
       id: "answer",
@@ -119,7 +119,7 @@ test("a narrow streamed reply keeps its latest line visible through completion",
     const [reply, setReply] = useState({ text: "", done: false });
     update = (text, done = false) => setReply({ text, done });
     const entries: Entry[] = [
-      { kind: "user", id: "question", text: "go" },
+      { kind: "user", id: "question", text: "go", images: 0 },
       { kind: "assistant", id: "answer", thinking: "", tools: [], ...reply },
     ];
     return (
@@ -163,6 +163,7 @@ test("loading earlier history moves back one page while keeping the reading posi
     kind: "user",
     id: `prompt-${index + 1}`,
     text: `prompt ${index + 1}`,
+    images: 0,
   }));
   const scroll = createRef<ScrollBoxRenderable>();
   let more = () => {};

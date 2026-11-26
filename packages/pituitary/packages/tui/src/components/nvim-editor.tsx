@@ -59,6 +59,7 @@ export function NvimEditor({
   confirm,
   onChange,
   onEscapes,
+  attachments,
   maxRows,
 }: NvimEditorProps) {
   const area = useRef<BoxRenderable | null>(null);
@@ -94,6 +95,7 @@ export function NvimEditor({
     set: (text, cursor) => engine.set(text, cursor),
     cursor: () => offsetOf(engine.draft),
     hasFocus: () => area.current?.focused ?? false,
+    takesImages: () => area.current?.focused ?? false,
     focus: () => area.current?.focus(),
     onFirstLine: () => editing(engine.draft) && engine.draft.onFirstRow,
     onLastLine: () => editing(engine.draft) && engine.draft.onLastRow,
@@ -137,6 +139,12 @@ export function NvimEditor({
 
   const onPaste = (event: PasteEvent) => {
     event.preventDefault();
+    const { kind, mimeType } = event.metadata ?? {};
+    if (kind === "binary" && mimeType?.startsWith("image/")) {
+      const data = Buffer.from(event.bytes).toString("base64");
+      engine.paste(attachments.add({ type: "image", mimeType, data }));
+      return;
+    }
     engine.paste(stripAnsiSequences(decodePasteBytes(event.bytes)));
   };
 

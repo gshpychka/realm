@@ -79,4 +79,7 @@ export const theme = {
   error: palette.red,
   dim: palette.faint,
   border: palette.rule,
+  /** An image's chip in a message: its label, and the tint it sits on. */
+  image: palette.aqua,
+  imageTint: palette.rule,
 } as const;

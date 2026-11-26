@@ -45,6 +45,9 @@ const NERD = {
   retrying: "\u{f0450}",
   steering: "\u{f04d4}",
   followUp: "\u{f1164}",
+  image: "\u{f02e9}",
+  chipStart: "\u{e0b6}",
+  chipEnd: "\u{e0b4}",
 } as const;
 
 /** The same icons from plain Unicode, for a terminal font without Nerd Fonts. */
@@ -94,6 +97,9 @@ const PLAIN: Record<keyof typeof NERD, string> = {
   retrying: "↻",
   steering: "↪",
   followUp: "⤷",
+  image: "▣",
+  chipStart: "▐",
+  chipEnd: "▌",
 };
 
 export type Glyph = keyof typeof NERD;

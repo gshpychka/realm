@@ -1,5 +1,7 @@
 import type { ImageContent, Model, ModelThinkingLevel, Usage } from "@earendil-works/pi-ai";
 
+export type { ImageContent };
+
 /** The stable presentation contract shared by the native conversation and terminal view. */
 export interface SessionState {
   model?: Model<string>;
@@ -122,6 +124,14 @@ export function contentToText(content: unknown): string {
     )
     .filter(Boolean)
     .join("\n");
+}
+
+/** How many images a message's content carries. */
+export function imageCount(content: unknown): number {
+  if (!Array.isArray(content)) return 0;
+  return content.filter(
+    (block) => block && typeof block === "object" && "type" in block && block.type === "image",
+  ).length;
 }
 
 const SEQUENCE =

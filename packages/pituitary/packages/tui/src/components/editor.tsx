@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { Attachments } from "../attachments.ts";
 import { takeEngine, textOf } from "../nvim/engine.ts";
 import * as profile from "../profile.ts";
 import { wrappedRows } from "../text-width.ts";
@@ -25,6 +26,8 @@ export interface EditorHandle {
   cursor(): number;
   /** True while the draft takes the keyboard. */
   hasFocus(): boolean;
+  /** True while a pasted image would go into the draft. */
+  takesImages(): boolean;
   /** Gives the keyboard back to the draft. */
   focus(): void;
   /** True when the cursor is on the draft's top screen row, where up has nowhere left to go in it. */
@@ -63,6 +66,8 @@ export interface EditorProps {
   onEscapes?(count: 1 | 2): void;
   /** Tells the operator something about the editor itself, such as nvim failing to start. */
   onNotice?(text: string): void;
+  /** Images pasted into the draft, which holds a character for each. */
+  attachments: Attachments;
 }
 
 /**
@@ -120,6 +125,7 @@ function plainHandle(
     set,
     cursor: () => area.current?.cursorOffset ?? 0,
     hasFocus: () => area.current?.focused ?? false,
+    takesImages: () => false,
     focus: () => area.current?.focus(),
     onFirstLine: () => !area.current || row(area.current) === 0,
     onLastLine: () => !area.current || row(area.current) >= area.current.virtualLineCount - 1,

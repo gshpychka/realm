@@ -3,7 +3,15 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
-import { boot, drag, type LaunchOptions, launch, settled } from "./helpers/harness.ts";
+import {
+  boot,
+  drag,
+  type Launched,
+  type LaunchOptions,
+  launch,
+  settled,
+  waitMatch,
+} from "./helpers/harness.ts";
 
 after(async () => {
   await closeAll();
@@ -135,4 +143,77 @@ for (const { name, options } of TERMINALS) {
       await app.close();
     }
   });
+
+  test(`${name} pastes text and images through the kitty clipboard protocol`, async () => {
+    const app = await launch({ ...options, record: true });
+    try {
+      // The PTY's emulator answers the mode query with no such mode, so the test answers as
+      // Ghostty does. tmux keeps the first answer, so its configuration declares the mode instead.
+      if (!options.tmux) {
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal protocol bytes
+        await output(app, /\x1b\[\?5522\$p/);
+        await app.terminal.write("\x1b[?5522;2$y");
+      }
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal protocol bytes
+      await output(app, /\x1b\[\?5522h/);
+
+      await paste(app, "text/plain", "text/plain", base64("look at "));
+      await app.terminal.waitText("» look at");
+      await paste(app, "text/plain image/png", "image/png", PIXEL);
+      await app.terminal.waitText("image 1");
+      await app.terminal.type(" please");
+      // The chip's end is a glyph of its own between its label and the next word.
+      await waitMatch(app.terminal, /look at .{1,4}image 1. please/u);
+      await app.capture(`image-draft-${name}`);
+
+      await app.terminal.submit();
+      // The scenario echoes the prompt it received, image included.
+      await app.terminal.waitText('"type":"image"');
+      await settled(app.terminal);
+      const screen = await app.capture(`image-sent-${name}`);
+      assert.match(screen, /▌ look at .{1,4}image 1. please/u, "the sent message lost its image chip");
+    } finally {
+      await app.close();
+    }
+  });
+}
+
+const base64 = (text: string) => Buffer.from(text).toString("base64");
+const osc = (body: string) => `\x1b]5522;${body}\x1b\\`;
+/** A one-pixel PNG. */
+const PIXEL =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAADUExURY7AfN6Y4QkAAAAKSURBVAjXY2AAAAACAAHiIbwzAAAAAElFTkSuQmCC";
+
+/**
+ * Pastes as Ghostty does with paste events on: announces a clipboard of `types`, then answers
+ * the read it is asked for, which must carry the paste's password and ask for `mime`.
+ */
+async function paste(app: Launched, types: string, mime: string, data: string): Promise<void> {
+  const from = app.raw().length;
+  await app.terminal.write(
+    osc(`type=read:status=OK:pw=${base64("once")}`) +
+      osc(`type=read:status=DATA:mime=${base64(".")};${base64(types)}`) +
+      osc("type=read:status=DONE"),
+  );
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: terminal protocol bytes
+  const [, meta = "", asked] = await output(app, /\x1b\]5522;type=read:([^\x1b;]*);([^\x1b]*)\x1b\\/, from);
+  assert.match(meta, new RegExp(`pw=${base64("once")}`), "the read lost the paste's password");
+  assert.equal(asked, base64(mime));
+  const id = /id=([^:]+)/.exec(meta)?.[1];
+  await app.terminal.write(
+    osc(`type=read:status=OK:id=${id}`) +
+      osc(`type=read:status=DATA:mime=${base64(mime)}:id=${id};${data}`) +
+      osc(`type=read:status=DONE:id=${id}`),
+  );
+}
+
+/** The first match of `pattern` in what the UI has written to the terminal from offset `from` on. */
+async function output(app: Launched, pattern: RegExp, from = 0, timeoutMs = 5000): Promise<RegExpExecArray> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const match = pattern.exec(app.raw().slice(from));
+    if (match) return match;
+    if (Date.now() > deadline) throw new Error(`the terminal never received ${pattern}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
 }
