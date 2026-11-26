@@ -218,15 +218,21 @@ in
         zle -N zle-line-init _set_vi_cursor_shape
 
         # A remote program whose SSH connection drops leaves the terminal modes
-        # it set active in the local terminal. After ssh exits, this shows the
-        # cursor (DECTCEM), turns off X10/normal/button/any-event mouse tracking
-        # and SGR mouse encoding, resets xterm modifyOtherKeys, and sets the
-        # kitty keyboard protocol flags to 0.
+        # it set active in the local terminal. After ssh exits, this resets them.
         ssh() {
           command ssh "$@"
           local rc=$?
           # /dev/tty keeps the sequences out of redirected output
-          print -n '\e[?25h\e[?9l\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[>4m\e[=0;1u' 2>/dev/null >/dev/tty
+          {
+            print -n '\e[?25h'   # show the cursor (DECTCEM)
+            print -n '\e[?9l'    # X10 mouse tracking off
+            print -n '\e[?1000l' # normal mouse tracking off
+            print -n '\e[?1002l' # button-event mouse tracking off
+            print -n '\e[?1003l' # any-event mouse tracking off
+            print -n '\e[?1006l' # SGR mouse encoding off
+            print -n '\e[>4m'    # xterm modifyOtherKeys reset
+            print -n '\e[=0;1u'  # kitty keyboard protocol flags set to 0
+          } 2>/dev/null >/dev/tty
           return $rc
         }
 
