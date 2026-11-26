@@ -3,7 +3,7 @@
 # Alerts to ntfy on buoy need a publisher token, not set up yet:
 #   ntfy token generate                                    # tk_..., on any machine with ntfy-sh
 #   on buoy (machines/buoy/ntfy.nix): add a bay user and that token to the NTFY_AUTH_USERS/NTFY_AUTH_TOKENS lines,
-#     plus "bay:bay:write-only" and "reader:bay:read-only" to auth-access
+#     plus "bay:agents:write-only" and "reader:agents:read-only" to auth-access
 #   sops secrets/reaper/bay.yaml: ntfy-token: tk_...
 # then uncomment services.bay.notifications below.
 {
@@ -45,6 +45,7 @@ in
 
       # notifications = {
       #   url = "https://ntfy.${config.my.domain}";
+      #   topic = "agents";
       #   tokenFile = config.sops.secrets."bay/ntfy-token".path;
       # };
 

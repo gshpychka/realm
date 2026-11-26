@@ -4,7 +4,7 @@
   ...
 }:
 let
-  ntfyTopic = "buoy-status";
+  ntfyTopic = "outages";
   themePython = pkgs.python3.withPackages (p: [ p.pillow ]);
   # Cloudflare and browsers cache these stable asset paths for hours. Change
   # every asset URL together whenever the UI package, theme or icon changes.

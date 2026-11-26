@@ -66,7 +66,7 @@ in
           "hoard"
           "reaper"
         ];
-        topic = "notifications";
+        topic = "faults";
         server = "https://ntfy.${config.my.domain}";
       };
     }
