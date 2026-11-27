@@ -113,7 +113,7 @@ in
 {
   my.voice-broker = {
     enable = true;
-    backend = "openclaw";
+    backend = "hermes";
     hermes.enable = true;
     sopsFile = ../../secrets/hoard/voice-broker.yaml;
     recordings.enable = false;
