@@ -15,6 +15,12 @@ in
       enable = true;
       openFirewall = true;
       group = "media";
+      # The FHS resolver symlink bypasses the service's per-file bind mount.
+      package = pkgs.plex.overrideAttrs (old: {
+        extraBwrapArgs = (old.extraBwrapArgs or [ ]) ++ [
+          "--ro-bind /etc/netns/wan2/resolv.conf /etc/resolv.conf"
+        ];
+      });
     };
 
     jellyfin = {
