@@ -39,7 +39,7 @@ MIN_ROUTING_TIMEOUT_S = 3.0
 MAX_ROUTING_TIMEOUT_S = 30.0
 
 # Leads the identity file's text: the assistant's description of itself.
-_IDENTITY_LEAD = "Who you are, in your own words; the backend is your own memory and tools:"
+_IDENTITY_LEAD = "Your identity across voice and text; the backend is your own memory and tools:"
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,12 +248,7 @@ class Config:
 
 
 def _live(raw: dict[str, Any]) -> Live:
-    instructions = raw["instructions"]
-    identity_file = raw.get("identity_file")
-    identity = Path(identity_file).read_text().strip() if identity_file else ""
-    if identity:
-        instructions = f"{_IDENTITY_LEAD}\n{identity}\n\n{instructions}"
-    return Live(model=raw["model"], voice=raw["voice"], instructions=instructions)
+    return Live(model=raw["model"], voice=raw["voice"], instructions=raw["instructions"])
 
 
 def _history(raw: dict[str, Any]) -> History:
@@ -426,6 +421,11 @@ def _device(raw: dict[str, Any]) -> Device:
 
 def load(path: Path) -> Config:
     raw = json.loads(path.read_text())
+    identity_file = raw["live"].get("identity_file")
+    identity = Path(identity_file).read_text().strip() if identity_file else ""
+    if identity:
+        for section in ("live", "agent"):
+            raw[section]["instructions"] = f"{_IDENTITY_LEAD}\n{identity}\n\n{raw[section]['instructions']}"
     devices = [_device(d) for d in raw["devices"]]
     if len({d.mac for d in devices}) != len(devices):
         raise ValueError("devices.mac must be unique")

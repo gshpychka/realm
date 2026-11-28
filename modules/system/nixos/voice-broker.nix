@@ -360,12 +360,13 @@ in
 
     identityFile = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
-      default = if useOpenClaw then "${openclaw.workspace}/IDENTITY.md" else null;
-      defaultText = lib.literalMD "OpenClaw: its workspace's `IDENTITY.md`; Hermes: null (the configured Live instructions)";
+      default = if useOpenClaw then "${openclaw.workspace}/IDENTITY.md" else "${hermesHome}/SOUL.md";
+      defaultText = lib.literalMD "OpenClaw: its workspace's `IDENTITY.md`; Hermes: its profile's `SOUL.md`";
       description = ''
         The assistant's description of itself, read at each broker start to
-        lead the Live instructions. The instructions stand alone while it is
-        missing or empty, and with null.
+        lead the voice and consultation instructions. Restart the broker
+        after editing this file: systemd snapshots it as a private credential.
+        The instructions stand alone while it is missing or empty, and with null.
       '';
     };
 
