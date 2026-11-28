@@ -44,7 +44,7 @@ async function workingRow(terminal: TuiTest): Promise<number> {
 
 test("while pi works the one fire burns beside the working line, and the corner is empty", async () => {
   const app = await launch({ scenario: "long", delayMs: 80, cols: WIDE });
-  await app.terminal.waitText("faux-1");
+  await app.terminal.waitText("Faux Model");
   assert.equal((await fire(app.terminal))?.bottom, ROWS - 1, "no fire in the corner while idle");
   await app.terminal.submit("go");
   await waitMatch(app.terminal, RUNNING);
@@ -67,7 +67,7 @@ test("the fire travels between the corner and the working line and back, never d
     settle: false,
     env: { PITUITARY_STILL: "0" },
   });
-  await app.terminal.waitText("faux-1");
+  await app.terminal.waitText("Faux Model");
   await new Promise((resolve) => setTimeout(resolve, 400));
   await app.capture("mascot-idle");
   const start = performance.now();
@@ -111,7 +111,7 @@ test("the fire travels between the corner and the working line and back, never d
 
 test("a narrow terminal keeps one fire and follows the working line", async () => {
   const app = await launch({ scenario: "long", delayMs: 80, cols: NARROW });
-  await app.terminal.waitText("faux-1");
+  await app.terminal.waitText("Faux Model");
   const idleFire = await fire(app.terminal, NARROW);
   if (idleFire) assert.equal(idleFire.bottom, ROWS - 1);
   await app.terminal.submit("go");

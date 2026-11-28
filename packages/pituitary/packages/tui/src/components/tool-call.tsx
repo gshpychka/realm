@@ -185,7 +185,8 @@ function Diff({ diff, expanded }: { diff: string; expanded: boolean }) {
 
 const TASK_MARK = {
   completed: { glyph: "✓", colour: theme.dim },
-  in_progress: { glyph: "▸", colour: palette.yellow },
+  // Half full, between pending's empty ring and completed's tick; ▸ marks a folded box.
+  in_progress: { glyph: "◐", colour: palette.yellow },
   pending: { glyph: "○", colour: theme.assistant },
   deleted: { glyph: "×", colour: theme.dim },
 } as const;
@@ -214,7 +215,7 @@ export function Tasks({ tasks }: { tasks: readonly Task[] }) {
 function Subagent({ agent }: { agent: Extract<Details, { kind: "subagent" }> }) {
   const meta = [
     agent.status,
-    agent.toolUses === undefined ? null : `${agent.toolUses} tool calls`,
+    agent.toolUses === undefined ? null : counted(agent.toolUses, "tool call"),
     agent.tokens === undefined ? null : `${glyphs.tokens} ${(agent.tokens / 1000).toFixed(1)}k tokens`,
     agent.durationMs === undefined ? null : `${(agent.durationMs / 1000).toFixed(1)}s`,
   ]

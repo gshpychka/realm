@@ -37,3 +37,30 @@ export function ellipsize(text: string, columns: number): string {
   if (columns <= 0) return "";
   return Bun.stringWidth(text) <= columns ? text : `${headCells(text, columns - 1)}…`;
 }
+
+/**
+ * `text` in at most `lines` rows of `columns` cells, broken at spaces where a word allows,
+ * the last row ending in an ellipsis when some of it was cut.
+ */
+export function wrapCells(text: string, columns: number, lines: number): string[] {
+  const rows: string[] = [];
+  let rest = text.trim();
+  while (rest && rows.length < lines) {
+    if (rows.length === lines - 1 || Bun.stringWidth(rest) <= columns) {
+      rows.push(ellipsize(rest, columns));
+      break;
+    }
+    const head = headCells(rest, columns);
+    // A grapheme wider than the row leaves nothing to break, so the row ends there.
+    if (!head) {
+      rows.push(ellipsize(rest, columns));
+      break;
+    }
+    // A cut inside a word moves back to the space before it, unless the word fills the row.
+    const space = rest.charAt(head.length) === " " ? head.length : head.lastIndexOf(" ");
+    const cut = space > 0 ? space : head.length;
+    rows.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  return rows;
+}

@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
 import { useKeyHint } from "../keymap-context.tsx";
+import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { type WorkingLine, workingLine } from "../working.ts";
 import { MascotSlot, useMascotTakes } from "./mascot.tsx";
@@ -16,6 +17,8 @@ export interface WorkingProps {
   closed: string | null;
   /** The keys that reach the interrupt from where the draft stands, such as `esc esc`. */
   escapes: string;
+  /** What the operator calls the agent, such as `pi` or the role a Dura task plays. */
+  agent: string;
 }
 
 /** The time now, redrawn each second while `active`. */
@@ -40,7 +43,7 @@ export function statusUp(view: SessionView, closed: string | null): boolean {
  * on the operator, compacting, or waiting to retry, with the key that stops it. A passing
  * key hint takes the line's words, and the fire stays while pi works.
  */
-export function Working({ view, hint, closed, escapes }: WorkingProps) {
+export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
   const clear = useKeyHint("app.clear");
   const exit = useKeyHint("app.exit");
   const now = useNow(view.running || view.retry !== null || view.phase === "compacting");
@@ -50,7 +53,10 @@ export function Working({ view, hint, closed, escapes }: WorkingProps) {
   if (closed) {
     const quit = clear ? `${clear} twice to quit` : exit ? `${exit} to quit` : null;
     return (
-      <Line text={hint ?? `pi stopped${quit ? ` · ${quit}` : ""}`} tone={hint ? theme.dim : theme.error} />
+      <Line
+        text={ellipsize(hint ?? `${agent} stopped${quit ? ` · ${quit}` : ""}`, width - PADDING)}
+        tone={hint ? theme.dim : theme.error}
+      />
     );
   }
   if (view.retry) {
@@ -92,7 +98,7 @@ export function Working({ view, hint, closed, escapes }: WorkingProps) {
 function Line({ text, tone = theme.dim }: { text: string; tone?: string }) {
   return (
     <box flexShrink={0} height={1} paddingLeft={1} paddingRight={1}>
-      <text selectable={false} fg={tone} truncate wrapMode="none">
+      <text selectable={false} fg={tone} wrapMode="none">
         {text}
       </text>
     </box>

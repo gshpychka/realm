@@ -1,4 +1,5 @@
 import type { CliRenderer } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import { plain } from "@pituitary/session";
 import { type RefObject, useEffect, useState } from "react";
 import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
@@ -6,6 +7,7 @@ import type { EditorHandle } from "./components/editor.tsx";
 import { glyphs } from "./glyphs.ts";
 import type { PiUiPort, PiUiRequest } from "./pi.ts";
 import { FAST_STATUS } from "./pi-fast.ts";
+import { ellipsize } from "./text-width.ts";
 import { theme } from "./theme.ts";
 import { decodeUsage } from "./usage/presentation.ts";
 import { USAGE_STATUS, type UsageDisplay } from "./usage/types.ts";
@@ -100,17 +102,24 @@ export function usePiUI(
     const timer = setTimeout(
       () => {
         const expired = questions.filter((question) => question.deadline && question.deadline <= Date.now());
-        for (const { request } of expired)
+        for (const { request } of expired) {
           port?.respond({ type: "extension_ui_response", id: request.id, cancelled: true });
+          notify("info", `The question timed out: ${plain(request.title).split("\n")[0]}`);
+        }
         setQuestions((current) => current.filter((question) => !expired.includes(question)));
       },
       Math.max(0, Math.min(...deadlines) - Date.now()),
     );
     return () => clearTimeout(timer);
-  }, [port, questions]);
+  }, [port, questions, notify]);
 
-  const dialogs: DialogRequest[] = questions.map(({ request }): DialogRequest => {
-    const base = { type: "dialog" as const, id: request.id, title: plain(request.title) };
+  const dialogs: DialogRequest[] = questions.map(({ request, deadline }): DialogRequest => {
+    const base = {
+      type: "dialog" as const,
+      id: request.id,
+      title: plain(request.title),
+      ...(deadline ? { deadline } : {}),
+    };
     switch (request.method) {
       case "select":
         return { ...base, method: "select", options: request.options.map(plain) };
@@ -166,6 +175,19 @@ export function PiWidgets({ widgets, placement }: { widgets: Widget[]; placement
   return (
     <box paddingLeft={1} flexShrink={0} maxHeight={5} overflow="hidden">
       <text fg={theme.dim}>{lines.join("\n")}</text>
+    </box>
+  );
+}
+
+/** Extension statuses on one line under the editor, inset like the widgets beside them. */
+export function PiStatuses({ statuses }: { statuses: readonly string[] }) {
+  const { width } = useTerminalDimensions();
+  if (!statuses.length) return null;
+  return (
+    <box paddingLeft={1} paddingRight={1} flexShrink={0} height={1}>
+      <text fg={theme.dim} wrapMode="none">
+        {ellipsize(statuses.join(" · "), width - 2)}
+      </text>
     </box>
   );
 }

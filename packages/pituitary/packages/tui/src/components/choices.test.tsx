@@ -3,7 +3,7 @@ import { KeyEvent, parseKeypress } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
 import { act, type ReactNode } from "react";
-import { Dialog, GRACE_MS } from "./dialog.tsx";
+import { Dialog, dialogTitle, GRACE_MS } from "./dialog.tsx";
 import { Picker } from "./picker.tsx";
 
 async function draw(view: ReactNode) {
@@ -48,9 +48,9 @@ const items = [
 test("a picker starts a narrowed search at its first result", async () => {
   const app = await draw(<Picker spec={{ title: "models", items, onPick() {} }} onClose={() => {}} />);
   try {
-    expect(app.captureCharFrame()).toContain("▸ other current");
+    expect(app.captureCharFrame()).toContain("▶ other current");
     await app.type("match");
-    expect(app.captureCharFrame()).toContain("▸ match first");
+    expect(app.captureCharFrame()).toContain("▶ match first");
   } finally {
     app.close();
   }
@@ -130,7 +130,7 @@ test("an empty picker can recover from arrow navigation without losing its selec
     await app.type("z");
     await app.key("ARROW_DOWN");
     await app.key("BACKSPACE");
-    expect(app.captureCharFrame()).toContain("▸ match first");
+    expect(app.captureCharFrame()).toContain("▶ match first");
     await app.key("RETURN");
     expect(picked).toBe("first");
   } finally {
@@ -165,10 +165,10 @@ test("the wheel moves a choice without moving the text filter", async () => {
   try {
     await act(async () => app.mockMouse.scroll(8, 4, "up"));
     await app.renderOnce();
-    expect(app.captureCharFrame()).toContain("▸ match second");
+    expect(app.captureCharFrame()).toContain("▶ match second");
     await act(async () => app.mockMouse.scroll(8, 4, "up"));
     await app.renderOnce();
-    expect(app.captureCharFrame()).toContain("▸ match first");
+    expect(app.captureCharFrame()).toContain("▶ match first");
   } finally {
     app.close();
   }
@@ -227,3 +227,38 @@ for (const method of ["select", "editor"] as const) {
     }
   });
 }
+
+test("a long question takes half the dialog, and pgup and pgdn scroll it", async () => {
+  const title = [
+    "builder asks",
+    ...Array.from({ length: 12 }, (_, line) => `paragraph line ${line + 1}`),
+  ].join("\n");
+  const app = await draw(
+    <Dialog
+      dialog={{ type: "dialog", id: "long", title, method: "select", options: ["yes", "no"] }}
+      behind={0}
+      rows={12}
+      onAnswer={() => {}}
+    />,
+  );
+  try {
+    let frame = app.captureCharFrame();
+    expect(frame).toContain("paragraph line 5");
+    expect(frame).not.toContain("paragraph line 6");
+    expect(frame).toContain("↑↓ move · enter pick · pgup pgdn scroll");
+    await app.key("\x1b[6~");
+    await app.key("\x1b[6~");
+    frame = app.captureCharFrame();
+    expect(frame).toContain("paragraph line 8");
+    expect(frame).not.toContain("builder asks");
+  } finally {
+    app.close();
+  }
+});
+
+test("a dialog's border counts the questions waiting and the seconds left", () => {
+  expect(dialogTitle(0, null)).toBeUndefined();
+  expect(dialogTitle(1, null)).toBe(" 1 of 2 ");
+  expect(dialogTitle(0, 7)).toBe(" auto-cancels in 7s ");
+  expect(dialogTitle(2, 0)).toBe(" 1 of 3 · auto-cancels in 0s ");
+});

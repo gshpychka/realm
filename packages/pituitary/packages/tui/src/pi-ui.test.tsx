@@ -330,10 +330,35 @@ test("Pi dialog deadlines cancel their own question without removing later input
     });
     await app.renderOnce();
     expect(source.responses).toEqual([{ type: "extension_ui_response", id: "timeout", cancelled: true }]);
+    expect(app.notices).toEqual([{ level: "info", text: "The question timed out: Brief question" }]);
     expect(app.state().dialogs.map((dialog) => dialog.id)).toEqual(["next"]);
     expect(app.captureCharFrame()).toContain("Next question");
     await app.answer({ type: "dialog_response", id: "next", cancelled: true });
     expect(source.responses.at(-1)).toEqual({ type: "extension_ui_response", id: "next", cancelled: true });
+  } finally {
+    app.close();
+  }
+});
+
+test("a question with a deadline counts down in its border, and the waiting count shares it", async () => {
+  const source = uiPort();
+  const app = await mount(source.port);
+  try {
+    await app.change(() => {
+      source.emit({
+        type: "extension_ui_request",
+        id: "allow",
+        method: "select",
+        title: "Allow rm -rf build?",
+        options: ["Allow", "Block"],
+        timeout: 8000,
+      });
+      source.emit({ type: "extension_ui_request", id: "later", method: "input", title: "Later" });
+    });
+    const deadline = app.state().dialogs[0]?.deadline ?? 0;
+    expect(deadline - Date.now()).toBeGreaterThan(7000);
+    expect(app.captureCharFrame()).toMatch(/1 of 2 · auto-cancels in 8s/);
+    expect(app.captureCharFrame()).toContain("↑↓ move · enter pick");
   } finally {
     app.close();
   }

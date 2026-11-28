@@ -38,9 +38,9 @@ function range(args: Args): string {
 /** Where a search looked: the pattern, and the path when the call names one. */
 const searched = (args: Args) => `${text(args.pattern)}${args.path ? ` in ${text(args.path)}` : ""}`;
 
-/** How many lines a read returned, when it returned any. */
-function readLines(tool: ToolView): string {
-  const lines = tool.output ? tool.output.replace(/\n+$/, "").split("\n").length : 0;
+/** How many lines `content` holds, as ` · 3 lines`, when it holds any; a final newline ends a line, not starts one. */
+function lineCount(content: string): string {
+  const lines = content ? content.replace(/\n+$/, "").split("\n").length : 0;
   return lines > 0 ? ` · ${counted(lines, "line")}` : "";
 }
 
@@ -52,14 +52,11 @@ function questions(args: Args): string {
 
 /** Each tool's heading from its arguments and its call, by tool name. */
 const HEADINGS = new Map<string, (args: Args, tool: ToolView) => Heading>([
-  ["read", (args, tool) => ({ title: "read", detail: `${text(args.path)}${range(args)}${readLines(tool)}` })],
   [
-    "write",
-    (args) => ({
-      title: "write",
-      detail: `${text(args.path)} (${counted(text(args.content).split("\n").length, "line")})`,
-    }),
+    "read",
+    (args, tool) => ({ title: "read", detail: `${text(args.path)}${range(args)}${lineCount(tool.output)}` }),
   ],
+  ["write", (args) => ({ title: "write", detail: `${text(args.path)}${lineCount(text(args.content))}` })],
   ["edit", (args) => ({ title: "edit", detail: text(args.path) })],
   ["bash", (args) => ({ title: "$", detail: text(args.command) })],
   ["grep", (args) => ({ title: "grep", detail: searched(args) })],

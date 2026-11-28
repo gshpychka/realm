@@ -10,7 +10,7 @@ after(async () => {
 test("renders the chrome and the empty conversation", async () => {
   const app = await launch();
   const screen = await app.capture("empty");
-  assert.ok(screen.includes(`faux-1`), `footer missing:\n${screen}`);
+  assert.ok(screen.includes("Faux Model"), `footer missing:\n${screen}`);
   assert.match(screen, /Ask pi something to get started/, `placeholder missing:\n${screen}`);
   await app.close();
 });

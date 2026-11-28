@@ -1,3 +1,7 @@
+import { useTerminalDimensions } from "@opentui/react";
+import { dismiss, hintLine, MOVE, position } from "../hints.ts";
+import { useKeyHint } from "../keymap-context.tsx";
+import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 
 export interface Suggestion {
@@ -11,12 +15,16 @@ const ROWS = 8;
 export interface SuggestionsProps {
   items: readonly Suggestion[];
   index: number;
+  /** Enter runs the chosen command; otherwise it completes the draft, as tab does. */
+  runs: boolean;
   /** Rows the list may take, so it fits the screen. */
   rows?: number;
 }
 
 /** What the word being typed could complete to, just above the editor, scrolled to the choice. */
-export function Suggestions({ items, index, rows = ROWS }: SuggestionsProps) {
+export function Suggestions({ items, index, runs, rows = ROWS }: SuggestionsProps) {
+  const { width: columns } = useTerminalDimensions();
+  const close = useKeyHint("app.interrupt");
   if (items.length === 0) return null;
   const shown = Math.max(1, Math.min(ROWS, rows, items.length));
   const top = Math.max(0, Math.min(index - Math.floor(shown / 2), items.length - shown));
@@ -43,15 +51,21 @@ export function Suggestions({ items, index, rows = ROWS }: SuggestionsProps) {
               {item.label}
             </text>
             {item.detail ? (
-              <text selectable={false} fg={theme.dim} truncate wrapMode="none" flexShrink={1}>
-                {item.detail}
+              <text selectable={false} fg={theme.dim} wrapMode="none" flexShrink={1}>
+                {ellipsize(item.detail, columns - 2 - width)}
               </text>
             ) : null}
           </box>
         );
       })}
-      <text selectable={false} fg={theme.dim} truncate wrapMode="none">
-        tab completes · ↑↓ choose{items.length > shown ? ` · ${index + 1} of ${items.length}` : ""}
+      <text selectable={false} fg={theme.dim} wrapMode="none">
+        {hintLine(
+          runs
+            ? [MOVE, ["tab", "complete"], ["enter", "run"], dismiss(close, "close")]
+            : [MOVE, ["tab enter", "complete"], dismiss(close, "close")],
+          items.length > shown ? position(index, items.length) : null,
+          columns - 2,
+        )}
       </text>
     </box>
   );

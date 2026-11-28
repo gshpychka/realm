@@ -63,6 +63,20 @@ export function turnLine(turn: TurnEntry): string {
     .join(" · ");
 }
 
+/** Characters of a session's id that name it to `pituitary --session`, which takes a prefix of it. */
+const SESSION_PREFIX = 8;
+
+/**
+ * What brings the agent back once it cannot be reached: the key that reloads a Dura frontend,
+ * which `reload` names, or the command that starts Pi again on the session.
+ */
+export function reconnectHint(reload: string | null, sessionId: string | undefined): string {
+  if (reload) return `Disconnected · ${reload} reloads this frontend`;
+  if (sessionId)
+    return `Disconnected · restart with pituitary --session ${sessionId.slice(0, SESSION_PREFIX)}`;
+  return "Disconnected · restart pituitary to reconnect";
+}
+
 /** Milliseconds rounded to the second, in the largest two units past a minute. */
 export function duration(ms: number): string {
   const seconds = Math.round(ms / 1000);

@@ -1,6 +1,8 @@
 import type { InputRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useMemo, useRef, useState } from "react";
+import { hintLine, MOVE, SELECTED, UNSELECTED } from "../hints.ts";
+import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { Detail, type DetailIcon } from "./detail.tsx";
 
@@ -28,6 +30,9 @@ export interface PickerSpec {
 /** Rows the list shows before it scrolls, room permitting. */
 const ROWS = 10;
 
+/** The mark after the item in effect now, which says so without relying on its colour. */
+const CURRENT = " ✓";
+
 function matchingItems(items: readonly PickItem[], query: string) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return items
@@ -40,6 +45,16 @@ function matchingItems(items: readonly PickItem[], query: string) {
         Number(words.every((word) => b.label.toLowerCase().includes(word))) -
         Number(words.every((word) => a.label.toLowerCase().includes(word))),
     );
+}
+
+/** An item's label, its current mark, and its detail in `columns`, cut at the end: the detail gives way first. */
+function rowText(item: PickItem, columns: number) {
+  const label = ellipsize(item.label, columns);
+  const current = Boolean(item.current) && Bun.stringWidth(label + CURRENT) <= columns;
+  // The detail starts after a space, or a space, its icon and a space.
+  const lead = item.icon ? Bun.stringWidth(item.icon.glyph) + 2 : 1;
+  const room = columns - Bun.stringWidth(label) - (current ? Bun.stringWidth(CURRENT) : 0) - lead;
+  return { label, current, detail: item.detail && room > 0 ? ellipsize(item.detail, room) : "" };
 }
 
 /** A filterable list in the editor's place: type to narrow, arrows to move, enter to pick. */
@@ -136,6 +151,9 @@ export function Picker({
           flexGrow={1}
           value={spec.query ?? ""}
           placeholder="type to narrow"
+          placeholderColor={theme.dim}
+          textColor={theme.assistant}
+          focusedTextColor={theme.assistant}
           onInput={(value: string) => {
             setQuery(value);
             select(0);
@@ -154,6 +172,7 @@ export function Picker({
       ) : null}
       {visible.map((item, offset) => {
         const chosen = top + offset === index;
+        const row = rowText(item, width - (compact ? 2 : 4) - SELECTED.length);
         return (
           <box
             key={item.value}
@@ -174,26 +193,28 @@ export function Picker({
               flexShrink={0}
               wrapMode="none"
             >
-              {chosen ? "▸ " : "  "}
+              {chosen ? SELECTED : UNSELECTED}
             </text>
             <text
               selectable={false}
               fg={item.current ? palette.yellow : theme.assistant}
               flexGrow={1}
               minWidth={0}
-              truncate
               wrapMode="none"
             >
-              {item.label}
-              {item.detail ? <Detail text={item.detail} icon={item.icon} /> : null}
+              {row.label}
+              {row.current ? <span fg={palette.yellow}>{CURRENT}</span> : null}
+              {row.detail ? <Detail text={row.detail} icon={item.icon} /> : null}
             </text>
           </box>
         );
       })}
-      <text selectable={false} fg={theme.dim} truncate wrapMode="none">
-        {width < 50
-          ? `enter pick · esc close · ${shown.length} of ${spec.items.length}`
-          : `${shown.length} of ${spec.items.length} · ↑↓ move · enter pick · esc close`}
+      <text selectable={false} fg={theme.dim} wrapMode="none">
+        {hintLine(
+          [MOVE, ["enter", "pick"], ["esc", "close"]],
+          `${shown.length} of ${spec.items.length}`,
+          width - (compact ? 2 : 4),
+        )}
       </text>
     </box>
   );

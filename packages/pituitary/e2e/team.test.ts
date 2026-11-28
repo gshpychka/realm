@@ -29,8 +29,17 @@ test("team conversations, attention and retained results stay readable in compac
     app = await launch(100);
     const compact = await app.capture("team-compact");
     assert.match(compact, /coordinator/);
-    assert.match(compact, /builder/);
-    assert.match(compact, /needs your answer/);
+    assert.match(compact, /1 needs you · tasks/);
+    // The children that need the operator come first, their states under their roles, and the rest are counted.
+    assert.match(
+      compact,
+      /^ {3}builder · Build keyboard navigation and focus handling\n {3}needs your answer$/m,
+    );
+    assert.match(
+      compact,
+      /^ {3}builder · Fix the environment and continue the menu polish\n {3}Environment image unavailable$/m,
+    );
+    assert.match(compact, /^ {3}\+1 more · ctrl\+k tasks$/m);
     await app.terminal.type("Keep this draft while I inspect the team");
     await app.terminal.write("\x0b");
     await app.terminal.waitText("tasks · choose");
@@ -58,14 +67,20 @@ test("team conversations, attention and retained results stay readable in compac
     assert.match(failed, /Environment image unavailable/);
     assert.match(failed, /r retry · e revise/);
     await pastGrace();
+    await app.terminal.type("r");
+    await app.terminal.waitText("r again to start a fresh attempt");
+    await app.capture("team-retry-confirm");
     await app.terminal.keyboard.press("Escape");
     await waitMatch(app.terminal, /Keep this draft while I inspect the team/);
     await app.close();
     app = undefined;
     app = await launch(148);
     const wide = await app.capture("team-wide");
-    assert.match(wide, /WORK · 2\/4 active/);
+    assert.match(wide, /work · 2\/4 active · 4\dm \d+s left/);
     assert.match(wide, /verified 2\/2/);
+    // Objectives that start alike are cut at their ends, so the two builders read apart.
+    assert.match(wide, /builder · Build keyboard navigation and\n.*│ {3}focus handling$/m);
+    assert.match(wide, /builder · Fix the environment and\n.*│ {3}continue the menu polish$/m);
     await app.terminal.write("\x0b");
     await app.terminal.waitText("tasks · choose");
     await pastGrace();
@@ -77,12 +92,13 @@ test("team conversations, attention and retained results stay readable in compac
     await pastGrace();
     await app.terminal.type("result");
     await app.terminal.keyboard.press("Enter");
-    await app.terminal.waitText("RESULT · reviewer");
+    await app.terminal.waitText("result · reviewer");
     const result = await app.capture("team-retained-result");
-    assert.match(result, /Code retained/);
+    assert.match(result, /Code retained · tree \w{12} · 8 KiB/);
     assert.match(result, /Independent checks: passed/);
-    assert.match(result, /types · passed/);
-    assert.doesNotMatch(result, /i integrate/);
+    assert.match(result, /✓ types/);
+    assert.doesNotMatch(result, /types · passed/);
+    assert.doesNotMatch(result, /i integrate|r retry/);
     await pastGrace();
     await app.terminal.type("i");
     await app.terminal.waitIdle();
@@ -91,7 +107,7 @@ test("team conversations, attention and retained results stay readable in compac
     await pastGrace();
     await app.terminal.keyboard.press("Escape");
     // The archive footer is also visible while the result panel is open.
-    await waitMatch(app.terminal, /^(?!.*RESULT · reviewer).*Archived/s);
+    await waitMatch(app.terminal, /^(?!.*result · reviewer).*Archived/s);
     await app.terminal.write("\x12");
     await app.terminal.waitExit({ timeout: 10000 });
     const saved = JSON.parse(readFileSync(env.PITUITARY_UI_STATE, "utf8"));

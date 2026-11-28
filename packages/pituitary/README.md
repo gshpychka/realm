@@ -66,14 +66,21 @@ pastes need a terminal with the kitty clipboard protocol's paste events, such as
 Ghostty 1.4 or kitty. Through tmux they need Realm's tmux, which relays them.
 
 Standard extension dialogs, notifications, status text, widgets, commands, and prompt
-completions appear in Pituitary. Extensions that render custom stock-terminal
-components need Pi's interactive screen; that rendering API is outside Pi RPC.
+completions appear in Pituitary. A dialog with a timeout counts down in its border and
+says so in the conversation when it cancels itself; `pgup` and `pgdn` scroll a long
+question. Extensions that render custom stock-terminal components need Pi's interactive
+screen; that rendering API is outside Pi RPC.
+
+Models carry the names Pi's registry gives them, with `provider/id` beside them in
+`/model`. Errors say what deals with them where they can, such as `/compact` for a full
+context or `/login` for a refused credential; `ctrl+o` shows the rest of the error.
 
 ## Provider usage
 
 The footer's credit-card icon opens usage for the selected provider credential. Click
-it or use `/usage` to open the details; `/usage off` closes them and `/usage refresh`
-requests an update. Percentages mean **used**. The panel keeps the session's estimated
+it, press `alt+u`, or use `/usage` to open the details; `alt+u`, `esc`, or `/usage off`
+closes them and `/usage refresh` requests an update. Without a provider report, as in
+Dura, the card shows the session's estimated cost. Percentages mean **used**. The panel keeps the session's estimated
 model cost separate from provider-reported account usage.
 
 | Credential | Provider-reported data |
@@ -137,7 +144,9 @@ otherwise the client uses the local socket for the selected state directory.
 
 The interface adds tasks, questions, results, and independent verification. Use
 `ctrl+k` to browse tasks, `ctrl+q` for attention, and `alt+i` to join a teammate's
-input lease. Closing this attachment leaves Dura's work running.
+input lease. A narrow terminal lists the child tasks that need you first and counts
+the rest. In a task's result, retrying (`r`) and applying to your workspace (`a`) each
+take a second press. Closing this attachment leaves Dura's work running.
 
 | Mode | Runtime and state | Configuration |
 | --- | --- | --- |
@@ -177,10 +186,11 @@ external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 | --- | --- |
 | enter / shift+enter | Send / newline |
 | alt+enter | Queue a follow-up |
-| esc | Leave insert mode, then interrupt; close a picker |
+| esc | Leave insert mode, then interrupt; close a picker or the usage card |
 | ctrl+l / ctrl+p / shift+tab | Choose model / cycle model / cycle thinking |
 | ctrl+o / ctrl+t / ctrl+f | Expand work / toggle thinking / browse work |
 | ctrl+g | Edit externally |
+| alt+u | Show usage and cost |
 | pgup / pgdn | Scroll |
 | ctrl+c twice / ctrl+d | Close |
 

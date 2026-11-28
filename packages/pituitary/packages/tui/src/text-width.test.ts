@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ellipsize, headCells, tailCells } from "./text-width.ts";
+import { ellipsize, headCells, tailCells, wrapCells } from "./text-width.ts";
 
 test("clipping preserves wide and composed graphemes without skipping over them", () => {
   expect(headCells("a資料z", 4)).toBe("a資");
@@ -18,4 +18,20 @@ test("clipping measures the accumulated regional-indicator sequences", () => {
       expect(Bun.stringWidth(clip("🇺🇦a🇺🇦b🇺🇦", width))).toBeLessThanOrEqual(width);
     }
   }
+});
+
+test("wrapping breaks at spaces and cuts what is left at the end of the last row", () => {
+  expect(wrapCells("builder · Build keyboard navigation and focus handling", 20, 2)).toEqual([
+    "builder · Build",
+    "keyboard navigation…",
+  ]);
+  expect(wrapCells("short", 20, 2)).toEqual(["short"]);
+  expect(wrapCells("averyveryverylongword and more", 10, 3)).toEqual([
+    "averyveryv",
+    "erylongwor",
+    "d and more",
+  ]);
+  for (let width = 1; width <= 12; width++)
+    for (const row of wrapCells("a資料 bb 🇺🇦c dd", width, 3))
+      expect(Bun.stringWidth(row)).toBeLessThanOrEqual(width);
 });

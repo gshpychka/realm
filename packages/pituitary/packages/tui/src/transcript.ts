@@ -31,7 +31,9 @@ export interface Reply {
 export type Item = Exclude<Entry, AssistantEntry> | Work | Reply;
 
 /** Stop reasons worth telling the operator about; the rest end a reply normally. */
-const STOP_NOTE = new Map([["length", "the reply reached the output limit and stopped"]]);
+const STOP_NOTE = new Map([
+  ["length", "the reply reached the output limit and stopped · ask it to continue"],
+]);
 
 /** `entries` as the conversation draws them, while a run goes on when `running`. */
 export function transcriptOf(entries: readonly Entry[], running: boolean): Item[] {

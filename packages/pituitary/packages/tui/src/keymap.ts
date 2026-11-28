@@ -27,6 +27,8 @@ export const ACTIONS = {
   "app.suspend": ["ctrl+z"],
   "app.model.select": ["ctrl+l"],
   "app.model.cycleForward": ["ctrl+p"],
+  /** pituitary's own: opens and closes the footer's card of provider usage and session cost. */
+  "app.usage.toggle": ["alt+u"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type Action = keyof typeof ACTIONS;

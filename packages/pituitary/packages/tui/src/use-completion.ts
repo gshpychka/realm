@@ -96,6 +96,8 @@ export function useCompletion(
   return {
     completion,
     index,
+    /** The list as the popup draws it, with whether enter runs the chosen command; null while closed. */
+    shown: completion ? { items: completion.items, index, runs: completion.submits?.(index) ?? false } : null,
     /** Takes the draft and cursor as they change; a new draft starts the list at its top. */
     follow(text: string, cursor: number) {
       setDraft((current) =>

@@ -1,6 +1,8 @@
+import { useTerminalDimensions } from "@opentui/react";
 import type { SessionView } from "@pituitary/session";
 import { glyphs } from "../glyphs.ts";
 import { counted } from "../plural.ts";
+import { ellipsize } from "../text-width.ts";
 import { theme } from "../theme.ts";
 
 /** Messages waiting for the agent, in the order pi delivers them. */
@@ -19,6 +21,7 @@ export function Queue({
     ...queue.steering.map((text) => ({ kind: `${glyphs.steering} steering`, text })),
     ...queue.followUp.map((text) => ({ kind: `${glyphs.followUp} follow-up`, text })),
   ];
+  const { width } = useTerminalDimensions();
   if (messages.length === 0 || rows <= 0) return null;
   const hint = dequeue ? `${dequeue} edits queued messages` : "";
   const count = Math.max(0, rows - (hint ? 1 : 0));
@@ -32,8 +35,9 @@ export function Queue({
           <text selectable={false} fg={theme.tool} flexShrink={0} wrapMode="none">
             {row.kind}{" "}
           </text>
-          <text fg={theme.dim} flexShrink={1} truncate wrapMode="none">
-            {row.text.replace(/\s+/g, " ")}
+          <text fg={theme.dim} flexShrink={1} wrapMode="none">
+            {/* Cut at the end, after the padding and the kind with its space. */}
+            {ellipsize(row.text.replace(/\s+/g, " "), width - 2 - Bun.stringWidth(row.kind) - 1)}
           </text>
         </box>
       ))}

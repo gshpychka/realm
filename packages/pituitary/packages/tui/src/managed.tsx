@@ -230,6 +230,7 @@ export function ManagedWorkspace({
       key={`${attached.attemptId}:${attached.serial}`}
       link={attached.client}
       team={context}
+      agent={task?.role ?? "the agent"}
       initialView={views.current[attached.attemptId]}
       onCaptureView={(capture) => {
         captureConversation.current = capture;

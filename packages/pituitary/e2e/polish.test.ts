@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
-import { boot, launch, REPO } from "./helpers/harness.ts";
+import { glyphs } from "../packages/tui/src/glyphs.ts";
+import { boot, launch, normalMode, pastGrace, REPO, settled, waitMatch } from "./helpers/harness.ts";
+import { bootPi } from "./helpers/pi.ts";
 
 after(closeAll);
 
@@ -139,5 +143,137 @@ test("configured work and thinking keys dispatch to the visible work box", async
     await app.capture("keybindings-custom-work-thinking");
   } finally {
     await app.close();
+  }
+});
+
+test("a narrow welcome fits its keys and shortens what they do, cutting nothing mid-word", async () => {
+  const app = await launch({ cols: 50 });
+  try {
+    const welcome = await app.capture("welcome-narrow");
+    assert.match(welcome, /^ alt\+enter +queue a follow-up$/m);
+    assert.match(welcome, /^ ctrl\+f +step through boxes$/m);
+    assert.match(welcome, /^ ctrl\+c twice {2}ctrl\+d +quit$/m);
+    assert.match(welcome, /^ alt\+u +show usage and cost$/m);
+    assert.doesNotMatch(welcome, /\.\.\./);
+  } finally {
+    await app.close();
+  }
+});
+
+test("the model picker marks the current model by name, and a switch takes the new model's thinking", async () => {
+  const app = await launch();
+  try {
+    await app.terminal.write("\x0c");
+    await app.terminal.waitText("▶ Faux Model ✓");
+    const picker = await app.capture("picker-current");
+    assert.match(picker, /Faux Model ✓ +\S+ faux\/faux-1/);
+    assert.match(picker, /↑↓ move · enter pick · esc close · 2 of 2/);
+    await pastGrace();
+    await app.terminal.type("faux-2");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("model: Faux Fast · faux/faux-2");
+    // Faux Fast has no reasoning, so the footer drops the thinking level the last model had.
+    const switched = await waitMatch(app.terminal, /Faux Fast(?! +\S* *medium)/);
+    assert.doesNotMatch(switched.split("\n").at(-1) ?? "", /medium/);
+    await app.capture("model-switch-thinking");
+  } finally {
+    await app.close();
+  }
+});
+
+test("completion, the queue and the cost card read the same way on a narrow terminal", async () => {
+  const app = await launch({ scenario: "long", delayMs: 150, cols: 60 });
+  try {
+    await app.terminal.type("/");
+    await app.terminal.waitText("tab complete");
+    const menu = await app.capture("completion-hint");
+    assert.match(menu, /↑↓ move · tab complete · enter run · esc close/);
+    await app.terminal.write("\x03");
+    await app.terminal.submit("write a lot");
+    await app.terminal.waitText("line 1 of the long answer");
+    await app.terminal.submit(
+      "follow three is a much longer message that should show how the queue truncates it at the end",
+    );
+    await app.terminal.waitText(`${glyphs.steering} steering follow three`);
+    await app.terminal.write("\x1bu");
+    await app.terminal.waitText("session $");
+    const queued = await app.capture("queue-narrow");
+    assert.match(queued, new RegExp(`${glyphs.steering} steering follow three is a much longer .*…$`, "m"));
+    assert.doesNotMatch(queued, /\.\.\./);
+    await normalMode(app.terminal);
+    await app.terminal.keyboard.press("Escape");
+    await settled(app.terminal);
+  } finally {
+    await app.close();
+  }
+});
+
+/** A local OpenAI-compatible endpoint that refuses the credential, as a provider does a bad key. */
+function refusingProvider() {
+  const server = createServer((request, response) => {
+    request.resume();
+    request.on("end", () => {
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          error: {
+            message: "Incorrect API key provided.",
+            type: "invalid_request_error",
+            code: "invalid_api_key",
+          },
+        }),
+      );
+    });
+  });
+  return server;
+}
+
+test("regular Pi names its model, insets extension statuses, counts down dialogs and says what deals with errors", async () => {
+  const server = refusingProvider();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const endpoint = server.address() as AddressInfo;
+  const app = await bootPi({
+    auth: { openai: { type: "api_key", key: "fixture-key" } },
+    models: {
+      providers: {
+        openai: {
+          baseUrl: `http://127.0.0.1:${endpoint.port}/v1`,
+          api: "openai-completions",
+          models: [{ id: "fake-1", name: "Fake One" }],
+        },
+      },
+    },
+    argv: [
+      "--model",
+      "openai/fake-1",
+      "--extension",
+      join(REPO, "packages/tui/src/pi-extension-ui.fixture.ts"),
+    ],
+    ready: "Fake One",
+  });
+  try {
+    await app.terminal.waitText("demo status");
+    const start = await app.capture("pi-polish-start");
+    assert.match(start, /^ demo widget line$/m);
+    assert.match(start, /^ demo status$/m);
+    assert.doesNotMatch(start, /fake-1/);
+    await app.terminal.submit("/ask");
+    await app.terminal.waitText("Allow rm -rf build?");
+    await waitMatch(app.terminal, /auto-cancels in [3-6]s/);
+    const asking = await app.capture("pi-dialog-countdown");
+    assert.match(asking, /↑↓ move · enter pick · esc cancel/);
+    await app.terminal.waitText("The question timed out: Allow rm -rf build?", { timeout: 10_000 });
+    await app.terminal.waitText("picked: nothing");
+    await app.capture("pi-dialog-timed-out");
+    await app.terminal.submit("hello");
+    await app.terminal.waitText("/login signs in again");
+    const refused = await app.capture("pi-error-remedy");
+    assert.match(refused, /401:? Incorrect API key provided\. · \/login signs in again/);
+    await app.terminal.write("\x0f");
+    await app.terminal.waitIdle();
+    await app.capture("pi-error-detail");
+  } finally {
+    await app.close();
+    server.close();
   }
 });

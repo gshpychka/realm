@@ -26,7 +26,10 @@ export interface FooterProps {
   /** Whether replies to the model come at Fast mode's priority speed. */
   fast?: boolean;
   usage?: UsageDisplay;
-  onUsageToggle?(): void;
+  /** Whether the card is open: provider usage when Pi reports it, the session's cost otherwise. */
+  cardOpen?: boolean;
+  /** Opens or closes the card, as a click on it asks. */
+  onCard?(): void;
 }
 
 /** Context use at which the percentage warns, then alarms, as pi's own footer does. */
@@ -141,7 +144,7 @@ export function footerParts({
     pull: branch && pull ? pull : null,
     name: state?.sessionName || null,
     model: state?.model
-      ? { mark: providerMark(state.model.provider), name: modelName(state.model.id), fast }
+      ? { mark: providerMark(state.model.provider), name: modelName(state.model), fast }
       : null,
     thinking,
     percent: percent === null ? null : Math.round(percent),
@@ -414,26 +417,24 @@ const STYLE = footerStyle();
  */
 export function Footer(props: FooterProps) {
   const { width: columns } = useTerminalDimensions();
-  const [localOpen, setOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
-  const showUsage = Boolean(props.usage?.open);
+  const open = props.cardOpen ?? false;
+  const showUsage = Boolean(open && props.usage);
   useEffect(() => {
     if (!showUsage) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, [showUsage]);
-  const open = props.usage?.open ?? localOpen;
   const rows = footerRows(footerParts(props), columns, STYLE, open);
   const toggle = (event: MouseEvent) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    if (props.usage && props.onUsageToggle) props.onUsageToggle();
-    else setOpen((was) => !was);
+    props.onCard?.();
   };
   return (
     <box flexDirection="column" flexShrink={0} backgroundColor={STYLE.palette.bar}>
-      {open && props.usage ? (
+      {showUsage && props.usage ? (
         <UsagePanel report={props.usage.report} now={now} sessionCost={props.stats?.cost} />
       ) : null}
       {rows.map((row, index) => (

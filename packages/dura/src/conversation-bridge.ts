@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { getSupportedThinkingLevels, type Models } from "@earendil-works/pi-ai/models";
+import { clampThinkingLevel, getSupportedThinkingLevels, type Models } from "@earendil-works/pi-ai/models";
 import {
   type AgentEvent,
   type AgentEventStream,
@@ -586,7 +586,14 @@ export async function openConversation(options: OpenConversationOptions): Promis
         next.id === current.model.modelId
       )
         return null;
-      await conversation.configure({ model: { provider: next.provider, modelId: next.id } }, context);
+      // As Pi does, the thinking level follows the new model's capabilities.
+      await conversation.configure(
+        {
+          model: { provider: next.provider, modelId: next.id },
+          thinkingLevel: clampThinkingLevel(next, current.thinkingLevel ?? "off"),
+        },
+        context,
+      );
       return command.type === "set_model" ? next : { model: next };
     }
     throw new Error(`This managed conversation does not support ${command.type}`);

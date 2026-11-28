@@ -43,7 +43,7 @@ async function run(name: string, args: string, { link, session, ...context }: Co
       context.pick({
         title: "model",
         items: models.map((model) => ({
-          label: modelName(model.id),
+          label: modelName(model),
           detail: modelSource(model),
           icon: providerMark(model.provider),
           value: `${model.provider}/${model.id}`,

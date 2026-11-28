@@ -22,6 +22,8 @@ import {
   type TeamQuestion,
   type TeamTask,
   taskState,
+  teamRows,
+  wideTeam,
 } from "./components/team.tsx";
 import { statusUp, Working } from "./components/working.tsx";
 import { editExternally } from "./external-editor.ts";
@@ -32,16 +34,18 @@ import { KeymapProvider, keyHint } from "./keymap-context.tsx";
 import { modelTitle } from "./model-names.ts";
 import { PasteEvents } from "./paste-events.ts";
 import type { PiUiPort } from "./pi.ts";
-import { PiWidgets, usePiUI } from "./pi-ui.tsx";
+import { PiStatuses, PiWidgets, usePiUI } from "./pi-ui.tsx";
 import { remains } from "./remains.ts";
 import { theme } from "./theme.ts";
 import { worked } from "./transcript.ts";
 import { useBranch } from "./use-branch.ts";
+import { useCard } from "./use-card.ts";
 import { useCompletion } from "./use-completion.ts";
 import { useFlash } from "./use-flash.ts";
 import { useHeldKeys } from "./use-held-keys.ts";
 import { type Offer, useOffers, useRecall, walksDraft } from "./use-recall.ts";
 import { useSession } from "./use-session.ts";
+import { reconnectHint } from "./working.ts";
 
 export interface AppProps {
   link: ConversationLink;
@@ -54,6 +58,8 @@ export interface AppProps {
     access?: "control" | "observe" | "archive";
   };
   team?: TeamContext;
+  /** What the operator calls the agent: `pi` for regular Pi, the task's role in Dura. */
+  agent?: string;
   initialView?: ConversationState;
   onCaptureView?(capture: () => ConversationState): void;
   onReload?(): void;
@@ -78,6 +84,7 @@ const ARCHIVE_ACTIONS = new Set<Action>([
   "app.exit",
   "app.message.copy",
   "app.suspend",
+  "app.usage.toggle",
 ]);
 const ARCHIVE_COMMANDS = new Set(["copy", "session", "hotkeys", "quit"]);
 
@@ -122,6 +129,7 @@ export function App({
   onQuit,
   keys,
   team,
+  agent = "pi",
   initialView,
   onCaptureView,
   onReload,
@@ -157,6 +165,7 @@ export function App({
     },
   };
   const piUI = usePiUI(extensionUI, editor, renderer, session.notify);
+  const card = useCard(piUI.usage, link, session.notify);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const lastInterrupt = useRef(0);
   const started = useRef(false);
@@ -178,10 +187,6 @@ export function App({
     .map((binding) => (/^(esc|escape)$/i.test(binding) ? escapes : binding))
     .join(" / ");
   const stage = useMemo(() => new MascotStage(TRAVELS ? undefined : ["corner"]), []);
-  const display = useMemo<Display>(
-    () => ({ expanded, thinking, escapes: interruptHint }),
-    [expanded, thinking, interruptHint],
-  );
   const queued = view.queue.steering.length + view.queue.followUp.length;
   const operatorDialog: DialogRequest | null = operatorQuestion
     ? {
@@ -237,23 +242,28 @@ export function App({
     ],
     [canChooseModel, readonly, team, onReload, onHandoff, extensionCommands],
   );
+  const display = useMemo<Display>(
+    () => ({
+      expanded,
+      thinking,
+      escapes: interruptHint,
+      commands: new Set(commands.map((command) => command.name)),
+    }),
+    [expanded, thinking, interruptHint, commands],
+  );
   const completions = useCompletion(editor, commands, localCwd);
   const workingRows = statusUp(view, closed) ? (closed || !TRAVELS ? 1 : 2) : 0;
-  const teamRows = team
-    ? 1 +
-      (screenColumns < 120
-        ? Math.min(2, team.detail.tasks.filter((task) => task.parentTaskId === team.taskId).length) * 2
-        : 0) +
-      (team.busy || team.error ? 1 : 0)
-    : 0;
-  const room = Math.max(0, screenRows - draftRows - footerRows - workingRows - teamRows);
+  const room = Math.max(
+    0,
+    screenRows - draftRows - footerRows - workingRows - (team ? teamRows(team, screenColumns) : 0),
+  );
   const popup = taken || Boolean(completions.completion && !away);
   // Panels share half the available rows. A popup keeps at least eight rows for its
   // controls and choices; panels stay visible alongside it wherever space permits.
   const available = Math.min(12, Math.floor(room / 2), popup ? Math.max(0, room - 8) : room);
   const queueRows = Math.min(available, queued > 0 ? queued + (keymap["app.message.dequeue"][0] ? 1 : 0) : 0);
   const popupRows = Math.max(2, room - queueRows);
-  const wideTeam = Boolean(team && screenColumns >= 120);
+  const wide = Boolean(team && wideTeam(screenColumns));
   const captureView = useCallback(
     (): ConversationState => ({
       draft: editor.current?.text() ?? initialView?.draft ?? "",
@@ -462,7 +472,9 @@ export function App({
     if (closed) {
       // With pi gone nothing can take the text, so it stays where the operator can keep it.
       editor.current?.set(text);
-      flash("Disconnected · reload this frontend to reconnect");
+      flash(
+        reconnectHint(onReload ? (keyHint(keymap, "app.ui.reload") ?? "/reload-ui") : null, state?.sessionId),
+      );
       return;
     }
     toBottom();
@@ -579,6 +591,7 @@ export function App({
       if (view.retry) session.abortRetry();
       else if (view.phase === "compacting") abort();
       else if (view.running) void restoreQueue(session.interrupt());
+      else card.close();
       return true;
     },
     "app.message.followUp": () => {
@@ -633,6 +646,10 @@ export function App({
       return cycle(link.call({ type: "cycle_model" }), (result) =>
         result ? `model: ${modelTitle(result.model)}` : "only one model is available",
       );
+    },
+    "app.usage.toggle": () => {
+      card.toggle();
+      return true;
     },
   } satisfies Record<Action, Act>;
 
@@ -759,15 +776,16 @@ export function App({
               entries={view.entries}
               running={view.running}
               local={workspace.local && !readonly}
+              agent={agent}
               modelSelectable={canChooseModel && !readonly}
               display={display}
               window={window}
               browsing={browsing}
               onLeave={() => setBrowsing(false)}
             />
-            {wideTeam && team ? <TeamCards team={team} wide open={selectTask} /> : null}
+            {wide && team ? <TeamCards team={team} wide open={selectTask} /> : null}
           </box>
-          {!wideTeam && team ? <TeamCards team={team} wide={false} open={selectTask} /> : null}
+          {!wide && team ? <TeamCards team={team} wide={false} open={selectTask} /> : null}
           {team?.busy || team?.error ? (
             <box paddingLeft={1} flexShrink={0}>
               <text fg={team.error ? theme.error : theme.dim} truncate wrapMode="none">
@@ -782,7 +800,7 @@ export function App({
             overflow="hidden"
             justifyContent="flex-end"
           >
-            <Working view={view} hint={shownHint} closed={closed} escapes={interruptHint} />
+            <Working view={view} hint={shownHint} closed={closed} escapes={interruptHint} agent={agent} />
             <Queue queue={view.queue} dequeue={keymap["app.message.dequeue"][0]} rows={queueRows} />
             {resultTask && team ? (
               <TaskResult
@@ -806,11 +824,7 @@ export function App({
               <Popups
                 dialogs={dialogs}
                 picker={picker}
-                completion={
-                  completions.completion && !away
-                    ? { items: completions.completion.items, index: completions.index }
-                    : null
-                }
+                completion={away ? null : completions.shown}
                 rows={popupRows}
                 onAnswer={answerDialog}
                 onClosePicker={() => setPicker(null)}
@@ -839,6 +853,7 @@ export function App({
                 onSubmit={submit}
                 steering={view.running}
                 focused={!away}
+                agent={agent}
                 initialDraft={initialView?.draft}
                 initialCursor={initialView?.cursor}
                 note={
@@ -867,11 +882,7 @@ export function App({
             }}
           >
             <PiWidgets widgets={piUI.widgets} placement="belowEditor" />
-            {piUI.statuses.length ? (
-              <text fg={theme.dim} truncate wrapMode="none">
-                {piUI.statuses.join(" · ")}
-              </text>
-            ) : null}
+            <PiStatuses statuses={piUI.statuses} />
             <Footer
               state={state}
               stats={stats}
@@ -881,9 +892,8 @@ export function App({
               pull={pull}
               fast={piUI.fast}
               usage={piUI.usage}
-              onUsageToggle={() => {
-                void link.prompt("/usage").catch((error) => session.notify("warning", String(error)));
-              }}
+              cardOpen={card.open}
+              onCard={card.toggle}
             />
           </box>
           <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />
