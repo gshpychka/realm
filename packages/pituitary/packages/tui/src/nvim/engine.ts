@@ -180,6 +180,11 @@ export class DraftEngine {
     this.ready.then(() => this.lua("pi_draft.placeholder(...)", [text])).catch(() => {});
   }
 
+  /** Sets the skills `/skill:` can name, whose leading command the draft draws as a chip. */
+  skills(names: readonly string[]): void {
+    this.ready.then(() => this.lua("pi_draft.skills(...)", [names])).catch(() => {});
+  }
+
   /** Feeds keys in nvim's notation, such as `<C-w>` or `ci"`. */
   input(keys: string): void {
     this.sent++;

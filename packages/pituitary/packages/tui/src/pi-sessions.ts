@@ -5,6 +5,7 @@ import type { PickItem } from "./components/picker.tsx";
 import type { SessionSummary } from "./pi-bridge.ts";
 import { tilde } from "./place.ts";
 import { counted } from "./plural.ts";
+import { typed } from "./user-text.ts";
 import { clock } from "./working.ts";
 
 /** A prompt on the session's current branch, with what forking from it needs. */
@@ -41,10 +42,10 @@ export function branchPrompts(entries: readonly SessionEntry[], leafId: string |
   });
 }
 
-/** The first line of a prompt worth showing, terminal safe. */
+/** The first line of a prompt worth showing, terminal safe; a skill it loaded as the command that loaded it. */
 export function firstLine(text: string): string {
   return (
-    plain(text)
+    plain(typed(text))
       .split("\n")
       .map((line) => line.trim())
       .find(Boolean) ?? ""
@@ -90,7 +91,7 @@ export function sessionRows(
       value: session.path,
       current: session.path === current,
       // A renamed session is still found by what it began with.
-      keywords: plain(session.first),
+      keywords: plain(typed(session.first)),
     });
     for (const fork of forks.get(session.path) ?? []) visit(fork, depth + 1);
   };

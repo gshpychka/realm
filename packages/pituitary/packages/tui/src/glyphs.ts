@@ -44,6 +44,9 @@ const NERD = {
   image: "\u{f02e9}",
   chipStart: "\u{e0b6}",
   chipEnd: "\u{e0b4}",
+  skill: "\u{f0e7}",
+  template: "\u{f0219}",
+  extension: "\u{f0431}",
 } as const;
 
 /** The same icons from plain Unicode, for a terminal font without Nerd Fonts. */
@@ -92,6 +95,9 @@ const PLAIN: Record<keyof typeof NERD, string> = {
   image: "▣",
   chipStart: "▐",
   chipEnd: "▌",
+  skill: "ϟ",
+  template: "¶",
+  extension: "⊕",
 };
 
 export type Glyph = keyof typeof NERD;

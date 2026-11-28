@@ -9,7 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { type Command, PI_SCREENS } from "./commands/commands.ts";
+import { type Command, PI_SCREENS, SKILL_REQUEST } from "./commands/commands.ts";
 import type { EditorHandle } from "./components/editor.tsx";
 import type { PickerKey, PickerSpec } from "./components/picker.tsx";
 import type { Keymap } from "./keymap.ts";
@@ -20,6 +20,7 @@ import { forkRows, sessionDetail, sessionLabel, sessionRows } from "./pi-session
 import { tilde } from "./place.ts";
 import type { Question } from "./use-ask.ts";
 import type { SessionController } from "./use-session.ts";
+import { typed } from "./user-text.ts";
 
 export interface UsePiOptions {
   pi: PiControls | undefined;
@@ -77,7 +78,10 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
           (command): Command => ({
             name: command.name,
             description: command.description ?? "",
-            source: command.source === "skill" ? "prompt" : command.source,
+            source: command.source,
+            ...(command.source === "skill" ? { args: SKILL_REQUEST } : {}),
+            scope: command.sourceInfo.scope,
+            path: command.sourceInfo.path,
           }),
         ),
     [workspace],
@@ -175,8 +179,9 @@ function sessionActions(
       return kept();
     }
     // As in Pi, the earlier prompt replaces the draft, which nvim's undo keeps; the queue taken
-    // back from the run stays under it.
-    editor.current?.set([forked.text, queued].filter(Boolean).join("\n\n"), forked.text.length);
+    // back from the run stays under it. A skill it loaded comes back as the command that loaded it.
+    const prompt = typed(forked.text);
+    editor.current?.set([prompt, queued].filter(Boolean).join("\n\n"), prompt.length);
     notify(
       "info",
       `Forked into a new session · editing your earlier prompt${draft.trim() ? " · esc u brings your draft back" : ""}`,

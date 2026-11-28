@@ -34,6 +34,11 @@ export const ACTIONS = {
    * toggles the card instead of undoing.
    */
   "app.usage.toggle": ["alt+u"],
+  /**
+   * pituitary's own: lists regular Pi's skills, putting the chosen one before the draft. Like
+   * alt+u, a quick esc s may arrive as this chord instead of substituting in normal mode.
+   */
+  "app.skills": ["alt+s"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**

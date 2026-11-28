@@ -3,6 +3,7 @@ import type { Entry } from "@pituitary/session";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import type { EditorHandle } from "./components/editor.tsx";
 import { fresh, newer, older, prompts, type Recall } from "./history.ts";
+import { typed } from "./user-text.ts";
 
 /**
  * A step out of the draft that the next up takes at once: asked for by a first press, or
@@ -67,14 +68,13 @@ export function useOffers({ away, queued }: { away: boolean; queued: number }) {
   };
 }
 
-/** The prompts the operator sent and the commands they ran, oldest first, as up recalls them. */
+/**
+ * The prompts the operator sent and the commands they ran, oldest first, as up recalls them:
+ * a skill as the `/skill:name request` that loaded it. Pi expands a prompt template for good,
+ * so a template's prompt comes back as the text it expanded to.
+ */
 function historyOf(entries: readonly Entry[]): string[] {
-  return prompts(
-    entries.flatMap((entry) => {
-      if (entry.kind === "user") return [entry.text];
-      return [];
-    }),
-  );
+  return prompts(entries.flatMap((entry) => (entry.kind === "user" ? [typed(entry.text)] : [])));
 }
 
 /** Up and down through the operator's earlier prompts, from the draft's top and bottom rows. */

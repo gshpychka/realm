@@ -1,19 +1,22 @@
-/** A terminal command, completed by name in the editor. */
+import type { SourceInfo } from "@earendil-works/pi-coding-agent";
+
+/**
+ * A terminal command, completed by name in the editor: Pituitary's own, or one Pi's extensions,
+ * prompt templates or skills register.
+ */
 export interface Command {
   name: string;
   description: string;
-  source: "builtin" | "extension" | "prompt";
+  source: "builtin" | "extension" | "prompt" | "skill";
+  /** What follows the name: `<required>` or `[optional]`. */
   args?: string;
-  localOnly?: boolean;
+  /** Whose a Pi command is: the operator's own, the project's, or only this run's, as `--skill` loads. */
+  scope?: SourceInfo["scope"];
+  /** The file Pi loaded a Pi command from, such as a skill's `SKILL.md`. */
+  path?: string;
 }
 export const BUILTINS: readonly Command[] = [
-  {
-    name: "model",
-    description: "choose an available model",
-    source: "builtin",
-    args: "[provider/id]",
-    localOnly: true,
-  },
+  { name: "model", description: "choose an available model", source: "builtin", args: "[provider/id]" },
   { name: "thinking", description: "choose the thinking level", source: "builtin", args: "[level]" },
   {
     name: "compact",
@@ -52,6 +55,17 @@ export const SESSION_COMMANDS: readonly Command[] = [
   { name: "export", description: "write this session as an HTML page", source: "builtin", args: "[path]" },
 ];
 
+/** What follows a skill's command: the request its instructions frame. */
+export const SKILL_REQUEST = "[request]";
+
+/** Regular Pi's list of skills, which puts the chosen one before the draft. */
+export const SKILLS: Command = {
+  name: "skills",
+  description: "choose a skill; the draft becomes its request",
+  source: "builtin",
+  args: "[filter]",
+};
+
 /** Pi's own screens: Pituitary hands them the terminal and comes back when they close. */
 export const PI_SCREENS: readonly Command[] = [
   { name: "login", description: "connect a provider or subscription · opens Pi", source: "builtin" },
@@ -84,14 +98,37 @@ export function builtin(text: string): { name: string; args: string } | null {
   return named(text, BUILTINS);
 }
 
-/** Commands matching the name being typed, prefix matches first. `null` once arguments begin. */
+/** The name being typed after `/`, while no arguments follow it; null otherwise. */
+export function typedName(text: string): string | null {
+  return /^\/(\S*)$/.exec(text)?.[1] ?? null;
+}
+
+/** The names a command is found by: a skill's also without its `skill:`, so `/pdf` finds `skill:pdf-tools`. */
+function namesOf(command: Command): string[] {
+  const name = command.name.toLowerCase();
+  return command.source === "skill" ? [name, name.replace(/^skill:/, "")] : [name];
+}
+
+/**
+ * Commands matching the name being typed: the one named exactly, then those starting with it,
+ * then those holding it. `null` once arguments begin.
+ */
 export function suggest(text: string, commands: readonly Command[], limit = 100): Command[] | null {
-  const match = /^\/(\S*)$/.exec(text);
-  if (!match) return null;
-  const typed = (match[1] ?? "").toLowerCase();
-  const prefix = commands.filter((command) => command.name.toLowerCase().startsWith(typed));
-  const inside = commands.filter(
-    (command) => !command.name.toLowerCase().startsWith(typed) && command.name.toLowerCase().includes(typed),
-  );
-  return [...prefix, ...inside].slice(0, limit);
+  const name = typedName(text);
+  if (name === null) return null;
+  const typed = name.toLowerCase();
+  const rank = (command: Command) => {
+    const names = namesOf(command);
+    if (command.name.toLowerCase() === typed) return 0;
+    if (names.some((each) => each.startsWith(typed))) return 1;
+    return names.some((each) => each.includes(typed)) ? 2 : null;
+  };
+  return commands
+    .flatMap((command) => {
+      const at = rank(command);
+      return at === null ? [] : [{ command, at }];
+    })
+    .sort((a, b) => a.at - b.at)
+    .map(({ command }) => command)
+    .slice(0, limit);
 }

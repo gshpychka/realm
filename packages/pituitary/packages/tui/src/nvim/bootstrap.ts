@@ -11,6 +11,7 @@ export const HIGHLIGHTS: Record<string, Record<string, string | boolean>> = {
   PiPlaceholder: { fg: theme.dim },
   PiImage: { fg: theme.image, bg: theme.imageTint },
   PiImageEdge: { fg: theme.imageTint },
+  PiSkill: { fg: theme.skill, bg: theme.skillTint, bold: true },
 };
 
 /**
@@ -144,6 +145,22 @@ end
 
 vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, { callback = mark_images })
 
+-- A leading /skill:<name> naming a skill Pi has loaded is the command Pi expands into the
+-- skill's instructions, so it shows as a chip; its text stays as typed. Pi reads the name up to
+-- the first space, so a name another line follows straight after loads nothing and shows plain.
+local skill = { names = {}, ns = vim.api.nvim_create_namespace("pi_skill") }
+
+local function mark_skill()
+  vim.api.nvim_buf_clear_namespace(0, skill.ns, 0, -1)
+  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  local name, after = (lines[1] or ""):match("^/skill:([^%s]+)(.?)")
+  if name and skill.names[name] and (after == " " or (after == "" and #lines == 1)) then
+    vim.api.nvim_buf_set_extmark(0, skill.ns, 0, 0, { end_col = #"/skill:" + #name, hl_group = "PiSkill" })
+  end
+end
+
+vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, { callback = mark_skill })
+
 -- startinsert takes effect only once nvim next reads input, so a request can land in
 -- between; a key enters insert mode in order with the requests after it.
 local function insert(at_end)
@@ -153,6 +170,7 @@ end
 local function replace(lines, row, col)
   vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
   mark_images()
+  mark_skill()
   local line = lines[row + 1] or ""
   local byte = vim.str_byteindex(line, "utf-16", math.min(col, vim.str_utfindex(line, "utf-16")), false)
   vim.api.nvim_win_set_cursor(0, { row + 1, byte })
@@ -174,6 +192,11 @@ _G.pi_draft = {
   placeholder = function(text)
     placeholder.text = text
     mark_placeholder()
+  end,
+  skills = function(names)
+    skill.names = {}
+    for _, name in ipairs(names) do skill.names[name] = true end
+    mark_skill()
   end,
 }
 

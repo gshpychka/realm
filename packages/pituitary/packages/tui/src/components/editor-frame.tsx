@@ -17,6 +17,8 @@ export interface EditorFrameProps {
   note: string | null;
   /** What asking again does, drawn into the lit rule above the draft over any note; both rules light while it waits. */
   confirm?: string | null;
+  /** What is wrong with the draft as it stands, drawn into the rule in the warning colour while nothing else is. */
+  flag?: string | null;
   mark: Mark;
   children: ReactNode;
 }
@@ -34,11 +36,15 @@ export function draftMark(steering: boolean): Mark {
 }
 
 /** The draft between two full-width rules, its mark at the left. */
-export function EditorFrame({ rows, note, confirm, mark, children }: EditorFrameProps) {
+export function EditorFrame({ rows, note, confirm, flag, mark, children }: EditorFrameProps) {
   const [width, setWidth] = useState(0);
   const confirming = Boolean(confirm);
+  const flagged = !confirming && !note && Boolean(flag);
   // OpenTUI leaves out a title that does not fit between two rule cells at each end.
-  const title = ellipsize((confirming ? confirm : note) ?? "", width - 6);
+  const title = ellipsize(
+    (confirming ? confirm : flagged ? `${glyphs.warning} ${flag}` : note) ?? "",
+    width - 6,
+  );
   return (
     <box
       flexDirection="row"
@@ -46,7 +52,7 @@ export function EditorFrame({ rows, note, confirm, mark, children }: EditorFrame
       borderStyle="heavy"
       borderColor={confirming ? theme.user : theme.border}
       title={title ? ` ${title} ` : undefined}
-      titleColor={confirming ? theme.assistant : theme.dim}
+      titleColor={confirming ? theme.assistant : flagged ? theme.tool : theme.dim}
       onSizeChange={function (this: BoxRenderable) {
         setWidth(this.width);
       }}

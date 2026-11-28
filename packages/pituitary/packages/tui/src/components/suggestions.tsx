@@ -3,11 +3,17 @@ import { dismiss, hintLine, MOVE, position, SELECTED, UNSELECTED } from "../hint
 import { useKeyHint } from "../keymap-context.tsx";
 import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
+import type { DetailIcon } from "./detail.tsx";
 
 export interface Suggestion {
   label: string;
   detail?: string;
+  /** Leads the label, such as the mark of a skill; rows without one keep its cells. */
+  icon?: DetailIcon;
 }
+
+/** Cells a row's icon takes with the space after it. */
+const ICON_CELLS = 2;
 
 /** Rows the list shows before it scrolls, room permitting. */
 const ROWS = 8;
@@ -31,8 +37,9 @@ export function Suggestions({ items, index, runs, rows = ROWS }: SuggestionsProp
   if (items.length === 0) return null;
   const shown = Math.max(1, Math.min(ROWS, rows, items.length));
   const top = Math.max(0, Math.min(index - Math.floor(shown / 2), items.length - shown));
-  // The row's padding and mark come first; the labels' column fits the longest, within bounds.
-  const inner = columns - 2 - Bun.stringWidth(SELECTED);
+  // The row's padding, mark and icons come first; the labels' column fits the longest, within bounds.
+  const icons = items.some((item) => item.icon) ? ICON_CELLS : 0;
+  const inner = columns - 2 - Bun.stringWidth(SELECTED) - icons;
   const labels = Math.max(
     1,
     Math.min(LABEL_CELLS, inner - LABEL_GAP, Math.max(...items.map((item) => Bun.stringWidth(item.label)))),
@@ -52,11 +59,16 @@ export function Suggestions({ items, index, runs, rows = ROWS }: SuggestionsProp
             <text
               selectable={false}
               fg={chosen ? theme.assistant : theme.tool}
-              width={width + Bun.stringWidth(SELECTED)}
+              width={width + Bun.stringWidth(SELECTED) + icons}
               flexShrink={0}
               wrapMode="none"
             >
               <span fg={chosen ? theme.assistant : theme.dim}>{chosen ? SELECTED : UNSELECTED}</span>
+              {icons ? (
+                <span fg={item.icon?.colour ?? theme.dim}>
+                  {item.icon ? `${item.icon.glyph} ` : " ".repeat(ICON_CELLS)}
+                </span>
+              ) : null}
               {ellipsize(item.label, labels)}
             </text>
             {item.detail ? (

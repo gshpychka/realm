@@ -37,21 +37,46 @@ describe("suggest", () => {
     expect(suggest("/model fake", all)).toBeNull();
     expect(suggest("hello /mo", all)).toBeNull();
   });
+
+  test("the command named in full comes first", () => {
+    const names = [{ name: "copy-all", description: "", source: "extension" }, ...all] satisfies Command[];
+    expect(suggest("/copy", names)?.map((command) => command.name)).toEqual(["copy", "copy-all"]);
+  });
+
+  test("a skill is found by its name after skill:, as a name starting with what is typed", () => {
+    const skills: Command[] = [
+      { name: "podcast", description: "", source: "prompt" },
+      { name: "skill:pdf-tools", description: "", source: "skill" },
+      { name: "skill:release-notes", description: "", source: "skill" },
+      { name: "update-pdf", description: "", source: "extension" },
+    ];
+    expect(suggest("/pd", skills)?.map((command) => command.name)).toEqual(["skill:pdf-tools", "update-pdf"]);
+    expect(suggest("/notes", skills)?.map((command) => command.name)).toEqual(["skill:release-notes"]);
+    // Typing the prefix itself lists only skills.
+    expect(suggest("/skill:", skills)?.map((command) => command.name)).toEqual([
+      "skill:pdf-tools",
+      "skill:release-notes",
+    ]);
+  });
 });
 
 describe("rank", () => {
   const paths = ["src/payouts/limits.ts", "src/limits/index.ts", "docs/payouts.md", "test/limits.test.ts"];
 
   test("a match inside the file name comes first", () => {
-    expect(rank("limits", paths)[0]).toBe("src/payouts/limits.ts");
+    expect(rank("limits", paths, 8)[0]).toBe("src/payouts/limits.ts");
   });
 
   test("letters in order across the path still match", () => {
-    expect(rank("dpm", paths)).toEqual(["docs/payouts.md"]);
+    expect(rank("dpm", paths, 8)).toEqual(["docs/payouts.md"]);
   });
 
   test("letters out of order do not", () => {
-    expect(rank("zzz", paths)).toEqual([]);
+    expect(rank("zzz", paths, 8)).toEqual([]);
+  });
+
+  test("offers no more than the limit", () => {
+    expect(rank("", paths, 2)).toHaveLength(2);
   });
 });
 

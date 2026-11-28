@@ -62,6 +62,10 @@ export interface EditorProps {
   note: string | null;
   /** What a second press of the key just pressed does, shown until another key passes it up. */
   confirm?: string | null;
+  /** What is wrong with the draft as it stands, such as a skill command Pi will not expand. */
+  flag?: string | null;
+  /** The skills `/skill:` can name, whose leading command the draft draws as a chip. */
+  skills?: readonly string[];
   /** Called when the draft or the cursor changes. */
   onChange?(text: string, cursor: number): void;
   /** How many escapes reach the app's interrupt from where the draft stands, told as it changes. */
@@ -154,6 +158,7 @@ function PlainEditor({
   initialCursor,
   note,
   confirm,
+  flag,
   onChange,
   onEscapes,
   initial,
@@ -198,7 +203,7 @@ function PlainEditor({
   const shownRows = Math.min(rows, maxRows);
 
   return (
-    <EditorFrame rows={shownRows} note={note} confirm={confirm} mark={draftMark(steering)}>
+    <EditorFrame rows={shownRows} note={note} confirm={confirm} flag={flag} mark={draftMark(steering)}>
       <textarea
         ref={area}
         focused={focused}

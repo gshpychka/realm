@@ -3,7 +3,7 @@ import { usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } fro
 import { type ConversationLink, plain } from "@pituitary/session";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Attachments } from "./attachments.ts";
-import { BUILTINS, builtin, named, PI_SCREENS, SESSION_COMMANDS } from "./commands/commands.ts";
+import { BUILTINS, builtin, named, PI_SCREENS, SESSION_COMMANDS, SKILLS } from "./commands/commands.ts";
 import { runCommand } from "./commands/run-command.ts";
 import { Conversation, type Display } from "./components/conversation.tsx";
 import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
@@ -49,6 +49,7 @@ import { useHeldKeys } from "./use-held-keys.ts";
 import { usePi } from "./use-pi.ts";
 import { type Offer, useOffers, useRecall, walksDraft } from "./use-recall.ts";
 import { useSession } from "./use-session.ts";
+import { useSkills } from "./use-skills.ts";
 import { reconnectHint, resumeCommand } from "./working.ts";
 
 export interface AppProps {
@@ -90,7 +91,7 @@ const ARCHIVE_ACTIONS = new Set<Action>([
 ]);
 const ARCHIVE_COMMANDS = new Set(["copy", "session", "hotkeys", "quit"]);
 /** Regular Pi's commands that Pituitary runs itself, or hands to Pi's own screens. */
-const PI_COMMANDS = [...SESSION_COMMANDS, ...PI_SCREENS];
+const PI_COMMANDS = [...SESSION_COMMANDS, ...PI_SCREENS, SKILLS];
 
 const TEAM_COMMANDS = [
   { name: "tasks", description: "find a task or agent" },
@@ -228,6 +229,7 @@ export function App({
   const branch = useBranch(link, localCwd);
   const pull = usePullRequest(link, localCwd, branch);
   const piCommands = regular?.commands;
+  const skills = useSkills({ commands: piCommands, cwd, editor, pick: setPicker, notify: session.notify });
   const commands = useMemo(
     () => [
       ...BUILTINS.filter((command) =>
@@ -394,6 +396,7 @@ export function App({
           return sessions && !readonly ? [`${line(bindings, action)} · in /resume`] : [];
         return (!action.startsWith("app.team.") || team) &&
           (!action.startsWith("app.session.") || sessions) &&
+          (action !== "app.skills" || sessions) &&
           (action !== "app.ui.reload" || onReload) &&
           (!readonly ||
             ARCHIVE_ACTIONS.has(action) ||
@@ -417,6 +420,7 @@ export function App({
 
   const command = (name: string, args = "") => {
     if (!readonly && regular?.run(name, args)) return;
+    if (!readonly && name === SKILLS.name && skills.open(args)) return;
     if (team && TEAM_COMMANDS.some((command) => command.name === name)) {
       const task = team.detail.tasks.find((task) => task.id === team.taskId);
       if (name === "tasks") showTasks();
@@ -553,6 +557,11 @@ export function App({
     "app.session.fork": () => {
       if (!regular) return false;
       command("fork");
+      return true;
+    },
+    "app.skills": () => {
+      if (!regular) return false;
+      command(SKILLS.name);
       return true;
     },
     "app.team.tasks": () => {
@@ -788,6 +797,7 @@ export function App({
               providerUsage={piUI.usage !== undefined}
               sessions={sessions && !readonly}
               display={display}
+              skillOf={skills.skillOf}
               window={window}
               browsing={browsing}
               onLeave={() => setBrowsing(false)}
@@ -876,10 +886,13 @@ export function App({
                       : shownHint
                 }
                 confirm={offers.asking}
+                flag={skills.flag}
+                skills={skills.names}
                 onNotice={(text) => session.notify("warning", text)}
                 onEscapes={(count) => setEscapes(count === 1 ? "esc" : "esc esc")}
                 onChange={(text, cursor) => {
                   completions.follow(text, cursor);
+                  skills.follow(text);
                   offers.edited(text);
                   recall.edited(text);
                 }}

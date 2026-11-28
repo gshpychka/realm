@@ -5,7 +5,7 @@
 A conversation, an editor, a little fire. Work directly with your configured Pi,
 or use the same interface to follow a durable team running in Bay machines.
 
-[Start](#start-a-conversation) · [Sessions](#sessions) · [Sign in](#connect-your-provider) · [Teams](#connect-to-dura) ·
+[Start](#start-a-conversation) · [Sessions](#sessions) · [Skills](#skills) · [Sign in](#connect-your-provider) · [Teams](#connect-to-dura) ·
 [Make it yours](#make-it-yours) · [Develop](#develop-without-rebuilding-the-system)
 
 ![Pituitary rendering a tool call and a queued steering message](docs/images/conversation.png)
@@ -69,6 +69,25 @@ to run on `enter`. `ctrl+d` on its empty editor, or `ctrl+c` twice, returns to P
 the session Pi ends on, with the draft and the conversation as they were. Pi reopens that
 session at its last entry, so of a `/tree` move only one that leaves a branch summary
 carries back; a move without one, and the prompt Pi puts in its editor, stay behind.
+
+## Skills
+
+Pi runs a skill from `/skill:name request`, which it expands into the skill's instructions
+with the request after them. `/skills [filter]` or `alt+s` lists the skills Pi has loaded,
+each marked `project`, `user`, or `this run` for one `--skill` loaded; picking one puts
+`/skill:name ` before the draft, which becomes the request, replacing a skill the draft
+already starts with. `/` completion finds a skill by its own name too, so `/pdf` offers
+`/skill:pdf-tools`.
+
+The draft shows a leading skill command as a chip. Pi expands only a `/skill:` at the very
+start of the prompt that names a skill it has, reading the name up to the first space, so the
+editor's rule warns when a `/skill:` would go to the model as typed.
+
+In the conversation, the message shows the skill as a chip before the request; `ctrl+o`
+shows the skill's file and the instructions the model received. Up recalls the prompt as
+typed, and queued messages taken back into the draft and a fork's earlier prompt come back the
+same way. A prompt template expands for good, so its prompt comes back as the text it became.
+When the model reads a skill's file itself, its work says `used skill pdf-tools`.
 
 ## Connect your provider
 
@@ -230,18 +249,22 @@ external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 | ctrl+l / ctrl+p / shift+tab | Choose model / cycle model / cycle thinking |
 | ctrl+o / ctrl+t / ctrl+f | Expand work / toggle thinking / browse work |
 | alt+r / alt+f / alt+n | Resume / fork / start a session (regular Pi) |
+| alt+s | Choose a skill for the draft (regular Pi) |
 | ctrl+g | Edit externally |
 | alt+u | Show usage and cost |
 | pgup / pgdn | Scroll |
 | ctrl+c twice / ctrl+d | Close |
 
-Like Pi's own `alt` keys, `alt+u` takes a chord Neovim's insert mode reads as `esc` then
-`u`. Where the terminal delivers a quick `esc u` as that chord, as one without the kitty
-keyboard protocol may, it toggles the card instead of undoing; rebind `app.usage.toggle`
-if that bites.
+Like Pi's own `alt` keys, `alt+u` and `alt+s` take chords Neovim's insert mode reads as
+`esc` then `u` or `s`. Where the terminal delivers a quick `esc u` as that chord, as one
+without the kitty keyboard protocol may, it toggles the card instead of undoing; rebind
+`app.usage.toggle` or `app.skills` if that bites.
 
-`/` completes commands. `/hotkeys` shows your bindings. Local conversations complete
-`@` paths and show the branch and GitHub pull request. `PITUITARY_GH=""` disables
+`/` completes commands, marking Pi's skills, prompt templates and extension commands.
+`enter` runs a command named in full and completes a half-typed one, as `tab` does; a
+command that needs an argument, and a skill, complete to take one. `/hotkeys` shows your
+bindings. Local conversations complete `@` paths, up to 50 matches, and show the branch and
+GitHub pull request. `PITUITARY_GH=""` disables
 the pull request lookup. `PITUITARY_STILL=1` holds animation; `PITUITARY_PLAIN_GLYPHS=1`
 uses plain symbols. Runtime behavior follows negotiated capabilities. Protocol tests
 cover Ghostty and tmux in Ghostty.

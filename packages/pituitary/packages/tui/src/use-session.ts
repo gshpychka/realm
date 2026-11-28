@@ -13,6 +13,7 @@ import {
 } from "@pituitary/session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as profile from "./profile.ts";
+import { typed } from "./user-text.ts";
 
 export interface SessionController {
   view: SessionView;
@@ -21,8 +22,10 @@ export interface SessionController {
   closed: string | null;
   send(text: string, options?: { followUp?: boolean; images?: ImageContent[] }): Promise<boolean>;
   abort(): void;
+  /** Stops the run, sending what was queued as the next prompt; gives that back as a draft when it cannot be sent. */
   interrupt(): Promise<string>;
   abortRetry(): void;
+  /** Takes the queued messages back as a draft, each as typed, such as `/skill:name request`. */
   takeQueue(): Promise<string>;
   refresh(): Promise<void>;
   /** Notes `text` in the conversation; `file` names a file it is about, drawn as a link. */
@@ -197,36 +200,40 @@ export function useSession(link: ConversationLink): SessionController {
       if (own === generation.current) notify("error", describe(error));
     });
   }, [link, notify]);
-  const takeQueue = useCallback(async () => {
+  /** The queued messages, taken from Pi, as Pi holds them: a skill expanded into its instructions. */
+  const takeMessages = useCallback(async (): Promise<string[]> => {
     const own = generation.current;
     if (closed) {
-      const text = [...reduced.current.queue.steering, ...reduced.current.queue.followUp].join("\n\n");
+      const messages = [...reduced.current.queue.steering, ...reduced.current.queue.followUp];
       reduced.current = reduce(reduced.current, { type: "queue_taken" });
       setView(reduced.current);
-      return text;
+      return messages;
     }
     try {
       const value = await link.clearQueue();
       await sync.current();
-      return [...value.steering, ...value.followUp].join("\n\n");
+      return [...value.steering, ...value.followUp];
     } catch (error) {
       if (own === generation.current) notify("error", describe(error));
-      return "";
+      return [];
     }
   }, [link, closed, notify]);
+  const takeQueue = useCallback(async () => (await takeMessages()).map(typed).join("\n\n"), [takeMessages]);
   const interrupt = useCallback(async () => {
     const own = generation.current;
-    const taken = await takeQueue();
-    if (own !== generation.current) return taken;
+    const taken = await takeMessages();
+    const draft = taken.map(typed).join("\n\n");
+    if (own !== generation.current) return draft;
     try {
       await link.abort();
-      if (taken) await link.prompt(taken);
+      // As Pi expanded them, so every skill among them stays loaded, not only a leading one.
+      if (taken.length) await link.prompt(taken.join("\n\n"));
       return "";
     } catch (error) {
       if (own === generation.current) notify("error", describe(error));
-      return taken;
+      return draft;
     }
-  }, [link, takeQueue, notify]);
+  }, [link, takeMessages, notify]);
   const refresh = useCallback(() => sync.current(), []);
   return { view, state, stats, closed, send, abort, interrupt, abortRetry, takeQueue, refresh, notify };
 }

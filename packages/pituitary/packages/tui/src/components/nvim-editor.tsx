@@ -58,6 +58,8 @@ export function NvimEditor({
   initialCursor,
   note,
   confirm,
+  flag,
+  skills,
   onChange,
   onEscapes,
   attachments,
@@ -90,6 +92,10 @@ export function NvimEditor({
   useEffect(() => {
     engine.placeholder(steering ? "queue a steering message" : `ask ${agent}`);
   }, [engine, steering, agent]);
+
+  useEffect(() => {
+    engine.skills(skills ?? []);
+  }, [engine, skills]);
 
   useImperativeHandle(ref, () => ({
     text: () => textOf(engine.draft),
@@ -168,7 +174,7 @@ export function NvimEditor({
   const rows = Math.min(maxRows, heightOf(frame));
   const mark = (frame && tagOf(frame.mode)) ?? draftMark(steering);
   return (
-    <EditorFrame rows={rows} note={note} confirm={confirm} mark={mark}>
+    <EditorFrame rows={rows} note={note} confirm={confirm} flag={flag} mark={mark}>
       <box
         ref={area}
         focusable
