@@ -246,18 +246,6 @@ export function toolRun(options: ToolRunOptions): SessionEvent[] {
   return events;
 }
 
-/**
- * The events pi emits when a run is aborted while a reply streams: the reply ends as
- * aborted, then the run ends.
- */
-export function abortedRun(): SessionEvent[] {
-  return [
-    { type: "message_end", message: assistantMessage([], "aborted", "Operation aborted") },
-    { type: "agent_end", messages: [], willRetry: false },
-    { type: "agent_settled" },
-  ];
-}
-
 /** Wraps turns in the agent lifecycle events that bracket every run. */
 export function agentRun(turns: SessionEvent[][]): SessionEvent[] {
   return [

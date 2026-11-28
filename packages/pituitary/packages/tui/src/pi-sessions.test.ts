@@ -34,7 +34,7 @@ const entries = [
 test("prompts come from the current branch only, oldest first", () => {
   const prompts = branchPrompts(entries, "b3");
   expect(prompts.map((prompt) => prompt.entryId)).toEqual(["u1", "b2"]);
-  expect(prompts[0]).toEqual({
+  expect(prompts[0]).toMatchObject({
     entryId: "u1",
     text: "first prompt\nwith detail",
     at: at(30),

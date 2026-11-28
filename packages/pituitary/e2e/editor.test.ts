@@ -64,7 +64,8 @@ test("ctrl+j breaks the line and enter sends both lines as one prompt", async ()
   await app.terminal.submit();
   await app.terminal.waitText("You said: first line");
   const sent = await app.terminal.text();
-  assert.match(sent, /▌ first line\n\s*second line/, sent);
+  // The prompt's bar runs down both of its lines.
+  assert.match(sent, /▌ first line\n ▌ second line/, sent);
   await app.close();
 });
 
@@ -140,7 +141,7 @@ test("escape during a run sends queued messages as the next prompt and keeps the
   const screen = await app.capture("queue-delivered");
   assert.match(
     screen,
-    /aborted[\s\S]*▌ focus on errors/,
+    /interrupted[\s\S]*▌ focus on errors/,
     `queued message not sent after the abort:\n${screen}`,
   );
   assert.doesNotMatch(screen, /steering focus on errors/, `still queued:\n${screen}`);

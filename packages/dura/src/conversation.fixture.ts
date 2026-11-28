@@ -20,6 +20,24 @@ import {
   openConversation,
 } from "./conversation-bridge.ts";
 
+/**
+ * The calls the `steps` scenario makes in turn: reads and searches, a command that takes a few
+ * seconds and prints as it goes, then a check that fails.
+ */
+const STEPS: readonly Parameters<typeof fauxToolCall>[] = [
+  ["read", { path: "README.md" }],
+  ["grep", { pattern: "export", path: "src" }],
+  ["ls", { path: "src" }],
+  [
+    "bash",
+    {
+      command: "printf 'compiling\\n'; sleep 1; printf 'linking\\n'; sleep 1; printf 'testing\\n'; sleep 1; printf 'built\\n'",
+    },
+  ],
+  ["find", { pattern: "*.md" }],
+  ["bash", { command: "printf 'checking\\n'; exit 3" }],
+];
+
 /** A real native conversation stream, without a provider, for terminal fixtures. */
 export async function serveConversationFixture(
   directory: string,
@@ -46,6 +64,22 @@ export async function serveConversationFixture(
   faux.setResponses(
     Array.from({ length: 200 }, () => async (transcript: TranscriptContext) => {
       const last = transcript.messages.at(-1);
+      if (scenario === "steps") {
+        // One call a reply, each after a line of narration, until the last call has failed.
+        const asked = transcript.messages.findLastIndex((message) => message.role === "user");
+        const done = transcript.messages.slice(asked + 1).filter((message) => message.role === "toolResult");
+        const step = STEPS[done.length];
+        if (!step) return fauxAssistantMessage("Every step ran; the last check failed.");
+        const [tool, args] = step;
+        return fauxAssistantMessage(
+          [
+            ...(done.length === 2 ? [fauxThinking("The listing comes next.\nThen the build.")] : []),
+            { type: "text", text: `Step ${done.length + 1}: ${tool}.` },
+            fauxToolCall(tool, args),
+          ],
+          { stopReason: "toolUse" },
+        );
+      }
       if (last?.role === "toolResult") return fauxAssistantMessage("The workspace inspection is complete.");
       if (scenario === "tool")
         return fauxAssistantMessage(

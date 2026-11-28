@@ -10,6 +10,7 @@ const work: Work = {
   kind: "work",
   id: "work",
   live: false,
+  latest: false,
   steps: [{ kind: "thinking", id: "thinking", text: "consider it" }],
 };
 for (const [binding, expected] of [
@@ -36,8 +37,8 @@ for (const [binding, expected] of [
                 thinking={false}
                 selected={false}
                 rows={6}
+                columns={60}
                 onToggle={() => {}}
-                onResized={() => {}}
               />
               <text>
                 more output
@@ -49,10 +50,10 @@ for (const [binding, expected] of [
       );
       await app.renderOnce();
       const frame = app.captureCharFrame();
-      expect(frame).toContain(`thinking…${expected}`);
+      expect(frame).toContain(`1 line${expected}`);
       expect(frame).toContain(`more output${expected ? " · alt+o" : ""}`);
       expect(frame).not.toMatch(/ctrl\+t|ctrl\+o/);
-      if (!expected) expect(frame).not.toContain(" · ");
+      if (!expected) expect(frame).not.toContain("line · ");
     } finally {
       flushSync(() => root.unmount());
       app.renderer.destroy();

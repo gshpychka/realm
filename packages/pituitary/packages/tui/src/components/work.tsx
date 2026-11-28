@@ -2,30 +2,32 @@ import { type MouseEvent, ScrollBoxRenderable } from "@opentui/core";
 import { memo, type ReactNode, useState } from "react";
 import { glyphs } from "../glyphs.ts";
 import { KeyHint } from "../keymap-context.tsx";
+import { counted } from "../plural.ts";
+import { ellipsize, headCells } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
-import { type Step, summary, type Work } from "../transcript.ts";
+import { firstLine, took } from "../tools.ts";
+import { rail, type Said, type Step, summary, type Work } from "../transcript.ts";
+import { useNow } from "../use-now.ts";
 import { Markdown } from "./markdown.tsx";
-import { ToolCall } from "./tool-call.tsx";
+import { headingOf, STATE, stateMark, ToolCall } from "./tool-call.tsx";
 
 export interface WorkBoxProps {
   work: Work;
   open: boolean;
-  /** Every step at full length with no bound on the box, as ctrl+o asks. */
+  /** Every step at full length with no bound on the box: ctrl+o for every box, or `o` on this one. */
   whole: boolean;
   /** Thinking shown as text; a one-line marker otherwise, as ctrl+t asks. */
   thinking: boolean;
-  /** Picked from the keyboard. */
+  /** Picked by the transcript cursor. */
   selected: boolean;
   /** Rows an open box shows before it scrolls. */
   rows: number;
+  /** Cells the conversation's rows hold, which a call's heading fits within. */
+  columns: number;
   /** Asks for the box to be `open`. */
   onToggle(id: string, open: boolean): void;
-  /** The box took up a new number of rows. */
-  onResized(id: string): void;
 }
 
-/** The renderable id of the box drawing `work`, which a scroll can bring into view. */
-export const boxId = (work: Pick<Work, "id">) => `work:${work.id}`;
 const bodyId = (work: Pick<Work, "id">) => `work-body:${work.id}`;
 
 /**
@@ -33,10 +35,26 @@ const bodyId = (work: Pick<Work, "id">) => `work-body:${work.id}`;
  * no rows to give that way, or scrolls none of its own.
  */
 export function scrollWork(scroll: ScrollBoxRenderable, work: Pick<Work, "id">, rows: number): boolean {
-  const body = scroll.content.findDescendantById(bodyId(work));
-  if (!(body instanceof ScrollBoxRenderable) || !room(body, rows)) return false;
+  const body = bodyOf(scroll, work);
+  if (!body || !room(body, rows)) return false;
   body.scrollBy(rows);
   return true;
+}
+
+/** Whether the open box drawing `work` inside `scroll` holds more rows than it shows. */
+export function scrolls(scroll: ScrollBoxRenderable | null, work: Pick<Work, "id">): boolean {
+  const body = scroll && bodyOf(scroll, work);
+  return Boolean(body && body.scrollHeight > body.viewport.height);
+}
+
+/** The rows the open bounded box drawing `work` gives its steps; none for a box with no such body. */
+export function bodyRows(scroll: ScrollBoxRenderable, work: Pick<Work, "id">): number {
+  return bodyOf(scroll, work)?.height ?? 0;
+}
+
+function bodyOf(scroll: ScrollBoxRenderable, work: Pick<Work, "id">): ScrollBoxRenderable | null {
+  const body = scroll.content.findDescendantById(bodyId(work));
+  return body instanceof ScrollBoxRenderable ? body : null;
 }
 
 // Percentage heights in both the content and scrollbar otherwise resolve to maxHeight,
@@ -46,9 +64,10 @@ const SCROLLBAR = {
 };
 
 /**
- * A run's thinking, narration, and tool calls: one line saying what they come to, or that
- * line as the top of a rounded frame around the steps themselves. A press on the line opens
- * or closes it.
+ * A run's thinking, narration, and tool calls. Folded, one line saying what they come to, and
+ * the call that failed when the last one did. While the model works in it, and until the
+ * operator sends something after it, that line heads the latest steps, a row each. Open, that
+ * line tops a rounded frame around every step. A press on the line opens or closes it.
  */
 export const WorkBox = memo(function WorkBox({
   work,
@@ -57,24 +76,27 @@ export const WorkBox = memo(function WorkBox({
   thinking,
   selected,
   rows,
+  columns,
   onToggle,
-  onResized,
 }: WorkBoxProps) {
-  const frame = selected ? theme.user : theme.border;
-  const steps = <Steps steps={work.steps} whole={whole} thinking={thinking} />;
+  const frame = selected ? theme.cursor : theme.border;
+  const steps = (
+    <Steps
+      steps={work.steps}
+      live={work.live}
+      whole={whole}
+      thinking={thinking}
+      width={columns - FRAME_COLUMNS}
+    />
+  );
   return (
-    <box
-      id={boxId(work)}
-      flexDirection="column"
-      flexShrink={0}
-      marginTop={1}
-      onSizeChange={() => onResized(work.id)}
-    >
+    <box flexDirection="column" flexShrink={0} marginTop={1}>
       <Title
         work={work}
         open={open}
         selected={selected}
         frame={frame}
+        columns={columns - MARGIN}
         onPress={() => onToggle(work.id, !open)}
       />
       {open ? (
@@ -95,32 +117,71 @@ export const WorkBox = memo(function WorkBox({
             </Body>
           )}
         </box>
-      ) : null}
+      ) : work.live || work.latest ? (
+        <Rail work={work} thinking={thinking} columns={columns - MARGIN} />
+      ) : (
+        <Failure work={work} columns={columns - MARGIN} />
+      )}
     </box>
   );
 }, same);
 
-/** The line a box folds into, which an open box draws as the top of its frame. */
+/** Cells the conversation's padding and scrollbar take from each of its rows. */
+const MARGIN = 3;
+/** Cells an open box's frame takes beside its title: its corners, and the least of its top rule. */
+const TITLE_FRAME = 6;
+/** Cells the latest steps are indented under the title by. */
+const RAIL_INDENT = 2;
+const SEPARATOR = " · ";
+
+/**
+ * `parts` joined by ` · ` and cut at their end to `cells`, an ellipsis last when any was cut;
+ * each part keeps its own colour, so a failure stays red as far as it shows.
+ */
+function cut(parts: readonly Said[], cells: number): Said[] {
+  const joined = parts.flatMap((part, index) => (index > 0 ? [{ text: SEPARATOR }, part] : [part]));
+  if (Bun.stringWidth(joined.map((part) => part.text).join("")) <= cells) return joined;
+  const shown: Said[] = [];
+  let room = cells - 1;
+  for (const part of joined) {
+    const width = Bun.stringWidth(part.text);
+    if (width > room) return [...shown, { ...part, text: `${headCells(part.text, room)}…` }];
+    shown.push(part);
+    room -= width;
+  }
+  return shown;
+}
+
+/**
+ * The line a box folds into, which an open box draws as the top of its frame: what the work
+ * comes to in `columns` cells, its failures in the error colour, cut at its end to fit.
+ */
 function Title({
   work,
   open,
   selected,
   frame,
+  columns,
   onPress,
 }: {
   work: Work;
   open: boolean;
   selected: boolean;
   frame: string;
+  columns: number;
   onPress(): void;
 }) {
   const icon = work.steps.some((step) => step.kind === "tool") ? glyphs.tool : glyphs.thinking;
+  const tone = selected ? theme.cursor : theme.dim;
+  // While the model works in it, the folded box leads with the running mark.
+  const marker = open ? "▾" : work.live ? STATE.running.glyph : "▸";
+  const lead = `${marker} ${icon} `;
+  const parts = cut(summary(work), columns - (open ? TITLE_FRAME : 0) - Bun.stringWidth(lead));
   return (
     <box
       flexDirection="row"
       height={1}
       flexShrink={0}
-      backgroundColor={selected && !open ? palette.surface : undefined}
       onMouseDown={(event) => {
         if (event.button === 0) onPress();
       }}
@@ -130,8 +191,14 @@ function Title({
           ╭{" "}
         </text>
       ) : null}
-      <text selectable={false} fg={selected ? theme.user : theme.dim} wrapMode="none" truncate flexShrink={1}>
-        {open ? "▾" : "▸"} {icon} {summary(work)}
+      <text selectable={false} fg={tone} wrapMode="none" flexShrink={0}>
+        <span fg={work.live && !open ? STATE.running.colour : tone}>{marker}</span> {icon}{" "}
+        {parts.map((part, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a summary's parts are identified by position
+          <span key={index} fg={part.failed ? theme.error : tone}>
+            {part.text}
+          </span>
+        ))}
       </text>
       {open ? (
         <>
@@ -141,6 +208,141 @@ function Title({
           </text>
         </>
       ) : null}
+    </box>
+  );
+}
+
+/**
+ * The latest steps under the title, a row each of `columns` cells, after how many came before
+ * them. However much a step holds, it takes one row, and a running command a second for its
+ * latest output.
+ */
+function Rail({ work, thinking, columns }: { work: Work; thinking: boolean; columns: number }) {
+  const { steps, earlier } = rail(work);
+  const cells = columns - RAIL_INDENT;
+  return (
+    <box flexDirection="column" flexShrink={0} paddingLeft={RAIL_INDENT}>
+      {earlier > 0 ? (
+        <Row tone={theme.dim} text={`… ${counted(earlier, "earlier step")}`} cells={cells} />
+      ) : null}
+      {steps.map((step, index) => (
+        <RailStep
+          key={step.id}
+          step={step}
+          current={work.live && index === steps.length - 1}
+          thinking={thinking}
+          cells={cells}
+        />
+      ))}
+    </box>
+  );
+}
+
+/** One row of `text`, cut at its end to `cells`. */
+function Row({
+  tone,
+  text,
+  cells,
+  italic = false,
+}: {
+  tone: string;
+  text: string;
+  cells: number;
+  italic?: boolean;
+}) {
+  return (
+    <box height={1} flexShrink={0}>
+      <text selectable={false} fg={tone} wrapMode="none">
+        {italic ? <i>{ellipsize(text, cells)}</i> : ellipsize(text, cells)}
+      </text>
+    </box>
+  );
+}
+
+/** The last line of `text` with anything on it. */
+const lastLine = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .findLast(Boolean) ?? "";
+
+function RailStep({
+  step,
+  current,
+  thinking,
+  cells,
+}: {
+  step: Step;
+  current: boolean;
+  thinking: boolean;
+  cells: number;
+}) {
+  switch (step.kind) {
+    case "thinking":
+      return thinking ? (
+        <Row tone={theme.thinking} text={lastLine(step.text)} cells={cells} italic />
+      ) : (
+        <Row
+          tone={theme.thinking}
+          text={`${glyphs.thinking} ${current ? "thinking…" : "thought"}`}
+          cells={cells}
+        />
+      );
+    case "text":
+      return <Row tone={palette.muted} text={lastLine(step.text)} cells={cells} />;
+    case "tool":
+      return <RailCall step={step} cells={cells} />;
+  }
+}
+
+/**
+ * A call on one row as its heading reads, cut to leave its time whole, and a running command's
+ * latest output on the next.
+ */
+function RailCall({ step, cells }: { step: Extract<Step, { kind: "tool" }>; cells: number }) {
+  const { tool, skill } = step;
+  const { title, detail, icon } = headingOf(tool, skill);
+  const mark = stateMark(tool);
+  const running = tool.state === "running" && tool.endedAt === undefined;
+  const elapsed = took(tool, useNow(running));
+  const output = running && tool.name === "bash" ? lastLine(tool.output) : "";
+  const lead = `${mark.glyph} ${icon ? `${glyphs[icon]} ` : ""}${title} `;
+  const time = elapsed ? `${SEPARATOR}${elapsed}` : "";
+  const room = cells - Bun.stringWidth(lead) - Bun.stringWidth(time);
+  return (
+    <>
+      <box height={1} flexShrink={0}>
+        <text selectable={false} fg={theme.assistant} wrapMode="none">
+          <span fg={mark.colour}>{mark.glyph}</span>{" "}
+          {icon ? <span fg={skill ? theme.skill : theme.tool}>{glyphs[icon]} </span> : null}
+          <span fg={theme.tool}>{title}</span> {ellipsize(firstLine(detail).line, room)}
+          {time ? <span fg={theme.dim}>{time}</span> : null}
+        </text>
+      </box>
+      {output ? (
+        <box paddingLeft={2} flexShrink={0}>
+          <Row tone={theme.dim} text={output} cells={cells - 2} />
+        </box>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Under a folded box, in `columns` cells, its last call when that one failed, so a failure that
+ * ended a turn shows.
+ */
+function Failure({ work, columns }: { work: Work; columns: number }) {
+  const last = work.steps.findLast((step) => step.kind === "tool");
+  if (last?.tool.state !== "error") return null;
+  const { title, detail } = headingOf(last.tool, last.skill);
+  return (
+    <box flexShrink={0} paddingLeft={RAIL_INDENT}>
+      <Row
+        tone={theme.error}
+        text={`${STATE.error.glyph} ${title} ${firstLine(detail).line}`}
+        cells={columns - RAIL_INDENT}
+      />
     </box>
   );
 }
@@ -192,24 +394,76 @@ function handOver(this: ScrollBoxRenderable, event: MouseEvent) {
   }
 }
 
-function Steps({ steps, whole, thinking }: { steps: Step[]; whole: boolean; thinking: boolean }) {
+/** Cells an open box's frame, padding and scrollbar take from each row of its steps. */
+const FRAME_COLUMNS = 6;
+
+/** A step that reads as a block of its own: thinking shown as text, or narration of several lines. */
+const block = (step: Step, thinking: boolean) =>
+  (step.kind === "thinking" && thinking) || (step.kind === "text" && step.text.trim().includes("\n"));
+
+/**
+ * Every step, one after another, a row apart only before a block of text. While thinking is
+ * hidden, thinking that led to a call marks that call's heading rather than taking a row.
+ */
+function Steps({
+  steps,
+  live,
+  whole,
+  thinking,
+  width,
+}: {
+  steps: Step[];
+  live: boolean;
+  whole: boolean;
+  thinking: boolean;
+  /** Cells each step's rows hold. */
+  width: number;
+}) {
+  const leadsToCall = (index: number) =>
+    steps.slice(index).find((step) => step.kind !== "thinking")?.kind === "tool";
+  const shown = steps.flatMap((step, index) => {
+    if (!thinking && step.kind === "thinking" && leadsToCall(index)) return [];
+    const thought = !thinking && step.kind === "tool" && steps[index - 1]?.kind === "thinking";
+    return [{ step, thought, current: live && index === steps.length - 1 }];
+  });
   return (
     <>
-      {steps.map((step, index) => {
-        const before = steps[index - 1];
-        // Tool calls stack; thinking and narration stand a row apart from what is around them.
-        const gap = before && (before.kind !== "tool" || step.kind !== "tool") ? 1 : 0;
-        return (
-          <box key={step.id} flexDirection="column" flexShrink={0} marginTop={gap}>
-            <StepView step={step} whole={whole} thinking={thinking} />
-          </box>
-        );
-      })}
+      {shown.map(({ step, thought, current }, index) => (
+        <box
+          key={step.id}
+          flexDirection="column"
+          flexShrink={0}
+          marginTop={index > 0 && block(step, thinking) ? 1 : 0}
+        >
+          <StepView
+            step={step}
+            whole={whole}
+            thinking={thinking}
+            thought={thought}
+            current={current}
+            width={width}
+          />
+        </box>
+      ))}
     </>
   );
 }
 
-function StepView({ step, whole, thinking }: { step: Step; whole: boolean; thinking: boolean }) {
+function StepView({
+  step,
+  whole,
+  thinking,
+  thought,
+  current,
+  width,
+}: {
+  step: Step;
+  whole: boolean;
+  thinking: boolean;
+  thought: boolean;
+  current: boolean;
+  width: number;
+}) {
   switch (step.kind) {
     case "thinking":
       return thinking ? (
@@ -218,14 +472,17 @@ function StepView({ step, whole, thinking }: { step: Step; whole: boolean; think
         </text>
       ) : (
         <text selectable={false} fg={theme.thinking}>
-          {glyphs.thinking} thinking…
+          {glyphs.thinking}{" "}
+          {current ? "thinking…" : `thought · ${counted(step.text.split("\n").length, "line")}`}
           <KeyHint action="app.thinking.toggle" />
         </text>
       );
     case "text":
       return <Markdown content={step.text} />;
     case "tool":
-      return <ToolCall tool={step.tool} skill={step.skill} expanded={whole} />;
+      return (
+        <ToolCall tool={step.tool} skill={step.skill} expanded={whole} width={width} thought={thought} />
+      );
   }
 }
 
@@ -243,6 +500,7 @@ function same(before: WorkBoxProps, after: WorkBoxProps): boolean {
   return (
     a.id === b.id &&
     a.live === b.live &&
+    a.latest === b.latest &&
     a.steps.length === b.steps.length &&
     a.steps.every((step, index) => sameStep(step, b.steps[index])) &&
     (Object.keys(rest) as (keyof typeof rest)[]).every((key) => rest[key] === next[key])

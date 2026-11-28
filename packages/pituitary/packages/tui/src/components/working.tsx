@@ -1,11 +1,12 @@
 import { useTerminalDimensions } from "@opentui/react";
 import type { SessionView } from "@pituitary/session";
-import { type ReactNode, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
 import { useKeyHint } from "../keymap-context.tsx";
 import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
+import { useNow } from "../use-now.ts";
 import { type WorkingLine, workingLine } from "../working.ts";
 import { MascotSlot, useMascotTakes } from "./mascot.tsx";
 
@@ -21,18 +22,6 @@ export interface WorkingProps {
   agent: string;
   /** A move through the session's tree is summarizing the branch it leaves. */
   summarizing?: boolean;
-}
-
-/** The time now, redrawn each second while `active`. */
-function useNow(active: boolean): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [active]);
-  return now;
 }
 
 /** Whether the status line above the editor is up; a passing hint takes its words while it is. */
@@ -136,6 +125,7 @@ const DOING: Record<WorkingLine["kind"], string> = {
   reading: palette.muted,
   thinking: palette.muted,
   writing: palette.muted,
+  preparing: theme.tool,
   tools: theme.tool,
   operator: palette.yellow,
 };

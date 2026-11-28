@@ -50,6 +50,8 @@ export function EditorFrame({ rows, note, confirm, flag, mark, children }: Edito
       flexDirection="row"
       border={["top", "bottom"]}
       borderStyle="heavy"
+      // Painted whole, so nothing of a conversation box clipped above it shows through its empty cells.
+      backgroundColor={theme.bg}
       borderColor={confirming ? theme.user : theme.border}
       title={title ? ` ${title} ` : undefined}
       titleColor={confirming ? theme.assistant : flagged ? theme.tool : theme.dim}

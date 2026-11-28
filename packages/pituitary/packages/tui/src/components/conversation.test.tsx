@@ -235,7 +235,7 @@ test("a history prepend with unchanged geometry cannot anchor a later resize", a
     id: `work-${index}`,
     text: "",
     thinking: "consider it",
-    tools: [],
+    tools: [{ id: `call-${index}`, name: "bash", args: { command: "ls" }, state: "ok", output: "" }],
     done: true,
   }));
   const scroll = createRef<ScrollBoxRenderable>();

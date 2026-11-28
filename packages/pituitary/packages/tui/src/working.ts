@@ -1,6 +1,5 @@
 import { type Activity, activityOf, elapsed, type SessionView, type TurnEntry } from "@pituitary/session";
 import { glyphs } from "./glyphs.ts";
-import { counted } from "./plural.ts";
 import { ellipsize } from "./text-width.ts";
 
 /** The status line's account of a run in progress. */
@@ -19,10 +18,9 @@ export interface WorkingLine {
  */
 export function workingLine(view: SessionView, now: number, escapes: string, columns: number): WorkingLine {
   const activity = activityOf(view);
-  const seconds = Math.round(elapsed(view, now) / 1000);
   const tokens = view.output.finished + view.output.streaming;
   const figures = [
-    `${seconds}s`,
+    duration(elapsed(view, now)),
     // An open dialog takes the interrupt key for its own cancel.
     activity.kind === "operator" || !escapes ? null : `${escapes} interrupts`,
     tokens > 0 ? `${glyphs.tokens} ${count(tokens)}` : null,
@@ -41,6 +39,8 @@ function doing(activity: Activity): string {
       return `${glyphs.thinking} thinking`;
     case "writing":
       return `${glyphs.writing} writing`;
+    case "preparing":
+      return `${glyphs.tool} preparing ${activity.tool || "a tool call"}`;
     case "tools": {
       const [only, ...others] = activity.names;
       return `${glyphs.tool} ${others.length > 0 ? `${activity.names.length} tools` : only || "tool"}`;
@@ -52,14 +52,15 @@ function doing(activity: Activity): string {
   }
 }
 
-/** A finished turn's figures as one line, its outcome last when it did not end with a finished reply. */
+/**
+ * A finished turn's figures as one line: the time it worked, its output tokens, and the time of
+ * day it ended, which `at` keeps from reading as another duration.
+ */
 export function turnLine(turn: TurnEntry): string {
   return [
     `${glyphs.turn} ${duration(turn.worked)}`,
     turn.output > 0 ? `${glyphs.tokens} ${count(turn.output)}` : null,
-    turn.tools > 0 ? counted(turn.tools, "tool") : null,
-    clock(turn.endedAt),
-    turn.outcome ?? null,
+    `at ${clock(turn.endedAt)}`,
   ]
     .filter((part) => part !== null)
     .join(" · ");
@@ -90,6 +91,11 @@ export function reconnectHint(reload: string | null, resume: string | undefined)
   if (reload) return `Disconnected · ${reload} reloads this frontend`;
   if (resume) return `Disconnected · run ${resume}`;
   return "Disconnected · restart pituitary to reconnect";
+}
+
+/** Milliseconds to a tenth of a second under ten seconds, and as `duration` words them past that. */
+export function span(ms: number): string {
+  return ms < 10_000 ? `${(ms / 1000).toFixed(1)}s` : duration(ms);
 }
 
 /** Milliseconds rounded to the second, in the largest two units past a minute. */

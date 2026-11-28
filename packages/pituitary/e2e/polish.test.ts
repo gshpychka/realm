@@ -85,7 +85,7 @@ test("custom work and interrupt hints match dispatch, and unbound hints disappea
         await app.terminal.type("/");
         await app.terminal.waitText("/compact [instructions]");
         await app.terminal.write("\x18");
-        await app.terminal.waitText("aborted");
+        await app.terminal.waitText("interrupted");
         await app.capture("keybindings-custom-interrupt");
       }
     } finally {
@@ -132,9 +132,10 @@ test("configured work and thinking keys dispatch to the visible work box", async
     await app.terminal.waitText("You said: consider this");
     await app.terminal.waitIdle();
     await app.terminal.write("\x1bo");
+    await app.terminal.waitText("╭ ▾");
     await app.terminal.waitText("I will reason through the request.");
     await app.terminal.write("\x1bt");
-    await app.terminal.waitIdle();
+    await app.terminal.waitText("thought · 1 line · alt+t");
     assert.doesNotMatch(await app.terminal.text(), /I will reason through the request\./);
     await app.terminal.write("\x1bt");
     await app.terminal.waitText("I will reason through the request.");
@@ -149,7 +150,7 @@ test("a narrow welcome fits its keys and shortens what they all do, cutting noth
   try {
     const welcome = await app.capture("welcome-narrow");
     assert.match(welcome, /^ alt\+enter +queue a follow-up$/m);
-    assert.match(welcome, /^ ctrl\+f +step through boxes$/m);
+    assert.match(welcome, /^ ctrl\+f +pick a message$/m);
     // One row too long for its words shortens them all, so the list reads alike.
     assert.match(welcome, /^ ctrl\+o +open every box$/m);
     assert.match(welcome, /^ ctrl\+c twice {2}ctrl\+d +quit$/m);
@@ -206,7 +207,7 @@ test("completion, the queue and the cost card read the same way on a narrow term
     // While the run goes the interrupt key stops it, so the card closes with its own key.
     await app.terminal.write("\x1bu");
     await waitMatch(app.terminal, /^(?![\s\S]*session \$)/);
-    assert.doesNotMatch(await app.terminal.text(), /aborted/);
+    assert.doesNotMatch(await app.terminal.text(), /interrupted/);
   } finally {
     await app.close();
   }

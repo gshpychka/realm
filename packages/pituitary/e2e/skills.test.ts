@@ -259,7 +259,8 @@ test("a queued skill shows as a chip, comes back as typed, and still loads when 
     // The conversation wraps again at a narrower width once it has drawn there.
     await app.terminal.resize(80, 24);
     await waitMatch(app.terminal, /^━{80}\n/m);
-    await waitMatch(app.terminal, /^ +that each team finds its own changes quickly +· ctrl\+o/m);
+    // The prompt's bar runs down the row it wraps to.
+    await waitMatch(app.terminal, /^ ▌ that each team finds its own changes quickly +· ctrl\+o/m);
     await app.terminal.waitIdle();
     const narrow = await app.capture("skills-interrupted-80");
     assert.doesNotMatch(narrow, /^\W*· ctrl\+o/m);

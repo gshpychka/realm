@@ -83,6 +83,8 @@ async function run(name: string, args: string, { link, session, ...context }: Co
     }
     case "compact":
       await link.call({ type: "compact", ...(args ? { customInstructions: args } : {}) });
+      // No event brings a compaction's summary outside a run, so the session is read again for it.
+      await session.refresh();
       session.notify("info", "Compaction started.");
       return;
     case "name":

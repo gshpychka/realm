@@ -5,7 +5,9 @@ import { glyphs } from "../glyphs.ts";
 import { KeyHint } from "../keymap-context.tsx";
 import { counted } from "../plural.ts";
 import { palette, theme } from "../theme.ts";
-import { filetypeOfCall, heading, preview, took, toolGlyph } from "../tools.ts";
+import { filetypeOfCall, firstLine, heading, preview, took, toolGlyph } from "../tools.ts";
+import { useNow } from "../use-now.ts";
+import { count, span } from "../working.ts";
 import { Markdown, syntax } from "./markdown.tsx";
 
 /** How a call stands, as its glyph shows it; an operator's shell command shows the same. */
@@ -17,28 +19,51 @@ export const STATE = {
 
 export interface ToolCallProps {
   tool: ToolView;
-  /** Shows the whole output, as ctrl+o asks. */
+  /** Shows the whole output, and the whole of a heading of several lines, as ctrl+o asks. */
   expanded: boolean;
 }
 
+/** What leads a call's heading: the glyph of how it stands, `…` while its arguments stream in. */
+export function stateMark(tool: ToolView): { glyph: string; colour: string } {
+  const state = STATE[tool.state];
+  return { glyph: tool.streaming !== undefined ? "…" : state.glyph, colour: state.colour };
+}
+
+/** A call's heading: a read that loads a `skill` is headed by the skill. */
+export function headingOf(tool: ToolView, skill: string | undefined, width?: number) {
+  return {
+    ...(skill ? { title: "skill", detail: skill } : heading(tool, width)),
+    icon: skill ? ("skill" as const) : toolGlyph(tool.name),
+  };
+}
+
 /**
- * One tool call: what it acted on, how it ended, and as much of its result as fits. A read
- * that loads a `skill` is headed by the skill.
+ * One tool call: what it acted on, how it ended, and as much of its result as fits in `width`
+ * cells. A heading of several lines, such as a heredoc, shows its first unless `expanded`.
+ * Thinking that led to the call while thinking is hidden, `thought`, marks the heading dim.
  */
 export const ToolCall = memo(function ToolCall({
   tool,
   skill,
   expanded,
-}: ToolCallProps & { skill?: string }) {
-  const { title, detail } = skill ? { title: "skill", detail: skill } : heading(tool);
-  const icon = skill ? "skill" : toolGlyph(tool.name);
-  const state = STATE[tool.state];
-  const elapsed = took(tool);
+  width,
+  thought = false,
+}: ToolCallProps & { skill?: string; width: number; thought?: boolean }) {
+  const { title, detail, icon } = headingOf(tool, skill, width);
+  const mark = stateMark(tool);
+  const now = useNow(tool.state === "running" && tool.endedAt === undefined);
+  const elapsed = took(tool, now);
+  const { line, more } = expanded ? { line: detail, more: "" } : firstLine(detail);
   return (
     <box flexDirection="column">
       <box flexDirection="row">
-        <text selectable={false} fg={state.colour} flexShrink={0}>
-          {tool.streaming !== undefined ? "…" : state.glyph}{" "}
+        {thought ? (
+          <text selectable={false} fg={theme.thinking} flexShrink={0}>
+            {glyphs.thinking}{" "}
+          </text>
+        ) : null}
+        <text selectable={false} fg={mark.colour} flexShrink={0}>
+          {mark.glyph}{" "}
         </text>
         {icon ? (
           <text selectable={false} fg={skill ? theme.skill : theme.tool} flexShrink={0}>
@@ -47,7 +72,8 @@ export const ToolCall = memo(function ToolCall({
         ) : null}
         <text>
           <span fg={theme.tool}>{title}</span>
-          <span fg={theme.assistant}> {detail}</span>
+          <span fg={theme.assistant}> {line}</span>
+          {more ? <span fg={theme.dim}>{more}</span> : null}
           {elapsed ? <span fg={theme.dim}> · {elapsed}</span> : null}
         </text>
       </box>
@@ -224,8 +250,8 @@ function Subagent({ agent }: { agent: Extract<Details, { kind: "subagent" }> }) 
   const meta = [
     agent.status,
     agent.toolUses === undefined ? null : counted(agent.toolUses, "tool call"),
-    agent.tokens === undefined ? null : `${glyphs.tokens} ${(agent.tokens / 1000).toFixed(1)}k tokens`,
-    agent.durationMs === undefined ? null : `${(agent.durationMs / 1000).toFixed(1)}s`,
+    agent.tokens === undefined ? null : `${glyphs.tokens} ${count(agent.tokens)} tokens`,
+    agent.durationMs === undefined ? null : span(agent.durationMs),
   ]
     .filter(Boolean)
     .join(" · ");

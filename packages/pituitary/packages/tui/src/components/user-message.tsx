@@ -7,7 +7,7 @@ import { glyphs } from "../glyphs.ts";
 import { IMAGE_CHIP } from "../image-chip.ts";
 import { useKeyHint } from "../keymap-context.tsx";
 import { tilde } from "../place.ts";
-import { palette, theme } from "../theme.ts";
+import { OPERATOR_BAR, palette, theme } from "../theme.ts";
 import { parseUserText, type Segment, skillsIn } from "../user-text.ts";
 import { Link } from "./link.tsx";
 
@@ -98,15 +98,24 @@ export function UserMessage({
   expanded: boolean;
 }) {
   const expand = useKeyHint("app.tools.expand");
-  const segments = useMemo(() => parseUserText(entry.text), [entry.text]);
+  // A template's file ends with a newline, which would draw as an empty row.
+  const text = entry.text.trimEnd();
+  const segments = useMemo(() => parseUserText(text), [text]);
   const skills = skillsIn(segments);
   return (
-    <box flexDirection="row" flexShrink={0} marginTop={1} backgroundColor={palette.surface} paddingRight={1}>
-      <text selectable={false} fg={theme.user} flexShrink={0}>
-        ▌{" "}
-      </text>
+    <box
+      flexDirection="row"
+      flexShrink={0}
+      marginTop={1}
+      backgroundColor={palette.surface}
+      border={["left"]}
+      borderColor={theme.user}
+      customBorderChars={OPERATOR_BAR}
+      paddingLeft={1}
+      paddingRight={1}
+    >
       {skills.length === 0 ? (
-        <text fg={theme.assistant}>{withImageChips(entry.text, entry.images)}</text>
+        <text fg={theme.assistant}>{withImageChips(text, entry.images)}</text>
       ) : (
         <box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
           {/* Text wraps at any space, so the key that shows the skill keeps a column of its

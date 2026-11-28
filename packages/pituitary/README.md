@@ -166,6 +166,37 @@ Models carry the names Pi's registry gives them, with `provider/id` beside them 
 `/model`. Errors say what deals with them where they can, such as `/compact` for a full
 context or `/login` for a refused credential; `ctrl+o` shows the rest of the error.
 
+## Reading the conversation
+
+What the model does on its way to a reply gathers in one box. While it works, the box shows
+its latest three steps a row each, after how many came before, and a running command's latest
+output line; it keeps them until you send something else, so the end of a run moves nothing.
+Folded, its line says what the work came to, such as
+`read 4 files · searched 2 · edited footer.tsx +12 −3 · ran 3 commands · 1 failed`, failures
+in red, and a call that failed last stays in view under it. Replies that called no tool stand
+on their own. A turn ends with how long it worked, the tokens it wrote, and the time it
+ended; an interrupted reply says so beneath it.
+
+`ctrl+f` starts the transcript cursor on the latest item. `↑` and `↓` move it across prompts,
+boxes, replies, shell commands, summaries and notices, and the hint line lists the keys the
+selected item takes; `esc` leaves.
+
+| Item | Keys |
+| --- | --- |
+| Box of work | `enter` open or close · `o` the whole box, unbounded · `j` `k` scroll · `c` copy its steps |
+| Prompt | `f` fork a new session from before it · `e` edit it in place, moving the session back before it (regular Pi) · `enter` show a skill's instructions · `c` copy it as typed |
+| Reply | `c` copy |
+| Shell command | `c` copy the command and its output |
+| Summary or notice | `enter` show the rest · `c` copy |
+
+Copies go to the terminal's clipboard (OSC 52), and the hint line says what was copied. An
+opened box takes the rows the conversation leaves empty below it. `ctrl+o` opens every box at
+full length and `ctrl+t` shows or hides thinking; each says which way it went. `alt+home` and
+`alt+end` jump to the top of the drawn conversation and back to its latest output, which the
+view then follows; they are Pi's `tui.altScreen.top` and `tui.altScreen.bottom`, whose
+`ctrl+home` and `ctrl+end` move Neovim's cursor instead. Scrolled back while a run goes on,
+the draft's rule says `↓ more below · alt+end`.
+
 ## Provider usage
 
 The footer's credit-card icon opens usage for the selected provider credential. Click
@@ -282,12 +313,13 @@ external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 | alt+enter | Queue a follow-up |
 | esc | Leave insert mode, then interrupt, or stop a shell command or a branch summary; close a picker, or the usage card while nothing runs |
 | ctrl+l / ctrl+p / shift+tab | Choose model / cycle model / cycle thinking |
-| ctrl+o / ctrl+t / ctrl+f | Expand work / toggle thinking / browse work |
+| ctrl+o / ctrl+t / ctrl+f | Open every box / toggle thinking / pick an item to open, copy or fork |
 | alt+r / alt+f / alt+n | Resume / fork / start a session (regular Pi) |
 | alt+s | Choose a skill for the draft (regular Pi) |
 | ctrl+g | Edit externally |
 | alt+u | Show usage and cost |
 | pgup / pgdn | Scroll |
+| alt+home / alt+end | Top of the conversation / back to its latest output |
 | ctrl+c twice / ctrl+d | Close |
 
 Like Pi's own `alt` keys, `alt+u` and `alt+s` take chords Neovim's insert mode reads as

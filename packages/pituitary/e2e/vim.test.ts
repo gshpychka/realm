@@ -219,7 +219,7 @@ test("escape in normal mode interrupts a running reply", async () => {
   await app.terminal.keyboard.press("Escape");
   await settled(app.terminal);
   const screen = await app.capture("vim-interrupted");
-  assert.match(screen, /aborted/, screen);
+  assert.match(screen, /interrupted/, screen);
   await app.close();
 });
 

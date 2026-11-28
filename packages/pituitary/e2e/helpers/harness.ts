@@ -157,6 +157,15 @@ export async function cellsOf(terminal: TuiTest, text: string): Promise<Cell[]> 
   return terminal.cells([...line.slice(0, line.lastIndexOf(text))].length, row, [...text].length, 1);
 }
 
+/** What the latest OSC 52 clipboard write among `raw`, the bytes the UI wrote, carries. */
+export function copied(raw: string): string {
+  const write = "\x1b]52;c;";
+  const start = raw.lastIndexOf(write);
+  if (start === -1) return "";
+  const encoded = /^[A-Za-z0-9+/=]*/.exec(raw.slice(start + write.length))?.[0] ?? "";
+  return Buffer.from(encoded, "base64").toString("utf8");
+}
+
 /** The status line of a run in progress, whatever the run is doing. */
 export const RUNNING = / · \d+s( · |\s*$)/m;
 
@@ -319,7 +328,7 @@ function isolatedTmux() {
 }
 
 export interface LaunchOptions {
-  /** Native Faux provider fixture: hello, long, tool, thinking, or sprawl. */
+  /** Native Faux provider fixture: hello, long, tool, steps, thinking, or sprawl. */
   scenario?: string;
   /** Milliseconds between scripted events, for observing intermediate states. */
   delayMs?: number;

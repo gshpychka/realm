@@ -28,6 +28,8 @@ export interface UserEntry {
   text: string;
   /** Images the message carries, which its text names `[image 1]` onward. */
   images: number;
+  /** The session message's key, by which the session's own entry for the prompt is found. */
+  key?: string;
 }
 
 export interface AssistantEntry {
@@ -112,10 +114,10 @@ export interface SummaryEntry {
   tokensBefore?: number;
 }
 
-/** How a turn ended, when it did not end with a finished reply. */
-export type Outcome = "interrupted" | "error";
-
-/** The figures of a turn this client watched from its start to its end. */
+/**
+ * The figures of a turn this client watched from its start to its end. What it did is the work
+ * box's to say, and how it ended its last reply's or notice's.
+ */
 export interface TurnEntry {
   kind: "turn";
   id: string;
@@ -123,11 +125,8 @@ export interface TurnEntry {
   worked: number;
   /** Output tokens the turn's replies generated. */
   output: number;
-  /** Tool calls pi ran in the turn. */
-  tools: number;
   /** When the turn ended, in milliseconds since the epoch. */
   endedAt: number;
-  outcome?: Outcome;
   /** The key of the session message the turn ended on. */
   after?: string;
 }
@@ -165,15 +164,8 @@ export interface SessionView {
   waited: number;
   /** Output tokens the run in progress has generated: its finished replies, and the reply streaming so far. */
   output: { finished: number; streaming: number };
-  /** What the run in progress has done, when this client saw it begin. */
-  turn: TurnSoFar | null;
-}
-
-export interface TurnSoFar {
-  /** Tool calls pi has begun running. */
-  tools: number;
-  /** How the latest reply ended, when not with a finished one. */
-  outcome: Outcome | null;
+  /** This client saw the run in progress begin, so its end gives the turn's figures. */
+  watched: boolean;
 }
 
 export interface Retry {
@@ -198,7 +190,7 @@ export const emptySession: SessionView = {
   waitingSince: null,
   waited: 0,
   output: { finished: 0, streaming: 0 },
-  turn: null,
+  watched: false,
 };
 
 interface Message {
@@ -228,7 +220,7 @@ interface Message {
 }
 
 /** A key that picks `message` out of its session: pi stamps each message with the time it made it. */
-function place(message: Message): string | null {
+export function messageKey(message: Pick<Message, "entryId" | "role" | "timestamp">): string | null {
   return message.entryId ?? (message.timestamp === undefined ? null : `${message.role}@${message.timestamp}`);
 }
 
@@ -238,12 +230,16 @@ export const SHELL_OUTPUT_LIMIT = 64 * 1024;
 /**
  * The conversation a stored session holds, as a view. A tool call with no result in
  * the session never finished, so it shows as interrupted. When `previous` is a view of
- * the same session, each turn summary and local notice it holds follows the message it came after.
+ * the same session, each turn summary and local notice it holds follows the message it came after,
+ * each tool call keeps the times `previous` measured of it, and a run `live` shows still going
+ * keeps what `previous` measured of it: its clock, its waits, its tokens, whether this client saw
+ * it begin, and the tool calls it was still writing.
  */
 export function restore(
   messages: readonly unknown[],
   previous?: SessionView,
   live?: SessionSnapshot,
+  now = Date.now(),
 ): SessionView {
   const following = new Map<string, Entry[]>();
   const leading: (NoticeEntry | BashEntry)[] = [];
@@ -260,7 +256,7 @@ export function restore(
         type: "message_end",
         message,
       } as SessionEvent);
-      const key = place(message as Message);
+      const key = messageKey(message as Message);
       const kept = key === null ? undefined : following.get(key);
       if (key === null || !kept) return next;
       following.delete(key);
@@ -318,7 +314,58 @@ export function restore(
     };
   }
   if (live?.queue) view = { ...view, queue: live.queue };
+  // A snapshot holds the session's messages, not what this client measured around them.
+  if (previous) {
+    const calls = new Map(
+      previous.entries.flatMap((entry) =>
+        entry.kind === "assistant" ? entry.tools.map((tool) => [tool.id, tool] as const) : [],
+      ),
+    );
+    view = { ...view, entries: view.entries.map((entry) => measured(entry, calls)) };
+  }
+  if (live?.state.isStreaming || live?.retry)
+    view = {
+      ...view,
+      startedAt: previous?.startedAt ?? now,
+      waitingSince: previous?.waitingSince ?? null,
+      waited: previous?.waited ?? 0,
+      output: previous?.output ?? emptySession.output,
+      watched: previous?.watched ?? false,
+    };
   return view;
+}
+
+/**
+ * `entry` with what this client measured of each of its tool calls kept, as `calls` held them
+ * by id: when each began and ended, which a snapshot does not hold, and, for a call the open
+ * reply is still writing, what of its arguments had streamed in, which a snapshot taken mid-call
+ * may lack.
+ */
+function measured(entry: Entry, calls: ReadonlyMap<string, ToolView>): Entry {
+  if (entry.kind !== "assistant") return entry;
+  return {
+    ...entry,
+    tools: entry.tools.map((tool) => {
+      const known = calls.get(tool.id);
+      if (!known) return tool;
+      const timed = {
+        ...tool,
+        ...(tool.startedAt === undefined && known.startedAt !== undefined
+          ? { startedAt: known.startedAt }
+          : {}),
+        ...(tool.endedAt === undefined && known.endedAt !== undefined && tool.state !== "running"
+          ? { endedAt: known.endedAt }
+          : {}),
+      };
+      if (entry.done || known.streaming === undefined || tool.state !== "running") return timed;
+      return {
+        ...timed,
+        streaming: known.streaming,
+        ...(known.contentIndex === undefined ? {} : { contentIndex: known.contentIndex }),
+        args: Object.keys(tool.args).length > 0 ? tool.args : known.args,
+      };
+    }),
+  };
 }
 
 /** The entry with each tool call it left running marked as interrupted, since none will finish. */
@@ -366,7 +413,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
         waited: 0,
         waitingSince: null,
         output: emptySession.output,
-        turn: null,
+        watched: false,
         entries: closed.entries.map((entry) => {
           if (entry.kind === "bash" && entry.running !== undefined) {
             const { running: _running, ...ended } = entry;
@@ -396,7 +443,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
         phase: "streaming",
         detail: null,
         startedAt: state.startedAt ?? now,
-        turn: state.startedAt === null ? { tools: 0, outcome: null } : state.turn,
+        watched: state.startedAt === null || state.watched,
       };
 
     case "agent_end":
@@ -412,18 +459,15 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
         retry: null,
         waited: 0,
         output: emptySession.output,
-        turn: null,
+        watched: false,
       };
-      const { turn } = state;
-      if (!turn) return settled;
+      if (!state.watched) return settled;
       return append(settled, (id) => ({
         kind: "turn",
         id,
         worked: elapsed(state, now),
         output: state.output.finished + state.output.streaming,
-        tools: turn.tools,
         endedAt: now,
-        ...(turn.outcome === null ? {} : { outcome: turn.outcome }),
         ...(state.last === null ? {} : { after: state.last }),
       }));
     }
@@ -447,27 +491,22 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
 
     case "message_end": {
       const message = event.message as Message;
-      const counted = {
-        ...state,
-        messages: state.messages + 1,
-        last: place(message),
-        turn: recorded(state.turn, message),
-      };
+      const counted = { ...state, messages: state.messages + 1, last: messageKey(message) };
       if (message.role !== "assistant") return counted;
       const { finished, streaming } = state.output;
       const metered = state.running
         ? { ...counted, output: { finished: finished + (message.usage?.output ?? streaming), streaming: 0 } }
         : counted;
       // The committed native message is authoritative over the partial deltas.
+      // An interrupted reply says so itself, by its stop reason.
       const done = closeOpenAssistant(patchAssistant(metered, (entry) => settle(entry, message)));
       if (message.stopReason === "error")
         return note(done, "error", message.errorMessage || "the request failed");
-      if (message.stopReason === "aborted") return note(done, "info", "aborted");
       return done;
     }
 
     case "tool_execution_start":
-      return patchTool(counting(state), event.toolCallId, (tool) => ({
+      return patchTool(state, event.toolCallId, (tool) => ({
         ...tool,
         name: event.toolName ?? tool.name,
         args: (event.args as Record<string, unknown>) ?? tool.args,
@@ -587,21 +626,6 @@ function extensionFailure({
   return `${file} · ${event}: ${error}${file === extensionPath ? "" : `\n${extensionPath}`}`;
 }
 
-/** How a turn ended, by the stop reason of its last reply, when it did not end with a finished one. */
-const OUTCOMES = new Map<string, Outcome>([
-  ["aborted", "interrupted"],
-  ["error", "error"],
-]);
-
-function recorded(turn: TurnSoFar | null, message: Message): TurnSoFar | null {
-  if (!turn || message.role !== "assistant") return turn;
-  return { ...turn, outcome: OUTCOMES.get(message.stopReason ?? "") ?? null };
-}
-
-function counting(state: SessionView): SessionView {
-  return state.turn ? { ...state, turn: { ...state.turn, tools: state.turn.tools + 1 } } : state;
-}
-
 export function reduceAll(state: SessionView, events: SessionAction[]): SessionView {
   return events.reduce((view, event) => reduce(view, event), state);
 }
@@ -619,8 +643,10 @@ export type Activity =
   | { kind: "reading" }
   /** The reply streams its reasoning, with no answer or tool call yet. */
   | { kind: "thinking" }
-  /** The model streams its answer or a tool call. */
+  /** The model streams its answer. */
   | { kind: "writing" }
+  /** The model streams the arguments of a call to `tool`. */
+  | { kind: "preparing"; tool: string }
   /** pi runs the latest reply's tool calls, or is about to; `names` lists those still unfinished. */
   | { kind: "tools"; names: string[] }
   /** pi waits on the operator to answer a dialog. */
@@ -631,7 +657,9 @@ export function activityOf(view: SessionView): Activity {
   const latest = view.entries.findLast((entry) => entry.kind === "assistant" || entry.kind === "user");
   if (latest?.kind !== "assistant") return { kind: "reading" };
   if (!latest.done) {
-    if (latest.text || latest.tools.length > 0) return { kind: "writing" };
+    const call = latest.tools.at(-1);
+    if (call?.streaming !== undefined) return { kind: "preparing", tool: call.name };
+    if (latest.text || call) return { kind: "writing" };
     return latest.thinking ? { kind: "thinking" } : { kind: "reading" };
   }
   const names = latest.tools.flatMap((tool) => (tool.state === "running" ? [tool.name] : []));
@@ -676,13 +704,16 @@ export function transcript(state: SessionView): string {
 
 function startMessage(state: SessionView, message: Message): SessionView {
   switch (message.role) {
-    case "user":
+    case "user": {
+      const key = messageKey(message);
       return append(state, (id) => ({
         kind: "user",
         id,
         text: contentToText(message.content),
         images: imageCount(message.content),
+        ...(key === null ? {} : { key }),
       }));
+    }
     case "assistant":
       return append(state, (id) => ({
         kind: "assistant",
