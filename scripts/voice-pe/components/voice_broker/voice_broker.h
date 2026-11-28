@@ -59,6 +59,7 @@ class VoiceBroker : public Component, public api::CustomAPIDevice, protected Ses
   void set_speaker(speaker::Speaker *speaker) { this->speaker_ = speaker; }
 
   Trigger<std::string> *get_phase_trigger() { return &this->phase_trigger_; }
+  Trigger<uint32_t> *get_admitted_trigger() { return &this->admitted_trigger_; }
   Trigger<> *get_end_trigger() { return &this->end_trigger_; }
   Trigger<> *get_error_trigger() { return &this->error_trigger_; }
 
@@ -66,6 +67,7 @@ class VoiceBroker : public Component, public api::CustomAPIDevice, protected Ses
 
   // Opens a conversation; no-op if one is running.
   void start(const std::string &wake_word);
+  bool start_stream(uint32_t generation);
   // Ends the conversation from the device side (button, wake word).
   void stop();
   bool is_running() const { return this->session_.running(); }
@@ -91,6 +93,7 @@ class VoiceBroker : public Component, public api::CustomAPIDevice, protected Ses
   void begin(const std::string &wake_word) override;
   void send_stop() override;
   void disconnect() override;
+  void on_admitted() override;
   void on_phase(Phase phase) override;
   void on_end() override;
   void on_error() override;
@@ -119,6 +122,7 @@ class VoiceBroker : public Component, public api::CustomAPIDevice, protected Ses
   speaker::Speaker *speaker_{nullptr};
 
   Trigger<std::string> phase_trigger_;
+  Trigger<uint32_t> admitted_trigger_;
   Trigger<> end_trigger_;
   Trigger<> error_trigger_;
   Trigger<std::string> startup_failure_trigger_;

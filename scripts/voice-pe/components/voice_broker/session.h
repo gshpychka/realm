@@ -17,7 +17,7 @@ class Session {
 
   // What the broker connection reports, tagged with the conversation it belongs to.
   struct Event {
-    enum Type : uint8_t { CONNECTED, DISCONNECTED, END, PHASE } type;
+    enum Type : uint8_t { CONNECTED, DISCONNECTED, END, PHASE, ADMITTED, SUPPRESSED } type;
     uint32_t generation;
     Phase phase;
   };
@@ -27,12 +27,14 @@ class Session {
    public:
     // Opens the broker connection for the current generation; false when it can't.
     virtual bool connect() = 0;
-    // Asks the broker to start and streams the mic.
+    // Asks the broker to admit the conversation.
     virtual void begin(const std::string &wake_word) = 0;
     // Tells the broker the user ended the conversation.
     virtual void send_stop() = 0;
     // Stops audio and closes the connection.
     virtual void disconnect() = 0;
+    // Enables the local cue and audio stream.
+    virtual void on_admitted() = 0;
     virtual void on_phase(Phase phase) = 0;
     virtual void on_end() = 0;
     // A live conversation dropped by the broker; precedes its on_end.
@@ -59,9 +61,9 @@ class Session {
   uint32_t generation() const { return this->generation_; }
 
  protected:
-  enum class State : uint8_t { IDLE, CONNECTING, WAITING_READY, ACTIVE };
+  enum class State : uint8_t { IDLE, CONNECTING, WAITING_ADMISSION, WAITING_READY, ACTIVE };
 
-  bool starting_() const { return this->state_ == State::CONNECTING || this->state_ == State::WAITING_READY; }
+  bool starting_() const { return this->running() && !this->active(); }
   void fail_startup_();
   void teardown_();
 

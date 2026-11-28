@@ -24,6 +24,8 @@ static constexpr size_t PLAYED_SIZE = 1 + 4 + 8;
 // Control frames are JSON objects with a "type" field.
 static constexpr const char *START = "start";
 static constexpr const char *STOP = "stop";
+static constexpr const char *ADMITTED = "admitted";
+static constexpr const char *SUPPRESSED = "suppressed";
 static constexpr const char *PHASE = "phase";
 static constexpr const char *END = "end";
 

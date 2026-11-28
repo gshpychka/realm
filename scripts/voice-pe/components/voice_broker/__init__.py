@@ -11,6 +11,7 @@ AUTO_LOAD = ["audio", "json", "ring_buffer"]
 CONF_TOKEN = "token"
 CONF_WAKE_WORD = "wake_word"
 CONF_ON_PHASE = "on_phase"
+CONF_ON_ADMITTED = "on_admitted"
 CONF_ON_END = "on_end"
 CONF_ON_ERROR = "on_error"
 CONF_ON_STARTUP_FAILURE = "on_startup_failure"
@@ -42,6 +43,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_SPEAKER): cv.use_id(speaker.Speaker),
         # `phase` is "listening", "thinking" or "replying".
         cv.Optional(CONF_ON_PHASE): automation.validate_automation(single=True),
+        cv.Optional(CONF_ON_ADMITTED): automation.validate_automation(single=True),
         cv.Optional(CONF_ON_END): automation.validate_automation(single=True),
         cv.Optional(CONF_ON_STARTUP_FAILURE): automation.validate_automation(
             single=True
@@ -77,6 +79,10 @@ async def to_code(config):
     if CONF_ON_PHASE in config:
         await automation.build_automation(
             var.get_phase_trigger(), [(cg.std_string, "phase")], config[CONF_ON_PHASE]
+        )
+    if CONF_ON_ADMITTED in config:
+        await automation.build_automation(
+            var.get_admitted_trigger(), [(cg.uint32, "generation")], config[CONF_ON_ADMITTED]
         )
     if CONF_ON_END in config:
         await automation.build_automation(

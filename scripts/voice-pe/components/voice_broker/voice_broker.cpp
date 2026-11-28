@@ -80,7 +80,7 @@ void VoiceBroker::loop() {
   while (xQueueReceive(this->event_queue_, &event, 0) == pdTRUE)
     this->session_.handle(event);
   this->session_.tick(millis());
-  if (this->session_.active())
+  if (this->session_.active() && this->streaming_)
     this->feed_speaker_();
 }
 
@@ -91,17 +91,24 @@ bool VoiceBroker::connect() {
 
 void VoiceBroker::begin(const std::string &wake_word) {
   this->queue_control_(protocol::START, {{"wake_word", wake_word}});
+}
+
+bool VoiceBroker::start_stream(uint32_t generation) {
+  if (generation != this->session_.generation() || !this->session_.running() || this->streaming_)
+    return false;
   this->mic_samples_ = 0;
   this->streaming_ = true;
   this->mic_source_->start();
+  return true;
 }
 
 void VoiceBroker::send_stop() { this->queue_control_(protocol::STOP); }
 
 void VoiceBroker::disconnect() {
-  this->streaming_ = false;
-  this->mic_source_->stop();
-  this->speaker_->stop();
+  if (this->streaming_.exchange(false)) {
+    this->mic_source_->stop();
+    this->speaker_->stop();
+  }
   this->playback_->reset();
   this->play_holdover_.clear();
   this->play_holdover_offset_ = 0;
@@ -109,6 +116,8 @@ void VoiceBroker::disconnect() {
   this->queue_io_(IoItem::CLOSE);
   this->high_freq_.stop();
 }
+
+void VoiceBroker::on_admitted() { this->admitted_trigger_.trigger(this->session_.generation()); }
 
 void VoiceBroker::on_phase(Phase phase) {
   switch (phase) {
@@ -374,6 +383,10 @@ void VoiceBroker::on_control_(uint32_t generation, const std::string &text) {
       return false;
     if (std::strcmp(type, protocol::END) == 0) {
       this->post_event_(Event::END, generation);
+    } else if (std::strcmp(type, protocol::ADMITTED) == 0) {
+      this->post_event_(Event::ADMITTED, generation);
+    } else if (std::strcmp(type, protocol::SUPPRESSED) == 0) {
+      this->post_event_(Event::SUPPRESSED, generation);
     } else if (std::strcmp(type, protocol::PHASE) == 0) {
       const char *phase = root["phase"];
       if (phase == nullptr)

@@ -8,9 +8,9 @@ Binary frames start with a one-byte kind; all integers are little-endian.
 
 device -> broker
   MIC     kind, u32 first_sample, i64 capture_us, PCM16 mono @ MIC_RATE
-          Streams from START on, so speech right after the wake word reaches
+          Streams after admission and the local wake cue, so speech reaches
           the broker while the model starts up. first_sample counts mic
-          samples since the WebSocket opened; a gap means the device dropped
+          samples since streaming began; a gap means the device dropped
           audio. capture_us is esp_timer time of the first sample.
   PLAYED  kind, u32 frames, i64 dac_us
           `frames` more samples of the SPEAKER_RATE stream finished leaving the
@@ -51,6 +51,8 @@ class ControlType(enum.StrEnum):
     START = "start"  # {"wake_word": str}; always the first frame
     STOP = "stop"  # user ended the conversation (button or wake word)
     # broker -> device
+    ADMITTED = "admitted"  # this device owns the wake
+    SUPPRESSED = "suppressed"  # another device owns the wake; end silently
     PHASE = "phase"  # {"phase": Phase}
     END = "end"  # conversation over; device closes the socket
 

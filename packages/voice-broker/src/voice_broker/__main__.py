@@ -7,6 +7,7 @@ import asyncio
 import hmac
 import logging
 import signal
+import time
 import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -29,13 +30,15 @@ from .config import Config, Device
 from .conversation import Conversation
 from .home_assistant import HomeAssistant
 from .live import LiveSession, Mode, Parallel, Routed, WarmConnections, live_connector
-from .protocol import MIC_RATE, ProtocolError, parse_start
+from .protocol import MIC_RATE, ControlType, ProtocolError, encode_control, parse_start
 from .routing import router
 
 log = logging.getLogger("voice_broker")
 
 # The device sends START right after connecting.
 _START_TIMEOUT_S = 5
+# Detection and connection times vary across rooms hearing one phrase.
+_WAKE_WINDOW_S = 1.5
 
 # The device a log record belongs to; every conversation task inherits it.
 _device_name: ContextVar[str] = ContextVar("device", default="-")
@@ -74,6 +77,17 @@ class Broker:
         classifier = config.routing or (config.home_assistant.shadow if config.home_assistant else None)
         self._router = router(classifier, openai) if classifier else None
         self._calls = Calls(config.calls, config.devices, busy=self._in_conversation)
+        self._last_wake: tuple[str, float] | None = None
+
+    def _admit_wake(self, device: Device) -> bool:
+        now = time.monotonic()
+        if self._last_wake is not None:
+            winner, started = self._last_wake
+            if winner != device.name and now - started < _WAKE_WINDOW_S:
+                log.info("duplicate wake suppressed; %s won", winner)
+                return False
+        self._last_wake = (device.name, now)
+        return True
 
     def _mode(self, state: _DeviceState, opening: str | None) -> Mode:
         """How a conversation at the device answers delegations, as that device."""
@@ -167,7 +181,18 @@ class Broker:
         except (TimeoutError, ProtocolError, ConnectionClosed) as e:
             log.warning("no valid start from %s: %r", device.remote_address, e)
             return
-        opening = self._calls.answer(state.device.address)
+        opening = self._calls.answer(state.device.address) if not start.wake_word else None
+        if start.wake_word and not self._admit_wake(state.device):
+            try:
+                await device.send(encode_control(ControlType.SUPPRESSED))
+                await device.close()
+            except ConnectionClosed:
+                pass
+            return
+        try:
+            await device.send(encode_control(ControlType.ADMITTED))
+        except ConnectionClosed:
+            return
         if opening is None:
             log.info("woken by %s", start.wake_word)
         else:

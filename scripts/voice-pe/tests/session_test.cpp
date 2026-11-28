@@ -28,6 +28,7 @@ struct Harness : Session::Device {
   void begin(const std::string &wake_word) override { this->calls.push_back(this->tagged("begin " + wake_word)); }
   void send_stop() override { this->calls.push_back(this->tagged("stop")); }
   void disconnect() override { this->calls.push_back("disconnect"); }
+  void on_admitted() override { this->calls.push_back("admitted"); }
   void on_phase(Phase phase) override {
     this->calls.push_back(phase == Phase::LISTENING ? "listening" : phase == Phase::THINKING ? "thinking" : "replying");
   }
@@ -40,9 +41,14 @@ struct Harness : Session::Device {
   void send(Event::Type type, Phase phase = Phase::LISTENING) {
     this->session.handle({type, this->session.generation(), phase});
   }
+  void admit() {
+    this->send(Event::CONNECTED);
+    this->send(Event::ADMITTED);
+  }
   // Late events and timers of a conversation that already ended.
   void replay_stale(uint32_t generation) {
-    for (auto type : {Event::CONNECTED, Event::DISCONNECTED, Event::END, Event::PHASE})
+    for (auto type : {Event::CONNECTED, Event::DISCONNECTED, Event::END, Event::PHASE, Event::ADMITTED,
+                      Event::SUPPRESSED})
       this->session.handle({type, generation, Phase::LISTENING});
     this->session.tick(T0 + 2 * Session::STARTUP_TIMEOUT_MS);
   }
@@ -70,19 +76,23 @@ TEST(Session, AFailedStartupHandsTheWakeWordToAssistOnce) {
          h.session.tick(T0 + Session::STARTUP_TIMEOUT_MS);
        }},
   };
-  for (bool connected : {false, true}) {
+  for (int stage = 0; stage < 3; ++stage) {
     for (const auto &failure : failures) {
-      SCOPED_TRACE(std::string(failure.name) + (connected ? " after connecting" : " while connecting"));
+      SCOPED_TRACE(std::string(failure.name) + " at stage " + std::to_string(stage));
       Harness h;
       h.start();
-      if (connected)
+      if (stage > 0)
         h.send(Event::CONNECTED);
+      if (stage > 1)
+        h.send(Event::ADMITTED);
       h.session.tick(T0 + Session::STARTUP_TIMEOUT_MS - 1);
       const uint32_t generation = h.session.generation();
       failure.fail(h);
       Calls expected{"connect@1"};
-      if (connected)
+      if (stage > 0)
         expected.push_back("begin jarvis@1");
+      if (stage > 1)
+        expected.push_back("admitted");
       expected.insert(expected.end(), {"disconnect", "end", "assist jarvis"});
       EXPECT_EQ(h.calls, expected);
       h.replay_stale(generation);
@@ -100,23 +110,36 @@ TEST(Session, AFailedStartupHandsTheWakeWordToAssistOnce) {
 TEST(Session, PastListeningAFailureEndsTheConversationWithoutAssist) {
   Harness h;
   h.start();
-  h.send(Event::CONNECTED);
+  h.admit();
   h.send(Event::PHASE, Phase::LISTENING);
   h.session.tick(T0 + 2 * Session::STARTUP_TIMEOUT_MS);
   h.send(Event::PHASE, Phase::REPLYING);
   ASSERT_TRUE(h.session.active());
   h.send(Event::DISCONNECTED);
-  EXPECT_EQ(h.calls, (Calls{"connect@1", "begin jarvis@1", "listening", "replying", "error", "disconnect", "end"}));
+  EXPECT_EQ(h.calls, (Calls{"connect@1", "begin jarvis@1", "admitted", "listening", "replying", "error", "disconnect", "end"}));
+}
+
+TEST(Session, ASuppressedWakeEndsWithoutCueOrAssist) {
+  Harness h;
+  h.start();
+  h.send(Event::CONNECTED);
+  const uint32_t generation = h.session.generation();
+  h.send(Event::SUPPRESSED);
+  h.replay_stale(generation);
+  EXPECT_FALSE(h.session.running());
+  EXPECT_EQ(h.calls, (Calls{"connect@1", "begin jarvis@1", "disconnect", "end"}));
 }
 
 TEST(Session, AStopNeverHandsTheWakeWordToAssist) {
-  for (int stage = 0; stage < 3; ++stage) {
+  for (int stage = 0; stage < 4; ++stage) {
     SCOPED_TRACE(stage);
     Harness h;
     h.start();
     if (stage > 0)
       h.send(Event::CONNECTED);
     if (stage > 1)
+      h.send(Event::ADMITTED);
+    if (stage > 2)
       h.send(Event::PHASE, Phase::LISTENING);
     const uint32_t generation = h.session.generation();
     h.session.stop();
@@ -129,10 +152,10 @@ TEST(Session, AStopNeverHandsTheWakeWordToAssist) {
   // the broker hears the stop before the connection closes
   Harness h;
   h.start();
-  h.send(Event::CONNECTED);
+  h.admit();
   h.send(Event::PHASE, Phase::LISTENING);
   h.session.stop();
-  EXPECT_EQ(h.calls, (Calls{"connect@1", "begin jarvis@1", "listening", "stop@1", "disconnect", "end"}));
+  EXPECT_EQ(h.calls, (Calls{"connect@1", "begin jarvis@1", "admitted", "listening", "stop@1", "disconnect", "end"}));
 }
 
 TEST(Session, TheStartupTimeoutSurvivesTheClockWrapping) {

@@ -31,21 +31,6 @@ api:
             condition:
               switch.is_off: master_mute_switch
             then:
-              - if:
-                  condition:
-                    switch.is_on: wake_sound
-                  then:
-                    - script.execute:
-                        id: play_sound
-                        priority: true
-                        sound_file: "wake_word_triggered_sound"
-                    - delay: 300ms
-              - mixer_speaker.apply_ducking:
-                  id: media_mixing_input
-                  decibel_reduction: 20
-                  duration: 0.0s
-              - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
-              - script.execute: control_leds
               - voice_broker.start:
                   wake_word: ""
 
@@ -76,6 +61,27 @@ voice_broker:
     channels: 0
   # The announcement path, so music on the media path keeps playing, ducked.
   speaker: announcement_resampling_speaker
+  on_admitted:
+    - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
+    - script.execute: control_leds
+    # Local cue samples must finish before broker playback accounting starts.
+    - if:
+        condition:
+          switch.is_on: wake_sound
+        then:
+          - script.execute:
+              id: play_sound
+              priority: true
+              sound_file: "wake_word_triggered_sound"
+          - delay: 300ms
+    - if:
+        condition:
+          lambda: return id(broker).start_stream(generation);
+        then:
+          - mixer_speaker.apply_ducking:
+              id: media_mixing_input
+              decibel_reduction: 20
+              duration: 0.0s
   on_phase:
     - lambda: |-
         if (phase == "listening") {
@@ -174,25 +180,19 @@ micro_wake_word:
                                   else:
                                     - if:
                                         condition:
-                                          switch.is_on: wake_sound
-                                        then:
-                                          - script.execute:
-                                              id: play_sound
-                                              priority: true
-                                              sound_file: "wake_word_triggered_sound"
-                                          - delay: 300ms
-                                    - if:
-                                        condition:
                                           lambda: return wake_word == "Hey Jarvis";
                                         then:
-                                          - mixer_speaker.apply_ducking:
-                                              id: media_mixing_input
-                                              decibel_reduction: 20
-                                              duration: 0.0s
-                                          - lambda: id(voice_assistant_phase) = ${voice_assist_waiting_for_command_phase_id};
-                                          - script.execute: control_leds
                                           - voice_broker.start:
                                               wake_word: !lambda return wake_word;
                                         else:
+                                          - if:
+                                              condition:
+                                                switch.is_on: wake_sound
+                                              then:
+                                                - script.execute:
+                                                    id: play_sound
+                                                    priority: true
+                                                    sound_file: "wake_word_triggered_sound"
+                                                - delay: 300ms
                                           - voice_assistant.start:
                                               wake_word: !lambda return wake_word;

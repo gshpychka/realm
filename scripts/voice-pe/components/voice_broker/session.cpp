@@ -31,8 +31,7 @@ void Session::handle(const Event &event) {
     case Event::CONNECTED:
       if (this->state_ != State::CONNECTING)
         break;
-      this->state_ = State::WAITING_READY;
-      // Speech right after the wake word streams while the model starts up.
+      this->state_ = State::WAITING_ADMISSION;
       this->device_.begin(this->wake_word_);
       break;
     case Event::DISCONNECTED:
@@ -47,6 +46,16 @@ void Session::handle(const Event &event) {
       if (this->starting_())
         this->fail_startup_();
       else
+        this->teardown_();
+      break;
+    case Event::ADMITTED:
+      if (this->state_ == State::WAITING_ADMISSION) {
+        this->state_ = State::WAITING_READY;
+        this->device_.on_admitted();
+      }
+      break;
+    case Event::SUPPRESSED:
+      if (this->state_ == State::WAITING_ADMISSION)
         this->teardown_();
       break;
     case Event::PHASE:

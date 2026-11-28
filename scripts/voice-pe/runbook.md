@@ -14,6 +14,9 @@ uses that conversation. A request that names no place is about the PE's `voiceAr
 
 While a broker conversation runs, the wake word or a press of the center
 button ends it.
+The first Jarvis wake reaching the broker wins its 1.5-second wake window.
+Other speakers end silently, and targeted calls remain independent. The winning
+speaker plays its cue and streams audio while the model opens.
 A Home Assistant announcement that arrives mid-conversation shares the
 speaker with it.
 
@@ -192,12 +195,13 @@ routing compares it with `Hey Jarvis`. Both model IDs and the
 
 ### Startup fallback (no replay)
 
-The device streams the microphone from connection; the broker holds that audio
-until its model session opens, then emits the first `phase: listening`
+The device streams the microphone after admission and its wake cue; the broker
+holds that audio until its model session opens, then emits the first `phase: listening`
 (readiness). Connection refusal, authentication failure, END/disconnect before
 readiness, or a 10-second combined connection/model-startup timeout invokes
 normal `voice_assistant.start` once. A component allocation failure or a missing
-token falls back immediately. Generation checks ignore late events and stale
+token falls back immediately. A suppressed wake never invokes Assist.
+Generation checks ignore late events and stale
 queued opens; no reconnect or backend retry loop is used.
 
 No audio/transcript is replayed: speech held for a failed startup is dropped, so
