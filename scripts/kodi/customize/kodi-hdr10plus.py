@@ -75,7 +75,7 @@ def select_mapping():
     )
     path = player.getPlayingFile()
     selected = xbmcgui.Dialog().select(
-        "HDR10+ mapping", modes, preselect=modes.index(current)
+        "HDR mode", modes, preselect=modes.index(current)
     )
     if selected < 0 or modes[selected] == current:
         return

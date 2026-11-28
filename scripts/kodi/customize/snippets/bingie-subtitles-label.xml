@@ -1,0 +1,3 @@
+<!-- kodi-customize: subtitles focus label -->
+<value condition="Control.HasFocus(1104)">[UPPERCASE]$LOCALIZE[24012][/UPPERCASE]</value>
+<!-- kodi-customize: end -->

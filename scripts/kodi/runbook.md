@@ -46,7 +46,8 @@ boot and after each Bingie, Bingie Widgets or PKC update:
   icons and the playback info panel
 - adds a subtitles toggle left of the subtitle settings button in the OSD: one
   press turns subtitles on or off, and its CC icon is struck through while
-  they are off. It shows for videos that have subtitles
+  they are off. It shows for videos that have subtitles. The focus labels
+  identify **Subtitles** and **Subtitle settings**
 - shows the Dolby Vision profile and HDR10+ from Plex in Bingie's HDR badge,
   e.g. "DV P8.1 · HDR10+" (`customize/snippets/`)
 - turns the OSD's **Video** button into a playback info panel, after the one
@@ -59,7 +60,7 @@ boot and after each Bingie, Bingie Widgets or PKC update:
     the panel and plays the last 10 s again to judge lip sync
   - **Audio stream** and **Video stream**: pick the stream, for files with
     more than one
-  - **HDR10+ mapping**: hybrid files offer **Native HDR10+**, **Original
+  - **HDR mode**: hybrid files offer **Native HDR10+**, **Original
     DoVi**, and **HDR10+ mapped to DoVi**; HDR10+-only files offer the two
     applicable modes, and other files show it disabled. A change stops and
     reopens the video at the current position, restoring pause, audio and
@@ -95,7 +96,7 @@ memory settings load at the next Kodi start
 mode, InfoTagger and the Skin Shortcuts pin land at the next boot (`ssh kodi reboot`). The table is the source of truth: a setting changed in
 Kodi's menus goes back to the table's value whenever the script runs. HDR10+
 conversion, dual-format priority and conversion preference are excluded from
-the table so the HDR10+ mapping button's choice survives. After a
+the table so the HDR mode button's choice survives. After a
 PKC patch change, restart Kodi so PKC loads it
 (`ssh kodi systemctl restart kodi`).
 Library items get new HDR details when PKC next syncs them; to rewrite all of

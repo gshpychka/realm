@@ -52,8 +52,8 @@
 	<value>Original DoVi</value>
 </variable>
 <variable name="KodiCustomizeHdr10PlusButton">
-	<value condition="Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)">HDR10+ · $VAR[KodiCustomizeHdr10PlusMode]</value>
-	<value>HDR10+ · not detected</value>
+	<value condition="Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)">HDR mode · $VAR[KodiCustomizeHdr10PlusMode]</value>
+	<value>HDR mode</value>
 </variable>
 <!-- Audio ahead of the picture is positive. The player holds sync within a few
      ms, and audio 45 ms ahead is where viewers notice it (ITU-R BT.1359). -->

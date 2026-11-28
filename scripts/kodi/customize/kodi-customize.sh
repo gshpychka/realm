@@ -55,7 +55,7 @@ coreelec.amlogic.dolbyvision.vsvdb.payload "4903885698A953"
 coreelec.amlogic.dolbyvision.hdr.inject true
 coreelec.amlogic.dolbyvision.hdr.payload "3421AA9B9619FC08488A0839133D4240B0040100CE04EA00"
 # HDR10+ conversion, dual-format priority and conversion preference belong to
-# the playback info panel's HDR10+ mapping button (kodi-hdr10plus.py), so
+# the playback info panel's HDR mode button (kodi-hdr10plus.py), so
 # boot/update runs preserve the choice.
 # Subtitles sit at a fixed spot (manual alignment, 0) near the bottom of the
 # screen. Almost every film in the library has its letterbox bars baked into a
@@ -292,6 +292,18 @@ bingie_subtitles_toggle() {
   if insert_before "$SKIN/IncludesOSD.xml" '<control type="button" id="104">' \
     "$HERE/snippets/bingie-subtitles-toggle.xml" '<include name="OSDButtons_Bingie_Layout">'; then
     log "Bingie OSD subtitles toggle added"
+    reload_skin=1
+  fi
+  # The focus description is separate from the icon-only button controls.
+  file="$SKIN/IncludesOSD.xml"
+  range='/<variable name="osd_button_description">/,/<\/variable>/'
+  if sed -n "$range p" "$file" | grep -qF '<value condition="Control.HasFocus(104)">[UPPERCASE]$LOCALIZE[24012][/UPPERCASE]</value>'; then
+    sed -i "$range s#<value condition=\"Control.HasFocus(104)\">\[UPPERCASE\]\$LOCALIZE\[24012\]\[/UPPERCASE\]</value>#<value condition=\"Control.HasFocus(104)\">[UPPERCASE]\$LOCALIZE[24133][/UPPERCASE]</value>#" "$file"
+    reload_skin=1
+  fi
+  if insert_before "$file" '<value condition="Control.HasFocus(104)">' \
+    "$HERE/snippets/bingie-subtitles-label.xml" '<variable name="osd_button_description">'; then
+    log "Bingie OSD subtitles focus labels patched"
     reload_skin=1
   fi
 }

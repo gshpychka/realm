@@ -186,7 +186,7 @@
 						<param name="visible" value="Player.HasVideo"/>
 					</include>
 					<include content="KodiCustomizeInfoRow">
-						<param name="label" value="HDR10+ mapping"/>
+						<param name="label" value="HDR mode"/>
 						<param name="value" value="$VAR[KodiCustomizeHdr10PlusMode]"/>
 						<param name="visible" value="Integer.IsEqual(Player.Process(video.source.hdr.type.raw),4) | Integer.IsEqual(Player.Process(video.source.additional.hdr.type.raw),4)"/>
 					</include>
