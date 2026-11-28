@@ -63,10 +63,10 @@ index 38d11d7..af705ef 100644
          admission_author.reset(author_token)
 diff --git a/gateway/session_restart_continue.py b/gateway/session_restart_continue.py
 new file mode 100644
-index 0000000..929be39
+index 0000000..b5f7fb5
 --- /dev/null
 +++ b/gateway/session_restart_continue.py
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,151 @@
 +"""Authorized continuation of interactive work interrupted by an orderly gateway stop."""
 +from copy import deepcopy
 +from contextvars import ContextVar
@@ -89,7 +89,8 @@ index 0000000..929be39
 +_MAX_CHAIN = DEFAULT_MAX_RESTARTS
 +_LOCAL_SURFACES = frozenset({'cli', 'tui', 'desktop'})  # created_source of cli / tui / gui sessions
 +_NATIVE_PLATFORMS = frozenset({'telegram'})
-+_LOCAL_FIELDS = frozenset({'text', 'attachments_v1', 'surface_v1', 'display_v1', 'cli_turn_v1', 'local_operator_v1'})
++_LOCAL_FIELDS = frozenset({'text', 'attachments_v1', 'surface_v1', 'display_v1', 'cli_turn_v1',
++                           'local_operator_v1', 'finite', 'unattended'})
 +# A transcript ended by these was replaced; a shutdown/close stamp is reopened by the next claim.
 +_RESET_REASONS = frozenset({'session_reset', 'auto_reset', 'compression_exhausted_reset',
 +                            'superseded_by_repair', 'adopted_by_profile'})
