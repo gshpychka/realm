@@ -51,8 +51,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
-    # The server uses the MCP 1.x SDK from its own pinned nixpkgs.
-    seerr-mcp.url = "github:daedalus-sh/seerr-mcp/0d2003d384ab105ef6deeb68b354d1daaad3779d";
     nix-openclaw = {
       # not following our nixpkgs: its pinned pnpm dependency hashes are
       # computed against its own nixpkgs
