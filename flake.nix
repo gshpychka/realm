@@ -2,10 +2,7 @@
   description = "My Machines";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    # source for reaper's whisper CUDA closure (cache.nixos-cuda.org builds these
-    # on the 25.11 channel; see machines/reaper/whisper.nix), and an escape hatch
-    # for packages broken on unstable
-    nixos-stable.url = "github:nixos/nixpkgs/nixos-25.11";
+    nixos-stable.url = "github:nixos/nixpkgs/nixos-26.05";
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";

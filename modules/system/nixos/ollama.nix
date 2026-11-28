@@ -40,7 +40,7 @@ in
 
     services.ollama = {
       enable = true;
-      package = pkgs.ollama-cuda;
+      package = pkgs.stableCudaPkgs.ollama-cuda;
       loadModels = lib.mkBefore (map (m: m.name) cfg.loadModels);
     };
 

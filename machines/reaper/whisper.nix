@@ -2,19 +2,6 @@
 let
   localPort = 10300;
   remotePort = 10299;
-
-  # whisper's CUDA closure is expensive to build, and cache.nixos-cuda.org has
-  # it built for nixos-25.11
-  pkgsCuda = import inputs.nixos-stable {
-    inherit (pkgs.stdenv.hostPlatform) system;
-    config = {
-      allowUnfree = true;
-      nvidia.acceptLicense = true;
-      # cache.nixos-cuda.org builds nixos-25.11 with cudaSupport and the default
-      # cudaCapabilities; matching both means we get it from the cache
-      cudaSupport = true;
-    };
-  };
 in
 {
   # The service module comes from nixos-stable too - match
@@ -42,7 +29,7 @@ in
       '';
     wyoming = {
       faster-whisper = {
-        package = pkgsCuda.wyoming-faster-whisper;
+        package = pkgs.stableCudaPkgs.wyoming-faster-whisper;
         servers.hass = {
           enable = true;
           uri = "tcp://127.0.0.1:${toString localPort}";
