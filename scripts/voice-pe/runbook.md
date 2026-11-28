@@ -113,17 +113,16 @@ network routes, IDF manager disabled, dependencies vendored and SHA-256 locked.
 Changes to YAML/component source automatically regenerate the Nix project.
 
 All inputs are reconstructible from repository source and public hash-pinned fetches.
-`public-inputs.lock.json` pins both upstream commits, 12 IDF managed component
-archives and three PlatformIO libraries. `assets.lock.json` pins five model
+`public-inputs.lock.json` pins upstream firmware sources, IDF managed component
+archives and Improv's release source. `assets.lock.json` pins five model
 manifests/models and XMOS firmware; sounds come from the immutable external
 upstream commit. `python-inputs.lock.json` pins the IDF build-time Python closure
 (wheels, plus pure-Python esptool source). Native wheel ELF dependencies are
 patched with Nix libraries; downloads occur only in fixed-output fetch derivations.
 
-`esphome.nix` pins the ESPHome 2026.8.0 generator source and hash independently
-of the fleet's rolling ESPHome package; update it together with the firmware's
-SDK and public input locks. `project.nix` starts with a new HOME and empty
-project, runs ESPHome 2026.8.0 code generation offline, redirects only declared
+ESPHome follows the fleet's nixpkgs input. Update the SDK and public input locks
+with its dependency changes. `project.nix` starts with a new HOME and empty
+project, runs ESPHome code generation offline, redirects only declared
 pinned library/XMOS sources, and fails unexpected downloads. Firmware
 compilation uses two CMake configure
 passes: the first discovers built-in IDF components, the second supplies their

@@ -2,8 +2,8 @@
 { pkgs }:
 let
   idfArchive = pkgs.fetchurl {
-    url = "https://github.com/esphome-libs/esp-idf/releases/download/v5.5.5/esp-idf-v5.5.5.tar.xz";
-    hash = "sha256-2Glt8hcxRndaxOXADPY+6Gx+BMIxUw20DzSkNiy+dpo=";
+    url = "https://github.com/esphome-libs/esp-idf/releases/download/v5.5.6/esp-idf-v5.5.6.tar.xz";
+    sha256 = "adda9dc08e53fcd22c0522d41b45aacc7bf78e8654f62c04466bc0a4b607c099";
   };
 in
 {
@@ -18,7 +18,7 @@ in
     stripRoot = false;
   };
   idf =
-    pkgs.runCommand "voice-pe-idf-5.5.5"
+    pkgs.runCommand "voice-pe-idf-5.5.6"
       {
         nativeBuildInputs = [
           pkgs.gnutar

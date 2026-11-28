@@ -49,7 +49,7 @@ let
 in
 pkgs.stdenvNoCC.mkDerivation {
   pname = "voice-pe-firmware";
-  version = "26.9.0-esphome-2026.8.0";
+  version = "26.9.0-esphome-${pkgs.esphome.version}";
   src = project;
   requiredSystemFeatures = [ "big-parallel" ];
   nativeBuildInputs = [
@@ -65,8 +65,6 @@ pkgs.stdenvNoCC.mkDerivation {
   enableParallelBuilding = true;
   postPatch = ''
     # Match the registry-qualified names referenced by component manifests.
-    mv vendor/libsodium vendor/esphome__libsodium
-    mv vendor/noise-c vendor/esphome__noise-c
     mv vendor/Improv vendor/improv__Improv
     PYTHONPATH='${pythonModules}' python3 ${./offline-components.py}
     # Remove plaintext entirely: even connections opened before key provisioning

@@ -17,91 +17,84 @@
     "bblanchon__arduinojson": {
       "url": "https://components-file.espressif.com/components/bblanchon/arduinojson/7.4.3/bblanchon__arduinojson-v7.4.3.zip",
       "sha256": "76bcec050add645b4947a72ef68bbdca6f1774ea4cb8bf86fef7418d730bc35e",
-      "version": "7.4.3",
-      "componentHash": "5e6aff2bc5bc988b36c8e90c01e637495ee895ad3af93911860c21ec6da79b6a"
+      "version": "7.4.3"
     },
     "esphome__esp-audio-libs": {
-      "url": "https://components-file.espressif.com/components/esphome/esp-audio-libs/3.2.1/esphome__esp-audio-libs-v3.2.1.zip",
-      "sha256": "0d55d5fdc547610d37a765cf331e3419f76e2908a0fc6618cdb4966f1e3dee6d",
-      "version": "3.2.1",
-      "componentHash": "7e554555cce160b406ad6280f6efa9f0e10fceb1bd69ceb70b7e5fd3135b500a"
+      "url": "https://components-file.espressif.com/components/esphome/esp-audio-libs/4.1.0/esphome__esp-audio-libs-v4.1.0.zip",
+      "sha256": "b614ac29cf959bfd1232a0b25123ade0ea6422e8aa414c4705ce1339e726a81c",
+      "version": "4.1.0"
     },
     "esphome__esp-micro-speech-features": {
       "url": "https://components-file.espressif.com/components/esphome/esp-micro-speech-features/1.2.3/esphome__esp-micro-speech-features-v1.2.3.zip",
       "sha256": "052a8f32e7a82f49593bfdc067638a8cee6542443726d1a7e5b01b3bd9d67eac",
-      "version": "1.2.3",
-      "componentHash": "2b720b4ed49fa9df14b24f35fd3ec8a012eddde1c8dd4709448e36a581eebd3e"
+      "version": "1.2.3"
+    },
+    "esphome__libsodium": {
+      "url": "https://components-file.espressif.com/components/esphome/libsodium/1.10021.12/esphome__libsodium-v1.10021.12.zip",
+      "sha256": "97e4173d41e3e196e5a7265a15a2b9a93a2e520925f2ca104274c938693eda23",
+      "version": "1.10021.12"
     },
     "esphome__micro-decoder": {
       "url": "https://components-file.espressif.com/components/esphome/micro-decoder/0.4.0/esphome__micro-decoder-v0.4.0.zip",
       "sha256": "5ebc956166de167fe98fd4bbd3f65b7455f139322e877f39488ce425ffae85b8",
-      "version": "0.4.0",
-      "componentHash": "003c9bc4b2350f4f06a7b1e8560ea5ae8758ecba91e58a521b40cd8be2f4f119"
+      "version": "0.4.0"
     },
     "esphome__micro-flac": {
-      "url": "https://components-file.espressif.com/components/esphome/micro-flac/0.2.0/esphome__micro-flac-v0.2.0.zip",
-      "sha256": "02ac68aa9d59cd055c0104c59e14c2125ff6300f6778320606d5d76950894074",
-      "version": "0.2.0",
-      "componentHash": "d2e75ea77eaa45b83ed4ba968040957b27f53a7344b04d1c27495321b95bd44e"
+      "url": "https://components-file.espressif.com/components/esphome/micro-flac/0.3.0/esphome__micro-flac-v0.3.0.zip",
+      "sha256": "63ef4e1ca53c2ce0fdf0674c5e44c68dbbf29cd42d7e04e3ce7d561da0a25dbb",
+      "version": "0.3.0"
     },
     "esphome__micro-mp3": {
       "url": "https://components-file.espressif.com/components/esphome/micro-mp3/0.4.0/esphome__micro-mp3-v0.4.0.zip",
       "sha256": "f14cefc27eb17a08e6a94ef78c5bcab684eecb7d3c71de318bc82d9259ac7cc5",
-      "version": "0.4.0",
-      "componentHash": "51106d6a6ef13d37b598aa06b4a4de39249319110f990950eb123203a9e2eb6d"
+      "version": "0.4.0"
     },
     "esphome__micro-opus": {
       "url": "https://components-file.espressif.com/components/esphome/micro-opus/0.4.1/esphome__micro-opus-v0.4.1.zip",
       "sha256": "e5bd1b7d4f5c9d137b6ca73dee2b37cc34781e35e40eabf278a41e1c65599128",
-      "version": "0.4.1",
-      "componentHash": "c4cec51b6e45b9b660bf8725a10c65f46485ff8b37ff664e4da3fd738301c71e"
+      "version": "0.4.1"
+    },
+    "esphome__micro-wav": {
+      "url": "https://components-file.espressif.com/components/esphome/micro-wav/0.2.0/esphome__micro-wav-v0.2.0.zip",
+      "sha256": "3d5e74a3dda518414ecd5eb36cbafd8fba327c9d7a43a2442c9172320aa1ca8e",
+      "version": "0.2.0"
+    },
+    "esphome__noise-c": {
+      "url": "https://components-file.espressif.com/components/esphome/noise-c/0.1.31/esphome__noise-c-v0.1.31.zip",
+      "sha256": "dd535e575bb8fae1e300eb3fb7346144b81a2f3c393a63d6e6358f5d043f6af2",
+      "version": "0.1.31"
     },
     "espressif__esp-nn": {
       "url": "https://components-file.espressif.com/components/espressif/esp-nn/1.1.2/espressif__esp-nn-v1.1.2.zip",
       "sha256": "bc952d4417a22ee18f771e1214015abda82e90550a8f8a45f22f59ab1d622e0d",
-      "version": "1.1.2",
-      "componentHash": "f4633a02f05fef53b80de65ade1f733ebdef637e4c8b8be4eb11f5e27f6d9f3e"
+      "version": "1.1.2"
     },
     "espressif__esp-tflite-micro": {
       "url": "https://components-file.espressif.com/components/espressif/esp-tflite-micro/1.3.3~1/espressif__esp-tflite-micro-v1.3.3_1.zip",
       "sha256": "221b9ca49b236ad666dc453ee8dbeed1040ab41246784133e9f1d339b8d468da",
-      "version": "1.3.3~1",
-      "componentHash": "78502e833b227ec15b917222ed046df1a46f2e5d3593d2a77a162012fa9a1aa0"
+      "version": "1.3.3~1"
     },
     "espressif__esp_websocket_client": {
       "url": "https://components-file.espressif.com/components/espressif/esp_websocket_client/1.7.0/espressif__esp_websocket_client-v1.7.0.zip",
       "sha256": "0eb9c4fbbbe519d298f64050a62bd6c6660772bc7b8ebd03b1e31ae11acdf19f",
-      "version": "1.7.0",
-      "componentHash": "3fb288702517ef4d75bf933a115f1056ee0c2540d964f9e1d856e0bb67e1dfeb"
+      "version": "1.7.0"
     },
     "espressif__mdns": {
-      "url": "https://components-file.espressif.com/components/espressif/mdns/1.11.3/espressif__mdns-v1.11.3.zip",
-      "sha256": "4c2759bf02adbb1b97c81f39ef9c482dd60a4a5f155fd82586146e308535b2c0",
-      "version": "1.11.3",
-      "componentHash": "e81ca7a7f53ea34e78274df054da692c272e1315572876b237b1748e267c013b"
+      "url": "https://components-file.espressif.com/components/espressif/mdns/1.15.0/espressif__mdns-v1.15.0.zip",
+      "sha256": "de426a561c5a7b262267db81afaeb02bb2f5b52d141aba58c30f37804fc45182",
+      "version": "1.15.0"
     },
     "sendspin__sendspin-cpp": {
-      "url": "https://components-file.espressif.com/components/sendspin/sendspin-cpp/0.7.2/sendspin__sendspin-cpp-v0.7.2.zip",
-      "sha256": "7ae4360981d5ed27593aacf9442a83a9478c35c46a23543f1b86534ae1ab6794",
-      "version": "0.7.2",
-      "componentHash": "79310684d51ac5c6146765989548aacfab230e368fd5892c2d6124fe791425e8"
+      "url": "https://components-file.espressif.com/components/sendspin/sendspin-cpp/0.9.3/sendspin__sendspin-cpp-v0.9.3.zip",
+      "sha256": "e93f93ac946c3e1c768ffce7abca82d2eaae53e6dc6111a2b3513f590d586db3",
+      "version": "0.9.3"
     }
   },
   "vendor": {
     "Improv": {
-      "url": "https://dl.registry.platformio.org/download/improv/library/Improv/1.2.6/Improv-1.2.6.tar.gz",
-      "sha256": "3948621c08b368fc90fb0f1632a38f793a3f8f91b08c6bf1915175950a2bebf0",
-      "version": "1.2.6"
-    },
-    "noise-c": {
-      "url": "https://dl.registry.platformio.org/download/esphome/library/noise-c/0.1.21/noise-c-0.1.21.tar.gz",
-      "sha256": "d8314b8324358811b1e2df9d9d5be6ea7f4cc8e7474e3efe074fc9649c054d18",
-      "version": "0.1.21"
-    },
-    "libsodium": {
-      "url": "https://dl.registry.platformio.org/download/esphome/library/libsodium/1.10021.4/libsodium-1.10021.4.tar.gz",
-      "sha256": "28517f979793d631a1daa0b1ebcd77a5e4eefacf6c2a5b615f4cf0304d720a2f",
-      "version": "1.10021.4"
+      "url": "https://codeload.github.com/improv-wifi/sdk-cpp/tar.gz/8e87b560bd5dd7de296847538ea11edb70401d65",
+      "sha256": "17c93600538b8b146d4a314519df7394725003ebcae2694151eec20a324018d6",
+      "version": "1.2.7"
     }
   },
   "assets": {},

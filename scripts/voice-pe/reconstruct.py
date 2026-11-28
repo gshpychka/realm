@@ -89,14 +89,14 @@ def resolve_vendor(owner, name, requirements):
     canonical = next(n for n in inputs["vendor"] if n.lower() == name.lower())
     item = inputs["vendor"][canonical]
     assert all(SimpleSpec(req).match(Version(item["version"])) for req in requirements)
-    return owner, canonical, item["version"], item["url"]
+    return owner, canonical, item["version"], item["url"], None
 
 
-def extract_vendor(self, dir_suffix, force=False, salt="", namespace=""):
+def extract_vendor(self, dir_suffix, force=False, salt="", namespace="", progress=None):
     item = next(v for v in inputs["vendor"].values() if v["url"] == self.url)
     path = Path(CORE.data_dir) / "pinned-vendor" / dir_suffix
     if not path.exists():
-        untar(item["archive"], path)
+        untar(item["archive"], path, True)
     return path
 
 

@@ -4,7 +4,7 @@ let
   lock = builtins.fromJSON (builtins.readFile ./public-inputs.lock.json);
   assets = builtins.fromJSON (builtins.readFile ./assets.lock.json);
   fetch = item: pkgs.fetchurl { inherit (item) url sha256; };
-  esphome = import ./esphome.nix { inherit pkgs; };
+  inherit (pkgs) esphome;
   python = pkgs.python3.withPackages (_: esphome.propagatedBuildInputs);
   components = builtins.path {
     path = ./components;
@@ -38,7 +38,6 @@ let
     }
   );
 in
-assert esphome.version == "2026.8.0";
 assert pkgs.python3.pythonVersion == "3.14";
 pkgs.runCommand "voice-pe-generated-project"
   {
