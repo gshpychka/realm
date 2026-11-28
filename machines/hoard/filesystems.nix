@@ -82,25 +82,19 @@ in
       ++ lib.mapAttrsToList (name: device: "${name} ${device} - tpm2-device=auto,noauto") arrayMembers
     );
 
-  # Device events unlock disks during boot or on a late enclosure connection.
-  # noauto keeps their arrival off the boot critical path.
-  services.udev.extraRules = lib.concatLines (
-    lib.mapAttrsToList (
-      name: device:
-      lib.concatStringsSep ", " [
-        # the partition appearing, or udev re-reading one already present
-        ''ACTION=="add|change"''
-        # disks and partitions
-        ''SUBSYSTEM=="block"''
-        # the encrypted container, not the filesystem inside it
-        ''ENV{ID_FS_TYPE}=="crypto_LUKS"''
-        # the label in the LUKS header, set by `cryptsetup config --label`
-        ''ENV{ID_FS_LABEL}=="${baseNameOf device}"''
-        # start this unit; systemd escapes the dash in the instance name
-        ''ENV{SYSTEMD_WANTS}+="systemd-cryptsetup@${utils.escapeSystemdPath name}.service"''
-      ]
-    ) encryptedDevices
-  );
+  # Keep each disk unlocked while it is present. Unlike a one-shot udev
+  # SYSTEMD_WANTS request, Upholds retries after a quick reconnect overlaps the
+  # previous unlock service's teardown. noauto keeps absent disks off the boot
+  # critical path; the unlocked filesystem devices trigger their own mounts.
+  systemd.units = lib.mapAttrs' (
+    name: device:
+    lib.nameValuePair (deviceUnit device) {
+      text = ''
+        [Unit]
+        Upholds=systemd-cryptsetup@${utils.escapeSystemdPath name}.service
+      '';
+    }
+  ) encryptedDevices;
 
   fileSystems = {
     "/" = {
@@ -132,9 +126,12 @@ in
         "compress=zstd:1"
         "noatime"
         "lazytime"
-        # mounts as soon as the unlocked device appears
+        # The shared label can appear before both members finish unlocking.
         "x-systemd.wanted-by=${deviceUnit config.fileSystems."/mnt/hoard".device}"
-      ];
+      ]
+      ++ map (name: "x-systemd.requires=${deviceUnit "/dev/mapper/${name}"}") (
+        lib.attrNames arrayMembers
+      );
     };
 
     "/mnt/oasis" = {
