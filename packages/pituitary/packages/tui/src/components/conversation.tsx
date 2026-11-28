@@ -55,6 +55,8 @@ function Marked({ mark, colour, children }: { mark: string; colour: string; chil
 export interface Display {
   /** Tool output, summaries, and long commands shown whole, as ctrl+o asks. */
   expanded: boolean;
+  /** How many times ctrl+o has set every box one way, each time undoing what was set box by box. */
+  expansions: number;
   /** Thinking shown as text; a one-line marker otherwise, as ctrl+t asks. */
   thinking: boolean;
   /** The keys that reach the interrupt from where the draft stands, such as `esc esc`. */
@@ -71,6 +73,15 @@ export interface Display {
 /** An entry the conversation draws as it is, which is any but the model's replies. */
 type Plain = Exclude<Item, Work | Reply>;
 
+/**
+ * What names an entry the same however the view is rebuilt, which renumbers entries: a prompt's
+ * session message, or else the entry's place with what it says.
+ */
+const lasting = (entry: Plain) =>
+  entry.kind === "user" && entry.key !== undefined
+    ? `key:${entry.key}`
+    : `${entry.id}:${"text" in entry ? entry.text : ""}`;
+
 const EntryView = memo(function EntryView({
   entry,
   display,
@@ -81,7 +92,7 @@ const EntryView = memo(function EntryView({
   display: Display;
   /** Rows a shell command's output shows until ctrl+o. */
   rows: number;
-  /** The terminal's width, which a shell command's output wraps within. */
+  /** The conversation's width, which a shell command's output wraps within. */
   columns: number;
 }) {
   const expand = useKeyHint("app.tools.expand");
@@ -215,6 +226,8 @@ export interface ConversationProps {
   entries: Entry[];
   /** A run is in progress. */
   running: boolean;
+  /** Cells the conversation's rows take across, beside whatever shares the screen's width with it. */
+  columns: number;
   /** Local sessions can complete paths and choose models from the operator's configuration. */
   local?: boolean;
   /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
@@ -231,6 +244,8 @@ export interface ConversationProps {
   window: number;
   /** The keyboard walks the conversation with the transcript cursor, the latest item selected first. */
   browsing: boolean;
+  /** Draws more of the entries before the window, as up past the cursor's first item asks. */
+  onEarlier?(): void;
   /** What the cursor's keys do beyond showing an item another way, such as copying it. */
   keys?: CursorKeys;
   /** The cursor's keys for its selection as a hint line in `hintColumns`, or null while it is away. */
@@ -358,6 +373,7 @@ function Selectable({
 export function Conversation({
   entries,
   running,
+  columns,
   local,
   agent,
   modelSelectable,
@@ -367,6 +383,7 @@ export function Conversation({
   skillOf,
   window,
   browsing,
+  onEarlier,
   keys = {},
   onHint,
   hintColumns = 80,
@@ -374,7 +391,7 @@ export function Conversation({
   onLeave,
   ref,
 }: ConversationProps) {
-  const { width, height } = useTerminalDimensions();
+  const { height } = useTerminalDimensions();
   const earlier = Math.max(0, entries.length - window);
   const drawn = entries.length > 0;
   const clearHistoryAnchor = useHistoryAnchor(ref, earlier, window, drawn);
@@ -384,16 +401,16 @@ export function Conversation({
   );
   const stops = useMemo(() => stopsOf(items), [items]);
   const stopOf = useMemo(() => new Map<Item, Stop>(stops.map((stop) => [stop.item, stop])), [stops]);
-  const { isOpen, isWhole, toggle, stretch, last } = useOpenBoxes(display.expanded);
-  // Items whose details the cursor showed, as ctrl+o shows every item's.
+  const { isOpen, isWhole, toggle, stretch, last } = useOpenBoxes(display.expanded, display.expansions);
+  // Entries whose details the cursor showed, as ctrl+o shows every entry's, by `lasting`.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
-  const flip = (id: string) =>
+  const flip = (entry: Plain) =>
     setShown((before) => {
       const next = new Set(before);
-      if (!next.delete(id)) next.add(id);
+      if (!next.delete(lasting(entry))) next.add(lasting(entry));
       return next;
     });
-  const showsMore = (id: string) => (shown.has(id) ? "fold" : "expand");
+  const showsMore = (entry: Plain) => (shown.has(lasting(entry)) ? "fold" : "expand");
   const own: CursorKeys = {
     work: [
       {
@@ -403,7 +420,7 @@ export function Conversation({
       },
       {
         keys: ["o"],
-        does: (work) => (isOpen(work) && isWhole(work) ? "shorten" : "whole"),
+        does: (work) => (isOpen(work) && isWhole(work) ? "bound" : "full length"),
         run: stretch,
       },
       {
@@ -417,33 +434,40 @@ export function Conversation({
     prompt: [
       {
         keys: ["enter", "space"],
-        does: (prompt) => (shown.has(prompt.id) ? "fold" : "show skill"),
+        does: (prompt) => (shown.has(lasting(prompt)) ? "hide skill" : "show skill"),
         applies: (prompt) => !display.expanded && skillsIn(parseUserText(prompt.text)).length > 0,
-        run: (prompt) => flip(prompt.id),
+        run: flip,
       },
     ],
     summary: [
       {
         keys: ["enter", "space"],
-        does: (summary) => showsMore(summary.id),
+        does: showsMore,
         applies: () => !display.expanded,
-        run: (summary) => flip(summary.id),
+        run: flip,
       },
     ],
     notice: [
       {
         keys: ["enter", "space"],
-        does: (notice) => showsMore(notice.id),
+        does: showsMore,
         applies: (notice) =>
           !display.expanded &&
           notice.kind === "notice" &&
           explained(notice, display.commands).detail !== undefined,
-        run: (notice) => flip(notice.id),
+        run: flip,
       },
     ],
   };
   const table = joinKeys(own, keys);
-  const { selected, resized } = useCursor({ browsing, stops, keys: table, scroll: ref, onLeave });
+  const { selected, resized } = useCursor({
+    browsing,
+    stops,
+    keys: table,
+    scroll: ref,
+    onLeave,
+    onEarlier: earlier > 0 ? onEarlier : undefined,
+  });
   const hint = browsing ? hintLine(cursorHints(table, selected, "esc"), null, hintColumns) : null;
   useEffect(() => onHint?.(hint), [hint, onHint]);
   // The box opened last takes whatever rows the conversation leaves empty below it.
@@ -499,7 +523,7 @@ export function Conversation({
                   thinking={display.thinking}
                   selected={stop !== undefined && stopId(stop) === selectedId}
                   rows={item.id === last ? Math.max(rows, room) : rows}
-                  columns={width}
+                  columns={columns}
                   onToggle={toggle}
                 />
               );
@@ -509,9 +533,9 @@ export function Conversation({
               return (
                 <EntryView
                   entry={item}
-                  display={shown.has(item.id) ? expandedDisplay : display}
+                  display={shown.has(lasting(item)) ? expandedDisplay : display}
                   rows={shellRows(height)}
-                  columns={width}
+                  columns={columns}
                 />
               );
           }

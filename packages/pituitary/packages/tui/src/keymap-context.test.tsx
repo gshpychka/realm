@@ -11,7 +11,7 @@ const work: Work = {
   id: "work",
   live: false,
   latest: false,
-  steps: [{ kind: "thinking", id: "thinking", text: "consider it" }],
+  steps: [{ kind: "thinking", id: "thinking", text: "consider it", done: true }],
 };
 for (const [binding, expected] of [
   ["alt+t", " · alt+t"],

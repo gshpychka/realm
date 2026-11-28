@@ -53,28 +53,6 @@ describe("transcriptOf", () => {
     ]);
   });
 
-  test("the box stays live until the reply after it speaks", () => {
-    const working = [user("u"), reply("a1", { tools: [tool("t1", "running")] })];
-    expect(shape(transcriptOf(working, true))).toEqual(["user", "work(t1) live"]);
-
-    const thinking = [...working, reply("a2", { thinking: "so", done: false })];
-    expect(shape(transcriptOf(thinking, true))).toEqual(["user", "work(t1 a2:thinking) live"]);
-
-    const answering = [...working, reply("a2", { thinking: "so", text: "It is", done: false })];
-    expect(shape(transcriptOf(answering, true))).toEqual([
-      "user",
-      "work(t1 a2:thinking)",
-      "reply(It is) streaming",
-    ]);
-
-    const answered = [...working, reply("a2", { thinking: "so", text: "It is done." })];
-    expect(shape(transcriptOf(answered, true))).toEqual([
-      "user",
-      "work(t1 a2:thinking)",
-      "reply(It is done.)",
-    ]);
-  });
-
   test("words that went on to a tool call move into the box as narration", () => {
     const entries = [
       user("u"),

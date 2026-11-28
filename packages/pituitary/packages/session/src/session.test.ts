@@ -39,7 +39,6 @@ test("a live snapshot restores the partial reply so later deltas continue it", (
   };
   const view = restore(messages, undefined, snapshot);
   expect(view.running).toBe(true);
-  expect(view.watched).toBe(false);
   expect(reduce(view, { type: "agent_settled" }).entries.some((entry) => entry.kind === "turn")).toBe(false);
   expect(view.entries.at(-1)).toMatchObject({
     kind: "assistant",
@@ -447,12 +446,6 @@ describe("what the run is doing", () => {
     expect(activityOf(run([...prompt, ...reply.slice(0, opened + 1)]))).toEqual({ kind: "reading" });
     expect(activityOf(run([...prompt, ...reply.slice(0, thinking + 1)]))).toEqual({ kind: "thinking" });
     expect(activityOf(run([...prompt, ...reply.slice(0, writing + 1)]))).toEqual({ kind: "writing" });
-    const streamingCall = assistantTurn({ toolCall: call });
-    const started = streamingCall.findIndex((event) => isDelta(event, "toolcall_start"));
-    expect(activityOf(run([...prompt, ...streamingCall.slice(0, started + 1)]))).toEqual({
-      kind: "preparing",
-      tool: "bash",
-    });
   });
 
   test("a tool call is what the run does from the reply's end until its result, which the model then reads", () => {
@@ -763,7 +756,6 @@ test("a live snapshot preserves the retry countdown without inventing a partial 
     phase: "retrying",
     running: true,
     retry: { attempt: 2, maxAttempts: 3, at: 5000, error: "overloaded" },
-    watched: false,
   });
 });
 

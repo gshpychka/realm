@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { theme } from "../packages/tui/src/theme.ts";
-import { cellsOf, copied, pastGrace, press, waitMatch } from "./helpers/harness.ts";
+import { cellsOf, copied, pastGrace, press, waitGone, waitMatch } from "./helpers/harness.ts";
 import { launchPi, type PiLaunch } from "./helpers/pi.ts";
 
 after(async () => {
@@ -57,13 +57,13 @@ test("a box says what its run read, edited, wrote and ran, and the call that fai
       done,
       /^ ▸ \S+ read notes\.ts · edited notes\.ts \+2 −1 · wrote summary\.md · ran 2 commands · 1 failed$/m,
     );
-    // A command of several lines heads its row with its first.
-    assert.match(done, /^ {3}✓ \$ printf 'one\\n'$/m);
+    // A command of several lines heads its row with its first, and says how many follow.
+    assert.match(done, /^ {3}✓ \$ printf 'one\\n' … \+2 lines$/m);
     assert.doesNotMatch(done, /printf 'two/);
 
     // Open, it says how many lines it leaves out; at full length, it shows them all.
     await app.terminal.write(CTRL_F);
-    await press(app.terminal, UP, "enter open · o whole");
+    await press(app.terminal, UP, "enter open · o full length");
     await app.terminal.write("\r");
     await app.terminal.waitText("✓ $ printf 'one\\n' … +2 lines");
     await app.terminal.write("o");
@@ -72,13 +72,35 @@ test("a box says what its run read, edited, wrote and ran, and the call that fai
     await app.terminal.write("\r");
     await app.terminal.waitText("enter open");
     await app.terminal.keyboard.press("Escape");
-    await waitMatch(app.terminal, /^(?![\s\S]*^┃)/m);
+    await waitGone(app.terminal, /esc back/);
 
     await ask(app, "thanks");
     const folded = await app.capture("cursor-pi-folded");
     assert.match(folded, /1 failed\n {3}✗ \$ exit 4\n\n ● Tidied the notes/);
     const [cross] = await cellsOf(app.terminal, "✗ $ exit 4");
     assert.equal(cross?.fg, theme.error);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a box stays at work while the reply after it is still being written, which may yet call a tool", async () => {
+  const app = await launchPi({ apiModels: [{ id: "held-replies" }] });
+  try {
+    writeFileSync(join(app.cwd, "notes.ts"), "const draft = 1;\n");
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    app.provider.reply(
+      { tool: "read", arguments: { path: "notes.ts" } },
+      { text: "Read the notes.", until: held },
+    );
+    await app.terminal.submit("read the notes");
+    const writing = await waitMatch(app.terminal, /● Read the notes\./);
+    assert.match(writing, /^ ◌ \S+ read notes\.ts$/m);
+    release();
+    await waitMatch(app.terminal, /^ ▸ \S+ read notes\.ts$/m);
   } finally {
     await app.close();
   }
@@ -111,7 +133,7 @@ test("the cursor copies a skill prompt as typed and a shell command with its out
     assert.equal(copied(app.raw()), "/skill:release-notes focus on the footer");
     await app.terminal.write("\r");
     await app.terminal.waitText("Gather the merged pull requests since the last tag.");
-    await app.terminal.waitText("enter fold");
+    await app.terminal.waitText("enter hide skill");
 
     await app.terminal.write(UP);
     await waitMatch(app.terminal, /^┃▌ \$ echo from the shell/m);
@@ -122,7 +144,8 @@ test("the cursor copies a skill prompt as typed and a shell command with its out
     await app.terminal.waitIdle();
     assert.equal(copied(app.raw()), "$ echo from the shell\nfrom the shell");
     await app.terminal.keyboard.press("Escape");
-    await waitMatch(app.terminal, /^(?![\s\S]*^┃)/m);
+    // The bar leaves with the cursor, which then takes no more keys.
+    await waitGone(app.terminal, /^┃/m);
 
     // Pi summarizes a turn the cut splits apart with a request of its own.
     const SUMMARY = "The operator ran a command and asked for release notes.";
@@ -140,6 +163,32 @@ test("the cursor copies a skill prompt as typed and a shell command with its out
     await app.terminal.waitText(SUMMARY);
     await app.terminal.waitText("enter fold");
     await app.capture("cursor-pi-summary-open");
+  } finally {
+    await app.close();
+  }
+});
+
+test("a skill's instructions the cursor showed stay with that prompt, not one that takes its place", async () => {
+  const app = await launchPi({ skills: { "release-notes": SKILL } });
+  try {
+    app.provider.reply("Drafted the notes.");
+    await app.terminal.submit("/skill:release-notes focus on the footer");
+    await app.terminal.waitText("Drafted the notes.");
+    await app.terminal.waitIdle();
+    await app.terminal.write(CTRL_F);
+    await press(app.terminal, UP, "enter show skill");
+    await app.terminal.write("\r");
+    await app.terminal.waitText("Gather the merged pull requests since the last tag.");
+    await app.terminal.keyboard.press("Escape");
+    await waitGone(app.terminal, /esc back/);
+    // A new session's first prompt stands where the last one's did.
+    await app.terminal.submit("/new");
+    await waitGone(app.terminal, /Drafted the notes/);
+    app.provider.reply("Drafted them again.");
+    await app.terminal.submit("/skill:release-notes focus on the header");
+    await app.terminal.waitText("Drafted them again.");
+    await app.terminal.waitIdle();
+    assert.doesNotMatch(await app.capture("cursor-pi-skill-new"), /Gather the merged/);
   } finally {
     await app.close();
   }

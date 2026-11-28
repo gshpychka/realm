@@ -28,7 +28,10 @@ export const ACTIONS = {
    */
   "tui.altScreen.top": ["alt+home"],
   "tui.altScreen.bottom": ["alt+end"],
-  /** pituitary's own: steps through the boxes of thinking and tool calls from the keyboard. */
+  /**
+   * pituitary's own: the transcript cursor, which walks every prompt, box, reply, shell command,
+   * summary and notice from the latest.
+   */
   "app.tools.browse": ["ctrl+f"],
   "app.thinking.toggle": ["ctrl+t"],
   "app.thinking.cycle": ["shift+tab"],

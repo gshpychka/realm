@@ -62,7 +62,11 @@ const HEADINGS = new Map<string, (args: Args, tool: ToolView) => Heading>([
   ["bash", (args) => ({ title: "$", detail: text(args.command) })],
   ["grep", (args) => ({ title: "grep", detail: searched(args) })],
   ["find", (args) => ({ title: "find", detail: searched(args) })],
-  ["ls", (args) => ({ title: "ls", detail: text(args.path) || "." })],
+  // Pi lists `.` for a call naming no path; one still being written may name one yet.
+  [
+    "ls",
+    (args, tool) => ({ title: "ls", detail: text(args.path) || (tool.streaming === undefined ? "." : "") }),
+  ],
   ["todo", (args) => ({ title: "todo", detail: text(args.action) })],
   ["ask_user_question", (args) => ({ title: "ask", detail: questions(args) })],
   ["subagent", (args) => ({ title: "subagent", detail: text(args.description) || text(args.prompt) })],

@@ -145,6 +145,17 @@ export async function waitMatch(terminal: TuiTest, pattern: RegExp, timeoutMs = 
   }
 }
 
+/** Resolves with the screen once `pattern` no longer matches it, as an item leaving the screen asks. */
+export async function waitGone(terminal: TuiTest, pattern: RegExp, timeoutMs = 5000): Promise<string> {
+  const start = Date.now();
+  for (;;) {
+    const screen = await terminal.text();
+    if (!pattern.test(screen)) return screen;
+    if (Date.now() - start > timeoutMs) throw new Error(`screen still matched ${pattern}:\n${screen}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 /**
  * The cells where `text` shows last on screen, as many as it has characters, for what the text
  * alone does not say, such as colour. Columns count characters, which fits rows of one-cell ones.

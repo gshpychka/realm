@@ -20,6 +20,11 @@ export interface ToolView {
   streaming?: string;
   /** The native content block receiving argument deltas. */
   contentIndex?: number;
+  /**
+   * The run was interrupted while the call ran, as this client asked, or it was left without a
+   * result: a call that then fails ended by the interruption, not by its own fault.
+   */
+  interrupted?: boolean;
 }
 
 export interface UserEntry {
@@ -52,7 +57,9 @@ export type LocalAction =
   /** Recovers the last known queue after the agent has disconnected. */
   | { type: "queue_taken" }
   /** Whether a dialog pi waits on is open, which holds the run up until the operator answers. */
-  | { type: "waiting"; waiting: boolean };
+  | { type: "waiting"; waiting: boolean }
+  /** The operator interrupts the run, which ends the calls it is running. */
+  | { type: "interrupting" };
 
 export type SessionAction = SessionEvent | LocalAction;
 
@@ -231,9 +238,9 @@ export const SHELL_OUTPUT_LIMIT = 64 * 1024;
  * The conversation a stored session holds, as a view. A tool call with no result in
  * the session never finished, so it shows as interrupted. When `previous` is a view of
  * the same session, each turn summary and local notice it holds follows the message it came after,
- * each tool call keeps the times `previous` measured of it, and a run `live` shows still going
- * keeps what `previous` measured of it: its clock, its waits, its tokens, whether this client saw
- * it begin, and the tool calls it was still writing.
+ * each tool call keeps the times `previous` measured of it and whether the operator interrupted
+ * it, and a run `live` shows still going keeps what `previous` measured of it: its clock, its
+ * waits, its tokens, whether this client saw it begin, and the tool calls it was still writing.
  */
 export function restore(
   messages: readonly unknown[],
@@ -337,9 +344,9 @@ export function restore(
 
 /**
  * `entry` with what this client measured of each of its tool calls kept, as `calls` held them
- * by id: when each began and ended, which a snapshot does not hold, and, for a call the open
- * reply is still writing, what of its arguments had streamed in, which a snapshot taken mid-call
- * may lack.
+ * by id: when each began and ended and whether the operator interrupted it, which a snapshot
+ * does not hold, and, for a call the open reply is still writing, what of its arguments had
+ * streamed in, which a snapshot taken mid-call may lack.
  */
 function measured(entry: Entry, calls: ReadonlyMap<string, ToolView>): Entry {
   if (entry.kind !== "assistant") return entry;
@@ -356,6 +363,7 @@ function measured(entry: Entry, calls: ReadonlyMap<string, ToolView>): Entry {
         ...(tool.endedAt === undefined && known.endedAt !== undefined && tool.state !== "running"
           ? { endedAt: known.endedAt }
           : {}),
+        ...(known.interrupted ? { interrupted: true } : {}),
       };
       if (entry.done || known.streaming === undefined || tool.state !== "running") return timed;
       return {
@@ -373,7 +381,7 @@ function interrupted(entry: Entry, pending: ReadonlySet<string>): Entry {
   if (entry.kind !== "assistant" || !entry.tools.some((tool) => tool.state === "running")) return entry;
   const stop = (tool: ToolView): ToolView =>
     tool.state === "running" && !pending.has(tool.id)
-      ? { ...tool, state: "error", output: tool.output || "interrupted" }
+      ? { ...tool, state: "error", output: tool.output || "interrupted", interrupted: true }
       : tool;
   return { ...entry, tools: entry.tools.map(stop) };
 }
@@ -424,7 +432,13 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
             ...entry,
             tools: entry.tools.map((tool) =>
               tool.state === "running"
-                ? { ...tool, state: "error" as const, endedAt: now, output: tool.output || "interrupted" }
+                ? {
+                    ...tool,
+                    state: "error" as const,
+                    endedAt: now,
+                    output: tool.output || "interrupted",
+                    interrupted: true,
+                  }
                 : tool,
             ),
           };
@@ -434,6 +448,22 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
 
     case "queue_taken":
       return { ...state, queue: emptySession.queue };
+
+    case "interrupting":
+      if (!state.running) return state;
+      return {
+        ...state,
+        entries: state.entries.map((entry) =>
+          entry.kind === "assistant" && entry.tools.some((tool) => tool.state === "running")
+            ? {
+                ...entry,
+                tools: entry.tools.map((tool) =>
+                  tool.state === "running" ? { ...tool, interrupted: true } : tool,
+                ),
+              }
+            : entry,
+        ),
+      };
 
     case "agent_start":
       // A retry or a continuation joins the run in progress, whose clock and turn run from its first start.

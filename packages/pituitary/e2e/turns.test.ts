@@ -2,7 +2,17 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { palette, theme } from "../packages/tui/src/theme.ts";
-import { cellsOf, copied, launch, press, RUNNING, settled, waitMatch } from "./helpers/harness.ts";
+import {
+  cellsOf,
+  copied,
+  launch,
+  normalMode,
+  press,
+  RUNNING,
+  settled,
+  waitGone,
+  waitMatch,
+} from "./helpers/harness.ts";
 
 after(async () => {
   await closeAll();
@@ -36,7 +46,8 @@ test("a run's work stays a few rows however long it streams, says what it did, a
     // The command that builds prints as it goes; its latest line shows under its own.
     const live = await waitMatch(app.terminal, /^ {5}compiling$/m, 15_000);
     await app.capture("turns-rail-live");
-    assert.match(live, /^ ◌ \S+ read README\.md · searched 2 · ran printf/m);
+    // The title says what is done, and then what is going on, which the command's own row names.
+    assert.match(live, /^ ◌ \S+ read README\.md · searched 2 · running a command$/m);
     assert.match(live, /^ {3}… \d+ earlier steps$/m);
     assert.match(live, /^ {3}◌ \$ printf 'compiling/m);
     // The title, the earlier steps' count, three steps, and the command's output.
@@ -60,7 +71,7 @@ test("a run's work stays a few rows however long it streams, says what it did, a
     await app.terminal.write(CTRL_F);
     await app.terminal.waitText("━━ ↑↓ move · c copy · esc back ━");
     await app.terminal.write(UP);
-    await app.terminal.waitText("enter open · o whole");
+    await app.terminal.waitText("enter open · o full length");
     await app.terminal.write("\r");
     const open = await app.terminal.waitText("enter close").then(() => app.terminal.text());
     await app.capture("turns-open-room");
@@ -72,7 +83,7 @@ test("a run's work stays a few rows however long it streams, says what it did, a
     await app.terminal.write("\r");
     await app.terminal.waitText("enter open");
     await app.terminal.keyboard.press("Escape");
-    await waitMatch(app.terminal, /^(?![\s\S]*^┃)/m);
+    await waitGone(app.terminal, /esc back/);
 
     // Sent something else, the box folds to its line, and the call that failed under it.
     await app.terminal.submit("once more");
@@ -89,6 +100,13 @@ test("a run's work stays a few rows however long it streams, says what it did, a
     const narrow = await app.capture("turns-folded-80");
     assert.match(narrow, DONE);
     assert.match(narrow, /^ {3}✗ \$ printf 'checking\\n'; exit 3$/m);
+    // A box opened by hand stays so until ctrl+o sets every box one way, and then goes with them.
+    await app.terminal.write(CTRL_F);
+    await press(app.terminal, UP, "enter open");
+    await app.terminal.write("\r");
+    await app.terminal.waitText("enter close");
+    await app.terminal.keyboard.press("Escape");
+    await waitGone(app.terminal, /esc back/);
     // Every box open at full length runs past the conversation's rows, and none of it shows
     // through the draft's row below them.
     await app.terminal.write(CTRL_O);
@@ -105,7 +123,7 @@ test("a run's work stays a few rows however long it streams, says what it did, a
     // The footer's path, cut short at 80 columns, is whole once the wide screen has drawn.
     await waitMatch(app.terminal, /^ ~\/projects\/work\/sample/m);
     await app.terminal.waitIdle();
-    await app.capture("turns-folded-160");
+    assert.doesNotMatch(await app.capture("turns-folded-160"), /╭/);
   } finally {
     await app.close();
   }
@@ -118,10 +136,14 @@ test("snapshots read during a run keep its clock, so it ends with its figures", 
     await app.terminal.submit("inspect the workspace");
     const preparing = await waitMatch(app.terminal, /preparing bash · [3-9]s · /, 15_000);
     await app.capture("turns-resync-clock");
-    assert.match(preparing, /^ {3}… \$/m);
+    // The Faux provider shows a call's arguments only once they are whole, so none are guessed.
+    assert.match(preparing, /^ {3}… \$$/m);
+    assert.match(preparing, /^ ◌ \S+ running a command$/m);
     await app.terminal.waitText("The workspace inspection is complete.", { timeout: 20_000 });
     const done = await settled(app.terminal, 10_000);
     await app.capture("turns-resync-figures");
+    // The command's row under the title names it, so the title does not again.
+    assert.match(done, /^ ▸ \S+ ran a command\n {3}✓ \$ printf 'native tool output/m);
     const worked = Number(FIGURES.exec(done)?.[1]);
     assert.ok(worked >= 3, `the turn's figures lost the run's start:\n${done}`);
   } finally {
@@ -180,27 +202,37 @@ test("the transcript cursor stops on each prompt, box, reply and notice, offerin
     );
     assert.equal(bar?.fg, theme.cursor);
 
-    // A box: open and close it, show it whole, copy its steps; it takes no bar of its own.
-    await app.terminal.write(UP);
-    await app.terminal.waitText("↑↓ move · enter open · o whole · c copy · esc back");
-    const [title] = await cellsOf(app.terminal, "read README.md · searched 3");
-    assert.equal(title?.fg, theme.cursor);
-    assert.notEqual(title?.bg, palette.surface);
-    await app.terminal.write("\r");
-    await app.terminal.waitText("enter close · o whole · j k scroll · c copy");
-    await app.capture("turns-cursor-box-open");
-    await app.terminal.write("o");
-    await app.terminal.waitText("enter close · o shorten · c copy");
-    const whole = await app.terminal.text();
-    assert.match(whole, /Command exited with code 3/);
-    await app.capture("turns-cursor-box-whole");
-    await app.terminal.write("c");
+    // A box: copy its steps, open and close it, show it at full length; it takes no bar of its own.
+    // Keys that arrive together act where the moves before them landed.
+    await app.terminal.write(`${UP}c`);
     await app.terminal.waitText("copied the box's steps");
     await app.terminal.waitIdle();
     assert.match(
       copied(app.raw()),
       /^Step 1: read\.\n\nread README\.md[\s\S]*\$ printf 'checking\\n'; exit 3\nchecking/,
     );
+    await app.terminal.waitText("↑↓ move · enter open · o full length · c copy · esc back");
+    const [title] = await cellsOf(app.terminal, "read README.md · searched 3");
+    assert.equal(title?.fg, theme.cursor);
+    assert.notEqual(title?.bg, palette.surface);
+    await app.terminal.write("\r");
+    await app.terminal.waitText("enter close · o full length · j k scroll · c copy");
+    await app.capture("turns-cursor-box-open");
+    await app.terminal.write("o");
+    await app.terminal.waitText("enter close · o bound · c copy");
+    const whole = await app.terminal.text();
+    assert.match(whole, /Command exited with code 3/);
+    // The run's end read the conversation again, and each call kept the time it took.
+    assert.match(whole, /printf 'built\\n' · 3\.\ds/);
+    await app.capture("turns-cursor-box-whole");
+    // Hidden, thinking that led straight to a call marks that call instead of taking a row.
+    await app.terminal.write(CTRL_T);
+    await app.terminal.waitText("thinking: hidden");
+    const marked = await app.capture("turns-cursor-box-thought");
+    assert.match(marked, /^ │ \S+ ✓ \S+ ls src/m);
+    assert.doesNotMatch(marked, /thought · \d+ lines?/);
+    await app.terminal.write(CTRL_T);
+    await app.terminal.waitText("thinking: shown");
 
     // A prompt keeps its own band; the cursor's bar runs beside it. Dura has no fork or edit.
     await app.terminal.write(UP);
@@ -236,6 +268,9 @@ test("replies with no call between them each stand as a reply, which the cursor 
     await app.terminal.write("jj");
     await app.terminal.waitIdle();
     assert.match(await app.terminal.text(), /^ » ask pi$/m);
+    // Up past the first drawn reply draws the ones before it, and goes on into them.
+    await app.terminal.write(UP.repeat(149));
+    await waitMatch(app.terminal, /^┃● step 150: retained native history/m);
   } finally {
     await app.close();
   }
@@ -262,7 +297,46 @@ test("thinking reads as going on while it does and as done after, and ctrl+t say
     await app.capture("turns-thinking-hidden");
     await app.terminal.write(CTRL_T);
     await app.terminal.waitText("thinking: shown");
+    await waitGone(app.terminal, /thinking: shown/);
+    // Pressed twice before the screen redraws, it goes one way and back.
+    await app.terminal.write(CTRL_T + CTRL_T);
+    await app.terminal.waitText("thinking: shown");
+    assert.match(await app.terminal.text(), /^ │ I will reason through the request\./m);
   } finally {
     await app.close();
+  }
+});
+
+test("an interruption ends the calls running as interrupted, not failed, and a reply it cut before any words has nothing to copy", async () => {
+  const steps = await launch({ scenario: "steps", delayMs: 40 });
+  try {
+    await steps.terminal.submit("run the steps");
+    await waitMatch(steps.terminal, /^ {5}compiling$/m, 15_000);
+    await normalMode(steps.terminal);
+    await steps.terminal.keyboard.press("Escape");
+    const stopped = await settled(steps.terminal, 10_000);
+    await steps.capture("turns-interrupted-call");
+    assert.match(stopped, /^ ▸ \S+ read README\.md · searched 2 · ran a command · 1 interrupted$/m);
+    assert.doesNotMatch(stopped, /failed/);
+    const [word] = await cellsOf(steps.terminal, "1 interrupted");
+    assert.notEqual(word?.fg, theme.error);
+    const [cross] = await cellsOf(steps.terminal, "✗ $ printf 'compiling");
+    assert.notEqual(cross?.fg, theme.error);
+  } finally {
+    await steps.close();
+  }
+  const thinking = await launch({ scenario: "thinking", delayMs: 400 });
+  try {
+    await thinking.terminal.submit("consider this");
+    await waitMatch(thinking.terminal, /^ ◌ \S+ thinking…$/m, 10_000);
+    await normalMode(thinking.terminal);
+    await thinking.terminal.keyboard.press("Escape");
+    await thinking.terminal.waitText("interrupted");
+    await settled(thinking.terminal, 10_000);
+    await thinking.terminal.write(CTRL_F);
+    await thinking.terminal.waitText("━━ ↑↓ move · esc back ━");
+    await thinking.capture("turns-interrupted-reply");
+  } finally {
+    await thinking.close();
   }
 });

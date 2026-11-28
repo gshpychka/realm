@@ -31,12 +31,71 @@ const STEPS: readonly Parameters<typeof fauxToolCall>[] = [
   [
     "bash",
     {
-      command: "printf 'compiling\\n'; sleep 1; printf 'linking\\n'; sleep 1; printf 'testing\\n'; sleep 1; printf 'built\\n'",
+      command:
+        "printf 'compiling\\n'; sleep 1; printf 'linking\\n'; sleep 1; printf 'testing\\n'; sleep 1; printf 'built\\n'",
     },
   ],
   ["find", { pattern: "*.md" }],
   ["bash", { command: "printf 'checking\\n'; exit 3" }],
 ];
+
+/** The calls the `team` scenario's coordinator made, with whether each failed and what it said. */
+const COORDINATOR_WORK: readonly [
+  name: string,
+  args: Parameters<typeof fauxToolCall>[1],
+  failed: boolean,
+  output: string,
+][] = [
+  ["read", { path: "src/menu.tsx" }, false, "export function Menu() {}"],
+  ["read", { path: "src/focus.ts" }, false, "export const focus = () => {};"],
+  ["read", { path: "src/keys.ts" }, false, "export const keys = [];"],
+  ["grep", { pattern: "onKeyDown", path: "src" }, false, "src/menu.tsx:12"],
+  [
+    "edit",
+    {
+      path: "src/command-menu-keyboard-navigation-and-focus-handling.tsx",
+      edits: [{ oldText: "a", newText: "b" }],
+    },
+    false,
+    "Edited.",
+  ],
+  ["bash", { command: "bun test --filter keyboard" }, true, "1 test failed"],
+];
+
+/** Writes `calls` into `conversation` as one reply and their results, as a run would have left them. */
+async function writeWork(
+  conversation: Awaited<ReturnType<Harness["createConversation"]>>,
+  calls: typeof COORDINATOR_WORK,
+) {
+  const made = calls.map(([name, args], index) => fauxToolCall(name, args, { id: `call-${index}` }));
+  await conversation.submit(
+    {
+      type: "write",
+      entry: { kind: "pi.assistant", model: [fauxAssistantMessage(made, { stopReason: "toolUse" })] },
+    },
+    BACKGROUND_CONTEXT,
+  );
+  for (const [index, [name, , isError, output]] of calls.entries())
+    await conversation.submit(
+      {
+        type: "write",
+        entry: {
+          kind: "pi.tool-result",
+          model: [
+            {
+              role: "toolResult",
+              toolCallId: `call-${index}`,
+              toolName: name,
+              content: [{ type: "text", text: output }],
+              isError,
+              timestamp: 0,
+            },
+          ],
+        },
+      },
+      BACKGROUND_CONTEXT,
+    );
+}
 
 /** A real native conversation stream, without a provider, for terminal fixtures. */
 export async function serveConversationFixture(
@@ -73,8 +132,10 @@ export async function serveConversationFixture(
         const [tool, args] = step;
         return fauxAssistantMessage(
           [
-            ...(done.length === 2 ? [fauxThinking("The listing comes next.\nThen the build.")] : []),
-            { type: "text", text: `Step ${done.length + 1}: ${tool}.` },
+            // The listing follows thinking alone, with no narration between them.
+            ...(done.length === 2
+              ? [fauxThinking("The listing comes next.\nThen the build.")]
+              : [{ type: "text" as const, text: `Step ${done.length + 1}: ${tool}.` }]),
             fauxToolCall(tool, args),
           ],
           { stopReason: "toolUse" },
@@ -131,6 +192,8 @@ export async function serveConversationFixture(
           },
           nativeContext,
         );
+        // The coordinator worked through several calls before it delegated, the last of which failed.
+        if (item.id === "coordinator") await writeWork(conversation, COORDINATOR_WORK);
         await conversation.submit(
           {
             type: "write",

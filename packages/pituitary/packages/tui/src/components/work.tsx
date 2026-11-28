@@ -81,13 +81,7 @@ export const WorkBox = memo(function WorkBox({
 }: WorkBoxProps) {
   const frame = selected ? theme.cursor : theme.border;
   const steps = (
-    <Steps
-      steps={work.steps}
-      live={work.live}
-      whole={whole}
-      thinking={thinking}
-      width={columns - FRAME_COLUMNS}
-    />
+    <Steps steps={work.steps} whole={whole} thinking={thinking} width={columns - FRAME_COLUMNS} />
   );
   return (
     <box flexDirection="column" flexShrink={0} marginTop={1}>
@@ -143,9 +137,16 @@ function cut(parts: readonly Said[], cells: number): Said[] {
   if (Bun.stringWidth(joined.map((part) => part.text).join("")) <= cells) return joined;
   const shown: Said[] = [];
   let room = cells - 1;
-  for (const part of joined) {
+  for (const [index, part] of joined.entries()) {
     const width = Bun.stringWidth(part.text);
-    if (width > room) return [...shown, { ...part, text: `${headCells(part.text, room)}…` }];
+    // A separator cut short says nothing, so the ellipsis stands apart after the part before it.
+    if (width > room)
+      return [
+        ...shown,
+        index % 2 === 1
+          ? { text: room > 0 ? " …" : "…" }
+          : { ...part, text: `${headCells(part.text, room)}…` },
+      ];
     shown.push(part);
     room -= width;
   }
@@ -225,14 +226,8 @@ function Rail({ work, thinking, columns }: { work: Work; thinking: boolean; colu
       {earlier > 0 ? (
         <Row tone={theme.dim} text={`… ${counted(earlier, "earlier step")}`} cells={cells} />
       ) : null}
-      {steps.map((step, index) => (
-        <RailStep
-          key={step.id}
-          step={step}
-          current={work.live && index === steps.length - 1}
-          thinking={thinking}
-          cells={cells}
-        />
+      {steps.map((step) => (
+        <RailStep key={step.id} step={step} thinking={thinking} cells={cells} />
       ))}
     </box>
   );
@@ -266,17 +261,7 @@ const lastLine = (text: string) =>
     .map((line) => line.trim())
     .findLast(Boolean) ?? "";
 
-function RailStep({
-  step,
-  current,
-  thinking,
-  cells,
-}: {
-  step: Step;
-  current: boolean;
-  thinking: boolean;
-  cells: number;
-}) {
+function RailStep({ step, thinking, cells }: { step: Step; thinking: boolean; cells: number }) {
   switch (step.kind) {
     case "thinking":
       return thinking ? (
@@ -284,7 +269,7 @@ function RailStep({
       ) : (
         <Row
           tone={theme.thinking}
-          text={`${glyphs.thinking} ${current ? "thinking…" : "thought"}`}
+          text={`${glyphs.thinking} ${step.done ? "thought" : "thinking…"}`}
           cells={cells}
         />
       );
@@ -293,6 +278,21 @@ function RailStep({
     case "tool":
       return <RailCall step={step} cells={cells} />;
   }
+}
+
+/** Cells a heading's first line keeps before the count of the lines after it gives way to it. */
+const LEAST_LINE = 12;
+
+/**
+ * A heading's detail on one row of `room` cells: its first line, then how many lines it leaves
+ * out, which gives way first when the row is short.
+ */
+function oneLine(detail: string, room: number): { line: string; more: string } {
+  const { line, more } = firstLine(detail);
+  const fits = more !== "" && room - Bun.stringWidth(more) >= Math.min(LEAST_LINE, Bun.stringWidth(line));
+  return fits
+    ? { line: ellipsize(line, room - Bun.stringWidth(more)), more }
+    : { line: ellipsize(line, room), more: "" };
 }
 
 /**
@@ -308,14 +308,15 @@ function RailCall({ step, cells }: { step: Extract<Step, { kind: "tool" }>; cell
   const output = running && tool.name === "bash" ? lastLine(tool.output) : "";
   const lead = `${mark.glyph} ${icon ? `${glyphs[icon]} ` : ""}${title} `;
   const time = elapsed ? `${SEPARATOR}${elapsed}` : "";
-  const room = cells - Bun.stringWidth(lead) - Bun.stringWidth(time);
+  const { line, more } = oneLine(detail, cells - Bun.stringWidth(lead) - Bun.stringWidth(time));
   return (
     <>
       <box height={1} flexShrink={0}>
         <text selectable={false} fg={theme.assistant} wrapMode="none">
           <span fg={mark.colour}>{mark.glyph}</span>{" "}
           {icon ? <span fg={skill ? theme.skill : theme.tool}>{glyphs[icon]} </span> : null}
-          <span fg={theme.tool}>{title}</span> {ellipsize(firstLine(detail).line, room)}
+          <span fg={theme.tool}>{title}</span> {line}
+          {more ? <span fg={theme.dim}>{more}</span> : null}
           {time ? <span fg={theme.dim}>{time}</span> : null}
         </text>
       </box>
@@ -330,19 +331,22 @@ function RailCall({ step, cells }: { step: Extract<Step, { kind: "tool" }>; cell
 
 /**
  * Under a folded box, in `columns` cells, its last call when that one failed, so a failure that
- * ended a turn shows.
+ * ended a turn shows; one the operator's interruption ended shows dim.
  */
 function Failure({ work, columns }: { work: Work; columns: number }) {
   const last = work.steps.findLast((step) => step.kind === "tool");
   if (last?.tool.state !== "error") return null;
   const { title, detail } = headingOf(last.tool, last.skill);
+  const mark = stateMark(last.tool);
+  const lead = `${mark.glyph} ${title} `;
+  const { line, more } = oneLine(detail, columns - RAIL_INDENT - Bun.stringWidth(lead));
   return (
-    <box flexShrink={0} paddingLeft={RAIL_INDENT}>
-      <Row
-        tone={theme.error}
-        text={`${STATE.error.glyph} ${title} ${firstLine(detail).line}`}
-        cells={columns - RAIL_INDENT}
-      />
+    <box height={1} flexShrink={0} paddingLeft={RAIL_INDENT}>
+      <text selectable={false} fg={mark.colour} wrapMode="none">
+        {lead}
+        {line}
+        {more ? <span fg={theme.dim}>{more}</span> : null}
+      </text>
     </box>
   );
 }
@@ -407,13 +411,11 @@ const block = (step: Step, thinking: boolean) =>
  */
 function Steps({
   steps,
-  live,
   whole,
   thinking,
   width,
 }: {
   steps: Step[];
-  live: boolean;
   whole: boolean;
   thinking: boolean;
   /** Cells each step's rows hold. */
@@ -424,25 +426,18 @@ function Steps({
   const shown = steps.flatMap((step, index) => {
     if (!thinking && step.kind === "thinking" && leadsToCall(index)) return [];
     const thought = !thinking && step.kind === "tool" && steps[index - 1]?.kind === "thinking";
-    return [{ step, thought, current: live && index === steps.length - 1 }];
+    return [{ step, thought }];
   });
   return (
     <>
-      {shown.map(({ step, thought, current }, index) => (
+      {shown.map(({ step, thought }, index) => (
         <box
           key={step.id}
           flexDirection="column"
           flexShrink={0}
           marginTop={index > 0 && block(step, thinking) ? 1 : 0}
         >
-          <StepView
-            step={step}
-            whole={whole}
-            thinking={thinking}
-            thought={thought}
-            current={current}
-            width={width}
-          />
+          <StepView step={step} whole={whole} thinking={thinking} thought={thought} width={width} />
         </box>
       ))}
     </>
@@ -454,14 +449,12 @@ function StepView({
   whole,
   thinking,
   thought,
-  current,
   width,
 }: {
   step: Step;
   whole: boolean;
   thinking: boolean;
   thought: boolean;
-  current: boolean;
   width: number;
 }) {
   switch (step.kind) {
@@ -473,7 +466,7 @@ function StepView({
       ) : (
         <text selectable={false} fg={theme.thinking}>
           {glyphs.thinking}{" "}
-          {current ? "thinking…" : `thought · ${counted(step.text.split("\n").length, "line")}`}
+          {step.done ? `thought · ${counted(step.text.split("\n").length, "line")}` : "thinking…"}
           <KeyHint action="app.thinking.toggle" />
         </text>
       );
@@ -488,9 +481,9 @@ function StepView({
 
 function sameStep(a: Step, b: Step | undefined): boolean {
   if (!b || a.kind !== b.kind || a.id !== b.id) return false;
-  return a.kind === "tool"
-    ? b.kind === "tool" && a.tool === b.tool && a.skill === b.skill
-    : b.kind !== "tool" && a.text === b.text;
+  if (a.kind === "tool") return b.kind === "tool" && a.tool === b.tool && a.skill === b.skill;
+  if (a.kind === "thinking") return b.kind === "thinking" && a.text === b.text && a.done === b.done;
+  return b.kind === "text" && a.text === b.text;
 }
 
 /** A box redraws when a step in it changes, and not because the list around it was rebuilt. */

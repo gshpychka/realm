@@ -67,7 +67,7 @@ test("a short open work box takes only the rows its steps need", async () => {
             id: "thought",
             live: false,
             latest: false,
-            steps: [{ kind: "thinking", id: "thought", text: "Consider the bound." }],
+            steps: [{ kind: "thinking", id: "thought", text: "Consider the bound.", done: true }],
           }}
           open
           whole={false}
@@ -102,7 +102,7 @@ test("a live work box grows to its cap and follows new steps without leaving bla
           id: "thought",
           live: true,
           latest: false,
-          steps: [{ kind: "thinking", id: "thought", text }],
+          steps: [{ kind: "thinking", id: "thought", text, done: false }],
         }}
         open
         whole={false}

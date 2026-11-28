@@ -22,6 +22,7 @@ import {
   type TeamQuestion,
   type TeamTask,
   taskState,
+  teamPanelWidth,
   teamRows,
   wideTeam,
 } from "./components/team.tsx";
@@ -57,6 +58,7 @@ import { usePi } from "./use-pi.ts";
 import { type Offer, useOffers, useRecall, walksDraft } from "./use-recall.ts";
 import { useSession } from "./use-session.ts";
 import { useSkills } from "./use-skills.ts";
+import { useSwitch } from "./use-switch.ts";
 import { reconnectHint, resumeCommand } from "./working.ts";
 
 export interface AppProps {
@@ -182,8 +184,10 @@ export function App({
   const started = useRef(false);
   const prompted = useRef(false);
   const [hint, flash] = useFlash();
-  const [expanded, setExpanded] = useState(initialView?.expanded ?? false);
-  const [thinking, setThinking] = useState(initialView?.thinking ?? true);
+  const boxes = useSwitch(initialView?.expanded ?? false);
+  const thoughts = useSwitch(initialView?.thinking ?? true);
+  const expanded = boxes.on;
+  const thinking = thoughts.on;
   const [browsing, setBrowsing] = useState(false);
   const [cursorHint, setCursorHint] = useState<string | null>(null);
   // The viewport has left the latest rows of the conversation below it.
@@ -271,12 +275,13 @@ export function App({
   const display = useMemo<Display>(
     () => ({
       expanded,
+      expansions: boxes.flips,
       thinking,
       escapes: interruptHint,
       shellStops: working ? "" : interruptHint,
       commands: new Set(commands.map((command) => command.name)),
     }),
-    [expanded, thinking, interruptHint, working, commands],
+    [expanded, boxes.flips, thinking, interruptHint, working, commands],
   );
   const completions = useCompletion(editor, commands, localCwd);
   // A travelling fire takes two rows beside the status; a closed status wraps its hint, such as
@@ -670,8 +675,7 @@ export function App({
     },
     "app.message.copy": runs("copy"),
     "app.tools.expand": () => {
-      setExpanded(!expanded);
-      flash(expanded ? "boxes: folded" : "boxes: all open at full length");
+      flash(boxes.flip() ? "boxes: all open at full length" : "boxes: folded");
       return true;
     },
     "tui.altScreen.top": () => {
@@ -689,8 +693,7 @@ export function App({
       return true;
     },
     "app.thinking.toggle": () => {
-      setThinking(!thinking);
-      flash(thinking ? "thinking: hidden" : "thinking: shown");
+      flash(thoughts.flip() ? "thinking: shown" : "thinking: hidden");
       return true;
     },
     "app.thinking.cycle": () =>
@@ -746,7 +749,10 @@ export function App({
     return true;
   };
 
-  /** While the keyboard walks the boxes the conversation takes its keys; these show it otherwise, page it, or leave. */
+  /**
+   * While the transcript cursor walks the conversation's items the conversation takes their keys;
+   * these show it otherwise, page it, or leave.
+   */
   const browseKey = (key: KeyEvent, action: Action | null, text: string, standing: Offer | null) => {
     const took = action && BROWSE_ACTIONS.has(action) ? actions[action](key, text, standing) : pageKey(key);
     if (took) key.preventDefault();
@@ -855,6 +861,8 @@ export function App({
               ref={scroll}
               entries={view.entries}
               running={view.running}
+              // A wide screen's team panel takes its share of the row beside the conversation.
+              columns={screenColumns - (wide && team ? teamPanelWidth(screenColumns) : 0)}
               local={workspace.local && !readonly}
               agent={agent}
               modelSelectable={canChooseModel && !readonly}
@@ -864,6 +872,7 @@ export function App({
               skillOf={skills.skillOf}
               window={window}
               browsing={browsing}
+              onEarlier={() => setWindow((current) => current + WINDOW)}
               keys={cursorKeys}
               onHint={setCursorHint}
               // The cursor's keys fit the narrower of the places a hint shows: the status line beside the fire.

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
-import { boot, type Harness, pastGrace, REPO, waitMatch } from "./helpers/harness.ts";
+import { boot, type Harness, pastGrace, press, REPO, waitGone, waitMatch } from "./helpers/harness.ts";
 
 after(async () => {
   await closeAll();
@@ -88,6 +88,21 @@ test("team conversations, attention and retained results stay readable in compac
     // Objectives that start alike are cut at their ends, so the two builders read apart.
     assert.match(wide, /builder · Build keyboard navigation and\n.*│ {3}focus handling$/m);
     assert.match(wide, /builder · Fix the environment and\n.*│ {3}continue the menu polish$/m);
+    // The coordinator's work shares its rows with the panel, so what it says is cut before the
+    // panel, an ellipsis last, and its failed command's row stays whole beside it.
+    assert.match(wide, /^ ▸ \S+ read 3 files · searched · edited [^│\n]*… +│/m);
+    assert.match(wide, /^ {3}✗ \$ bun test --filter keyboard +│/m);
+    await app.terminal.write("\x06");
+    await press(app.terminal, "\x1b[A", "enter open");
+    await app.terminal.write("\r");
+    const open = await waitMatch(app.terminal, /enter close/);
+    await app.capture("team-wide-box-open");
+    // Open, the title tops the box's frame, its corner against the panel.
+    assert.match(open, /^ ╭ ▾ \S+ read 3 files · [^│\n]*…[ ─]*╮ +│/m);
+    await app.terminal.write("\r");
+    await app.terminal.waitText("enter open");
+    await app.terminal.keyboard.press("Escape");
+    await waitGone(app.terminal, /esc back/);
     await app.terminal.write("\x0b");
     await app.terminal.waitText("tasks · choose");
     await pastGrace();

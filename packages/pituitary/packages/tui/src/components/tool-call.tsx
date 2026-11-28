@@ -15,6 +15,8 @@ export const STATE = {
   running: { glyph: "◌", colour: theme.tool },
   ok: { glyph: "✓", colour: theme.ok },
   error: { glyph: "✗", colour: theme.error },
+  /** Ended by the operator's interruption rather than by a fault of its own. */
+  interrupted: { glyph: "✗", colour: theme.dim },
 } as const;
 
 export interface ToolCallProps {
@@ -23,9 +25,12 @@ export interface ToolCallProps {
   expanded: boolean;
 }
 
-/** What leads a call's heading: the glyph of how it stands, `…` while its arguments stream in. */
+/**
+ * What leads a call's heading: the glyph of how it stands, `…` while its arguments stream in,
+ * dim for a call the operator's interruption ended.
+ */
 export function stateMark(tool: ToolView): { glyph: string; colour: string } {
-  const state = STATE[tool.state];
+  const state = STATE[tool.state === "error" && tool.interrupted ? "interrupted" : tool.state];
   return { glyph: tool.streaming !== undefined ? "…" : state.glyph, colour: state.colour };
 }
 

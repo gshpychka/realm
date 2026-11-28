@@ -8,7 +8,8 @@ import { heading } from "./tools.ts";
 
 /** One thing the model did on its way to a reply, in the order it did it. */
 export type Step =
-  | { kind: "thinking"; id: string; text: string }
+  /** Reasoning; `done` once the model wrote anything after it, or ended the reply it began. */
+  | { kind: "thinking"; id: string; text: string; done: boolean }
   /** Words written before a tool call: narration of the work, not the reply. */
   | { kind: "text"; id: string; text: string }
   /** A call, with the skill it loads when it reads a skill's file. */
@@ -19,7 +20,10 @@ export interface Work {
   kind: "work";
   id: string;
   steps: Step[];
-  /** The model is still working in it: the run goes on, and nothing has come after the box. */
+  /**
+   * The model is still working in it: the run goes on, and the reply after the box, while it is
+   * still being written, may yet call a tool from it.
+   */
   live: boolean;
   /**
    * The conversation's latest work, with nothing the operator sent after it yet. It keeps
@@ -132,8 +136,8 @@ function unit(
       kind: "work",
       id: first.id,
       steps,
-      // Once the reply after it speaks, the box's work is over, unless that reply goes on to call a tool.
-      live: running && !answer?.done && !answer?.text,
+      // Words still arriving may yet lead to a tool call, so the box waits on the reply after it.
+      live: running && !answer?.done,
       latest: false,
     });
   const last = answer ?? work.at(-1);
@@ -144,7 +148,16 @@ function unit(
 }
 
 const thought = (entry: AssistantEntry): Step[] =>
-  entry.thinking ? [{ kind: "thinking", id: `${entry.id}:thinking`, text: entry.thinking }] : [];
+  entry.thinking
+    ? [
+        {
+          kind: "thinking",
+          id: `${entry.id}:thinking`,
+          text: entry.thinking,
+          done: entry.done || entry.text !== "" || entry.tools.length > 0,
+        },
+      ]
+    : [];
 
 /** The skill `tool` loads: a read of a skill's file, as `skillOf` knows them. */
 function loads(tool: ToolView, skillOf: SkillOf | undefined): string | null {
@@ -158,8 +171,10 @@ export interface Said {
   failed?: boolean;
 }
 
+type Kind = "read" | "search" | "edit" | "write" | "run";
+
 /** How a summary groups a tool's calls, by tool name; it names any other tool as it is. */
-const KINDS = new Map<string, "read" | "search" | "edit" | "write" | "run">([
+const KINDS = new Map<string, Kind>([
   ["read", "read"],
   ["grep", "search"],
   ["find", "search"],
@@ -169,6 +184,18 @@ const KINDS = new Map<string, "read" | "search" | "edit" | "write" | "run">([
   ["bash", "run"],
 ]);
 
+/** The kinds in the order a summary says them. */
+const ORDER: readonly Kind[] = [...new Set(KINDS.values())];
+
+/** How a summary words each kind of call: once the calls are done, and while they run. */
+const VERBS: Record<Kind, { done: string; going: string }> = {
+  read: { done: "read", going: "reading" },
+  search: { done: "searched", going: "searching" },
+  edit: { done: "edited", going: "editing" },
+  write: { done: "wrote", going: "writing" },
+  run: { done: "ran", going: "running" },
+};
+
 /** Files a summary names one by one; it counts more than this many. */
 const NAMED_FILES = 2;
 /** Cells of a lone command a summary shows, which leaves what follows it room. */
@@ -176,46 +203,73 @@ const COMMAND_CELLS = 40;
 
 /**
  * What a box of work comes to, in its own terms, such as `read 4 files · searched 2 · edited
- * footer.tsx +12 −3 · ran 3 commands · 1 failed`. Thinking alone is `thought`, or `thinking…`
- * while it goes on. A skill is used once a read of its file has not failed; a skill whose every
- * read failed never reached the model, so the box says that skill failed instead, and every
- * other failed call counts among the failed.
+ * footer.tsx +12 −3 · ran 3 commands · 1 failed`, and then what it is doing, such as `running a
+ * command`. Thinking alone is `thought`, or `thinking…` while it goes on. A skill is used once a
+ * read of its file has succeeded; a skill whose every read failed never reached the model, so the
+ * box says that skill failed instead. Every other failed call counts among the failed, but for
+ * one the operator's interruption ended, which counts among the interrupted. A lone command is
+ * named by its first line, unless the box shows its latest steps, where its own row says it.
  */
 export function summary(work: Work): Said[] {
   const calls = work.steps.filter((step) => step.kind === "tool");
   const skillsOf = (keep: (skill: string, tool: ToolView) => boolean) =>
     new Set(calls.flatMap(({ skill, tool }) => (skill && keep(skill, tool) ? [skill] : [])));
-  const used = skillsOf((_, tool) => tool.state !== "error");
-  const missed = skillsOf((skill) => !used.has(skill));
-  const tools = calls.filter((step) => !step.skill).map((step) => step.tool);
-  const failed = calls.filter(
+  const used = skillsOf((_, tool) => tool.state === "ok");
+  const loading = skillsOf((skill, tool) => tool.state === "running" && !used.has(skill));
+  const missed = skillsOf((skill) => !used.has(skill) && !loading.has(skill));
+  const ended = calls.filter(
     (step) => step.tool.state === "error" && !(step.skill && missed.has(step.skill)),
-  ).length;
+  );
+  const interrupted = ended.filter((step) => step.tool.interrupted).length;
+  const failed = ended.length - interrupted;
   const named = (skills: ReadonlySet<string>) =>
     `${skills.size === 1 ? "skill" : "skills"} ${[...skills].join(", ")}`;
-  const of = (kind: string) => tools.filter((tool) => KINDS.get(tool.name) === kind);
-  const searches = of("search").length;
+  const tools = calls.filter((step) => !step.skill).map((step) => step.tool);
   const others = Map.groupBy(
     tools.filter((tool) => !KINDS.has(tool.name)),
     (tool) => tool.name || "tool",
   );
+  // A box showing its latest steps says its lone command on that command's own row.
+  const rows = work.live || work.latest;
+  /** What the calls of `kind` come to: those done, or those still `going`. */
+  const said = (kind: Kind, going: boolean): string | null => {
+    const each = tools.filter(
+      (tool) => KINDS.get(tool.name) === kind && (tool.state === "running") === going,
+    );
+    const verb = VERBS[kind][going ? "going" : "done"];
+    switch (kind) {
+      case "search":
+        return each.length === 0 ? null : each.length === 1 ? verb : `${verb} ${each.length}`;
+      case "run":
+        return ran(verb, each, !going && !rows);
+      case "edit":
+        return files(verb, each, going ? "" : diffstat(each));
+      default:
+        return files(verb, each);
+    }
+  };
   const done = [
     used.size > 0 ? `used ${named(used)}` : null,
-    files("read", of("read")),
-    searches === 0 ? null : searches === 1 ? "searched" : `searched ${searches}`,
-    files("edited", of("edit"), diffstat(of("edit"))),
-    files("wrote", of("write")),
-    ran(of("run")),
+    ...ORDER.map((kind) => said(kind, false)),
     ...[...others].map(([name, each]) => (each.length === 1 ? name : `${name} ×${each.length}`)),
   ].filter((part) => part !== null);
-  const thinking = work.live && work.steps.at(-1)?.kind === "thinking";
+  const going = [
+    loading.size > 0 ? `loading ${named(loading)}` : null,
+    ...ORDER.map((kind) => said(kind, true)),
+  ].filter((part) => part !== null);
+  const last = work.steps.at(-1);
   const parts: Said[] = [
-    ...(done.length === 0 && missed.size === 0 && work.steps.some((step) => step.kind === "thinking")
-      ? [{ text: thinking ? "thinking…" : "thought" }]
+    ...(done.length === 0 &&
+    going.length === 0 &&
+    missed.size === 0 &&
+    work.steps.some((step) => step.kind === "thinking")
+      ? [{ text: last?.kind === "thinking" && !last.done ? "thinking…" : "thought" }]
       : []),
     ...done.map((text) => ({ text })),
     ...(missed.size > 0 ? [{ text: `${named(missed)} failed`, failed: true }] : []),
     ...(failed > 0 ? [{ text: `${failed} failed`, failed: true }] : []),
+    ...(interrupted > 0 ? [{ text: `${interrupted} interrupted` }] : []),
+    ...going.map((text) => ({ text })),
   ];
   return parts.length > 0 ? parts : [{ text: counted(work.steps.length, "step") }];
 }
@@ -243,13 +297,13 @@ function diffstat(edits: readonly ToolView[]): string {
   return ` +${count("+")} −${count("-")}`;
 }
 
-/** The commands the model ran: the one, its first line, or how many. */
-function ran(commands: readonly ToolView[]): string | null {
+/** `verb` with the commands: how many, or the one by its first line when `name`. */
+function ran(verb: string, commands: readonly ToolView[], name: boolean): string | null {
   const [only] = commands;
   if (!only) return null;
-  if (commands.length > 1) return `ran ${counted(commands.length, "command")}`;
-  const line = heading(only).detail.split("\n")[0]?.trim() ?? "";
-  return line ? `ran ${ellipsize(line, COMMAND_CELLS)}` : "ran a command";
+  if (commands.length > 1) return `${verb} ${counted(commands.length, "command")}`;
+  const line = name ? (heading(only).detail.split("\n")[0]?.trim() ?? "") : "";
+  return line ? `${verb} ${ellipsize(line, COMMAND_CELLS)}` : `${verb} a command`;
 }
 
 /** The latest steps a box shows while the model works in it, and how many came before them. */

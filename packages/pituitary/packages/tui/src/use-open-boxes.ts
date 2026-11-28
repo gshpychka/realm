@@ -3,30 +3,31 @@ import type { Work } from "./transcript.ts";
 
 /** How each box the operator opened, closed or pinned at full length shows, until ctrl+o sets every box one way. */
 interface Pins {
-  /** Whether every box was open at full length when these were set. */
-  whole: boolean;
+  /** How many times ctrl+o had set every box one way when these were set. */
+  after: number;
   open: ReadonlyMap<string, boolean>;
   full: ReadonlyMap<string, boolean>;
   /** The box the operator opened last, which may take the rows the conversation leaves empty. */
   last: string | null;
 }
 
-const UNPINNED: Pins = { whole: false, open: new Map(), full: new Map(), last: null };
+const unpinned = (after: number): Pins => ({ after, open: new Map(), full: new Map(), last: null });
 
 /**
  * Which boxes are open, and which at full length: every one when `whole`, and any the operator
- * opened, closed or pinned at full length, until `whole` changes. A box the model works in
- * shows its latest steps folded rather than opening.
+ * opened, closed or pinned at full length since ctrl+o last set every box one way, which it has
+ * done `expansions` times. A box the model works in shows its latest steps folded rather than
+ * opening.
  */
-export function useOpenBoxes(whole: boolean) {
-  const [pins, setPins] = useState<Pins>({ ...UNPINNED, whole });
-  const current = pins.whole === whole ? pins : { ...UNPINNED, whole };
+export function useOpenBoxes(whole: boolean, expansions: number) {
+  const [pins, setPins] = useState<Pins>(() => unpinned(expansions));
+  const current = pins.after === expansions ? pins : unpinned(expansions);
   const isOpen = (work: Work) => current.open.get(work.id) ?? whole;
   const isWhole = (work: Work) => current.full.get(work.id) ?? whole;
   const pin = useCallback(
     (change: (pins: Pins) => Pins) =>
-      setPins((before) => change(before.whole === whole ? before : { ...UNPINNED, whole })),
-    [whole],
+      setPins((before) => change(before.after === expansions ? before : unpinned(expansions))),
+    [expansions],
   );
   const toggle = useCallback(
     (id: string, open: boolean) =>

@@ -171,23 +171,24 @@ context or `/login` for a refused credential; `ctrl+o` shows the rest of the err
 What the model does on its way to a reply gathers in one box. While it works, the box shows
 its latest three steps a row each, after how many came before, and a running command's latest
 output line; it keeps them until you send something else, so the end of a run moves nothing.
-Folded, its line says what the work came to, such as
+Its line says what the work came to, such as
 `read 4 files · searched 2 · edited footer.tsx +12 −3 · ran 3 commands · 1 failed`, failures
-in red, and a call that failed last stays in view under it. Replies that called no tool stand
-on their own. A turn ends with how long it worked, the tokens it wrote, and the time it
-ended; an interrupted reply says so beneath it.
+in red, then what it is doing, such as `running a command`; a call that failed last stays in
+view under it once the box folds. A call your interruption ended counts as interrupted, dim,
+not as failed. Replies that called no tool stand on their own. A turn ends with how long it
+worked, the tokens it wrote, and the time it ended; an interrupted reply says so beneath it.
 
 `ctrl+f` starts the transcript cursor on the latest item. `↑` and `↓` move it across prompts,
-boxes, replies, shell commands, summaries and notices, and the hint line lists the keys the
-selected item takes; `esc` leaves.
+boxes, replies, shell commands, summaries and notices, up past the first drawn item into the
+earlier ones, and the hint line lists the keys the selected item takes; `esc` leaves.
 
 | Item | Keys |
 | --- | --- |
-| Box of work | `enter` open or close · `o` the whole box, unbounded · `j` `k` scroll · `c` copy its steps |
-| Prompt | `f` fork a new session from before it · `e` edit it in place, moving the session back before it (regular Pi) · `enter` show a skill's instructions · `c` copy it as typed |
+| Box of work | `enter` open or close · `o` show it at full length, or bound it again · `j` `k` scroll · `c` copy its steps |
+| Prompt | `f` fork a new session from before it · `e` edit it in place, moving the session back before it (regular Pi) · `enter` show or hide a skill's instructions · `c` copy it as typed |
 | Reply | `c` copy |
 | Shell command | `c` copy the command and its output |
-| Summary or notice | `enter` show the rest · `c` copy |
+| Summary or notice | `enter` expand or fold · `c` copy |
 
 Copies go to the terminal's clipboard (OSC 52), and the hint line says what was copied. An
 opened box takes the rows the conversation leaves empty below it. `ctrl+o` opens every box at

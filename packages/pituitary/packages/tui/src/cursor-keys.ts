@@ -26,6 +26,8 @@ export function actingKeys({ copy, prompts, leave }: ActingOptions): CursorKeys 
   const copies = <T>(what: string | ((item: T) => string), text: (item: T) => string): CursorKey<T> => ({
     keys: ["c"],
     does: () => "copy",
+    // A reply that is only why it stopped, such as an interruption, has no words to copy.
+    applies: (item) => text(item) !== "",
     run: (item) => copy(text(item), typeof what === "string" ? what : what(item)),
   });
   const recorded = (prompt: UserEntry) => prompt.key !== undefined;
