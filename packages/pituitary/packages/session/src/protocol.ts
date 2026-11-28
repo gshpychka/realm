@@ -65,7 +65,10 @@ export type SessionEvent =
   | { type: "compaction_end"; errorMessage?: string; aborted?: boolean }
   | { type: "auto_retry_start"; attempt: number; maxAttempts?: number; delayMs: number; errorMessage: string }
   | { type: "auto_retry_end"; success: boolean; finalError?: string; attempt?: number }
-  | { type: "runtime_error"; source: string; event: string; error: string };
+  | { type: "runtime_error"; source: string; event: string; error: string }
+  /** An extension's handler threw; `extensionPath` is its file, or `command:<name>` for a command. */
+  | { type: "extension_error"; extensionPath: string; event: string; error: string }
+  | { type: "thinking_level_changed"; level: string };
 
 type InputCommand = {
   type: "prompt" | "steer" | "follow_up";

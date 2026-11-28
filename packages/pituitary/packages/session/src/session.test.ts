@@ -312,6 +312,36 @@ describe("native failure presentation", () => {
     ).toMatchObject({ kind: "notice", level: "error", text: "conversation: boom" });
   });
 
+  test("an extension's failure is a warning naming its file, kept when the session is read again", () => {
+    const messages = [{ role: "user", content: "q", timestamp: 5 }];
+    const failed = reduce(restore(messages), {
+      type: "extension_error",
+      extensionPath: "/home/me/.pi/agent/extensions/demo.ts",
+      event: "before_agent_start",
+      error: "demo handler exploded",
+    });
+    expect(failed.entries.at(-1)).toMatchObject({
+      kind: "notice",
+      level: "warning",
+      text: "demo.ts · before_agent_start: demo handler exploded\n/home/me/.pi/agent/extensions/demo.ts",
+    });
+    expect(transcript(restore(messages, failed))).toContain("! demo.ts · before_agent_start");
+    expect(
+      reduce(emptySession, {
+        type: "extension_error",
+        extensionPath: "command:plan",
+        event: "command",
+        error: "no",
+      }).entries[0],
+    ).toMatchObject({ text: "/plan: no" });
+  });
+
+  test("a prompt carries the key its session knows it by", () => {
+    expect(restore([{ role: "user", content: "q", timestamp: 5 }]).entries[0]).toMatchObject({
+      place: "user@5",
+    });
+  });
+
   test("an aborted reply says so", () => {
     const view = run([
       { type: "agent_start" },

@@ -79,6 +79,11 @@ export function clock(at: number): string {
   return `${pad(time.getHours())}:${pad(time.getMinutes())}`;
 }
 
+/** A session's estimated cost in dollars, to the cent, as the footer and /session show it. */
+export function dollars(amount: number): string {
+  return `$${amount.toFixed(2)}`;
+}
+
 /** A token count in a few characters, rounded down so it never overstates. */
 export function count(tokens: number): string {
   if (tokens < 1_000) return String(tokens);

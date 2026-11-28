@@ -6,22 +6,17 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
-import { useEffect, useState } from "react";
 import { App } from "./app.tsx";
 import { duraOptions, type PiCommand, piCommand, resumePiArgs } from "./cli.ts";
-import type { Command } from "./commands/commands.ts";
 import { openLog } from "./config.ts";
 import { loadPiKeymap } from "./keymap.ts";
 import { prewarm } from "./nvim/engine.ts";
-import { PiConversation } from "./pi.ts";
+import { type PiControls, PiConversation } from "./pi.ts";
+import { extensionArgs, HANDOFF_EXTENSION, PI_EXTENSIONS } from "./pi-extensions.ts";
 import { mark } from "./profile.ts";
 import { RELOAD_UI } from "./ui-state.ts";
 
 mark("modules");
-const EXTENSIONS = ["./pi-fast.ts", "./pi-usage.ts"].flatMap((path) => [
-  "--extension",
-  fileURLToPath(new URL(path, import.meta.url)),
-]);
 const argv = process.argv.slice(2);
 try {
   if (argv.includes("--help") || argv.includes("-h")) {
@@ -53,27 +48,25 @@ async function runPi(agent: PiCommand): Promise<void> {
   }
   const log = openLog();
   process.on("unhandledRejection", (reason) => log.write(`unhandled rejection: ${String(reason)}\n`));
-  const piArgs = [...agent.args, ...EXTENSIONS];
-  const start = (args: readonly string[]) =>
-    new PiConversation({
-      command: agent.command,
-      args,
-      onStderr: (text) => log.write(text),
-    });
-  let client = start(piArgs);
+  const client = new PiConversation({
+    command: agent.command,
+    args: [...agent.args, ...extensionArgs()],
+    bridge: PI_EXTENSIONS.bridge,
+    log: (text) => log.write(text),
+  });
   mark("agent-spawned");
   prewarm();
   const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });
   mark("renderer");
-  let root = createRoot(renderer);
+  const root = createRoot(renderer);
   renderer.once("frame", () => mark("first-frame"));
   let quitting = false;
-  let handoffActive = false;
   const quit = async () => {
     if (quitting) return;
     quitting = true;
     mark("quit");
-    const sessionFile = client.sessionFile;
+    const { sessionId, sessionFile } = client;
+    const { cwd } = client.workspace();
     const closing = client.close();
     root.unmount();
     mark("ui-unmounted");
@@ -81,87 +74,52 @@ async function runPi(agent: PiCommand): Promise<void> {
     mark("renderer-destroyed");
     await closing;
     mark("agent-closed");
-    if (sessionFile) process.stdout.write(`Resume: pituitary --session ${JSON.stringify(sessionFile)}\n`);
+    // Pi writes a session's file with its first message; until then there is nothing to resume.
+    if (sessionId && sessionFile && existsSync(sessionFile))
+      process.stdout.write(
+        `Resume: ${cwd === process.cwd() ? "" : `cd ${shellWord(cwd)} && `}pituitary --session ${sessionId}\n`,
+      );
     process.exit(0);
   };
-  // biome-ignore lint/correctness/noComponentHookFactories: Workspace has a stable identity for the CLI session.
-  function Workspace({ initialPrompt }: { initialPrompt?: string }) {
-    const [commands, setCommands] = useState<Command[]>([]);
-    useEffect(() => {
-      let active = true;
-      // Pi supplies its loaded extension, prompt and skill commands.
-      void client
-        .request({ type: "get_commands" })
-        .then((value) => {
-          const result = value as {
-            commands: Array<{ name: string; description?: string; source: "extension" | "prompt" | "skill" }>;
-          };
-          if (active)
-            setCommands(
-              result.commands.map((command) => ({
-                name: command.name,
-                description: command.description ?? "",
-                source: command.source === "skill" ? "prompt" : command.source,
-              })),
-            );
-        })
-        .catch((error) => log.write(`loading Pi commands: ${String(error)}\n`));
-      return () => {
-        active = false;
-      };
-    }, []);
-    return (
-      <App
-        link={client}
-        extensionUI={client}
-        commands={commands}
-        initialPrompt={initialPrompt}
-        keys={loadPiKeymap()}
-        onQuit={() => void quit()}
-        onHandoff={(command) => void handoff(command)}
-        onNewSession={async () => {
-          const result = (await client.request({ type: "new_session" })) as { cancelled: boolean };
-          if (result.cancelled) return;
-          root.unmount();
-          root = createRoot(renderer);
-          render();
-        }}
-      />
-    );
-  }
-  const render = (initialPrompt?: string) => root.render(<Workspace initialPrompt={initialPrompt} />);
+  /** Pi's own screen on the current session, then Pi over RPC again on the session it ends on. */
   const handoff = async (command: string) => {
-    if (handoffActive || quitting) return;
-    handoffActive = true;
     const state = await client.getState().catch(() => undefined);
-    root.unmount();
-    renderer.suspend();
-    await client.close();
+    await client.suspend();
     const scratch = mkdtempSync(join(tmpdir(), "pituitary-handoff-"));
     const result = join(scratch, "session");
-    const carried = state?.sessionFile && existsSync(state.sessionFile) ? state.sessionFile : undefined;
+    const saved = (file?: string) => (file && existsSync(file) ? file : undefined);
+    const carried = saved(state?.sessionFile);
     let selected = carried;
     try {
-      const extension = fileURLToPath(new URL("./pi-handoff.ts", import.meta.url));
-      spawnSync(agent.command, [...resumePiArgs(piArgs, carried), "--extension", extension], {
+      spawnSync(agent.command, [...resumePiArgs(agent.args, carried), "--extension", HANDOFF_EXTENSION], {
         stdio: "inherit",
+        cwd: client.workspace().cwd,
         env: { ...process.env, PITUITARY_HANDOFF: command, PITUITARY_HANDOFF_RESULT: result },
       });
-      if (existsSync(result)) selected = readFileSync(result, "utf8").trim() || carried;
+      if (existsSync(result)) selected = saved(readFileSync(result, "utf8").trim()) ?? carried;
     } finally {
       rmSync(scratch, { recursive: true, force: true });
-      client = start(resumePiArgs(piArgs, selected));
-      renderer.resume();
-      handoffActive = false;
-      root = createRoot(renderer);
-      render();
+      await client.resume([...resumePiArgs(agent.args, selected), ...extensionArgs()]);
     }
   };
+  const pi: PiControls = { conversation: client, handoff, resumeAtStart: agent.resume };
   process.once("SIGTERM", () => void quit());
   process.once("SIGHUP", () => void quit());
   process.once("exit", () => mark("exit"));
-  render(agent.prompt);
-  if (agent.resume) void handoff("/resume");
+  root.render(
+    <App
+      link={client}
+      pi={pi}
+      initialPrompt={agent.prompt}
+      keys={loadPiKeymap()}
+      onQuit={() => void quit()}
+    />,
+  );
+}
+
+/** `word` as one shell word. */
+function shellWord(word: string): string {
+  return /^[\w./~@%+=:,-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 }
 
 /** Reload only the disposable frontend process, retaining its draft and Dura's live work. */

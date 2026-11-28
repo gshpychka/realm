@@ -28,6 +28,8 @@ export interface UserEntry {
   text: string;
   /** Images the message carries, which its text names `[image 1]` onward. */
   images: number;
+  /** The key that picks the message out of its session, as `messagePlace` makes it. */
+  place?: string;
 }
 
 export interface AssistantEntry {
@@ -188,8 +190,11 @@ interface Message {
   timestamp?: number;
 }
 
-/** A key that picks `message` out of its session: pi stamps each message with the time it made it. */
-function place(message: Message): string | null {
+/**
+ * A key that picks `message` out of its session: pi stamps each message with the time it made it,
+ * so a user message is `user@<milliseconds>` unless its host names its entry.
+ */
+export function messagePlace(message: Message): string | null {
   return message.entryId ?? (message.timestamp === undefined ? null : `${message.role}@${message.timestamp}`);
 }
 
@@ -218,7 +223,7 @@ export function restore(
         type: "message_end",
         message,
       } as SessionEvent);
-      const key = place(message as Message);
+      const key = messagePlace(message as Message);
       const kept = key === null ? undefined : following.get(key);
       if (key === null || !kept) return next;
       following.delete(key);
@@ -391,7 +396,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
       const counted = {
         ...state,
         messages: state.messages + 1,
-        last: place(message),
+        last: messagePlace(message),
         turn: recorded(state.turn, message),
       };
       if (message.role !== "assistant") return counted;
@@ -477,9 +482,28 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
     case "runtime_error":
       return note(state, "error", `${event.source}: ${event.error}`);
 
+    case "extension_error":
+      // Local, so a later snapshot keeps it where it happened.
+      return note(state, "warning", extensionFailure(event), true);
+
     default:
       return state;
   }
+}
+
+/**
+ * An extension's failure in one line naming the extension by its file, then its full path
+ * for the expanded view: `demo.ts · before_agent_start: it broke`. A failed command is `/name: it broke`.
+ */
+function extensionFailure({
+  extensionPath,
+  event,
+  error,
+}: Extract<SessionEvent, { type: "extension_error" }>): string {
+  const command = /^command:(.+)$/.exec(extensionPath)?.[1];
+  if (command) return `/${command}: ${error}`;
+  const file = extensionPath.split(/[\\/]/).at(-1) || extensionPath;
+  return `${file} · ${event}: ${error}${file === extensionPath ? "" : `\n${extensionPath}`}`;
 }
 
 /** How a turn ended, by the stop reason of its last reply, when it did not end with a finished one. */
@@ -567,13 +591,16 @@ export function transcript(state: SessionView): string {
 
 function startMessage(state: SessionView, message: Message): SessionView {
   switch (message.role) {
-    case "user":
+    case "user": {
+      const at = messagePlace(message);
       return append(state, (id) => ({
         kind: "user",
         id,
         text: contentToText(message.content),
         images: imageCount(message.content),
+        ...(at === null ? {} : { place: at }),
       }));
+    }
     case "assistant":
       return append(state, (id) => ({
         kind: "assistant",

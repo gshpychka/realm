@@ -21,6 +21,11 @@ export interface ConversationLink {
   getSessionStats(): Promise<SessionStats>;
   clearQueue(): Promise<{ steering: string[]; followUp: string[] }>;
   close(): Promise<void>;
+  /**
+   * Each time the link moves to another session, such as Pi's new, forked or resumed ones.
+   * Listeners start the view afresh: nothing the previous session showed belongs to the next.
+   */
+  onReplace?(listener: () => void): () => void;
 }
 export interface SessionSnapshot {
   sequence: number;

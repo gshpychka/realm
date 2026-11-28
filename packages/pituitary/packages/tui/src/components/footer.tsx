@@ -10,6 +10,7 @@ import { tilde } from "../place.ts";
 import { type ProviderMark, providerMark } from "../provider.ts";
 import { ellipsize, headCells, tailCells } from "../text-width.ts";
 import type { UsageDisplay } from "../usage/types.ts";
+import { dollars } from "../working.ts";
 import { Link } from "./link.tsx";
 import { MascotSlot } from "./mascot.tsx";
 import { UsagePanel } from "./provider-usage.tsx";
@@ -145,7 +146,7 @@ export function footerParts({
       : null,
     thinking,
     percent: percent === null ? null : Math.round(percent),
-    cost: stats ? `$${stats.cost.toFixed(2)}` : null,
+    cost: stats ? dollars(stats.cost) : null,
     hasUsage: Boolean(usage),
   };
 }

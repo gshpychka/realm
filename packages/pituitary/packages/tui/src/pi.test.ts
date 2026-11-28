@@ -2,12 +2,23 @@ import { expect, test } from "bun:test";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { SessionEvent } from "@pituitary/session";
 import { duraOptions, piCommand, resumePiArgs } from "./cli.ts";
 import { PiConversation, type PiUiRequest } from "./pi.ts";
+import { BRIDGE_STATUS } from "./pi-bridge.ts";
 
 const fixture = fileURLToPath(new URL("./pi.fixture.ts", import.meta.url));
-const open = () =>
-  new PiConversation({ command: process.execPath, args: [fixture, "--model", "test/model"] });
+const BRIDGE = "/fixture/pi-bridge-extension.ts";
+/** A fake Pi; with `bridged` it loaded Pituitary's bridge extension. */
+const open = (bridged = false) =>
+  new PiConversation({
+    command: process.execPath,
+    args: [fixture, "--model", "test/model"],
+    bridge: BRIDGE,
+    env: bridged ? { FIXTURE_BRIDGE: BRIDGE } : {},
+  });
+/** One of the fake Pi's own commands, outside Pi's RPC. */
+const ask = (client: PiConversation, type: string) => client.rpc({ type } as never) as Promise<unknown>;
 
 test("regular Pi keeps its executable, options and positional task separate", () => {
   expect(
@@ -102,17 +113,12 @@ test("Pi RPC preserves arguments and extension requests emitted during startup",
     const state = await client.getState();
     expect(state.sessionId).toBe("pi-session");
     expect(client.sessionFile).toBe("/tmp/pi-session.jsonl");
-    expect(await client.request({ type: "fixture_args" })).toEqual([
-      "--model",
-      "test/model",
-      "--mode",
-      "rpc",
-    ]);
+    expect(await ask(client, "fixture_args")).toEqual(["--model", "test/model", "--mode", "rpc"]);
     const requests: PiUiRequest[] = [];
     const off = client.onRequest((request) => requests.push(request));
     expect(requests).toMatchObject([{ method: "notify", message: "Pi extension ready" }]);
     client.respond({ type: "extension_ui_response", id: "question", value: "yes" });
-    expect(await client.request({ type: "fixture_answer" })).toEqual({
+    expect(await ask(client, "fixture_answer")).toEqual({
       type: "extension_ui_response",
       id: "question",
       value: "yes",
@@ -126,7 +132,7 @@ test("Pi RPC preserves arguments and extension requests emitted during startup",
 test("a Pi snapshot captures its precise stream position, including live tools", async () => {
   const client = open();
   try {
-    await client.request({ type: "fixture_stream" });
+    await ask(client, "fixture_stream");
     const events: Array<{ sequence: number; type: string }> = [];
     client.onEvent((event, sequence) => events.push({ sequence, type: event.type }));
     const snapshot = await client.getSnapshot();
@@ -148,7 +154,7 @@ test("Pi process exit rejects outstanding requests and notifies an attached fron
   try {
     await client.getState();
     const closed = new Promise<string>((resolve) => client.onClose(resolve));
-    await expect(client.request({ type: "fixture_exit" })).rejects.toThrow("Pi exited");
+    await expect(ask(client, "fixture_exit")).rejects.toThrow("Pi exited");
     expect(await closed).toContain("3");
     await expect(client.getState()).rejects.toThrow("Pi exited");
   } finally {
@@ -161,7 +167,7 @@ test("Pi's wire tool-call stream preserves identity and authoritative completed 
   try {
     const events: unknown[] = [];
     client.onEvent((event) => events.push(event));
-    await client.request({ type: "fixture_tool_start" });
+    await ask(client, "fixture_tool_start");
     const initial = await client.getSnapshot();
     expect(initial.streamingMessage).toMatchObject({
       content: [{ type: "text" }, { type: "toolCall", id: "read-stream", name: "read" }],
@@ -175,7 +181,7 @@ test("Pi's wire tool-call stream preserves identity and authoritative completed 
         toolName: "read",
       },
     });
-    await client.request({ type: "fixture_tool_end" });
+    await ask(client, "fixture_tool_end");
     const complete = await client.getSnapshot();
     expect(complete.streamingMessage).toMatchObject({
       content: [
@@ -191,10 +197,71 @@ test("Pi's wire tool-call stream preserves identity and authoritative completed 
 test("manual and automatic Pi compaction share its canonical compaction events", async () => {
   const client = open();
   try {
-    await client.request({ type: "fixture_compaction_start" });
+    await ask(client, "fixture_compaction_start");
     expect((await client.getSnapshot()).state.isCompacting).toBe(true);
-    await client.request({ type: "fixture_compaction_end" });
+    await ask(client, "fixture_compaction_end");
     expect((await client.getSnapshot()).state.isCompacting).toBe(false);
+  } finally {
+    await client.close();
+  }
+});
+
+test("the bridge is found by its file under Pi's renamed command, and answers out of band", async () => {
+  const client = open(true);
+  try {
+    const shown: PiUiRequest[] = [];
+    client.onRequest((request) => shown.push(request));
+    const { sessions } = await client.bridge({ kind: "sessions", all: false });
+    expect(client.workspace().bridge).toBe("pituitary:2");
+    // A malformed session in the reply is dropped rather than shown.
+    expect(sessions).toEqual([
+      { path: "/s/a.jsonl", id: "a", cwd: "/w", modified: 2, messages: 3, first: "hello" },
+    ]);
+    expect(
+      shown.some((request) => request.method === "setStatus" && request.statusKey === BRIDGE_STATUS),
+    ).toBe(false);
+    // The bridge's own command failing rejects its request instead of reaching the transcript.
+    const events: SessionEvent[] = [];
+    client.onEvent((event) => events.push(event));
+    await expect(client.bridge({ kind: "reload" })).rejects.toThrow("reload exploded");
+    expect(events).toEqual([]);
+    await ask(client, "fixture_extension_error");
+    expect(events).toEqual([
+      {
+        type: "extension_error",
+        extensionPath: "/home/operator/.pi/agent/extensions/demo.ts",
+        event: "before_agent_start",
+        error: "demo handler exploded",
+      },
+    ]);
+  } finally {
+    await client.close();
+  }
+});
+
+test("without Pi's bridge command a request is refused before anything reaches Pi", async () => {
+  const client = open();
+  try {
+    await expect(client.bridge({ kind: "sessions", all: true })).rejects.toThrow("nothing was sent");
+    expect(client.workspace().bridge).toBeNull();
+    expect(await ask(client, "fixture_received")).not.toContain("prompt");
+  } finally {
+    await client.close();
+  }
+});
+
+test("a replaced session reaches its listeners, and a runtime's working directory becomes the workspace's", async () => {
+  const client = open();
+  try {
+    let replaced = 0;
+    client.onReplace(() => replaced++);
+    expect(await client.newSession()).toBe(true);
+    expect(replaced).toBe(1);
+    const shown: PiUiRequest[] = [];
+    client.onRequest((request) => shown.push(request));
+    await ask(client, "fixture_runtime");
+    expect(client.workspace().cwd).toBe("/elsewhere");
+    expect(shown.at(-1)).toMatchObject({ method: "setStatus", statusKey: "pituitary.runtime" });
   } finally {
     await client.close();
   }

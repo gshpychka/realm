@@ -3,11 +3,16 @@ import { createInterface } from "node:readline";
 const input = createInterface({ input: process.stdin });
 let streaming = false;
 let answer: unknown;
+const received: string[] = [];
+/** The bridge extension this Pi loaded, by its file; it registers under a renamed command. */
+const bridge = process.env.FIXTURE_BRIDGE;
+const BRIDGE_NAME = "pituitary:2";
 const write = (...records: unknown[]) =>
   process.stdout.write(records.map((record) => `${JSON.stringify(record)}\n`).join(""));
 write({ type: "extension_ui_request", id: "startup", method: "notify", message: "Pi extension ready" });
 for await (const line of input) {
-  const command = JSON.parse(line) as { id: string; type: string };
+  const command = JSON.parse(line) as { id: string; type: string; message?: string };
+  received.push(command.type);
   const response = (data?: unknown) => ({
     id: command.id,
     type: "response",
@@ -108,6 +113,77 @@ for await (const line of input) {
       break;
     case "fixture_compaction_end":
       write(response(), { type: "compaction_end", reason: "threshold", aborted: false, willRetry: false });
+      break;
+    case "get_commands":
+      write(
+        response({
+          commands: bridge
+            ? [
+                {
+                  name: BRIDGE_NAME,
+                  source: "extension",
+                  sourceInfo: { path: bridge, source: "cli", scope: "temporary", origin: "top-level" },
+                },
+              ]
+            : [],
+        }),
+      );
+      break;
+    case "prompt": {
+      const message = command.message ?? "";
+      if (bridge && message.startsWith(`/${BRIDGE_NAME} `)) {
+        const call = JSON.parse(message.slice(BRIDGE_NAME.length + 2)) as { id: string; kind: string };
+        // The handler of a reload throws, as an extension's broken command would.
+        if (call.kind === "reload")
+          write({
+            type: "extension_error",
+            extensionPath: `command:${BRIDGE_NAME}`,
+            event: "command",
+            error: "reload exploded",
+          });
+        else
+          write({
+            type: "extension_ui_request",
+            id: "reply",
+            method: "setStatus",
+            statusKey: "pituitary.bridge",
+            statusText: JSON.stringify({
+              id: call.id,
+              ok: true,
+              result: {
+                sessions: [
+                  { path: "/s/a.jsonl", id: "a", cwd: "/w", modified: 2, messages: 3, first: "hello" },
+                  { path: 7 },
+                ],
+              },
+            }),
+          });
+        write(response({ disposition: "handled" }));
+      } else write(response({ disposition: "started" }));
+      break;
+    }
+    case "new_session":
+      write(response({ cancelled: false }));
+      break;
+    case "fixture_runtime":
+      write(response(), {
+        type: "extension_ui_request",
+        id: "runtime",
+        method: "setStatus",
+        statusKey: "pituitary.runtime",
+        statusText: JSON.stringify({ cwd: "/elsewhere" }),
+      });
+      break;
+    case "fixture_extension_error":
+      write(response(), {
+        type: "extension_error",
+        extensionPath: "/home/operator/.pi/agent/extensions/demo.ts",
+        event: "before_agent_start",
+        error: "demo handler exploded",
+      });
+      break;
+    case "fixture_received":
+      write(response(received.slice(0, -1)));
       break;
     case "extension_ui_response":
       answer = command;

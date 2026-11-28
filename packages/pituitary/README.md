@@ -5,7 +5,7 @@
 A conversation, an editor, a little fire. Work directly with your configured Pi,
 or use the same interface to follow a durable team running in Bay machines.
 
-[Start](#start-a-conversation) · [Sign in](#connect-your-provider) · [Teams](#connect-to-dura) ·
+[Start](#start-a-conversation) · [Sessions](#sessions) · [Sign in](#connect-your-provider) · [Teams](#connect-to-dura) ·
 [Make it yours](#make-it-yours) · [Develop](#develop-without-rebuilding-the-system)
 
 ![Pituitary rendering a tool call and a queued steering message](docs/images/conversation.png)
@@ -32,8 +32,35 @@ prefers your configured `pi` on `PATH`, with a pinned Pi included as a fallback.
 
 Choose a model with `/model` or `ctrl+l`. Send with `enter`, add a newline with
 `shift+enter`, and queue a follow-up with `alt+enter`. `ctrl+d` closes the frontend
-and its Pi process. Pi saves the session; the exit message gives a resume command.
-Use `/new` for a fresh conversation and `/resume` to choose a saved one.
+and its Pi process. Pi saves the session with its first message; the exit message then
+gives a resume command, `pituitary --session <id>`.
+
+## Sessions
+
+Pituitary runs Pi's session commands itself, so the draft, its undo history, and the
+screen stay where they are while the conversation changes under them.
+
+| Command | Key | Does |
+| --- | --- | --- |
+| `/new` | `alt+n` | Start a new session |
+| `/resume [all]` | `alt+r` | Switch to a saved session of this project, or of every project with `all` |
+| `/fork` | `alt+f` | Start a new session from before an earlier prompt, that prompt in the draft |
+| `/clone` | | Copy this session into a new one |
+| `/export [path]` | | Write this session as an HTML page, into the project unless a path says otherwise |
+| `/reload` | | Reload Pi's extensions, skills, prompt templates, and context files |
+| `/session [copy]` | | Show the session's file, name, messages, context, and cost; `copy` copies the file's path |
+
+The resume list puts the most recently changed session first and each fork under the
+session it came from. `ctrl+r` renames the session under the cursor and `ctrl+x` deletes
+it, to the trash when a `trash` command is available. A session from another project moves
+Pi, the footer, and `@` completion to that project. `pituitary --resume` (`-r`) opens the
+list at start. Starting, forking, or resuming while Pi works puts queued messages back in
+the draft and stops the run first, as Pi does.
+
+`/login`, `/logout`, `/settings`, `/scoped-models`, `/trust`, `/import`, `/share`, and
+`/tree` open Pi's own screen on the current session between runs, with the command ready
+to run on `enter`. `ctrl+d` on its empty editor, or `ctrl+c` twice, returns to Pituitary on
+the session Pi ends on, with the draft and the conversation as they were.
 
 ## Connect your provider
 
@@ -47,10 +74,9 @@ replies arrive about 1.5× faster and draw on your subscription at a higher rate
 footer marks the model with a bolt while Fast mode applies. Each conversation keeps
 its choice, resumed ones included; a new conversation starts at standard speed.
 
-Login and session selection temporarily open Pi's own screens on the current
-session. Close that screen with `ctrl+d` to return to Pituitary. Authentication,
-credential persistence, and token refresh remain upstream Pi responsibilities.
-Provider API keys work through Pi's normal configuration too.
+Login opens Pi's own screen on the current session; see [Sessions](#sessions) for the way
+back. Authentication, credential persistence, and token refresh remain upstream Pi
+responsibilities. Provider API keys work through Pi's normal configuration too.
 
 Over SSH, use the login screen's copy shortcut (`ctrl+x`) for the full URL. tmux
 must allow application clipboard writes: `set -s set-clipboard on` (Realm configures
@@ -66,8 +92,11 @@ pastes need a terminal with the kitty clipboard protocol's paste events, such as
 Ghostty 1.4 or kitty. Through tmux they need Realm's tmux, which relays them.
 
 Standard extension dialogs, notifications, status text, widgets, commands, and prompt
-completions appear in Pituitary. Extensions that render custom stock-terminal
-components need Pi's interactive screen; that rendering API is outside Pi RPC.
+completions appear in Pituitary, and a failing extension handler shows as a warning naming
+the extension. Extensions that render custom stock-terminal components need Pi's
+interactive screen; that rendering API is outside Pi RPC. Pituitary loads its own Pi
+extensions for Fast mode, provider usage, and a bridge for what Pi's RPC lacks, such as
+listing sessions; they stay out of Pi's own screens.
 
 ## Provider usage
 
@@ -180,6 +209,7 @@ external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 | esc | Leave insert mode, then interrupt; close a picker |
 | ctrl+l / ctrl+p / shift+tab | Choose model / cycle model / cycle thinking |
 | ctrl+o / ctrl+t / ctrl+f | Expand work / toggle thinking / browse work |
+| alt+r / alt+f / alt+n | Resume / fork / start a session (regular Pi) |
 | ctrl+g | Edit externally |
 | pgup / pgdn | Scroll |
 | ctrl+c twice / ctrl+d | Close |

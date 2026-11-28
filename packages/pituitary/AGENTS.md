@@ -9,8 +9,11 @@ behavior belongs in the product.
 
 Pituitary is the frontend for regular Pi and Dura. Plain `pituitary` starts the
 configured Pi executable over RPC, retaining its auth, settings, and extensions, and
-loads Pituitary's Pi extensions for [ChatGPT Fast mode](packages/tui/src/pi-fast.ts)
-and [provider usage](packages/tui/src/pi-usage.ts).
+loads Pituitary's Pi extensions for [ChatGPT Fast mode](packages/tui/src/pi-fast.ts),
+[provider usage](packages/tui/src/pi-usage.ts), and a [bridge](packages/tui/src/pi-bridge.ts)
+for what Pi's RPC lacks, such as listing saved sessions. Session commands run natively and
+replace the session under a mounted UI; only Pi's own screens, such as `/login`, take the
+terminal over.
 `pituitary --dura RUN` uses Dura's pure connection client. Keep their lifecycle and
 configuration separate; share the interface through `ConversationLink`.
 

@@ -139,7 +139,7 @@ test("Fast mode asks ChatGPT for priority, follows the model, and stays with its
     await until(() => resumed?.fast() === "fast");
     expect((await resumed.ask("resumed"))?.service_tier).toBe("priority");
 
-    await resumed.client.request({ type: "new_session" });
+    await resumed.client.newSession();
     expect(resumed.fast()).toBeUndefined();
     expect((await resumed.ask("a new conversation"))?.service_tier).toBeUndefined();
   } finally {

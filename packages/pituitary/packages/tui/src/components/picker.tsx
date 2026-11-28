@@ -1,6 +1,7 @@
 import type { InputRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { matches } from "../keymap.ts";
 import { palette, theme } from "../theme.ts";
 import { Detail, type DetailIcon } from "./detail.tsx";
 
@@ -23,6 +24,19 @@ export interface PickerSpec {
   onCancel?(): void;
   /** What the filter starts with, as `/model sonnet` narrows the list to match. */
   query?: string;
+  /** The item the list starts on, by value; otherwise the current one. */
+  selected?: string;
+  /** What other keys do to the item the list is on, such as renaming it. */
+  keys?: readonly PickerKey[];
+}
+
+/** A key that acts on the item the list is on, given its value and the filter as typed. */
+export interface PickerKey {
+  /** The key, as keybindings name one: `ctrl+r`. */
+  binding: string;
+  /** What the key does, for the list's hint. */
+  label: string;
+  run(value: string, query: string): void;
 }
 
 /** Rows the list shows before it scrolls, room permitting. */
@@ -57,19 +71,26 @@ export function Picker({
   const { width } = useTerminalDimensions();
   const input = useRef<InputRenderable>(null);
   const [query, setQuery] = useState(spec.query ?? "");
-  const [selected, setSelected] = useState(() =>
-    spec.query
-      ? 0
-      : Math.max(
-          0,
-          spec.items.findIndex((item) => item.current),
-        ),
-  );
+  const [selected, setSelected] = useState(() => {
+    const start = matchingItems(spec.items, spec.query ?? "").findIndex((item) =>
+      spec.selected === undefined ? !spec.query && item.current : item.value === spec.selected,
+    );
+    return Math.max(0, start);
+  });
   const selection = useRef(selected);
   const select = (index: number) => {
     selection.current = index;
     setSelected(index);
   };
+  // A list that comes again, as after renaming one of its items, goes to the item it names.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a new list moves the selection
+  useEffect(() => {
+    if (spec.selected === undefined) return;
+    const at = matchingItems(spec.items, input.current?.value ?? query).findIndex(
+      (item) => item.value === spec.selected,
+    );
+    if (at !== -1) select(at);
+  }, [spec]);
   const shown = useMemo(() => matchingItems(spec.items, query), [spec.items, query]);
   const index = Math.max(0, Math.min(selected, shown.length - 1));
   const height = Math.max(1, Math.min(ROWS, rows));
@@ -103,8 +124,16 @@ export function Picker({
     } else if (key.name === "pageup" || key.name === "pagedown") {
       key.preventDefault();
       move(key.name === "pageup" ? -height : height);
+    } else {
+      const bound = spec.keys?.find((each) => matches(key, each.binding));
+      if (!bound) return;
+      key.preventDefault();
+      const { matches: items, index } = current();
+      const item = items[index];
+      if (item) bound.run(item.value, input.current?.value ?? query);
     }
   });
+  const keyHints = spec.keys?.map((each) => `${each.binding} ${each.label}`).join(" · ");
 
   return (
     <box
@@ -193,7 +222,7 @@ export function Picker({
       <text selectable={false} fg={theme.dim} truncate wrapMode="none">
         {width < 50
           ? `enter pick · esc close · ${shown.length} of ${spec.items.length}`
-          : `${shown.length} of ${spec.items.length} · ↑↓ move · enter pick · esc close`}
+          : `${shown.length} of ${spec.items.length} · ↑↓ move · enter pick${keyHints ? ` · ${keyHints}` : ""} · esc close`}
       </text>
     </box>
   );

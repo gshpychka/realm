@@ -22,36 +22,62 @@ export const BUILTINS: readonly Command[] = [
     args: "[instructions]",
   },
   { name: "name", description: "name this conversation", source: "builtin", args: "<name>" },
-  { name: "session", description: "show messages, tokens and cost", source: "builtin" },
+  {
+    name: "session",
+    description: "show this session's file, messages, context and cost",
+    source: "builtin",
+    args: "[copy]",
+  },
   { name: "copy", description: "copy the last reply", source: "builtin" },
   { name: "hotkeys", description: "list the keys", source: "builtin" },
   { name: "quit", description: "close the frontend", source: "builtin" },
 ];
 
-export const PI_COMMANDS: readonly Command[] = [
-  { name: "login", description: "connect a provider or subscription", source: "builtin" },
-  { name: "logout", description: "disconnect a provider", source: "builtin" },
-  { name: "new", description: "start a new Pi session", source: "builtin" },
-  { name: "resume", description: "resume a Pi session", source: "builtin" },
-  { name: "fork", description: "branch from an earlier message", source: "builtin" },
-  { name: "clone", description: "duplicate this Pi session", source: "builtin" },
-  { name: "tree", description: "navigate the session tree", source: "builtin" },
-  { name: "settings", description: "open Pi settings", source: "builtin" },
-  { name: "scoped-models", description: "choose models for cycling", source: "builtin" },
-  { name: "reload", description: "reload Pi resources", source: "builtin" },
-  { name: "trust", description: "manage project trust", source: "builtin" },
-  { name: "export", description: "export the Pi session", source: "builtin" },
-  { name: "import", description: "import a Pi session", source: "builtin" },
-  { name: "share", description: "share the Pi session", source: "builtin" },
+/** Regular Pi's session commands, which Pituitary runs without leaving its screen. */
+export const SESSION_COMMANDS: readonly Command[] = [
+  { name: "new", description: "start a new session", source: "builtin" },
+  {
+    name: "resume",
+    description: "switch to a saved session; all lists every project's",
+    source: "builtin",
+    args: "[all]",
+  },
+  { name: "fork", description: "start a new session from an earlier prompt", source: "builtin" },
+  { name: "clone", description: "copy this session into a new one", source: "builtin" },
+  {
+    name: "reload",
+    description: "reload Pi's extensions, skills, prompts and context files",
+    source: "builtin",
+  },
+  { name: "export", description: "write this session as an HTML page", source: "builtin", args: "[path]" },
 ];
+
+/** Pi's own screens: Pituitary hands them the terminal and comes back when they close. */
+export const PI_SCREENS: readonly Command[] = [
+  { name: "login", description: "connect a provider or subscription · opens Pi", source: "builtin" },
+  { name: "logout", description: "disconnect a provider · opens Pi", source: "builtin" },
+  { name: "tree", description: "navigate the session tree · opens Pi", source: "builtin" },
+  { name: "settings", description: "change Pi settings · opens Pi", source: "builtin" },
+  { name: "scoped-models", description: "choose models for cycling · opens Pi", source: "builtin" },
+  { name: "trust", description: "manage project trust · opens Pi", source: "builtin" },
+  { name: "import", description: "import a session file · opens Pi", source: "builtin" },
+  { name: "share", description: "share this session · opens Pi", source: "builtin" },
+];
+
+/** The command among `commands` that `text` runs, with what follows its name; `null` when none. */
+export function named(
+  text: string,
+  commands: readonly Pick<Command, "name">[],
+): { name: string; args: string } | null {
+  const match = /^\/([a-z-]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+  const name = match?.[1];
+  if (!name || !commands.some((command) => command.name === name)) return null;
+  return { name, args: (match[2] ?? "").trim() };
+}
 
 /** The built-in command `text` runs, with what follows its name; `null` when pi should receive it. */
 export function builtin(text: string): { name: string; args: string } | null {
-  const match = /^\/([a-z-]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-  if (!match?.[1]) return null;
-  const name = match[1];
-  if (!BUILTINS.some((command) => command.name === name)) return null;
-  return { name, args: (match[2] ?? "").trim() };
+  return named(text, BUILTINS);
 }
 
 /** Commands matching the name being typed, prefix matches first. `null` once arguments begin. */

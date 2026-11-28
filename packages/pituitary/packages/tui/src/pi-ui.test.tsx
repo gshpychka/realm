@@ -5,6 +5,7 @@ import { act, createRef } from "react";
 import { Dialog, type DialogResponse, GRACE_MS } from "./components/dialog.tsx";
 import type { EditorHandle } from "./components/editor.tsx";
 import type { PiUiPort, PiUiRequest, PiUiResponse } from "./pi.ts";
+import { RUNTIME_STATUS } from "./pi-bridge.ts";
 import { FAST_STATUS } from "./pi-fast.ts";
 import { PiWidgets, usePiUI } from "./pi-ui.tsx";
 import { USAGE_STATUS, type UsageDisplay } from "./usage/types.ts";
@@ -334,6 +335,64 @@ test("Pi dialog deadlines cancel their own question without removing later input
     expect(app.captureCharFrame()).toContain("Next question");
     await app.answer({ type: "dialog_response", id: "next", cancelled: true });
     expect(source.responses.at(-1)).toEqual({ type: "extension_ui_response", id: "next", cancelled: true });
+  } finally {
+    app.close();
+  }
+});
+
+test("a Pi runtime's end clears what its extensions showed and cancels what they asked", async () => {
+  const source = uiPort();
+  const app = await mount(source.port);
+  const runtime = (statusText?: string) =>
+    source.emit({
+      type: "extension_ui_request",
+      id: `runtime-${statusText}`,
+      method: "setStatus",
+      statusKey: RUNTIME_STATUS,
+      ...(statusText ? { statusText } : {}),
+    });
+  try {
+    await app.change(() => {
+      runtime(JSON.stringify({ cwd: "/work" }));
+      source.emit({
+        type: "extension_ui_request",
+        id: "s",
+        method: "setStatus",
+        statusKey: "mode",
+        statusText: "Old",
+      });
+      source.emit({
+        type: "extension_ui_request",
+        id: "f",
+        method: "setStatus",
+        statusKey: FAST_STATUS,
+        statusText: "fast",
+      });
+      source.emit({
+        type: "extension_ui_request",
+        id: "w",
+        method: "setWidget",
+        widgetKey: "plan",
+        widgetLines: ["Plan"],
+      });
+      source.emit({ type: "extension_ui_request", id: "q", method: "input", title: "Still there?" });
+    });
+    expect(app.state().statuses).toEqual(["Old"]);
+    await app.change(() => {
+      runtime();
+      // The next runtime's statuses arrive before Pi answers the request that replaced the session.
+      source.emit({
+        type: "extension_ui_request",
+        id: "n",
+        method: "setStatus",
+        statusKey: "mode",
+        statusText: "New",
+      });
+      runtime(JSON.stringify({ cwd: "/work" }));
+    });
+    expect(source.responses).toEqual([{ type: "extension_ui_response", id: "q", cancelled: true }]);
+    expect(app.state()).toMatchObject({ statuses: ["New"], widgets: [], dialogs: [], fast: false });
+    expect(app.captureCharFrame()).not.toContain("Plan");
   } finally {
     app.close();
   }

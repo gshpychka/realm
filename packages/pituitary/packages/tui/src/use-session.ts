@@ -46,6 +46,8 @@ export function useSession(link: ConversationLink): SessionController {
     let first = true;
     let received: { event: SessionEvent; sequence: number }[] | null = null;
     let overflow = false;
+    // Bumped when the link moves to another session, so a snapshot read before then is discarded.
+    let replacements = 0;
     let statsRead = 0;
     let statsTimer: ReturnType<typeof setTimeout> | undefined;
     reduced.current = emptySession;
@@ -86,10 +88,11 @@ export function useSession(link: ConversationLink): SessionController {
           const events: { event: SessionEvent; sequence: number }[] = [];
           received = events;
           overflow = false;
+          const replaced = replacements;
           try {
             const snapshot = await link.getSnapshot();
             if (!active) return;
-            if (overflow) {
+            if (overflow || replaced !== replacements) {
               again = true;
               continue;
             }
@@ -122,7 +125,12 @@ export function useSession(link: ConversationLink): SessionController {
         else overflow = true;
       }
       pacer.handle(event);
-      if (event.type === "agent_settled" || event.type === "session_info_changed") void sync.current();
+      if (
+        event.type === "agent_settled" ||
+        event.type === "session_info_changed" ||
+        event.type === "thinking_level_changed"
+      )
+        void sync.current();
       if (event.type === "message_end" || event.type === "compaction_end") {
         if (!statsTimer)
           statsTimer = setTimeout(() => {
@@ -130,6 +138,16 @@ export function useSession(link: ConversationLink): SessionController {
             readStats();
           }, 250);
       }
+    });
+    // Nothing the previous session showed belongs to the next one, local notices included;
+    // what is noted from here on follows the next session's messages.
+    const offReplace = link.onReplace?.(() => {
+      replacements++;
+      generation.current++;
+      pacer.flush();
+      reduced.current = emptySession;
+      setView(emptySession);
+      void sync.current();
     });
     const offClose = link.onClose((reason) => {
       setClosed(reason);
@@ -142,6 +160,7 @@ export function useSession(link: ConversationLink): SessionController {
     return () => {
       active = false;
       offEvents();
+      offReplace?.();
       offClose();
       if (statsTimer) clearTimeout(statsTimer);
       pacer.dispose();

@@ -203,10 +203,12 @@ export function Welcome({
   escapes,
   local = true,
   modelSelectable = local,
+  sessions = false,
 }: {
   escapes: string;
   local?: boolean;
   modelSelectable?: boolean;
+  sessions?: boolean;
 }) {
   const { width } = useTerminalDimensions();
   const bindings = useKeymap();
@@ -227,6 +229,14 @@ export function Welcome({
     [modelSelectable ? bound("app.model.select") : "", "pick a model"],
     [modelSelectable ? bound("app.model.cycleForward") : "", "take the next model"],
     [bound("app.editor.external"), "edit in $VISUAL"],
+    [
+      sessions
+        ? [bound("app.session.resume"), bound("app.session.fork"), bound("app.session.new")]
+            .filter(Boolean)
+            .join("  ")
+        : "",
+      "resume, fork or start a session",
+    ],
     [
       [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
       "quit",
@@ -277,6 +287,8 @@ export interface ConversationProps {
   /** Local sessions can complete paths and choose models from the operator's configuration. */
   local?: boolean;
   modelSelectable?: boolean;
+  /** Regular Pi's saved sessions can be resumed, forked and started afresh. */
+  sessions?: boolean;
   display: Display;
   /** How many of the latest entries are drawn; the earlier ones wait for the operator to scroll back. */
   window: number;
@@ -449,6 +461,7 @@ export function Conversation({
   running,
   local,
   modelSelectable,
+  sessions,
   display,
   window,
   browsing,
@@ -465,7 +478,14 @@ export function Conversation({
   const { selected, resized } = useWalk({ browsing, boxes, scroll: ref, isOpen, toggle, onLeave });
 
   if (entries.length === 0)
-    return <Welcome escapes={display.escapes} local={local} modelSelectable={modelSelectable} />;
+    return (
+      <Welcome
+        escapes={display.escapes}
+        local={local}
+        modelSelectable={modelSelectable}
+        sessions={sessions}
+      />
+    );
   const rows = boxRows(height);
   return (
     <scrollbox

@@ -1,32 +1,15 @@
 import type { CliRenderer } from "@opentui/core";
 import { plain } from "@pituitary/session";
-import { type RefObject, useEffect, useState } from "react";
+import { type RefObject, useEffect, useSyncExternalStore } from "react";
 import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
 import type { EditorHandle } from "./components/editor.tsx";
-import { glyphs } from "./glyphs.ts";
-import type { PiUiPort, PiUiRequest } from "./pi.ts";
-import { FAST_STATUS } from "./pi-fast.ts";
+import type { PiUiPort } from "./pi.ts";
+import { type PiUiState, type PiWidget, piUiStore } from "./pi-ui-store.ts";
 import { theme } from "./theme.ts";
-import { decodeUsage } from "./usage/presentation.ts";
-import { USAGE_STATUS, type UsageDisplay } from "./usage/types.ts";
 import type { SessionController } from "./use-session.ts";
 
-type Question = Extract<PiUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
-type Widget = { lines: string[]; placement: "aboveEditor" | "belowEditor" };
-
-// A Pi connection outlives the React root replaced by /new.
-const usageDisplays = new WeakMap<PiUiPort, UsageDisplay>();
-
-function extensionStatus(key: string, text = ""): string {
-  const status = plain(text);
-  if (key !== "pi-lens-lsp") return status;
-  return status.replace(/LSP Active: (.*?)(?= · |$)/, (_match, servers: string) =>
-    servers
-      .split(",")
-      .map((server) => (server.trim() === "typescript" ? glyphs.typescript : glyphs.lsp))
-      .join(" "),
-  );
-}
+const NONE: PiUiState = { questions: [], statuses: {}, widgets: {}, fast: false };
+const unsubscribed = () => () => {};
 
 /** Pi's extension UI stays at the frontend boundary, outside the conversation protocol. */
 export function usePiUI(
@@ -35,79 +18,28 @@ export function usePiUI(
   renderer: CliRenderer,
   notify: SessionController["notify"],
 ) {
-  const [questions, setQuestions] = useState<{ request: Question; deadline?: number }[]>([]);
-  const [statuses, setStatuses] = useState<Record<string, string>>({});
-  const [fast, setFast] = useState(false);
-  const [usage, setUsage] = useState<UsageDisplay>();
-  const [widgets, setWidgets] = useState<Record<string, Widget>>({});
-  useEffect(() => {
-    setQuestions([]);
-    setStatuses({});
-    setFast(false);
-    setUsage(port ? usageDisplays.get(port) : undefined);
-    setWidgets({});
-    if (!port) return;
-    return port.onRequest((request) => {
-      switch (request.method) {
-        case "notify":
-          notify(request.notifyType ?? "info", plain(request.message));
-          break;
-        case "setStatus":
-          // Extension counters belong in /automode status and /rewind.
-          if (request.statusKey === "pi-automode" || request.statusKey === "rewind") break;
-          if (request.statusKey === FAST_STATUS) setFast(Boolean(request.statusText));
-          else if (request.statusKey === USAGE_STATUS) {
-            const display = decodeUsage(request.statusText);
-            if (display) usageDisplays.set(port, display);
-            else usageDisplays.delete(port);
-            setUsage(display);
-          } else
-            setStatuses((current) => ({
-              ...current,
-              [request.statusKey]: extensionStatus(request.statusKey, request.statusText),
-            }));
-          break;
-        case "setWidget":
-          setWidgets((current) => ({
-            ...current,
-            [request.widgetKey]: {
-              lines: (request.widgetLines ?? []).map(plain),
-              placement: request.widgetPlacement ?? "aboveEditor",
-            },
-          }));
-          break;
-        case "setTitle":
-          renderer.setTerminalTitle(plain(request.title));
-          break;
-        case "set_editor_text":
-          editor.current?.set(request.text);
-          break;
-        default:
-          setQuestions((current) => [
-            ...current,
-            {
-              request,
-              ...("timeout" in request && request.timeout ? { deadline: Date.now() + request.timeout } : {}),
-            },
-          ]);
-      }
-    });
-  }, [port, editor, renderer, notify]);
+  const store = port ? piUiStore(port) : undefined;
+  const state = useSyncExternalStore(store?.subscribe ?? unsubscribed, store?.snapshot ?? (() => NONE));
+  useEffect(
+    () =>
+      store?.onEffect((effect) => {
+        if (effect.kind === "notify") notify(effect.level, effect.text);
+        else if (effect.kind === "title") renderer.setTerminalTitle(effect.title);
+        else editor.current?.set(effect.text);
+      }),
+    [store, editor, renderer, notify],
+  );
 
+  const { questions } = state;
   useEffect(() => {
     const deadlines = questions.flatMap((question) => question.deadline ?? []);
-    if (!deadlines.length) return;
+    if (!store || !deadlines.length) return;
     const timer = setTimeout(
-      () => {
-        const expired = questions.filter((question) => question.deadline && question.deadline <= Date.now());
-        for (const { request } of expired)
-          port?.respond({ type: "extension_ui_response", id: request.id, cancelled: true });
-        setQuestions((current) => current.filter((question) => !expired.includes(question)));
-      },
+      () => store.expire(Date.now()),
       Math.max(0, Math.min(...deadlines) - Date.now()),
     );
     return () => clearTimeout(timer);
-  }, [port, questions]);
+  }, [store, questions]);
 
   const dialogs: DialogRequest[] = questions.map(({ request }): DialogRequest => {
     const base = { type: "dialog" as const, id: request.id, title: plain(request.title) };
@@ -127,40 +59,18 @@ export function usePiUI(
         return { ...base, method: "editor", prefill: plain(request.prefill ?? "") };
     }
   });
-  const answer = (response: DialogResponse) => {
-    const question = questions.find(({ request }) => request.id === response.id)?.request;
-    if (!question || !port) return false;
-    port.respond(
-      response.cancelled
-        ? { type: "extension_ui_response", id: question.id, cancelled: true }
-        : question.method === "confirm"
-          ? { type: "extension_ui_response", id: question.id, confirmed: response.value === "Yes" }
-          : {
-              type: "extension_ui_response",
-              id: question.id,
-              value:
-                question.method === "select"
-                  ? (question.options.find((option) => plain(option) === response.value) ??
-                    response.value ??
-                    "")
-                  : (response.value ?? ""),
-            },
-    );
-    setQuestions((current) => current.filter(({ request }) => request.id !== question.id));
-    return true;
-  };
   return {
     dialogs,
-    answer,
-    statuses: Object.values(statuses).filter(Boolean),
+    answer: (response: DialogResponse) => store?.answer(response) ?? false,
+    statuses: Object.values(state.statuses).filter(Boolean),
     /** Whether replies to the selected model come at Fast mode's priority speed. */
-    fast,
-    usage,
-    widgets: Object.values(widgets),
+    fast: state.fast,
+    usage: state.usage,
+    widgets: Object.values(state.widgets),
   };
 }
 
-export function PiWidgets({ widgets, placement }: { widgets: Widget[]; placement: Widget["placement"] }) {
+export function PiWidgets({ widgets, placement }: { widgets: PiWidget[]; placement: PiWidget["placement"] }) {
   const lines = widgets.filter((widget) => widget.placement === placement).flatMap((widget) => widget.lines);
   if (!lines.length) return null;
   return (

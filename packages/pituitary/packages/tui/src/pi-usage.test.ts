@@ -160,7 +160,7 @@ test("native Pi reports observed API limits and /usage controls display without 
     await pi.prompt("/usage off");
     expect(display()?.open).toBe(false);
     expect(JSON.stringify(statuses)).not.toContain("fixture-secret");
-    await pi.request({ type: "new_session" });
+    await pi.newSession();
     await until(() => display()?.report.state === "unavailable");
     expect(display()?.open).toBe(false);
     expect(display()?.report.metrics).toEqual([]);

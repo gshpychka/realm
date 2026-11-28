@@ -1,8 +1,11 @@
-import type { ConversationLink } from "@pituitary/session";
+import { type ConversationLink, plain } from "@pituitary/session";
 import type { PickerSpec } from "../components/picker.tsx";
 import { modelName, modelSource, modelTitle } from "../model-names.ts";
+import { tilde } from "../place.ts";
+import { counted } from "../plural.ts";
 import { providerMark } from "../provider.ts";
 import type { SessionController } from "../use-session.ts";
+import { dollars } from "../working.ts";
 export interface CommandContext {
   link: ConversationLink;
   session: SessionController;
@@ -95,29 +98,26 @@ async function run(name: string, args: string, { link, session, ...context }: Co
       await session.refresh();
       return;
     case "session": {
+      const file = state?.sessionFile;
+      if (args === "copy") {
+        if (!file) throw new Error("This conversation has no session file");
+        if (!context.copy(file)) throw new Error("The terminal refused the clipboard write");
+        session.notify("info", `Copied ${tilde(file)}`);
+        return;
+      }
+      if (args) throw new Error("Use /session, or /session copy for its file's path");
       const stats = await link.getSessionStats();
       const t = stats.tokens;
       const count = (n: number) => n.toLocaleString("en");
+      const percent = stats.contextUsage?.percent;
       session.notify(
         "info",
         [
-          `conversation ${stats.sessionId}`,
-          "messages " +
-            stats.userMessages +
-            " from you · " +
-            stats.assistantMessages +
-            " replies · " +
-            stats.toolCalls +
-            " tool calls",
-          "tokens: input " +
-            count(t.input) +
-            " · output " +
-            count(t.output) +
-            " · cache read " +
-            count(t.cacheRead) +
-            " · cache written " +
-            count(t.cacheWrite),
-          `cost $${stats.cost.toFixed(4)}`,
+          `conversation ${state?.sessionName ? `${plain(state.sessionName)} · ` : ""}${stats.sessionId}`,
+          ...(file ? [`file ${tilde(file)} · /session copy copies its path`] : []),
+          `messages ${stats.userMessages} from you · ${counted(stats.assistantMessages, "reply", "replies")} · ${counted(stats.toolCalls, "tool call")}`,
+          `${typeof percent !== "number" ? "" : `context ${Math.round(percent)}% · `}tokens: input ${count(t.input)} · output ${count(t.output)} · cache read ${count(t.cacheRead)} · cache written ${count(t.cacheWrite)}`,
+          `cost ${dollars(stats.cost)}`,
         ].join("\n"),
       );
       return;
