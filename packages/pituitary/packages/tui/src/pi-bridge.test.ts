@@ -73,7 +73,8 @@ test("replies and runtime marks are read only when well formed", () => {
   expect(decodeReply(undefined)).toBeUndefined();
   expect(decodeReply('{"ok":true}')).toBeUndefined();
   expect(decodeReply('{"id":"3","ok":"yes"}')).toBeUndefined();
-  expect(decodeRuntime(encodeRuntime({ cwd: "/work" }))).toEqual({ cwd: "/work" });
+  const mark = { cwd: "/work", argumentHints: { review: "<focus>" } };
+  expect(decodeRuntime(encodeRuntime(mark))).toEqual(mark);
   expect(decodeRuntime(undefined)).toBeUndefined();
   expect(decodeRuntime('{"cwd":""}')).toBeUndefined();
 });

@@ -21,10 +21,17 @@ export interface ToolCallProps {
   expanded: boolean;
 }
 
-/** One tool call: what it acted on, how it ended, and as much of its result as fits. */
-export const ToolCall = memo(function ToolCall({ tool, expanded }: ToolCallProps) {
-  const { title, detail } = heading(tool);
-  const icon = toolGlyph(tool.name);
+/**
+ * One tool call: what it acted on, how it ended, and as much of its result as fits. A read
+ * that loads a `skill` is headed by the skill.
+ */
+export const ToolCall = memo(function ToolCall({
+  tool,
+  skill,
+  expanded,
+}: ToolCallProps & { skill?: string }) {
+  const { title, detail } = skill ? { title: "skill", detail: skill } : heading(tool);
+  const icon = skill ? "skill" : toolGlyph(tool.name);
   const state = STATE[tool.state];
   const elapsed = took(tool);
   return (
@@ -34,7 +41,7 @@ export const ToolCall = memo(function ToolCall({ tool, expanded }: ToolCallProps
           {tool.streaming !== undefined ? "…" : state.glyph}{" "}
         </text>
         {icon ? (
-          <text selectable={false} fg={theme.tool} flexShrink={0}>
+          <text selectable={false} fg={skill ? theme.skill : theme.tool} flexShrink={0}>
             {glyphs[icon]}{" "}
           </text>
         ) : null}

@@ -187,7 +187,7 @@ test("the model picker marks the current model by name, and a switch takes the n
 test("completion, the queue and the cost card read the same way on a narrow terminal", async () => {
   const app = await launch({ scenario: "long", delayMs: 150, cols: 60 });
   try {
-    await app.terminal.type("/");
+    await app.terminal.type("/compact");
     await app.terminal.waitText("tab complete");
     const menu = await app.capture("completion-hint");
     assert.match(menu, /↑↓ move · tab complete · enter run · esc close/);

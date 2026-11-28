@@ -66,11 +66,11 @@ export function mention(path: string): string {
 }
 
 /**
- * Paths holding the letters of `query` in order, best first: a file named exactly
- * that, then a run inside the file name, then one spread across directories, with
+ * At most `limit` paths holding the letters of `query` in order, best first: a file named
+ * exactly that, then a run inside the file name, then one spread across directories, with
  * shorter paths breaking ties.
  */
-export function rank(query: string, paths: readonly string[], limit = 8): string[] {
+export function rank(query: string, paths: readonly string[], limit: number): string[] {
   const wanted = query.toLowerCase();
   const scored: { path: string; score: number }[] = [];
   for (const path of paths) {

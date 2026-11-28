@@ -3,7 +3,7 @@ import type { DetailIcon } from "./components/detail.tsx";
 import type { PickItem } from "./components/picker.tsx";
 import { glyphs } from "./glyphs.ts";
 import type { TreeKind, TreeNode } from "./pi-bridge.ts";
-import { firstLine, when } from "./pi-sessions.ts";
+import { firstLine, SKILL_TAG, when } from "./pi-sessions.ts";
 import { palette, theme } from "./theme.ts";
 
 /** The tree picker's rows, and the row that stands for where the session is. */
@@ -109,6 +109,7 @@ function row(node: TreeNode, lead: string, onBranch: boolean, current: boolean, 
     lead,
     mark: onBranch ? mark : { ...mark, colour: ASIDE },
     ...(onBranch ? {} : { dim: true }),
+    ...(node.skills?.length ? { tag: SKILL_TAG } : {}),
     detail: [label, when(node.at, now)].filter(Boolean).join(" · "),
     ...(label ? { icon: { glyph: glyphs.label, colour: palette.yellow } } : {}),
     value: node.id,

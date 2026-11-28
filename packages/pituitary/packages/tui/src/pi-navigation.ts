@@ -7,6 +7,7 @@ import { firstLine } from "./pi-sessions.ts";
 import { treeRows } from "./pi-tree.ts";
 import type { Question } from "./use-ask.ts";
 import type { SessionController } from "./use-session.ts";
+import { typed } from "./user-text.ts";
 
 /** The answers to whether a move summarizes the branch it leaves, as Pi's own tree words them. */
 const SUMMARY_CHOICES = ["No summary", "Summarize", "Summarize with custom prompt"] as const;
@@ -154,12 +155,13 @@ export function treeNavigation({
       return back?.();
     }
     // As a fork does, the prompt replaces the draft, which nvim's undo keeps; the queue taken
-    // back from the run stays under it.
-    if (moved.text) editor.current?.set([moved.text, queued].filter(Boolean).join("\n\n"), moved.text.length);
+    // back from the run stays under it. A skill it loaded comes back as the command that loaded it.
+    const prompt = typed(moved.text);
+    if (prompt) editor.current?.set([prompt, queued].filter(Boolean).join("\n\n"), prompt.length);
     else if (queued) intoDraft(queued);
     // The notice follows the branch the session is on, once the view has read it.
     await refresh();
-    if (!moved.text) return notify("info", "Moved to that point of the session");
+    if (!prompt) return notify("info", "Moved to that point of the session");
     notify(
       "info",
       `Back before that prompt · editing it in the draft${draft.trim() ? " · esc u brings your draft back" : ""}`,

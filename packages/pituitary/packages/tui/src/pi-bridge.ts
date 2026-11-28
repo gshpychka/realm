@@ -15,7 +15,7 @@ export const BRIDGE_COMMAND = "pituitary";
 /** The status key the bridge answers through. It never reaches the extension UI. */
 export const BRIDGE_STATUS = "pituitary.bridge";
 /**
- * The status key that marks a Pi runtime: set to its working directory when the runtime starts,
+ * The status key that marks a Pi runtime: set to its `RuntimeMark` when the runtime starts,
  * cleared when it ends. Pi replaces its runtime for new, forked, resumed and reloaded sessions.
  */
 export const RUNTIME_STATUS = "pituitary.runtime";
@@ -57,10 +57,13 @@ export interface TreeNode {
   parent: string | null;
   kind: TreeKind;
   /**
-   * The start of what it says: a prompt, a reply, a command, an extension's message or a
-   * summary. Empty for what the picker leaves out, such as a tool's result.
+   * The start of what it says: a prompt, as the operator would type it again, a reply, a
+   * command, an extension's message or a summary. Empty for what the picker leaves out, such as
+   * a tool's result.
    */
   text: string;
+  /** The skills a prompt loaded, by name; absent when it loaded none. */
+  skills?: string[];
   /** The operator's label on it. */
   label?: string;
   /** A compaction's context tokens before it. */
@@ -112,6 +115,11 @@ export type BridgeReply =
 /** What a runtime's start reports. */
 export interface RuntimeMark {
   cwd: string;
+  /**
+   * What each of the runtime's prompt templates takes, by name, as its `argument-hint`
+   * frontmatter declares it, such as `<focus>`; Pi's RPC command list leaves the hint out.
+   */
+  argumentHints: Record<string, string>;
 }
 
 /** A request that cannot be read; `id` is present when the reply can still name its request. */
@@ -196,10 +204,15 @@ export function decodeReply(status: string | undefined): BridgeReply | undefined
   if (value.ok === false) return { id: value.id, ok: false, error: String(value.error ?? "failed") };
 }
 
-/** A runtime mark's working directory; undefined when the status is not one. */
+/** The runtime mark a status carries, keeping only hints that are text; undefined when it is not one. */
 export function decodeRuntime(status: string | undefined): RuntimeMark | undefined {
   const value = status === undefined ? undefined : parse(status);
-  return isFields(value) && text(value.cwd) ? { cwd: value.cwd } : undefined;
+  if (!isFields(value) || !text(value.cwd)) return undefined;
+  const hints = isFields(value.argumentHints) ? Object.entries(value.argumentHints) : [];
+  return {
+    cwd: value.cwd,
+    argumentHints: Object.fromEntries(hints.filter((hint): hint is [string, string] => text(hint[1]))),
+  };
 }
 
 /** The reply's result in the shape `kind` answers with, dropping anything that is not. */
@@ -241,6 +254,7 @@ function isTreeNode(value: unknown): value is TreeNode {
     typeof value.text === "string" &&
     typeof value.at === "number" &&
     (value.label === undefined || typeof value.label === "string") &&
+    (value.skills === undefined || (Array.isArray(value.skills) && value.skills.every(text))) &&
     (value.tokens === undefined || typeof value.tokens === "number")
   );
 }

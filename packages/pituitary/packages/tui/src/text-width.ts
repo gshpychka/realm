@@ -39,6 +39,23 @@ export function ellipsize(text: string, columns: number): string {
 }
 
 /**
+ * `text` in `columns` cells with a suffix of `suffix` cells after it, such as a command's
+ * arguments after its name: `text` is cut so the suffix stays whole, unless that would leave
+ * it fewer than `least` cells, when the suffix gives way and `text` takes every cell.
+ */
+export function ellipsizeBefore(
+  text: string,
+  suffix: number,
+  columns: number,
+  least: number,
+): { text: string; suffix: boolean } {
+  const room = columns - suffix;
+  return room >= Math.min(least, Bun.stringWidth(text))
+    ? { text: ellipsize(text, room), suffix: true }
+    : { text: ellipsize(text, columns), suffix: false };
+}
+
+/**
  * `text` in at most `lines` rows of `columns` cells, broken at spaces where a word allows,
  * the last row ending in an ellipsis when some of it was cut.
  */

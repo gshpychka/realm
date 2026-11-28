@@ -225,13 +225,15 @@ function StepView({ step, whole, thinking }: { step: Step; whole: boolean; think
     case "text":
       return <Markdown content={step.text} />;
     case "tool":
-      return <ToolCall tool={step.tool} expanded={whole} />;
+      return <ToolCall tool={step.tool} skill={step.skill} expanded={whole} />;
   }
 }
 
 function sameStep(a: Step, b: Step | undefined): boolean {
   if (!b || a.kind !== b.kind || a.id !== b.id) return false;
-  return a.kind === "tool" ? b.kind === "tool" && a.tool === b.tool : b.kind !== "tool" && a.text === b.text;
+  return a.kind === "tool"
+    ? b.kind === "tool" && a.tool === b.tool && a.skill === b.skill
+    : b.kind !== "tool" && a.text === b.text;
 }
 
 /** A box redraws when a step in it changes, and not because the list around it was rebuilt. */

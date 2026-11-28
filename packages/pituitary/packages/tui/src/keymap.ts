@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { piAgentDir } from "./place.ts";
 
 /** What a key can do, named as pi names its keybinding actions. */
 export const ACTIONS = {
@@ -36,6 +37,11 @@ export const ACTIONS = {
    * toggles the card instead of undoing.
    */
   "app.usage.toggle": ["alt+u"],
+  /**
+   * pituitary's own: lists regular Pi's skills, putting the chosen one before the draft. Like
+   * alt+u, a quick esc s may arrive as this chord instead of substituting in normal mode.
+   */
+  "app.skills": ["alt+s"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
@@ -167,7 +173,7 @@ export function loadKeymap(own = ownKeybindingsFile()): Keymap {
 
 /** Regular Pi's terminal actions, with Pituitary's explicit overrides applied last. */
 export function loadPiKeymap(
-  base = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "keybindings.json"),
+  base = join(piAgentDir(), "keybindings.json"),
   own = ownKeybindingsFile(),
 ): Keymap {
   return keymap({ ...readBindings(base), ...readBindings(own) });

@@ -19,6 +19,9 @@ test("/fast marks the ChatGPT model in the footer and asks the provider for prio
     await app.terminal.type("/fa");
     await app.terminal.waitText("answer faster on ChatGPT models");
     await app.capture("fast-command");
+    // Enter completes a half-typed command, and runs the command once it is named in full.
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("» /fast");
     await app.terminal.keyboard.press("Enter");
     await waitMatch(app.terminal, new RegExp(`GPT-6\\.1 Sol ${BOLT}`));
     await app.terminal.submit("hurry");

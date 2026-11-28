@@ -9,10 +9,19 @@ after(async () => {
 });
 
 const SHIFT_TAB = "\x1b[Z";
+const CTRL_C = "\x03";
 
 test("! runs a shell command whose output goes with the next prompt; !! keeps it out; the interrupt stops one", async () => {
   const app = await launchPi();
   try {
+    // A command's words go to the shell, so the editor's rule says nothing of a skill command in them.
+    await app.terminal.type("!grep -rn /skill:notes .");
+    await app.terminal.waitText("» !grep -rn /skill:notes .");
+    await app.terminal.waitIdle();
+    assert.doesNotMatch(await app.terminal.text(), /a skill loads only/);
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
     await app.terminal.type("!echo hello from the shell");
     await app.terminal.waitText("!echo hello from the shell");
     await app.terminal.waitIdle();

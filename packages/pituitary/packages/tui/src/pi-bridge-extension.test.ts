@@ -66,6 +66,7 @@ function load(
     setSessionName: (name: string) => named.push(name),
     setLabel: (entryId: string, label: string | undefined) => labels.push([entryId, label]),
     getSettings: () => (skipPrompt === undefined ? {} : { branchSummary: { skipPrompt } }),
+    getCommands: () => [],
   } as unknown as ExtensionAPI;
   bridge(pi);
   const ctx = {
@@ -160,7 +161,7 @@ test("a malformed request is answered by its id; outside RPC the bridge does not
   start();
   stop();
   expect(statuses.filter(([key]) => key === RUNTIME_STATUS)).toEqual([
-    [RUNTIME_STATUS, JSON.stringify({ cwd: join(root, "app") })],
+    [RUNTIME_STATUS, JSON.stringify({ cwd: join(root, "app"), argumentHints: {} })],
     [RUNTIME_STATUS, undefined],
   ]);
   const elsewhere = load(open, "interactive");

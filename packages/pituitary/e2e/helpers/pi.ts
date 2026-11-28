@@ -20,12 +20,14 @@ const MAIN = join(REPO, "packages/tui/src/main.tsx");
 /**
  * What the provider answers one request with: the reply's text, or that text with response
  * headers, such as a provider's rate limits, and an `until` that holds the reply's end back
- * until it settles, keeping Pi at work; or an error status with its JSON body. Text streams in
- * the API the request came in.
+ * until it settles, keeping Pi at work; a call of one of Pi's tools, which Pi runs and answers
+ * with the next request; or an error status with its JSON body. Replies stream in the API the
+ * request came in.
  */
 export type Reply =
   | string
   | { text: string; until?: Promise<unknown>; headers?: Record<string, string> }
+  | { tool: string; arguments: Record<string, unknown> }
   | { status: number; body: unknown };
 
 /** A request the provider received: its JSON body, and the latest prompt in it. */
@@ -91,6 +93,32 @@ function replyStream(api: Api, text: string): { head: unknown[]; tail: unknown[]
   };
 }
 
+/** A reply that calls `name` with `args`, streamed whole in `api`. */
+function toolStream(api: Api, name: string, args: Record<string, unknown>): unknown[] {
+  const json = JSON.stringify(args);
+  if (api === "completions") {
+    const call = { index: 0, id: "call_1", type: "function", function: { name, arguments: json } };
+    return [
+      {
+        id: "chunk",
+        choices: [{ index: 0, delta: { role: "assistant", tool_calls: [call] }, finish_reason: null }],
+      },
+      { id: "chunk", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+      "[DONE]",
+    ];
+  }
+  const item = { type: "function_call", id: "fc_1", call_id: "call_1", name };
+  return [
+    { type: "response.created", response: { id: "resp", status: "in_progress" } },
+    { type: "response.output_item.added", output_index: 0, item: { ...item, arguments: "" } },
+    { type: "response.output_item.done", output_index: 0, item: { ...item, arguments: json } },
+    {
+      type: "response.completed",
+      response: { id: "resp", status: "completed", usage: { input_tokens: 1, output_tokens: 1 }, output: [] },
+    },
+  ];
+}
+
 type Api = "responses" | "completions";
 
 /** Server-sent events; a string goes out as it is, as Chat Completions' closing `[DONE]` does. */
@@ -115,6 +143,11 @@ export async function fakeProvider(): Promise<Provider> {
       if (typeof reply === "object" && "status" in reply) {
         response.writeHead(reply.status, { "content-type": "application/json" });
         response.end(JSON.stringify(reply.body));
+        return;
+      }
+      if (typeof reply === "object" && "tool" in reply) {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.end(sse(toolStream(api, reply.tool, reply.arguments)));
         return;
       }
       const { text, until, headers } = typeof reply === "string" ? { text: reply } : reply;
@@ -160,6 +193,13 @@ export interface PiLaunchOptions {
   env?: Record<string, string>;
   /** Pi extensions to load besides Pituitary's own, by file name: their TypeScript source. */
   extensions?: Record<string, string>;
+  /**
+   * Skills Pi finds in its agent directory, by name: each `SKILL.md`'s content. Without them Pi
+   * runs with `--no-skills`, so no skill of the machine's enters a scenario.
+   */
+  skills?: Record<string, string>;
+  /** Prompt templates Pi finds in its agent directory, by name: each file's content. */
+  prompts?: Record<string, string>;
   /** Runs a Pi that never loads Pituitary's bridge extension, as a Pi that failed to load it. */
   withoutBridge?: boolean;
   /**
@@ -204,6 +244,8 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
     rows,
     env = {},
     extensions = {},
+    skills,
+    prompts = {},
     withoutBridge = false,
     apiModels,
     from,
@@ -228,7 +270,20 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
       writeFileSync(path, source);
       return path;
     });
-    const pi = [PI_CLI, "--no-extensions", "--no-skills", ...loaded.flatMap((path) => ["--extension", path])];
+    for (const [name, content] of Object.entries(skills ?? {})) {
+      mkdirSync(join(agent, "skills", name), { recursive: true });
+      writeFileSync(join(agent, "skills", name, "SKILL.md"), content);
+    }
+    for (const [name, content] of Object.entries(prompts)) {
+      mkdirSync(join(agent, "prompts"), { recursive: true });
+      writeFileSync(join(agent, "prompts", `${name}.md`), content);
+    }
+    const pi = [
+      PI_CLI,
+      "--no-extensions",
+      ...(skills ? [] : ["--no-skills"]),
+      ...loaded.flatMap((path) => ["--extension", path]),
+    ];
     const model = first ? `openai/${first.id}` : `openai/${MODEL}`;
     const harness = await boot({
       entry: MAIN,

@@ -13,13 +13,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { IMAGE_TOKEN } from "../attachments.ts";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
-import { IMAGE_CHIP } from "../image-chip.ts";
 import type { Action } from "../keymap.ts";
 import { keyHint, useKeyHint, useKeymap } from "../keymap-context.tsx";
 import { tilde } from "../place.ts";
+import type { SkillOf } from "../skills.ts";
 import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { type Item, type Reply, transcriptOf, type Work } from "../transcript.ts";
@@ -27,6 +26,7 @@ import { turnLine } from "../working.ts";
 import { BashView } from "./bash.tsx";
 import { Link } from "./link.tsx";
 import { Markdown } from "./markdown.tsx";
+import { UserMessage } from "./user-message.tsx";
 import { boxId, scrollWork, WorkBox } from "./work.tsx";
 
 const NOTICE = {
@@ -63,32 +63,6 @@ export interface Display {
   commands: ReadonlySet<string>;
 }
 
-/** A message's text, with `[image N]` drawn as a chip for each of the `images` it carries. */
-function withImageChips(text: string, images: number): ReactNode {
-  if (images === 0) return text;
-  const parts: ReactNode[] = [];
-  let from = 0;
-  for (const match of text.matchAll(IMAGE_TOKEN)) {
-    const n = Number(match[1]);
-    if (n < 1 || n > images) continue;
-    parts.push(
-      text.slice(from, match.index),
-      <span key={`${match.index}-start`} fg={theme.imageTint}>
-        {IMAGE_CHIP.start}
-      </span>,
-      <span key={`${match.index}-label`} fg={theme.image} bg={theme.imageTint}>
-        {`${IMAGE_CHIP.label}${n}`}
-      </span>,
-      <span key={`${match.index}-stop`} fg={theme.imageTint}>
-        {IMAGE_CHIP.stop}
-      </span>,
-    );
-    from = match.index + match[0].length;
-  }
-  parts.push(text.slice(from));
-  return parts;
-}
-
 /** An entry the conversation draws as it is, which is any but the model's replies. */
 type Plain = Exclude<Item, Work | Reply>;
 
@@ -108,20 +82,7 @@ const EntryView = memo(function EntryView({
   const expand = useKeyHint("app.tools.expand");
   switch (entry.kind) {
     case "user":
-      return (
-        <box
-          flexDirection="row"
-          flexShrink={0}
-          marginTop={1}
-          backgroundColor={palette.surface}
-          paddingRight={1}
-        >
-          <text selectable={false} fg={theme.user} flexShrink={0}>
-            ▌{" "}
-          </text>
-          <text fg={theme.assistant}>{withImageChips(entry.text, entry.images)}</text>
-        </box>
-      );
+      return <UserMessage entry={entry} expanded={display.expanded} />;
     case "custom":
       return (
         <box flexDirection="column" flexShrink={0} marginTop={1}>
@@ -308,6 +269,7 @@ export function Welcome({
         "resume, fork or start a session",
         "sessions",
       ],
+      [sessions ? bound("app.skills") : "", "choose a skill for the draft", "skills"],
       [
         [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
         "quit",
@@ -365,6 +327,8 @@ export interface ConversationProps {
   /** Regular Pi's saved sessions can be resumed, forked and started afresh. */
   sessions?: boolean;
   display: Display;
+  /** The skill each file the model reads loads; without it, as in Dura, no read loads one. */
+  skillOf?: SkillOf;
   /** How many of the latest entries are drawn; the earlier ones wait for the operator to scroll back. */
   window: number;
   /** The keyboard steps through the boxes of work, the latest picked first. */
@@ -545,6 +509,7 @@ export function Conversation({
   providerUsage,
   sessions,
   display,
+  skillOf,
   window,
   browsing,
   onLeave,
@@ -553,7 +518,10 @@ export function Conversation({
   const { width, height } = useTerminalDimensions();
   const earlier = Math.max(0, entries.length - window);
   const clearHistoryAnchor = useHistoryAnchor(ref, earlier, window, entries.length > 0);
-  const items = useMemo(() => transcriptOf(entries.slice(earlier), running), [entries, earlier, running]);
+  const items = useMemo(
+    () => transcriptOf(entries.slice(earlier), running, skillOf),
+    [entries, earlier, running, skillOf],
+  );
   const boxes = items.filter((item): item is Work => item.kind === "work");
   const whole = display.expanded;
   const { isOpen, toggle } = useOpenBoxes(whole);

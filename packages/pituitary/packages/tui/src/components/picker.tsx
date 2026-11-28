@@ -4,9 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CURRENT, type Hint, hintLine, MOVE, PICK, SELECTED, UNSELECTED } from "../hints.ts";
 import { type ListAction, matches } from "../keymap.ts";
 import { keyHint, useKeymap } from "../keymap-context.tsx";
-import { ellipsize } from "../text-width.ts";
+import { ellipsize, ellipsizeBefore } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { Detail, type DetailIcon } from "./detail.tsx";
+
+/** A word that follows an item's label after a dim dot, such as whose a skill is. */
+export interface Tag {
+  text: string;
+  colour: string;
+}
 
 export interface PickItem {
   label: string;
@@ -18,11 +24,13 @@ export interface PickItem {
   lead?: string;
   /** Leads the label, such as the kind of entry a tree's row stands for. */
   mark?: DetailIcon;
-  /** Set apart from the rows that matter more, such as a tree's other branches: its label is dim. */
+  /** Set apart from the rows that matter more, such as a tree's other branches: its label and tag are dim. */
   dim?: boolean;
   detail?: string;
   /** Leads the detail. */
   icon?: DetailIcon;
+  /** Follows the label, kept whole while the label is cut to make room for it. */
+  tag?: Tag;
   value: string;
   /** Marks the item that is in effect now, such as the current model. */
   current?: boolean;
@@ -249,15 +257,21 @@ export function Picker({
   );
 }
 
+/** What comes between a label and its tag. */
+const TAG_DOT = " · ";
+/** Cells a label keeps before its tag gives way to it. */
+const TAG_LEAST = 8;
+
 /**
  * One item: its label cut at the end to the room its detail leaves, and the detail at the right
- * edge, so details line up down the list. The label keeps what it needs, with its mark, up to
- * half the row, and the detail takes the rest: a short label, such as a task's role, leaves
- * its room to a long detail, such as the task's objective. The item in effect now says so
- * after its label, cutting the label for the mark unless that would leave the label narrower
- * than the mark; a label without its mark leaves the mark's room to the detail too. A lead and
- * a label's mark come first and keep their cells; a lead deeper than half the row keeps its end,
- * which joins the label, and a filtered list draws no lead.
+ * edge, so details line up down the list. The label keeps what it needs, with its tag and mark,
+ * up to half the row, and the detail takes the rest: a short label, such as a task's role,
+ * leaves its room to a long detail, such as the task's objective. A tag stays whole after the
+ * label while the label keeps a few cells. The item in effect now says so after its label,
+ * cutting the label for the mark unless that would leave the label narrower than the mark; a
+ * label without its mark leaves the mark's room to the detail too. A lead and a label's mark
+ * come first and keep their cells; a lead deeper than half the row keeps its end, which joins
+ * the label, and a filtered list draws no lead.
  */
 function Row({
   item,
@@ -282,14 +296,17 @@ function Row({
     row - (lead ? Bun.stringWidth(lead) : 0) - (item.mark ? Bun.stringWidth(item.mark.glyph) + 1 : 0);
   const icon = item.icon ? Bun.stringWidth(item.icon.glyph) + 1 : 0;
   const mark = Bun.stringWidth(CURRENT);
+  const tag = item.tag ? Bun.stringWidth(`${TAG_DOT}${item.tag.text}`) : 0;
   const fit = (after: number) => {
-    const label = Math.min(Bun.stringWidth(item.label) + after, Math.floor(cells / 2));
+    const label = Math.min(Bun.stringWidth(item.label) + tag + after, Math.floor(cells / 2));
     const detail = item.detail ? ellipsize(item.detail, cells - label - 1 - icon) : "";
     return { detail, room: cells - (detail ? Bun.stringWidth(detail) + 1 + icon : 0) };
   };
   const marked = item.current ? fit(mark) : null;
   const current = marked !== null && marked.room >= 2 * mark;
   const { detail, room } = current ? marked : fit(0);
+  const label = ellipsizeBefore(item.label, tag, current ? room - mark : room, TAG_LEAST);
+  const aside = item.dim && !chosen;
   return (
     <>
       {lead || item.mark ? (
@@ -300,12 +317,18 @@ function Row({
       ) : null}
       <text
         selectable={false}
-        fg={item.current ? palette.yellow : item.dim && !chosen ? theme.dim : theme.assistant}
+        fg={item.current ? palette.yellow : aside ? theme.dim : theme.assistant}
         flexGrow={1}
         minWidth={0}
         wrapMode="none"
       >
-        {ellipsize(item.label, current ? room - mark : room)}
+        {label.text}
+        {item.tag && label.suffix ? (
+          <>
+            <span fg={theme.dim}>{TAG_DOT}</span>
+            <span fg={aside ? theme.dim : item.tag.colour}>{item.tag.text}</span>
+          </>
+        ) : null}
         {current ? CURRENT : null}
       </text>
       {detail ? (

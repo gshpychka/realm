@@ -12,6 +12,7 @@ export const HIGHLIGHTS: Record<string, Record<string, string | boolean>> = {
   PiImage: { fg: theme.image, bg: theme.imageTint },
   PiImageEdge: { fg: theme.imageTint },
   PiShell: { fg: theme.tool, bg: theme.imageTint, bold: true },
+  PiSkill: { fg: theme.skill, bg: theme.skillTint, bold: true },
 };
 
 /**
@@ -168,6 +169,25 @@ vim.api.nvim_create_autocmd(
   { callback = mark_shell }
 )
 
+-- A leading skill command, such as /skill:<name>, naming a skill Pi has loaded is the command
+-- Pi expands into the skill's instructions, so it shows as a chip; its text stays as typed. Pi
+-- reads the name up to the first space, so a name another line follows straight after loads
+-- nothing and shows plain. The engine sets the command's prefix with the names.
+local skill = { command = nil, names = {}, ns = vim.api.nvim_create_namespace("pi_skill") }
+
+local function mark_skill()
+  vim.api.nvim_buf_clear_namespace(0, skill.ns, 0, -1)
+  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  local first = lines[1] or ""
+  if not skill.command or not vim.startswith(first, skill.command) then return end
+  local name, after = first:sub(#skill.command + 1):match("^([^%s]+)(.?)")
+  if name and skill.names[name] and (after == " " or (after == "" and #lines == 1)) then
+    vim.api.nvim_buf_set_extmark(0, skill.ns, 0, 0, { end_col = #skill.command + #name, hl_group = "PiSkill" })
+  end
+end
+
+vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, { callback = mark_skill })
+
 -- startinsert takes effect only once nvim next reads input, so a request can land in
 -- between; a key enters insert mode in order with the requests after it.
 local function insert(at_end)
@@ -177,6 +197,8 @@ end
 local function replace(lines, row, col)
   vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
   mark_images()
+  mark_shell()
+  mark_skill()
   local line = lines[row + 1] or ""
   local byte = vim.str_byteindex(line, "utf-16", math.min(col, vim.str_utfindex(line, "utf-16")), false)
   vim.api.nvim_win_set_cursor(0, { row + 1, byte })
@@ -202,6 +224,12 @@ _G.pi_draft = {
   shell = function(on)
     shell_drafts = on
     mark_shell()
+  end,
+  skills = function(command, names)
+    skill.command = command
+    skill.names = {}
+    for _, name in ipairs(names) do skill.names[name] = true end
+    mark_skill()
   end,
 }
 

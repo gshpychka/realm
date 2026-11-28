@@ -79,4 +79,7 @@ export const theme = {
   /** An image's chip in a message: its label, and the tint it sits on. */
   image: palette.aqua,
   imageTint: palette.rule,
+  /** A skill's chip in a message and in the draft: its label, and the tint it sits on. */
+  skill: palette.yellow,
+  skillTint: palette.rule,
 } as const;

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -7,6 +7,7 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
   getAgentDir,
+  parseFrontmatter,
   type SessionEntry,
   type SessionInfo,
   SessionManager,
@@ -25,6 +26,7 @@ import {
   type TreeKind,
   type TreeNode,
 } from "./pi-bridge.ts";
+import { asTyped, parseUserText, skillsIn } from "./user-text.ts";
 
 /**
  * Pituitary's side of its bridge into Pi, loaded only for Pituitary's own RPC conversation.
@@ -33,7 +35,8 @@ import {
 export default function bridge(pi: ExtensionAPI): void {
   // Pi starts each runtime twice over when it replaces a session; the mark says the same both times.
   pi.on("session_start", (_event, ctx) => {
-    if (ctx.mode === "rpc") ctx.ui.setStatus(RUNTIME_STATUS, encodeRuntime({ cwd: ctx.cwd }));
+    if (ctx.mode === "rpc")
+      ctx.ui.setStatus(RUNTIME_STATUS, encodeRuntime({ cwd: ctx.cwd, argumentHints: argumentHints(pi) }));
   });
   pi.on("session_shutdown", (_event, ctx) => {
     if (ctx.mode === "rpc") ctx.ui.setStatus(RUNTIME_STATUS, undefined);
@@ -118,14 +121,21 @@ async function answer(pi: ExtensionAPI, call: BridgeCall, ctx: ExtensionCommandC
 /** The most of an entry's text the tree carries: enough for its row, and for the filter to find it by. */
 const TREE_TEXT = 400;
 
-/** An entry as the tree picker needs it: what it is, the start of what it says, and its label. */
+/**
+ * An entry as the tree picker needs it: what it is, the start of what it says, and its label.
+ * A prompt that loaded a skill says what the operator typed, `/skill:name request`: the
+ * skill's expanded instructions come first in the message and would take all the text carried.
+ */
 function treeNode(entry: SessionEntry, label: string | undefined): TreeNode {
-  const [kind, text] = described(entry);
+  const [kind, said] = described(entry);
+  const segments = kind === "user" ? parseUserText(said) : null;
+  const skills = segments ? [...new Set(skillsIn(segments).map((skill) => skill.name))] : [];
   return {
     id: entry.id,
     parent: entry.parentId,
     kind,
-    text: text.slice(0, TREE_TEXT),
+    text: (segments ? asTyped(segments) : said).slice(0, TREE_TEXT),
+    ...(skills.length ? { skills } : {}),
     ...(label ? { label } : {}),
     ...(entry.type === "compaction" ? { tokens: entry.tokensBefore } : {}),
     at: Date.parse(entry.timestamp),
@@ -183,6 +193,26 @@ function textOf(content: unknown, separator = "\n"): string {
         : [],
     )
     .join(separator);
+}
+
+/**
+ * What each prompt template takes, as the `argument-hint` in its frontmatter says and Pi's own
+ * editor shows it; Pi reads the hint but keeps it from every command list it gives out.
+ */
+function argumentHints(pi: ExtensionAPI): Record<string, string> {
+  const hints: Record<string, string> = {};
+  for (const command of pi.getCommands()) {
+    if (command.source !== "prompt") continue;
+    try {
+      const hint = parseFrontmatter(readFileSync(command.sourceInfo.path, "utf8")).frontmatter[
+        "argument-hint"
+      ];
+      if (typeof hint === "string" && hint) hints[command.name] = hint;
+    } catch {
+      // A template removed or broken since Pi loaded it declares nothing.
+    }
+  }
+  return hints;
 }
 
 /** How many session files are read at once to count their prompts. */
