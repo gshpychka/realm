@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { boot, launch, normalMode, pastGrace, REPO, settled, waitMatch } from "./helpers/harness.ts";
+import { boot, launch, pastGrace, REPO, waitMatch } from "./helpers/harness.ts";
 import { bootPi } from "./helpers/pi.ts";
 
 after(closeAll);
@@ -146,14 +146,17 @@ test("configured work and thinking keys dispatch to the visible work box", async
   }
 });
 
-test("a narrow welcome fits its keys and shortens what they do, cutting nothing mid-word", async () => {
+test("a narrow welcome fits its keys and shortens what they all do, cutting nothing mid-word", async () => {
   const app = await launch({ cols: 50 });
   try {
     const welcome = await app.capture("welcome-narrow");
     assert.match(welcome, /^ alt\+enter +queue a follow-up$/m);
     assert.match(welcome, /^ ctrl\+f +step through boxes$/m);
+    // One row too long for its words shortens them all, so the list reads alike.
+    assert.match(welcome, /^ ctrl\+o +open every box$/m);
     assert.match(welcome, /^ ctrl\+c twice {2}ctrl\+d +quit$/m);
-    assert.match(welcome, /^ alt\+u +show usage and cost$/m);
+    // Without a provider's report, the card holds the session's cost alone.
+    assert.match(welcome, /^ alt\+u +session cost$/m);
     assert.doesNotMatch(welcome, /\.\.\./);
   } finally {
     await app.close();
@@ -164,9 +167,10 @@ test("the model picker marks the current model by name, and a switch takes the n
   const app = await launch();
   try {
     await app.terminal.write("\x0c");
-    await app.terminal.waitText("▶ Faux Model ✓");
+    await app.terminal.waitText("▶ Faux Model · current");
     const picker = await app.capture("picker-current");
-    assert.match(picker, /Faux Model ✓ +\S+ faux\/faux-1/);
+    assert.match(picker, /Faux Model · current · \S+ faux\/faux-1/);
+    assert.doesNotMatch(picker, /✓/);
     assert.match(picker, /↑↓ move · enter pick · esc close · 2 of 2/);
     await pastGrace();
     await app.terminal.type("faux-2");
@@ -200,9 +204,10 @@ test("completion, the queue and the cost card read the same way on a narrow term
     const queued = await app.capture("queue-narrow");
     assert.match(queued, new RegExp(`${glyphs.steering} steering follow three is a much longer .*…$`, "m"));
     assert.doesNotMatch(queued, /\.\.\./);
-    await normalMode(app.terminal);
-    await app.terminal.keyboard.press("Escape");
-    await settled(app.terminal);
+    // While the run goes the interrupt key stops it, so the card closes with its own key.
+    await app.terminal.write("\x1bu");
+    await waitMatch(app.terminal, /^(?![\s\S]*session \$)/);
+    assert.doesNotMatch(await app.terminal.text(), /aborted/);
   } finally {
     await app.close();
   }
@@ -264,7 +269,9 @@ test("regular Pi names its model, insets extension statuses, counts down dialogs
     assert.match(asking, /↑↓ move · enter pick · esc cancel/);
     await app.terminal.waitText("The question timed out: Allow rm -rf build?", { timeout: 10_000 });
     await app.terminal.waitText("picked: nothing");
-    await app.capture("pi-dialog-timed-out");
+    // The question closes before Pi answers it, so the notice comes before the extension's reaction.
+    const timedOut = await app.capture("pi-dialog-timed-out");
+    assert.match(timedOut, /The question timed out: Allow rm -rf build\?[\s\S]*picked: nothing/);
     await app.terminal.submit("hello");
     await app.terminal.waitText("/login signs in again");
     const refused = await app.capture("pi-error-remedy");

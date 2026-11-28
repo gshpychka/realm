@@ -100,7 +100,15 @@ test("sizes and deadlines read as the operator says them", () => {
   expect(byteSize(8192)).toBe("8 KiB");
   expect(byteSize(222_222)).toBe("217 KiB");
   expect(byteSize(64 * 1024 * 1024)).toBe("64 MiB");
-  expect(timeLeft(4 * 3_600_000 + 1_000, 1_000)).toBe("4h 0m left");
-  expect(timeLeft(45 * 60_000, 0)).toBe("45m 0s left");
-  expect(timeLeft(1_000, 5_000)).toBe("overdue");
+  expect(timeLeft(1_000, 5_000)).toEqual({ text: "overdue", holds: null });
+});
+
+test("a deadline counts down by the minute, hours past an hour, and seconds only in its last minute", () => {
+  expect(timeLeft(4 * 3_600_000 + 1_000, 1_000)).toEqual({ text: "4h 0m left", holds: 1_000 });
+  // Forty-four and a half minutes read as forty-four until fewer than forty-four whole minutes remain.
+  expect(timeLeft(44 * 60_000 + 30_000, 0)).toEqual({ text: "44m left", holds: 31_000 });
+  expect(timeLeft(44 * 60_000 - 1_000, 0).text).toBe("43m left");
+  expect(timeLeft(59_500, 0)).toEqual({ text: "1m left", holds: 500 });
+  expect(timeLeft(59_000, 0)).toEqual({ text: "59s left", holds: 1_000 });
+  expect(timeLeft(1, 0)).toEqual({ text: "1s left", holds: 1 });
 });

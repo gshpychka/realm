@@ -98,7 +98,7 @@ for (const stopped of [false, true])
     }
   });
 
-test("applying to the operator's workspace waits for a second press, which any other key forgoes", async () => {
+test("applying to the operator's workspace waits for a second press, which any other key or esc forgoes", async () => {
   const task = {
     id: "builder",
     role: "builder",
@@ -144,7 +144,7 @@ test("applying to the operator's workspace waits for a second press, which any o
           detail={detail}
           taskId="builder"
           rows={20}
-          close={() => {}}
+          close={() => actions.push("close")}
           integrate={() => actions.push("integrate")}
           retry={() => actions.push("retry")}
           revise={() => actions.push("revise")}
@@ -168,6 +168,13 @@ test("applying to the operator's workspace waits for a second press, which any o
     expect(actions).toEqual([]);
     press(app, "a");
     expect(actions).toEqual(["apply"]);
+    // Esc steps out of a waiting confirmation, and only the next one closes the panel.
+    press(app, "a", "\x1b");
+    await app.renderOnce();
+    expect(actions).toEqual(["apply"]);
+    expect(app.captureCharFrame()).toContain("a apply · e revise · esc back");
+    press(app, "\x1b");
+    expect(actions).toEqual(["apply", "close"]);
   } finally {
     flushSync(() => root.unmount());
     app.renderer.destroy();

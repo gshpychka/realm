@@ -17,7 +17,7 @@ export interface WorkingProps {
   closed: string | null;
   /** The keys that reach the interrupt from where the draft stands, such as `esc esc`. */
   escapes: string;
-  /** What the operator calls the agent, such as `pi` or the role a Dura task plays. */
+  /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
   agent: string;
 }
 
@@ -48,7 +48,8 @@ export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
   const exit = useKeyHint("app.exit");
   const now = useNow(view.running || view.retry !== null || view.phase === "compacting");
   const { width } = useTerminalDimensions();
-  const beside = useMascotTakes("working") ? BESIDE_FIRE : PADDING;
+  // The busy line's words, cut at their end to what the padding and the fire leave.
+  const room = width - (useMascotTakes("working") ? STATUS_INSET : PADDING);
   const tick = Math.floor(now / 1000);
   if (closed) {
     const quit = clear ? `${clear} twice to quit` : exit ? `${exit} to quit` : null;
@@ -59,16 +60,18 @@ export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
       />
     );
   }
+  if (hint && (view.retry || view.phase === "compacting" || view.running))
+    return <Busy text={ellipsize(hint, room)} tone={theme.dim} tick={tick} />;
   if (view.retry) {
     const wait = Math.max(0, Math.ceil((view.retry.at - now) / 1000));
+    const retrying = `${glyphs.retrying} retrying ${view.retry.attempt}${view.retry.maxAttempts ? `/${view.retry.maxAttempts}` : ""} in ${wait}s${escapes ? ` · ${escapes} cancels` : ""}`;
+    // The error takes what the countdown leaves, after its separator.
+    const error = ellipsize(explain(view.retry.error).text, room - Bun.stringWidth(`${retrying} · `));
     return (
       <Busy
-        text={
-          hint ??
-          `${glyphs.retrying} retrying ${view.retry.attempt}${view.retry.maxAttempts ? `/${view.retry.maxAttempts}` : ""} in ${wait}s${escapes ? ` · ${escapes} cancels` : ""} · `
-        }
-        error={hint ? undefined : explain(view.retry.error).text}
-        tone={hint ? theme.dim : theme.error}
+        text={ellipsize(error ? `${retrying} · ` : retrying, room)}
+        error={error}
+        tone={theme.error}
         tick={tick}
       />
     );
@@ -76,14 +79,13 @@ export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
   if (view.phase === "compacting")
     return (
       <Busy
-        text={hint ?? `${glyphs.compacting} compacting${escapes ? ` · ${escapes} cancels` : ""}`}
-        tone={hint ? theme.dim : theme.tool}
+        text={ellipsize(`${glyphs.compacting} compacting${escapes ? ` · ${escapes} cancels` : ""}`, room)}
+        tone={theme.tool}
         tick={tick}
       />
     );
   if (view.running) {
-    if (hint) return <Busy text={hint} tone={theme.dim} tick={tick} />;
-    const line = workingLine(view, now, escapes, width - beside);
+    const line = workingLine(view, now, escapes, room);
     const text = (
       <>
         <span fg={DOING[line.kind]}>{line.doing}</span>
@@ -110,7 +112,7 @@ const FIRE_COLS = 5;
 const FIRE_ROWS = 2;
 /** Columns the busy line's padding takes from its words, and with the fire and its gap. */
 const PADDING = 2;
-const BESIDE_FIRE = PADDING + FIRE_COLS + 1;
+export const STATUS_INSET = PADDING + FIRE_COLS + 1;
 
 /** The colour of what the run is doing; a wait on the operator stands out. */
 const DOING: Record<WorkingLine["kind"], string> = {
@@ -121,14 +123,15 @@ const DOING: Record<WorkingLine["kind"], string> = {
   operator: palette.yellow,
 };
 
+/** The busy line, its words already cut to fit: a selectable error may follow what pi is doing. */
 function Busy({ text, error, tone, tick }: { text: ReactNode; error?: string; tone: string; tick: number }) {
   const line = (
     <box flexDirection="row">
-      <text selectable={false} fg={tone} flexShrink={0} maxWidth="100%" truncate wrapMode="none" key={tick}>
+      <text selectable={false} fg={tone} flexShrink={0} wrapMode="none" key={tick}>
         {text}
       </text>
       {error ? (
-        <text fg={tone} truncate wrapMode="none">
+        <text fg={tone} flexShrink={0} wrapMode="none">
           {error}
         </text>
       ) : null}

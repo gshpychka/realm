@@ -25,10 +25,11 @@ import {
   teamRows,
   wideTeam,
 } from "./components/team.tsx";
-import { statusUp, Working } from "./components/working.tsx";
+import { STATUS_INSET, statusUp, Working } from "./components/working.tsx";
 import { editExternally } from "./external-editor.ts";
 import { firelight } from "./firelight.ts";
 import { usePullRequest } from "./github/use-pull-request.ts";
+import { type Hint, hintLine, MOVE } from "./hints.ts";
 import { type Action, actionFor, type Keymap, loadKeymap } from "./keymap.ts";
 import { KeymapProvider, keyHint } from "./keymap-context.tsx";
 import { modelTitle } from "./model-names.ts";
@@ -36,6 +37,7 @@ import { PasteEvents } from "./paste-events.ts";
 import type { PiUiPort } from "./pi.ts";
 import { PiStatuses, PiWidgets, usePiUI } from "./pi-ui.tsx";
 import { remains } from "./remains.ts";
+import { ellipsize } from "./text-width.ts";
 import { theme } from "./theme.ts";
 import { worked } from "./transcript.ts";
 import { useBranch } from "./use-branch.ts";
@@ -58,7 +60,7 @@ export interface AppProps {
     access?: "control" | "observe" | "archive";
   };
   team?: TeamContext;
-  /** What the operator calls the agent: `pi` for regular Pi, the task's role in Dura. */
+  /** What the operator calls the agent: `pi` for regular Pi, `the builder` for a Dura task's role. */
   agent?: string;
   initialView?: ConversationState;
   onCaptureView?(capture: () => ConversationState): void;
@@ -106,7 +108,7 @@ const PAGES = new Map<string, -1 | 1>([
   ["pagedown", 1],
 ]);
 /** The keys that walk the boxes of work, shown while they do. */
-const BROWSE_HINT = "↑↓ pick · enter open · j k scroll · esc back";
+const BROWSE_KEYS: readonly Hint[] = [MOVE, ["enter", "open"], ["j k", "scroll"], ["esc", "back"]];
 
 /** Holds the fire on one frame, for captures and reduced motion. */
 const STILL = process.env.PITUITARY_STILL === "1";
@@ -186,6 +188,8 @@ export function App({
   const interruptHint = keymap["app.interrupt"]
     .map((binding) => (/^(esc|escape)$/i.test(binding) ? escapes : binding))
     .join(" / ");
+  // The interrupt stops a run, a retry or a compaction; with none going it closes the footer's card.
+  const stops = view.running || view.retry !== null || view.phase === "compacting";
   const stage = useMemo(() => new MascotStage(TRAVELS ? undefined : ["corner"]), []);
   const queued = view.queue.steering.length + view.queue.followUp.length;
   const operatorDialog: DialogRequest | null = operatorQuestion
@@ -472,9 +476,12 @@ export function App({
     if (closed) {
       // With pi gone nothing can take the text, so it stays where the operator can keep it.
       editor.current?.set(text);
-      flash(
-        reconnectHint(onReload ? (keyHint(keymap, "app.ui.reload") ?? "/reload-ui") : null, state?.sessionId),
-      );
+      // Pi writes a session's file with its first message, so a session without one has nothing to resume.
+      const resumable =
+        state?.sessionFile && view.entries.some((entry) => entry.kind === "user")
+          ? state.sessionId
+          : undefined;
+      flash(reconnectHint(onReload ? (keyHint(keymap, "app.ui.reload") ?? "/reload-ui") : null, resumable));
       return;
     }
     toBottom();
@@ -756,7 +763,8 @@ export function App({
     }
   });
 
-  const shownHint = browsing ? BROWSE_HINT : hint;
+  // The browse keys fit the narrower of the places a hint shows: the status line beside the fire.
+  const shownHint = browsing ? hintLine(BROWSE_KEYS, null, screenColumns - STATUS_INSET) : hint;
   return (
     <KeymapProvider value={keymap}>
       <MascotProvider value={stage}>
@@ -778,6 +786,7 @@ export function App({
               local={workspace.local && !readonly}
               agent={agent}
               modelSelectable={canChooseModel && !readonly}
+              providerUsage={piUI.usage !== undefined}
               display={display}
               window={window}
               browsing={browsing}
@@ -788,8 +797,8 @@ export function App({
           {!wide && team ? <TeamCards team={team} wide={false} open={selectTask} /> : null}
           {team?.busy || team?.error ? (
             <box paddingLeft={1} flexShrink={0}>
-              <text fg={team.error ? theme.error : theme.dim} truncate wrapMode="none">
-                {plain(team.error ?? team.busy ?? "")}
+              <text fg={team.error ? theme.error : theme.dim} wrapMode="none">
+                {ellipsize(plain(team.error ?? team.busy ?? ""), screenColumns - 1)}
               </text>
             </box>
           ) : null}
@@ -841,9 +850,12 @@ export function App({
             <PiWidgets widgets={piUI.widgets} placement="aboveEditor" />
             {readonly ? (
               <box paddingLeft={1} paddingTop={1} height={2}>
-                <text selectable={false} fg={theme.dim} truncate wrapMode="none">
-                  {shownHint ||
-                    `${archived ? "Archived · read only" : "Observing · alt+i join"} · ${keyHint(keymap, "app.message.copy")} copy · / commands · ${keyHint(keymap, "app.exit")} close`}
+                <text selectable={false} fg={theme.dim} wrapMode="none">
+                  {ellipsize(
+                    shownHint ||
+                      `${archived ? "Archived · read only" : "Observing · alt+i join"} · ${keyHint(keymap, "app.message.copy")} copy · / commands · ${keyHint(keymap, "app.exit")} close`,
+                    screenColumns - 1,
+                  )}
                 </text>
               </box>
             ) : (
@@ -894,6 +906,7 @@ export function App({
               usage={piUI.usage}
               cardOpen={card.open}
               onCard={card.toggle}
+              escapes={stops ? undefined : interruptHint || undefined}
             />
           </box>
           <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />

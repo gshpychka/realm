@@ -21,6 +21,23 @@ describe("what deals with an error", () => {
     expect(explain("OAuth token has expired", new Set(["compact"])).remedy).toBeUndefined();
   });
 
+  test("a refused permission is not a sign-in problem, so it offers no /login", () => {
+    const refused =
+      '403 {"type":"error","error":{"type":"permission_error","message":"Your API key does not have permission to use the specified resource."}}';
+    expect(explain(refused, PI_COMMANDS)).toEqual({
+      text: "403 Your API key does not have permission to use the specified resource.",
+      detail: refused,
+    });
+  });
+
+  test("a status is read where providers put it, never from a stack frame's line number", () => {
+    const crash =
+      "TypeError: Cannot read properties of undefined (reading 'x')\n    at run (/ext/index.ts:401:9)\n    at go (/ext/loop.ts:529:3)";
+    expect(explain(crash, PI_COMMANDS).remedy).toBeUndefined();
+    expect(explain("Error: boom\n    at f (/x/y.ts:429:3)").remedy).toBeUndefined();
+    expect(explain("Request failed with status code 529").remedy).toBe("wait a moment, then send again");
+  });
+
   test("an overloaded or rate-limited provider asks for patience", () => {
     expect(explain("529 overloaded_error")).toEqual({
       text: "529 overloaded_error",

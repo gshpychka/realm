@@ -162,17 +162,12 @@ function Notice({
   return (
     <box flexDirection="column" flexShrink={0} marginTop={1}>
       <Marked mark={mark} colour={colour}>
-        <box flexDirection="row">
-          <text fg={colour}>
-            {text}
-            {remedy ? <span fg={theme.assistant}> · {remedy}</span> : null}
-          </text>
-          {detail && !expanded && expand ? (
-            <text selectable={false} fg={theme.dim} flexShrink={0} wrapMode="none">
-              {` · ${expand}`}
-            </text>
-          ) : null}
-        </box>
+        {/* The key that shows the rest flows after the remedy, so a wrapped remedy stays whole. */}
+        <text fg={colour}>
+          {text}
+          {remedy ? <span fg={theme.assistant}> · {remedy}</span> : null}
+          {detail && !expanded && expand ? <span fg={theme.dim}> · {expand}</span> : null}
+        </text>
         {detail && expanded ? <text fg={theme.dim}>{detail}</text> : null}
       </Marked>
     </box>
@@ -218,18 +213,24 @@ const KEY_GAP = 2;
 /** Cells the key column leaves for what the keys do, where it can. */
 const DOES_LEAST = 16;
 
-/** The empty conversation: where to start, and the keys. */
+/**
+ * The empty conversation: where to start, and the keys. When one row's words do not fit, every
+ * row that has shorter words takes them, so the list reads alike.
+ */
 export function Welcome({
   escapes,
   agent,
   local = true,
   modelSelectable = local,
+  providerUsage = false,
 }: {
   escapes: string;
-  /** What the operator calls the agent, such as `pi` or the role a Dura task plays. */
+  /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
   agent: string;
   local?: boolean;
   modelSelectable?: boolean;
+  /** The footer's card shows the provider's usage beside the session's cost. */
+  providerUsage?: boolean;
 }) {
   const { width } = useTerminalDimensions();
   const bindings = useKeymap();
@@ -251,7 +252,9 @@ export function Welcome({
       [bound("app.thinking.toggle"), "show or hide thinking", "toggle thinking"],
       [modelSelectable ? bound("app.model.select") : "", "pick a model"],
       [modelSelectable ? bound("app.model.cycleForward") : "", "take the next model", "next model"],
-      [bound("app.usage.toggle"), "show usage and cost", "usage and cost"],
+      providerUsage
+        ? [bound("app.usage.toggle"), "show usage and cost", "usage and cost"]
+        : [bound("app.usage.toggle"), "show session cost", "session cost"],
       [bound("app.editor.external"), "edit in $VISUAL"],
       [
         [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
@@ -266,6 +269,7 @@ export function Welcome({
     Math.min(Math.max(...rows.map(([keys]) => Bun.stringWidth(keys))) + KEY_GAP, inner - DOES_LEAST),
   );
   const room = inner - keyColumn;
+  const short = rows.some(([, does, brief]) => brief !== undefined && Bun.stringWidth(does) > room);
   return (
     <box
       flexDirection="column"
@@ -280,13 +284,13 @@ export function Welcome({
         Ask {agent} something to get started.
       </text>
       <box flexDirection="column" flexShrink={0} marginTop={1}>
-        {rows.map(([keys, does, short]) => (
+        {rows.map(([keys, does, brief]) => (
           <box key={keys} flexDirection="row" flexShrink={0} height={1}>
             <text selectable={false} fg={theme.tool} width={keyColumn} flexShrink={0} wrapMode="none">
               {ellipsize(keys, keyColumn - KEY_GAP)}
             </text>
             <text selectable={false} fg={theme.dim} wrapMode="none">
-              {ellipsize(short && Bun.stringWidth(does) > room ? short : does, room)}
+              {ellipsize(short && brief ? brief : does, room)}
             </text>
           </box>
         ))}
@@ -301,9 +305,11 @@ export interface ConversationProps {
   running: boolean;
   /** Local sessions can complete paths and choose models from the operator's configuration. */
   local?: boolean;
-  /** What the operator calls the agent, such as `pi` or the role a Dura task plays. */
+  /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
   agent: string;
   modelSelectable?: boolean;
+  /** The footer's card shows the provider's usage beside the session's cost. */
+  providerUsage?: boolean;
   display: Display;
   /** How many of the latest entries are drawn; the earlier ones wait for the operator to scroll back. */
   window: number;
@@ -477,6 +483,7 @@ export function Conversation({
   local,
   agent,
   modelSelectable,
+  providerUsage,
   display,
   window,
   browsing,
@@ -494,7 +501,13 @@ export function Conversation({
 
   if (entries.length === 0)
     return (
-      <Welcome escapes={display.escapes} agent={agent} local={local} modelSelectable={modelSelectable} />
+      <Welcome
+        escapes={display.escapes}
+        agent={agent}
+        local={local}
+        modelSelectable={modelSelectable}
+        providerUsage={providerUsage}
+      />
     );
   const rows = boxRows(height);
   return (

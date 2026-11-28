@@ -3,12 +3,11 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { plain } from "@pituitary/session";
 import type { RunDetail } from "@realm/dura/types";
 import { useEffect, useRef, useState } from "react";
-import { type Hint, hintLine, SELECTED, UNSELECTED } from "../hints.ts";
+import { CURRENT, type Hint, hintLine } from "../hints.ts";
 import { keyHint, useKeymap } from "../keymap-context.tsx";
 import { counted } from "../plural.ts";
 import { ellipsize, wrapCells } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
-import { duration } from "../working.ts";
 import { GRACE_MS } from "./dialog.tsx";
 import { Markdown } from "./markdown.tsx";
 
@@ -141,8 +140,8 @@ export function teamRows(team: TeamContext, columns: number): number {
   return 1 + cards + (team.busy || team.error ? 1 : 0);
 }
 
-/** Cells of the mark before a card's role, which its state and badges sit beyond. */
-const MARK_CELLS = 2;
+/** Cells a card's rows are set in by, which nests the cards under the header's task. */
+const INDENT = 2;
 
 export function resultBadges(detail: RunDetail, task: TeamTask): string {
   const verification = detail.verifications.find((item) => item.id === task.verificationId);
@@ -182,14 +181,15 @@ export function readyToApply(detail: RunDetail, task: TeamTask): boolean {
 function TaskCard({
   detail,
   task,
-  selected,
+  current,
   open,
   width,
   compact = false,
 }: {
   detail: RunDetail;
   task: TeamTask;
-  selected: boolean;
+  /** The conversation is attached to this task. */
+  current: boolean;
   open(): void;
   /** Columns the card takes, its padding included. */
   width: number;
@@ -199,14 +199,15 @@ function TaskCard({
   const badges = compact ? "" : resultBadges(detail, task);
   // The panel's cards wrap the objective to a second row and the narrow list keeps one; both
   // cut at the end, so objectives that start alike still read apart.
-  const room = Math.max(1, width - 2 - MARK_CELLS);
-  const role = task.role ?? "solo";
+  const room = Math.max(1, width - 2 - INDENT);
+  const role = plain(task.role ?? "solo");
+  const mark = current ? CURRENT : "";
   const [title = "", ...more] = wrapCells(
-    `${role} · ${plain(task.objective).split("\n")[0] || "Conversation"}`,
+    `${role}${mark} · ${plain(task.objective).split("\n")[0] || "Conversation"}`,
     room,
     compact ? 1 : 2,
   );
-  const indent = " ".repeat(MARK_CELLS);
+  const indent = " ".repeat(INDENT);
   return (
     <box
       flexDirection="column"
@@ -214,15 +215,16 @@ function TaskCard({
       paddingLeft={1}
       paddingRight={1}
       paddingTop={compact ? 0 : 1}
-      backgroundColor={selected ? palette.bar : theme.bg}
+      backgroundColor={current ? palette.bar : theme.bg}
       onMouseDown={(event) => {
         if (event.button === 0) open();
       }}
     >
-      <text selectable={false} wrapMode="none" fg={selected ? theme.assistant : palette.muted}>
-        {selected ? SELECTED : UNSELECTED}
+      <text selectable={false} wrapMode="none" fg={current ? theme.assistant : palette.muted}>
+        {indent}
         {title.slice(0, role.length)}
-        <span fg={theme.dim}>{title.slice(role.length)}</span>
+        <span fg={palette.yellow}>{title.slice(role.length, role.length + mark.length)}</span>
+        <span fg={theme.dim}>{title.slice(role.length + mark.length)}</span>
       </text>
       {more.map((row) => (
         <text key={row} selectable={false} wrapMode="none" fg={theme.dim}>
@@ -244,6 +246,10 @@ function TaskCard({
   );
 }
 
+/**
+ * The run and the task this conversation is attached to, then what needs the operator and the
+ * ways to the tasks and the result. The run's side is cut at its end to leave the other a gap.
+ */
 export function TeamHeader({
   team,
   tasks,
@@ -257,8 +263,20 @@ export function TeamHeader({
   back(): void;
   result(): void;
 }) {
+  const { width } = useTerminalDimensions();
   const task = team.detail.tasks.find((task) => task.id === team.taskId);
   const questions = team.detail.questions.filter((question) => question.status === "open");
+  const returns = team.canBack ? "‹ back · " : "";
+  const asking = questions.length
+    ? `${questions.length} ${questions.length === 1 ? "needs" : "need"} you · `
+    : "";
+  const reported = task?.reportId ? " · result" : "";
+  const where = `${plain(team.detail.run.name)} · ${plain(task?.role ?? "solo")}`;
+  const title = ellipsize(
+    `${where} · ${task ? taskState(team.detail, task) : "connecting"}`,
+    // The padding, the way back, and a cell of gap before the right side.
+    width - 2 - Bun.stringWidth(returns) - Bun.stringWidth(`${asking}tasks${reported}`) - 1,
+  );
   return (
     <box
       flexDirection="row"
@@ -268,44 +286,68 @@ export function TeamHeader({
       paddingRight={1}
       backgroundColor={palette.bar}
     >
-      <text selectable={false} fg={theme.dim} onMouseDown={back}>
-        {team.canBack ? "‹ back · " : ""}
-      </text>
-      <text selectable={false} flexGrow={1} fg={theme.assistant} truncate wrapMode="none" onMouseDown={tasks}>
-        {team.detail.run.name} · {task?.role ?? "solo"}
-        <span fg={theme.dim}> · {task ? taskState(team.detail, task) : "connecting"}</span>
-      </text>
-      <text selectable={false} fg={questions.length ? theme.tool : theme.dim} onMouseDown={attention}>
-        {questions.length ? `${questions.length} ${questions.length === 1 ? "needs" : "need"} you · ` : ""}
-      </text>
-      <text selectable={false} fg={theme.dim} onMouseDown={tasks}>
-        tasks
-      </text>
-      {task?.reportId ? (
-        <text selectable={false} fg={task.status === "accepted" ? theme.ok : theme.tool} onMouseDown={result}>
-          {" "}
-          · result
+      {returns ? (
+        <text selectable={false} fg={theme.dim} flexShrink={0} wrapMode="none" onMouseDown={back}>
+          {returns}
         </text>
       ) : null}
+      <text selectable={false} flexGrow={1} fg={theme.assistant} wrapMode="none" onMouseDown={tasks}>
+        {title.slice(0, where.length)}
+        <span fg={theme.dim}>{title.slice(where.length)}</span>
+      </text>
+      <box flexDirection="row" flexShrink={0}>
+        {asking ? (
+          <text selectable={false} fg={theme.tool} wrapMode="none" onMouseDown={attention}>
+            {asking}
+          </text>
+        ) : null}
+        <text selectable={false} fg={theme.dim} wrapMode="none" onMouseDown={tasks}>
+          tasks
+        </text>
+        {reported ? (
+          <text
+            selectable={false}
+            fg={task?.status === "accepted" ? theme.ok : theme.tool}
+            wrapMode="none"
+            onMouseDown={result}
+          >
+            {reported}
+          </text>
+        ) : null}
+      </box>
     </box>
   );
 }
 
-/** What remains of the run's time, or that it ran past its deadline. */
-export function timeLeft(deadline: number, now: number): string {
-  return deadline > now ? `${duration(deadline - now)} left` : "overdue";
+const SECOND = 1000;
+
+/**
+ * What remains of the run's time, and for how many milliseconds that reading holds. It counts
+ * whole minutes, and hours past an hour, rounded down so it never promises more time than
+ * there is, and seconds only in the last minute.
+ */
+export function timeLeft(deadline: number, now: number): { text: string; holds: number | null } {
+  const left = deadline - now;
+  if (left <= 0) return { text: "overdue", holds: null };
+  const seconds = Math.ceil(left / SECOND);
+  // Each reading holds until the seconds left drop below the least it reads as.
+  if (seconds < 60) return { text: `${seconds}s left`, holds: left - (seconds - 1) * SECOND };
+  const minutes = Math.floor(seconds / 60);
+  const text = minutes < 60 ? `${minutes}m left` : `${Math.floor(minutes / 60)}h ${minutes % 60}m left`;
+  return { text, holds: left - (minutes * 60 - 1) * SECOND };
 }
 
-/** The time now, redrawn each second while `active`. */
-function useNow(active: boolean): number {
+/** The run's time left, redrawn when its reading changes while `active`. */
+function useTimeLeft(deadline: number, active: boolean): string {
   const [now, setNow] = useState(Date.now);
+  const { text, holds } = timeLeft(deadline, now);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each new `now` waits for the reading after it, though `holds` may repeat
   useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [active]);
-  return now;
+    if (!active || holds === null) return;
+    const timer = setTimeout(() => setNow(Date.now()), holds);
+    return () => clearTimeout(timer);
+  }, [active, holds, now]);
+  return text;
 }
 
 export function TeamCards({
@@ -319,7 +361,7 @@ export function TeamCards({
 }) {
   const { width: columns } = useTerminalDimensions();
   const bindings = useKeymap();
-  const now = useNow(wide);
+  const left = useTimeLeft(team.detail.run.deadline, wide);
   const narrow = narrowTasks(team.detail, team.taskId);
   const items = wide ? team.detail.tasks : narrow.tasks;
   const width = wide ? teamPanelWidth(columns) : columns;
@@ -343,8 +385,7 @@ export function TeamCards({
       {wide ? (
         <box paddingLeft={1} paddingTop={1} flexShrink={0}>
           <text selectable={false} fg={theme.dim}>
-            work · {live}/{team.detail.run.limits.maxLiveAttempts} active ·{" "}
-            {timeLeft(team.detail.run.deadline, now)}
+            work · {live}/{team.detail.run.limits.maxLiveAttempts} active · {left}
           </text>
         </box>
       ) : null}
@@ -355,7 +396,7 @@ export function TeamCards({
               key={task.id}
               detail={team.detail}
               task={task}
-              selected={task.id === team.taskId}
+              current={task.id === team.taskId}
               open={() => open(task.id)}
               // The panel's left border takes a column of its width.
               width={width - 1}
@@ -368,7 +409,7 @@ export function TeamCards({
             key={task.id}
             detail={team.detail}
             task={task}
-            selected={false}
+            current={false}
             open={() => open(task.id)}
             width={width}
             compact
@@ -376,7 +417,7 @@ export function TeamCards({
         ))
       )}
       {!wide && narrow.hidden > 0 ? (
-        <box paddingLeft={1 + MARK_CELLS} flexShrink={0} height={1}>
+        <box paddingLeft={1 + INDENT} flexShrink={0} height={1}>
           <text selectable={false} fg={narrow.hiddenFailed ? theme.error : theme.dim} wrapMode="none">
             {ellipsize(
               [
@@ -386,7 +427,7 @@ export function TeamCards({
               ]
                 .filter(Boolean)
                 .join(" · "),
-              width - 2 - MARK_CELLS,
+              width - 2 - INDENT,
             )}
           </text>
         </box>
@@ -484,11 +525,13 @@ export function TaskResult({
       (action) => WEIGHTY_KEYS[action] === key.name && weighty[action].can,
     );
     const confirmed = pressed !== undefined && waiting.current === pressed;
+    const wasArmed = waiting.current !== null;
     waiting.current = pressed && !confirmed ? pressed : null;
     setArmed(waiting.current);
     if (key.name === "escape") {
       key.preventDefault();
-      close();
+      // Esc steps out of a waiting confirmation first, and closes the panel from there.
+      if (!wasArmed) close();
       return;
     }
     if (key.name === "pageup" || key.name === "pagedown") {

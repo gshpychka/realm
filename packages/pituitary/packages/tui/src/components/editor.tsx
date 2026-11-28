@@ -53,7 +53,7 @@ export interface EditorProps {
   steering: boolean;
   /** False while something else, such as a dialog, holds the keyboard. */
   focused: boolean;
-  /** What the operator calls the agent, such as `pi` or the role a Dura task plays. */
+  /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
   agent: string;
   /** Draft and cursor restored when this conversation is attached. */
   initialDraft?: string;

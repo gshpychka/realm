@@ -70,13 +70,20 @@ test("team conversations, attention and retained results stay readable in compac
     await app.terminal.type("r");
     await app.terminal.waitText("r again to start a fresh attempt");
     await app.capture("team-retry-confirm");
+    // Esc steps out of the confirmation, and the next esc closes the panel.
+    await app.terminal.keyboard.press("Escape");
+    await app.terminal.waitText("r retry · e revise");
     await app.terminal.keyboard.press("Escape");
     await waitMatch(app.terminal, /Keep this draft while I inspect the team/);
     await app.close();
     app = undefined;
     app = await launch(148);
     const wide = await app.capture("team-wide");
-    assert.match(wide, /work · 2\/4 active · 4\dm \d+s left/);
+    // The deadline counts minutes, not seconds, until its last minute.
+    assert.match(wide, /work · 2\/4 active · 4\dm left/);
+    // The attached task says so in words; the arrow marks only a list's highlighted row.
+    assert.match(wide, /coordinator · current · /);
+    assert.doesNotMatch(wide, /▶/);
     assert.match(wide, /verified 2\/2/);
     // Objectives that start alike are cut at their ends, so the two builders read apart.
     assert.match(wide, /builder · Build keyboard navigation and\n.*│ {3}focus handling$/m);

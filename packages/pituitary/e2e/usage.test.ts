@@ -54,6 +54,12 @@ for (const cols of [44, 120])
 for (const cols of [44, 120])
   test(`provider usage opens, observes API limits, and closes at ${cols} columns`, async () => {
     let requests = 0;
+    // The reply streams its words, then holds the run open until the test lets it finish.
+    let finish = () => {};
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const sse = (event: unknown) => `data: ${typeof event === "string" ? event : JSON.stringify(event)}\n\n`;
     const server = createServer((request, response) => {
       request.resume();
       request.on("end", () => {
@@ -64,23 +70,22 @@ for (const cols of [44, 120])
           "x-ratelimit-remaining-requests": "0",
           "x-ratelimit-reset-requests": "1m",
         });
-        response.end(
-          [
-            {
-              id: "chunk",
-              choices: [
-                {
-                  index: 0,
-                  delta: { role: "assistant", content: "Observed the API response." },
-                  finish_reason: null,
-                },
-              ],
-            },
-            { id: "chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-            "[DONE]",
-          ]
-            .map((event) => `data: ${typeof event === "string" ? event : JSON.stringify(event)}\n\n`)
-            .join(""),
+        response.write(
+          sse({
+            id: "chunk",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "Observed the API response." },
+                finish_reason: null,
+              },
+            ],
+          }),
+        );
+        void finished.then(() =>
+          response.end(
+            sse({ id: "chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }) + sse("[DONE]"),
+          ),
         );
       });
     });
@@ -109,9 +114,15 @@ for (const cols of [44, 120])
       assert.equal(requests, 0);
       const unavailable = await app.capture(`usage-unavailable-${cols}`);
       assert.match(unavailable, /usage unavailable/);
-      assert.match(unavailable, /alt\+u \/ esc close/);
+      // Esc closes the card while nothing runs, twice from the draft's insert mode.
+      assert.match(unavailable, /alt\+u \/ esc esc close/);
       await app.terminal.submit("inspect");
       await app.terminal.waitText("Observed the API response.");
+      // While the run goes, esc interrupts it, so the card names only its own key.
+      const running = await waitMatch(app.terminal, /alt\+u close/);
+      assert.doesNotMatch(running, /alt\+u \/ esc/);
+      finish();
+      await waitMatch(app.terminal, /alt\+u \/ esc esc close/);
       await app.terminal.waitIdle();
       const screen = await app.capture(`usage-api-${cols}`);
       assert.match(screen, /100/);
@@ -130,6 +141,7 @@ for (const cols of [44, 120])
       await app.terminal.keyboard.press("Escape");
       await waitMatch(app.terminal, /^(?![\s\S]*session estimate)/);
     } finally {
+      finish();
       await app?.close();
       server.close();
     }

@@ -12,27 +12,42 @@ const KEPT = 160;
 
 /** What deals with errors whose words match; one naming a command is offered only while it can run. */
 interface Remedy {
-  matches: RegExp;
+  matches: readonly RegExp[];
   command?: string;
   says: string;
 }
 
-/** Remedies by what the error says, the first match winning. */
+/**
+ * An HTTP status where providers put it: leading the error, as `401 {…}` or `429: Rate limit…`
+ * read, or after the word `status`. A bare number elsewhere, such as a stack frame's line, is
+ * not a status.
+ */
+function status(codes: string): RegExp {
+  return new RegExp(`^\\s*(?:${codes})\\b|\\bstatus(?: code)?:? (?:${codes})\\b`, "i");
+}
+
+/**
+ * Remedies by what the error says, the first match winning. A refused permission (403) has
+ * none: the credential works, and what it may not reach is the account's to change.
+ */
 const REMEDIES: readonly Remedy[] = [
   {
-    matches:
+    matches: [
       /prompt is too long|context (?:length|window|limit)|maximum context|exceeds? (?:the )?context|too many (?:input )?tokens/i,
+    ],
     command: "compact",
     says: "/compact frees context",
   },
   {
-    matches:
-      /\b40[13]\b|unauthori[sz]ed|forbidden|invalid (?:x-)?(?:api[ _-]?key|token|credential)|(?:token|credential)s? (?:has )?expired|authentication (?:failed|error)/i,
+    matches: [
+      status("401"),
+      /\bunauthori[sz]ed\b|invalid (?:x-)?(?:api[ _-]?key|token|credential)|(?:api[ _-]?key|token|credential)s? (?:is |are )?(?:not valid|invalid)|(?:token|credential)s? (?:has |have )?(?:been )?(?:expired|revoked)|authentication (?:failed|error)/i,
+    ],
     command: "login",
     says: "/login signs in again",
   },
   {
-    matches: /\b(?:429|529)\b|rate.?limit|overloaded|too many requests/i,
+    matches: [status("429|529"), /rate.?limit|overloaded|too many requests/i],
     says: "wait a moment, then send again",
   },
 ];
@@ -56,8 +71,10 @@ export function explain(text: string, commands: ReadonlySet<string> = new Set())
   };
 }
 
+/** The remedy for what `text` says once its stack and diagnostics are out, which name no cause. */
 function remedyFor(text: string, commands: ReadonlySet<string>): string | undefined {
-  const found = REMEDIES.find((each) => each.matches.test(text));
+  const words = said(text);
+  const found = REMEDIES.find((each) => each.matches.some((pattern) => pattern.test(words)));
   return found && (!found.command || commands.has(found.command)) ? found.says : undefined;
 }
 

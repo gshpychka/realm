@@ -78,10 +78,11 @@ context or `/login` for a refused credential; `ctrl+o` shows the rest of the err
 ## Provider usage
 
 The footer's credit-card icon opens usage for the selected provider credential. Click
-it, press `alt+u`, or use `/usage` to open the details; `alt+u`, `esc`, or `/usage off`
-closes them and `/usage refresh` requests an update. Without a provider report, as in
-Dura, the card shows the session's estimated cost. Percentages mean **used**. The panel keeps the session's estimated
-model cost separate from provider-reported account usage.
+it, press `alt+u`, or use `/usage` to open the details; `alt+u` or `/usage off` closes
+them, as does `esc` (twice from insert mode) while nothing runs for it to interrupt, and
+`/usage refresh` requests an update. Without a provider report, as in Dura, the card
+shows the session's estimated cost. Percentages mean **used**. The panel keeps the
+session's estimated model cost separate from provider-reported account usage.
 
 | Credential | Provider-reported data |
 | --- | --- |
@@ -186,13 +187,18 @@ external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 | --- | --- |
 | enter / shift+enter | Send / newline |
 | alt+enter | Queue a follow-up |
-| esc | Leave insert mode, then interrupt; close a picker or the usage card |
+| esc | Leave insert mode, then interrupt; close a picker, or the usage card while nothing runs |
 | ctrl+l / ctrl+p / shift+tab | Choose model / cycle model / cycle thinking |
 | ctrl+o / ctrl+t / ctrl+f | Expand work / toggle thinking / browse work |
 | ctrl+g | Edit externally |
 | alt+u | Show usage and cost |
 | pgup / pgdn | Scroll |
 | ctrl+c twice / ctrl+d | Close |
+
+Like Pi's own `alt` keys, `alt+u` takes a chord Neovim's insert mode reads as `esc` then
+`u`. Where the terminal delivers a quick `esc u` as that chord, as one without the kitty
+keyboard protocol may, it toggles the card instead of undoing; rebind `app.usage.toggle`
+if that bites.
 
 `/` completes commands. `/hotkeys` shows your bindings. Local conversations complete
 `@` paths and show the branch and GitHub pull request. `PITUITARY_GH=""` disables

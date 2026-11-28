@@ -27,7 +27,12 @@ export const ACTIONS = {
   "app.suspend": ["ctrl+z"],
   "app.model.select": ["ctrl+l"],
   "app.model.cycleForward": ["ctrl+p"],
-  /** pituitary's own: opens and closes the footer's card of provider usage and session cost. */
+  /**
+   * pituitary's own: opens and closes the footer's card of provider usage and session cost.
+   * Like pi's alt keys it takes a chord nvim's insert mode reads as esc then u. Where the terminal
+   * delivers a quick esc u as that chord, as one without the kitty keyboard protocol may, it
+   * toggles the card instead of undoing.
+   */
   "app.usage.toggle": ["alt+u"],
 } as const satisfies Record<string, readonly string[]>;
 

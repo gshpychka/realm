@@ -77,7 +77,7 @@ root.render(
   <App
     link={client}
     // A remote fixture plays the builder role, which a Dura attachment names its agent after.
-    agent={local ? "pi" : "builder"}
+    agent={local ? "pi" : "the builder"}
     workspace={{
       cwd,
       local: local && process.env.PITUITARY_REMOTE_UI !== "1",

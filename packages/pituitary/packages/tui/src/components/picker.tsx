@@ -1,7 +1,7 @@
 import type { InputRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useMemo, useRef, useState } from "react";
-import { hintLine, MOVE, SELECTED, UNSELECTED } from "../hints.ts";
+import { CURRENT, hintLine, MOVE, SELECTED, UNSELECTED } from "../hints.ts";
 import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { Detail, type DetailIcon } from "./detail.tsx";
@@ -30,9 +30,6 @@ export interface PickerSpec {
 /** Rows the list shows before it scrolls, room permitting. */
 const ROWS = 10;
 
-/** The mark after the item in effect now, which says so without relying on its colour. */
-const CURRENT = " ✓";
-
 function matchingItems(items: readonly PickItem[], query: string) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return items
@@ -47,13 +44,17 @@ function matchingItems(items: readonly PickItem[], query: string) {
     );
 }
 
-/** An item's label, its current mark, and its detail in `columns`, cut at the end: the detail gives way first. */
+/**
+ * An item's label, its current mark, and its detail in `columns`, cut at the end: the detail
+ * gives way first. A current item's detail follows its mark after a separator.
+ */
 function rowText(item: PickItem, columns: number) {
   const label = ellipsize(item.label, columns);
   const current = Boolean(item.current) && Bun.stringWidth(label + CURRENT) <= columns;
-  // The detail starts after a space, or a space, its icon and a space.
-  const lead = item.icon ? Bun.stringWidth(item.icon.glyph) + 2 : 1;
-  const room = columns - Bun.stringWidth(label) - (current ? Bun.stringWidth(CURRENT) : 0) - lead;
+  // The detail starts after a space, or a space, its icon and a space; after the mark, a ` ·` first.
+  const lead =
+    (current ? Bun.stringWidth(`${CURRENT} ·`) : 0) + (item.icon ? Bun.stringWidth(item.icon.glyph) + 2 : 1);
+  const room = columns - Bun.stringWidth(label) - lead;
   return { label, current, detail: item.detail && room > 0 ? ellipsize(item.detail, room) : "" };
 }
 
@@ -138,8 +139,8 @@ export function Picker({
         move(direction === "up" ? -1 : 1);
       }}
     >
-      <text selectable={false} fg={theme.user} truncate wrapMode="none">
-        {spec.title}
+      <text selectable={false} fg={theme.user} wrapMode="none">
+        {ellipsize(spec.title, width - (compact ? 2 : 4))}
       </text>
       <box flexDirection="row">
         <text selectable={false} fg={theme.dim}>
@@ -204,6 +205,7 @@ export function Picker({
             >
               {row.label}
               {row.current ? <span fg={palette.yellow}>{CURRENT}</span> : null}
+              {row.current && row.detail ? <span fg={theme.dim}> ·</span> : null}
               {row.detail ? <Detail text={row.detail} icon={item.icon} /> : null}
             </text>
           </box>

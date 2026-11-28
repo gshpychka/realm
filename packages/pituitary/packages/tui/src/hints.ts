@@ -19,18 +19,36 @@ export const SELECTED = "▶ ";
 /** The same cells beside every other row. */
 export const UNSELECTED = "  ";
 
+/**
+ * The words after the item in effect now, such as the current model or the task this
+ * conversation is attached to, which say so without relying on colour. A word, since `✓`
+ * already reads as a passed check and `▶` as the highlighted row.
+ */
+export const CURRENT = " · current";
+
 /** Where the highlighted row stands in a list, as the end of its hint line reads. */
 export function position(index: number, total: number): string {
   return `${index + 1} of ${total}`;
 }
 
+/** Hints every list reads alike, which a narrow line leaves out first, in this order. */
+const SPARED: readonly Hint[] = [MOVE, PAGE];
+
 /**
- * A popup's hint line: its keys in order, then where the list stands, cut at the end to
- * `columns`. A key the operator unbound, given as null, is left out.
+ * A popup's hint line: its keys in order, then where the list stands, in `columns`. A key the
+ * operator unbound, given as null, is left out. A line too long for its columns drops the
+ * moving and paging keys before anything else, so the key that dismisses it and the count
+ * stay; only then is it cut at the end.
  */
 export function hintLine(hints: readonly (Hint | null)[], count: string | null, columns: number): string {
-  const said = hints.flatMap((hint) => (hint ? [`${hint[0]} ${hint[1]}`] : []));
-  return ellipsize([...said, ...(count ? [count] : [])].join(" · "), columns);
+  let kept = hints.filter((hint) => hint !== null);
+  const line = () =>
+    [...kept.map(([keys, does]) => `${keys} ${does}`), ...(count ? [count] : [])].join(" · ");
+  for (const spared of SPARED) {
+    if (Bun.stringWidth(line()) <= columns) break;
+    kept = kept.filter((hint) => hint !== spared);
+  }
+  return ellipsize(line(), columns);
 }
 
 /** The dismissing key's hint, when the operator has one bound. */

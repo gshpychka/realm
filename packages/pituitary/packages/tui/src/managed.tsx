@@ -1,3 +1,4 @@
+import { plain } from "@pituitary/session";
 import type { ConversationClient, Runtime } from "@realm/dura/client";
 import type { RunDetail } from "@realm/dura/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -230,7 +231,8 @@ export function ManagedWorkspace({
       key={`${attached.attemptId}:${attached.serial}`}
       link={attached.client}
       team={context}
-      agent={task?.role ?? "the agent"}
+      // Roles are common nouns, `builder` or `reviewer`, which read as the agent's name with an article.
+      agent={task?.role ? `the ${plain(task.role)}` : "the agent"}
       initialView={views.current[attached.attemptId]}
       onCaptureView={(capture) => {
         captureConversation.current = capture;

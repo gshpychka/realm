@@ -153,7 +153,7 @@ describe("clock", () => {
 test("a lost agent says how it comes back: a Dura frontend reloads, and Pi restarts on its session", () => {
   expect(reconnectHint("ctrl+r", "run-session")).toBe("Disconnected · ctrl+r reloads this frontend");
   expect(reconnectHint(null, "0195f3e2-7c1d-7000-8000-000000000000")).toBe(
-    "Disconnected · restart with pituitary --session 0195f3e2",
+    "Disconnected · run pituitary --session 0195f3e2-7c1d-7000-8000-000000000000",
   );
   expect(reconnectHint(null, undefined)).toBe("Disconnected · restart pituitary to reconnect");
 });

@@ -108,3 +108,20 @@ test("large usage reports keep the expanded panel bounded", async () => {
     close();
   }
 });
+
+test("the panel names the interrupt's keys as a way to close it only while they would", async () => {
+  const idle = await draw(<UsagePanel report={report()} now={NOW} escapes="esc esc" />, 100, 24);
+  try {
+    expect(idle.frame).toContain("alt+u / esc esc close · /usage refresh updates");
+  } finally {
+    idle.close();
+  }
+  // While a run goes, the interrupt's keys stop it instead.
+  const running = await draw(<UsagePanel report={report()} now={NOW} />, 100, 24);
+  try {
+    expect(running.frame).toContain("alt+u close · /usage refresh updates");
+    expect(running.frame).not.toContain("esc");
+  } finally {
+    running.close();
+  }
+});

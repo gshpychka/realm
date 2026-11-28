@@ -19,6 +19,13 @@ type Widget = { lines: string[]; placement: "aboveEditor" | "belowEditor" };
 // A Pi connection outlives the React root replaced by /new.
 const usageDisplays = new WeakMap<PiUiPort, UsageDisplay>();
 
+/**
+ * How much sooner than Pi a timed question closes. Pi's own timer starts as it sends the
+ * question and answers with the default when it fires; closing first answers it with that
+ * same default, so the notice saying so lands before whatever the extension does next.
+ */
+const AHEAD_OF_PI_MS = 250;
+
 function extensionStatus(key: string, text = ""): string {
   const status = plain(text);
   if (key !== "pi-lens-lsp") return status;
@@ -89,7 +96,9 @@ export function usePiUI(
             ...current,
             {
               request,
-              ...("timeout" in request && request.timeout ? { deadline: Date.now() + request.timeout } : {}),
+              ...("timeout" in request && request.timeout
+                ? { deadline: Date.now() + Math.max(0, request.timeout - AHEAD_OF_PI_MS) }
+                : {}),
             },
           ]);
       }

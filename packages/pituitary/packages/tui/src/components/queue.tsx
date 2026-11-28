@@ -42,14 +42,13 @@ export function Queue({
         </box>
       ))}
       {hidden > 0 && (rows > 1 || !hint) ? (
-        <text selectable={false} fg={theme.dim} truncate wrapMode="none">
-          … {counted(hidden, "queued message")}
+        <text selectable={false} fg={theme.dim} wrapMode="none">
+          {ellipsize(`… ${counted(hidden, "queued message")}`, width - 2)}
         </text>
       ) : null}
       {hint ? (
-        <text selectable={false} fg={theme.dim} truncate wrapMode="none">
-          {rows === 1 ? `${messages.length} queued · ` : ""}
-          {hint}
+        <text selectable={false} fg={theme.dim} wrapMode="none">
+          {ellipsize(`${rows === 1 ? `${messages.length} queued · ` : ""}${hint}`, width - 2)}
         </text>
       ) : null}
     </box>

@@ -30,6 +30,8 @@ export interface FooterProps {
   cardOpen?: boolean;
   /** Opens or closes the card, as a click on it asks. */
   onCard?(): void;
+  /** The interrupt's keys, such as `esc esc`, while they close the card: nothing runs for them to stop. */
+  escapes?: string | undefined;
 }
 
 /** Context use at which the percentage warns, then alarms, as pi's own footer does. */
@@ -435,7 +437,12 @@ export function Footer(props: FooterProps) {
   return (
     <box flexDirection="column" flexShrink={0} backgroundColor={STYLE.palette.bar}>
       {showUsage && props.usage ? (
-        <UsagePanel report={props.usage.report} now={now} sessionCost={props.stats?.cost} />
+        <UsagePanel
+          report={props.usage.report}
+          now={now}
+          sessionCost={props.stats?.cost}
+          escapes={props.escapes}
+        />
       ) : null}
       {rows.map((row, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows keep their order, top then bottom

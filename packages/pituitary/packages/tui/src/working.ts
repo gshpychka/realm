@@ -1,6 +1,7 @@
 import { type Activity, activityOf, elapsed, type SessionView, type TurnEntry } from "@pituitary/session";
 import { glyphs } from "./glyphs.ts";
 import { counted } from "./plural.ts";
+import { ellipsize } from "./text-width.ts";
 
 /** The status line's account of a run in progress. */
 export interface WorkingLine {
@@ -13,7 +14,8 @@ export interface WorkingLine {
 
 /**
  * The run in progress as the status line words it in `columns`. Figures that do not fit
- * drop from the end, where the token count follows the interrupt key.
+ * drop from the end, where the token count follows the interrupt key, and then what it does
+ * is cut at its end.
  */
 export function workingLine(view: SessionView, now: number, escapes: string, columns: number): WorkingLine {
   const activity = activityOf(view);
@@ -25,7 +27,7 @@ export function workingLine(view: SessionView, now: number, escapes: string, col
     activity.kind === "operator" || !escapes ? null : `${escapes} interrupts`,
     tokens > 0 ? `${glyphs.tokens} ${count(tokens)}` : null,
   ].filter((part) => part !== null);
-  const said = doing(activity);
+  const said = ellipsize(doing(activity), columns);
   const joined = () => (figures.length === 0 ? "" : ` · ${figures.join(" · ")}`);
   while (figures.length > 0 && Bun.stringWidth(said + joined()) > columns) figures.pop();
   return { kind: activity.kind, doing: said, figures: joined() };
@@ -63,17 +65,15 @@ export function turnLine(turn: TurnEntry): string {
     .join(" · ");
 }
 
-/** Characters of a session's id that name it to `pituitary --session`, which takes a prefix of it. */
-const SESSION_PREFIX = 8;
-
 /**
  * What brings the agent back once it cannot be reached: the key that reloads a Dura frontend,
- * which `reload` names, or the command that starts Pi again on the session.
+ * which `reload` names, or the command that starts Pi again on `session`, the id of a session
+ * with something to resume. The id is whole: Pi resolves a partial one by its prefix, and a
+ * UUIDv7's leading digits are the time it was made, which sessions started together share.
  */
-export function reconnectHint(reload: string | null, sessionId: string | undefined): string {
+export function reconnectHint(reload: string | null, session: string | undefined): string {
   if (reload) return `Disconnected · ${reload} reloads this frontend`;
-  if (sessionId)
-    return `Disconnected · restart with pituitary --session ${sessionId.slice(0, SESSION_PREFIX)}`;
+  if (session) return `Disconnected · run pituitary --session ${session}`;
   return "Disconnected · restart pituitary to reconnect";
 }
 
