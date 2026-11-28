@@ -1,0 +1,467 @@
+diff --git a/gateway/run_turn_runner.py b/gateway/run_turn_runner.py
+index cac0753..cdca92f 100644
+--- a/gateway/run_turn_runner.py
++++ b/gateway/run_turn_runner.py
+@@ -877,6 +877,10 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+         )
+         ctx = self._ctx
+         persist_override: Optional[Any] = ctx.persist_user_message
++        from gateway.session_restart_continue import executing_continuation
++        # A committed restart continuation carries its own recovery contract; the generic
++        # interrupted-turn wrappers below would contradict it.
++        continuing = executing_continuation.get()
+         from gateway.session_cli_turn import cli_turn
+         api_text = cli_turn(ctx.inbound_message_id).get('api_text')
+         if api_text is not None:
+@@ -904,7 +908,9 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+         mark_is_fresh = resume_pending and _is_fresh_gateway_interruption(
+             getattr(entry, "last_resume_marked_at", None), window_secs=window,
+         )
+-        if resume_pending and (interruption_is_fresh or mark_is_fresh):
++        if continuing:
++            pass
++        elif resume_pending and (interruption_is_fresh or mark_is_fresh):
+             # Empty message = the startup auto-resume turn; there is no NEW user message.
+             ctx.message, persist_override = _prepare_resume_pending_message(
+                 resume_reason, ctx.message, interactive=self._resume_note_interactive(),
+diff --git a/gateway/session_authority.py b/gateway/session_authority.py
+index e14caa9..c0abf28 100644
+--- a/gateway/session_authority.py
++++ b/gateway/session_authority.py
+@@ -1111,8 +1111,10 @@ class SessionAuthority:
+             live.rescan = False  # a _schedule from here on may not be visible to this claim's read
+             # The row these checks validated, never whichever is first when the write runs: a
+             # cancellation commits from a worker thread and can advance the FIFO at any point.
++            from gateway.session_restart_continue import cancel_superseded
+             row = await tracked_write(self, partial(claim_session_input, self.db, epoch=self.epoch,
+-                                                    session_id=ref.session_id, _guard=self._admission_gate(),
++                                                    session_id=ref.session_id, _guard=self._admission_gate(
++                                                        partial(cancel_superseded, epoch=self.epoch, row=first)),
+                                                     head=first['admission_id'] if first is not None else None),
+                                       then=partial(self._stamp_claim, ref, live))
+             # Input scheduled while this claim's transaction ran may postdate its read: re-read
+diff --git a/gateway/session_ingress.py b/gateway/session_ingress.py
+index 38d11d7..af705ef 100644
+--- a/gateway/session_ingress.py
++++ b/gateway/session_ingress.py
+@@ -281,6 +281,8 @@ async def execute_admission(authority, ref, row):
+     captured = {}
+     result_token = execution_result.set(captured)
+     token = executing_admission.set(True)
++    from gateway.session_restart_continue import executing_continuation, is_continuation
++    continuation_token = executing_continuation.set(is_continuation(row))
+     # This drain, not the handler's unwind, releases the turn's crash marker (see below).
+     event._turn_marker_handoff = True
+     handed = False
+@@ -334,6 +336,7 @@ async def execute_admission(authority, ref, row):
+         if not handed:
+             await _release_turn_marker(authority, event)
+         executing_admission.reset(token)
++        executing_continuation.reset(continuation_token)
+         execution_result.reset(result_token)
+         api_execution.reset(api_token)
+         admission_author.reset(author_token)
+diff --git a/gateway/session_restart_continue.py b/gateway/session_restart_continue.py
+new file mode 100644
+index 0000000..929be39
+--- /dev/null
++++ b/gateway/session_restart_continue.py
+@@ -0,0 +1,150 @@
++"""Authorized continuation of interactive work interrupted by an orderly gateway stop."""
++from copy import deepcopy
++from contextvars import ContextVar
++
++from gateway.restart_loop_guard import DEFAULT_MAX_RESTARTS
++
++REQUEST_PREFIX = 'restart-continue:'
++# Process-local flag on the captured result: this settlement committed its continuation.
++CONTINUED = 'restart_continuation_queued'
++executing_continuation = ContextVar('executing_restart_continuation', default=False)
++CONTINUE_TEXT = (
++    '[Hermes restart continuation] The gateway restarted while your previous turn in this conversation was '
++    'still running. Finish that latest unfinished task from the saved conversation and tool results; the '
++    'user does not need to resend it. Do not repeat actions whose results are already recorded, and do not '
++    'run any restart, shutdown or deploy command again. If a tool outcome is missing or uncertain, check the '
++    'current state before retrying it. This message grants no approval and answers no question: anything '
++    'that needs approval or clarification still needs it from the user. If the task is already complete, '
++    'say so briefly instead of redoing it.')
++# Consecutive continuations of one task (the restart-loop breaker's own bound).
++_MAX_CHAIN = DEFAULT_MAX_RESTARTS
++_LOCAL_SURFACES = frozenset({'cli', 'tui', 'desktop'})  # created_source of cli / tui / gui sessions
++_NATIVE_PLATFORMS = frozenset({'telegram'})
++_LOCAL_FIELDS = frozenset({'text', 'attachments_v1', 'surface_v1', 'display_v1', 'cli_turn_v1', 'local_operator_v1'})
++# A transcript ended by these was replaced; a shutdown/close stamp is reopened by the next claim.
++_RESET_REASONS = frozenset({'session_reset', 'auto_reset', 'compression_exhausted_reset',
++                            'superseded_by_repair', 'adopted_by_profile'})
++_DROPPED_EVENT_FIELDS = ('reply_to_message_id', 'reply_to_text', 'reply_to_author_id', 'reply_to_author_name',
++                         'reply_to_is_own_message', 'edit_revision', 'media_types', 'media_text_inlined', 'metadata')
++
++
++def enabled(db) -> bool:
++    """``agent.restart_continue`` of the profile that owns ``db`` (its home holds the store)."""
++    from pathlib import Path
++    from gateway.run import _load_gateway_config
++    try:
++        agent = _load_gateway_config(Path(db.db_path).resolve().parent / 'config.yaml').get('agent')
++    except Exception:
++        return False
++    return isinstance(agent, dict) and agent.get('restart_continue') is True
++
++
++def is_continuation(row) -> bool:
++    """The admission carries the restart-continuation identity and exact input."""
++    return (isinstance(row, dict) and str(row.get('request_id', '')).startswith(REQUEST_PREFIX)
++            and (row.get('payload') or {}).get('text') == CONTINUE_TEXT)
++
++
++def cancel_superseded(conn, *, epoch, row):
++    """Cancel a queued continuation superseded by a later input, inside the claim transaction."""
++    from hermes_state_runtime import _admission, _row, cancel_session_input_on
++    if row is None:
++        return
++    current = _row(_admission(conn, row['admission_id']))
++    if current['status'] != 'queued' or not is_continuation(current):
++        return
++    if conn.execute('SELECT 1 FROM session_admissions WHERE target_session_id=? AND seq>? LIMIT 1',
++                    (current['target_session_id'], current['seq'])).fetchone() is not None:
++        cancel_session_input_on(conn, epoch=epoch, admission_id=current['admission_id'])
++
++
++def _payload(row, created_source):
++    """The continuation input for an attended telegram / cli / tui / gui turn, else None."""
++    from gateway.session_unattended_unknown import is_unattended
++    payload = row['payload']
++    if (is_unattended(row) or str(row['request_id']).startswith('hosted:')
++            or payload.get('finite') or payload.get('unattended')):
++        return None
++    native = payload.get('native_text_v1')
++    if native is not None:
++        if (set(payload) != {'text', 'native_text_v1'} or 'automation' in native or 'webhook_delivery' in native
++                or (native.get('source') or {}).get('platform') not in _NATIVE_PLATFORMS
++                or not str(row['principal_id']).startswith('messaging:')):
++            return None
++        # Same route, sender, provenance and bot; none of the original message's content or media.
++        envelope = {key: deepcopy(value) for key, value in native.items()
++                    if key not in ('media', 'message_type', 'ingress_sha256')}
++        event = envelope['event']
++        for key in _DROPPED_EVENT_FIELDS:
++            event.pop(key, None)
++        event['message_id'] = event['platform_update_id'] = None
++        return {'text': CONTINUE_TEXT, 'native_text_v1': envelope}
++    local_operator = created_source == 'telegram' and payload.get('local_operator_v1')
++    if ((created_source not in _LOCAL_SURFACES and not local_operator)
++            or 'text' not in payload or not set(payload) <= _LOCAL_FIELDS):
++        return None
++    continued = {'text': CONTINUE_TEXT, 'display_v1': {'kind': 'hidden'}}
++    surface = {key: value for key, value in (payload.get('surface_v1') or {}).items()
++               if key in ('surface', 'voice_turn')}
++    cli = {key: value for key, value in (payload.get('cli_turn_v1') or {}).items()
++           if key in ('turn_author', 'model_override', 'clarify_batch')}
++    if surface:
++        continued['surface_v1'] = surface
++    if cli:
++        continued['cli_turn_v1'] = cli
++    if 'local_operator_v1' in payload:
++        continued['local_operator_v1'] = dict(payload['local_operator_v1'])
++    return continued
++
++
++def _depth(conn, row):
++    """How many continuations precede ``row`` in its task's chain."""
++    from hermes_state_runtime import RuntimeStoreError, _admission
++    depth, request_id = 0, str(row['request_id'])
++    while request_id.startswith(REQUEST_PREFIX) and depth < _MAX_CHAIN:
++        depth += 1
++        try:
++            request_id = str(dict(_admission(conn, request_id[len(REQUEST_PREFIX):])).get('request_id') or '')
++        except RuntimeStoreError:
++            break
++    return depth
++
++
++def queue_continuation(conn, *, epoch, row):
++    """Inside the interrupted claim's settlement write: admit its continuation, or None.
++
++    ``row`` is the claimed admission (``claim_session_input``). Nothing is admitted when any later
++    input exists on the FIFO (queued, steered, redirected or settled), an execution is unknown, the
++    transcript was reset or archived, the chain reached its bound, or the turn is not an
++    attended native interactive one. A refusal never fails the settlement it rides."""
++    from hermes_state_local_lineage import local_physical_target
++    from hermes_state_runtime import RuntimeStoreError, _canonical_chain, _session, admit_session_input_on
++    from hermes_state_runtime_workers import worker_states
++    target = row['target_session_id']
++    try:
++        session = _session(conn, target)
++        payload = _payload(row, session['created_source'] or session['source'])
++        if payload is None or _depth(conn, row) >= _MAX_CHAIN:
++            return None
++        if conn.execute("SELECT 1 FROM session_admissions WHERE target_session_id=? AND admission_id!=? "
++                        "AND (seq>? OR status IN ('queued','started','unknown')) LIMIT 1",
++                        (target, row['admission_id'], row['seq'])).fetchone() is not None:
++            return None
++        if 'unknown' in worker_states(conn, target):
++            return None
++        tip = conn.execute('SELECT end_reason, archived FROM sessions WHERE id=?',
++                           (_canonical_chain(conn, local_physical_target(conn, target))[-1],)).fetchone()
++        if tip is None or tip['end_reason'] in _RESET_REASONS or tip['archived']:
++            return None
++        return admit_session_input_on(conn, epoch=epoch, principal_id=row['principal_id'], session_id=target,
++                                      request_id=REQUEST_PREFIX + row['admission_id'], payload=payload)
++    # Storage errors propagate (the settlement retries whole); any refusal or malformed row only skips.
++    except (RuntimeStoreError, KeyError, TypeError, ValueError):
++        return None
++
++
++def continuation_queued(conn, row) -> bool:
++    """``row``'s continuation is committed."""
++    return conn.execute('SELECT 1 FROM session_admissions WHERE principal_id=? AND target_session_id=? '
++                        'AND request_id=?', (row['principal_id'], row['target_session_id'],
++                                             REQUEST_PREFIX + row['admission_id'])).fetchone() is not None
+diff --git a/gateway/session_results.py b/gateway/session_results.py
+index 04e1ac2..7e463f4 100644
+--- a/gateway/session_results.py
++++ b/gateway/session_results.py
+@@ -87,6 +87,9 @@ def finish_result(db, *, epoch, row, response, outcome, result=None, prepared=No
+                                  (_RESULT_PREFIX + row['admission_id'],)).fetchone()
+             if saved is None:
+                 raise RuntimeStoreError('storage_unavailable')
++            from gateway.session_restart_continue import CONTINUED, continuation_queued
++            if isinstance(result, dict) and continuation_queued(conn, row):
++                result[CONTINUED] = True
+             result = load_result(saved[0])
+             return dict(current), result['result'].get('final_response') or ''
+     outcome, stored = prepared or prepare_result(row, response, outcome, result)
+@@ -97,15 +100,38 @@ def finish_result(db, *, epoch, row, response, outcome, result=None, prepared=No
+     # A gateway-owned refusal (a message typed into a cron session) commits its explanation and
+     # error card as the transcript's failed-turn boundary in this same write too: the admission
+     # result is not history, so a reopened chat would otherwise show nothing about the refusal.
++    # An interrupted restart/shutdown turn may queue its continuation (``session_restart_continue``) in
++    # this same write; the notice then says it continues. The claim itself still settles interrupted.
+     from gateway.session_settlement_recovery import gateway_refusal_boundary, owner_stop_notice
+     notice, display_metadata = owner_stop_notice(result, outcome, row), None
++    continued_notice = None
++    if notice is not None and outcome == 'interrupted':
++        continued_notice = owner_stop_notice(result, outcome, row, continued=True)
++        if continued_notice == notice:
++            continued_notice = None
++        else:
++            from gateway.session_restart_continue import enabled
++            continued_notice = continued_notice if enabled(db) else None
+     if notice is None and (refusal := gateway_refusal_boundary(result, outcome)) is not None:
+         notice, display_metadata = refusal
+-    write = None if notice is None else (lambda conn, _current: close_discarded_turn(
+-        db, conn, row, notice, replace_after=row.get('transcript_mark'), display_metadata=display_metadata))
++    queued = []
++
++    def write(conn, _current):
++        queued.clear()  # an SQLite retry runs this again on a rolled-back transaction
++        text = notice
++        if continued_notice is not None:
++            from gateway.session_restart_continue import queue_continuation
++            if queue_continuation(conn, epoch=epoch, row=row) is not None:
++                queued.append(True)
++                text = continued_notice
++        return close_discarded_turn(db, conn, row, text, replace_after=row.get('transcript_mark'),
++                                    display_metadata=display_metadata)
+     settled = settle_session_input(db, epoch=epoch, admission_id=row['admission_id'],
+         generation=row['generation'], outcome=outcome, result=stored, _transfers=transfers,
+-        _terminal_write=write)
++        _terminal_write=None if notice is None else write)
++    if queued and isinstance(result, dict):
++        from gateway.session_restart_continue import CONTINUED
++        result[CONTINUED] = True
+     return settled, response
+ 
+ 
+diff --git a/gateway/session_settlement_recovery.py b/gateway/session_settlement_recovery.py
+index eda70cb..356ff50 100644
+--- a/gateway/session_settlement_recovery.py
++++ b/gateway/session_settlement_recovery.py
+@@ -113,7 +113,8 @@ def _publish_completion(authority, live, ref, row, settled, response, captured):
+     except Exception:
+         logger.exception('Terminal control cleanup failed for admission %s', row['admission_id'])
+     complete = completion_payload(row, settled, response, captured)
+-    notice = owner_stop_notice(captured, settled['outcome'], row)
++    from gateway.session_restart_continue import CONTINUED
++    notice = owner_stop_notice(captured, settled['outcome'], row, continued=bool((captured or {}).get(CONTINUED)))
+     if notice and not complete.get('warning'):
+         # ``warning`` is the slot every surface already renders on message.complete (Ink activity
+         # line, Desktop toast), so a turn the owner's stop cut short says why (#134889 F1).
+@@ -125,27 +126,35 @@ RESTART_INTERRUPT_NOTICE = ('Gateway restarting: this turn was interrupted and w
+                             'Send your message again once Hermes reconnects.')
+ SHUTDOWN_INTERRUPT_NOTICE = ('Gateway shutting down: this turn was interrupted and will not be run again. '
+                              'Send your message again once Hermes is back.')
++RESTART_CONTINUE_NOTICE = ('Gateway restarting: this turn was interrupted. '
++                           'Hermes continues it automatically once it reconnects.')
++SHUTDOWN_CONTINUE_NOTICE = ('Gateway shutting down: this turn was interrupted. '
++                            'Hermes continues it automatically once it is back.')
+ 
+ 
+-def owner_stop_notice(captured, outcome, row=None):
++def owner_stop_notice(captured, outcome, row=None, continued=False):
+     """The named notice for a turn the owner's restart/stop interrupted, or None. With the default
+     ``agent.restart_drain_timeout: 0`` a restart interrupts in-flight turns at once; the admission
+     settles ``interrupted`` and is never replayed, so the viewer is told the restart did it.
+     An unattended ``row`` (cron, automation, webhook) has nobody to resend it, so it gets the
+-    neutral automation copy instead of resend advice (#134889 GW-20, GW-10's rule)."""
++    neutral automation copy instead of resend advice (#134889 GW-20, GW-10's rule).
++    ``continued``: the settlement committed this turn's restart continuation, so the copy says the
++    turn continues instead of asking for a resend."""
+     # The cause is the one the turn recorded when it was interrupted (stop() interrupts with these
+     # reasons), never the runner's flags at publication: a user Stop whose settlement was delayed
+     # until after shutdown began is still the user's Stop.
+     from gateway.run import _INTERRUPT_REASON_GATEWAY_RESTART, _INTERRUPT_REASON_GATEWAY_SHUTDOWN
+     cause = ((captured or {}).get('result') or {}).get('interrupt_message') if outcome == 'interrupted' else None
+-    notice = {_INTERRUPT_REASON_GATEWAY_RESTART: RESTART_INTERRUPT_NOTICE,
+-              _INTERRUPT_REASON_GATEWAY_SHUTDOWN: SHUTDOWN_INTERRUPT_NOTICE}.get(cause)
+-    if notice is not None and row is not None:
++    copies = {_INTERRUPT_REASON_GATEWAY_RESTART: (RESTART_INTERRUPT_NOTICE, RESTART_CONTINUE_NOTICE),
++              _INTERRUPT_REASON_GATEWAY_SHUTDOWN: (SHUTDOWN_INTERRUPT_NOTICE, SHUTDOWN_CONTINUE_NOTICE)}.get(cause)
++    if copies is None:
++        return None
++    if row is not None:
+         from gateway.session_unattended_unknown import is_unattended
+         if is_unattended(row):
+             from agent.turn_failure_copy import AUTOMATION_INTERRUPTED_NOTICE
+             return AUTOMATION_INTERRUPTED_NOTICE
+-    return notice
++    return copies[1] if continued else copies[0]
+ 
+ 
+ def gateway_refusal_boundary(captured, outcome):
+diff --git a/hermes_state_runtime.py b/hermes_state_runtime.py
+index 516e3ea..2dbe3d9 100644
+--- a/hermes_state_runtime.py
++++ b/hermes_state_runtime.py
+@@ -132,43 +132,65 @@ def admit_session_input(db, *, epoch: int, principal_id: str, session_id: str,
+     ``_replay_guard(conn)`` runs on the exact live replay instead, inside the same
+     transaction (a replacement's binding to the admission it retired).
+     """
+-    for value in (principal_id, session_id, request_id):
+-        _text(value)
+-    if intent not in ('queue', 'steer', 'redirect'):
+-        raise RuntimeStoreError('invalid_params')
+-    encoded = _json(payload)
++    encoded, digest = _admission_input(principal_id, session_id, request_id, payload, intent)
+     from hermes_state_terminal import retry_terminal_admission
+     retired = retry_terminal_admission(db, epoch=epoch, principal_id=principal_id, session_id=session_id,
+         request_id=request_id, payload=payload, intent=intent)
+     if retired is not None:
+         return retired
+-    digest = admission_fingerprint(canonical_target=session_id, payload={'input': json.loads(encoded), 'intent': intent})
+-    def write(conn):
+-        _epoch(conn, epoch)
+-        _session(conn, session_id)
+-        old = conn.execute('''SELECT * FROM session_admissions
+-            WHERE principal_id=? AND target_session_id=? AND request_id=?''', (principal_id, session_id, request_id)).fetchone()
+-        if old is not None:
+-            if old['payload_digest'] != digest:
+-                raise RuntimeStoreError('admission_conflict')
+-            if _replay_guard is not None:
+-                _replay_guard(conn)
+-            return _row(old)
+-        queued = conn.execute('''SELECT COUNT(*) FROM session_admissions WHERE target_session_id=?
+-            AND status='queued' ''', (session_id,)).fetchone()[0]
+-        # Main's cap holds in both states: a FIFO paused behind an unknown turn runs every accepted
+-        # input after Discard, so it must not grow without bound while nobody resolves it.
+-        if queued >= ADMISSION_QUEUE_MAX:
+-            raise RuntimeStoreError('queue_full')
+-        if _authorize_write is not None:
+-            _authorize_write(conn)
+-        admission_id = uuid.uuid4().hex
+-        conn.execute('''INSERT INTO session_admissions(admission_id,request_id,principal_id,
+-            target_session_id,lineage_json,payload_json,payload_digest,intent,status,owner_epoch)
+-            VALUES(?,?,?,?,?,?,?,?,'queued',?)''',
+-            (admission_id, request_id, principal_id, session_id, json.dumps([session_id]), encoded, digest, intent, epoch))
+-        return _row(_admission(conn, admission_id))
+-    return db._execute_write(write)
++    return db._execute_write(lambda conn: _admit(
++        conn, epoch=epoch, principal_id=principal_id, session_id=session_id, request_id=request_id,
++        encoded=encoded, digest=digest, intent=intent, _authorize_write=_authorize_write, _replay_guard=_replay_guard))
++
++
++def admit_session_input_on(conn, *, epoch: int, principal_id: str, session_id: str,
++                           request_id: str, payload: dict, intent: str = 'queue') -> dict:
++    """Admit input on the caller's open write transaction (an owner's same-transaction effect).
++
++    The same identity, fingerprint, cap and exact-replay rules as ``admit_session_input`` apply;
++    the caller owns commit and SQLite retry, so this never commits and may run again."""
++    encoded, digest = _admission_input(principal_id, session_id, request_id, payload, intent)
++    return _admit(conn, epoch=epoch, principal_id=principal_id, session_id=session_id,
++                  request_id=request_id, encoded=encoded, digest=digest, intent=intent)
++
++
++def _admission_input(principal_id, session_id, request_id, payload, intent):
++    """``(encoded payload, digest)`` of a validated admission request."""
++    for value in (principal_id, session_id, request_id):
++        _text(value)
++    if intent not in ('queue', 'steer', 'redirect'):
++        raise RuntimeStoreError('invalid_params')
++    encoded = _json(payload)
++    return encoded, admission_fingerprint(canonical_target=session_id,
++                                          payload={'input': json.loads(encoded), 'intent': intent})
++
++
++def _admit(conn, *, epoch, principal_id, session_id, request_id, encoded, digest, intent,
++           _authorize_write=None, _replay_guard=None):
++    _epoch(conn, epoch)
++    _session(conn, session_id)
++    old = conn.execute('''SELECT * FROM session_admissions
++        WHERE principal_id=? AND target_session_id=? AND request_id=?''', (principal_id, session_id, request_id)).fetchone()
++    if old is not None:
++        if old['payload_digest'] != digest:
++            raise RuntimeStoreError('admission_conflict')
++        if _replay_guard is not None:
++            _replay_guard(conn)
++        return _row(old)
++    queued = conn.execute('''SELECT COUNT(*) FROM session_admissions WHERE target_session_id=?
++        AND status='queued' ''', (session_id,)).fetchone()[0]
++    # Main's cap holds in both states: a FIFO paused behind an unknown turn runs every accepted
++    # input after Discard, so it must not grow without bound while nobody resolves it.
++    if queued >= ADMISSION_QUEUE_MAX:
++        raise RuntimeStoreError('queue_full')
++    if _authorize_write is not None:
++        _authorize_write(conn)
++    admission_id = uuid.uuid4().hex
++    conn.execute('''INSERT INTO session_admissions(admission_id,request_id,principal_id,
++        target_session_id,lineage_json,payload_json,payload_digest,intent,status,owner_epoch)
++        VALUES(?,?,?,?,?,?,?,?,'queued',?)''',
++        (admission_id, request_id, principal_id, session_id, json.dumps([session_id]), encoded, digest, intent, epoch))
++    return _row(_admission(conn, admission_id))
+ 
+ 
+ def get_session_admission(db, *, admission_id: str) -> dict | None:
+@@ -272,18 +294,21 @@ _CANCEL_QUEUED = "UPDATE session_admissions SET status='terminal',outcome='cance
+ 
+ 
+ def cancel_session_input(db, *, epoch: int, admission_id: str) -> dict:
+-    def write(conn):
+-        _epoch(conn, epoch)
+-        row = _admission(conn, admission_id)
+-        if row['status'] == 'unknown':
+-            raise RuntimeStoreError('unknown_execution')
+-        # A steer in transfer reads as its running claim and settles with it: as started, not cancellable.
+-        if row['status'] == 'started' or row['outcome'] == STEERING:
+-            raise RuntimeStoreError('stale_generation')
+-        if row['status'] == 'queued':
+-            conn.execute(_CANCEL_QUEUED, (admission_id,))
+-        return _row(_admission(conn, admission_id))
+-    return db._execute_write(write)
++    return db._execute_write(lambda conn: cancel_session_input_on(conn, epoch=epoch, admission_id=admission_id))
++
++
++def cancel_session_input_on(conn, *, epoch: int, admission_id: str) -> dict:
++    """Cancel queued input on the caller's open write transaction."""
++    _epoch(conn, epoch)
++    row = _admission(conn, admission_id)
++    if row['status'] == 'unknown':
++        raise RuntimeStoreError('unknown_execution')
++    # A steer in transfer reads as its running claim and settles with it: as started, not cancellable.
++    if row['status'] == 'started' or row['outcome'] == STEERING:
++        raise RuntimeStoreError('stale_generation')
++    if row['status'] == 'queued':
++        conn.execute(_CANCEL_QUEUED, (admission_id,))
++    return _row(_admission(conn, admission_id))
+ 
+ 
+ # A queued admission handed to its FIFO's running claim: terminal (never claimable, outside the queue

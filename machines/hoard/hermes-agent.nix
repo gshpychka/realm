@@ -35,6 +35,7 @@ in
                   patches = [
                     ./hermes-agent/background-memory-approval.patch
                     ./hermes-agent/cron-worker-ownership.patch
+                    ./hermes-agent/restart-continuation.patch
                   ];
                 };
               }
@@ -47,6 +48,7 @@ in
       timezone = config.time.timeZone;
       approvals.mode = "off";
       agent.service_tier = "fast";
+      agent.restart_continue = true;
       model = {
         provider = "openai-codex";
         default = "gpt-6.2-sol";
