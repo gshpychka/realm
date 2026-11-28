@@ -51,6 +51,11 @@ in
         provider = "openai-codex";
         default = "gpt-6.1-sol";
       };
+      auxiliary.voice_chat = {
+        provider = "openai-codex";
+        model = "gpt-6.1-terra";
+        reasoning_effort = "medium";
+      };
       # OpenRouter's speech endpoints use the OpenAI API format.
       stt = {
         provider = "openai";

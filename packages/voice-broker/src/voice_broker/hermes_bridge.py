@@ -125,6 +125,8 @@ class Bridge:
                             submission_id=submission_id,
                             text=task,
                             api_text=f"{instructions}\n\n{task}" if instructions else task,
+                            surface="voice-live",
+                            voice_turn=True,
                         )
                         admission = _string(receipt, "admission_id")
                         log.info("consult %s admitted as %s in %s", submission_id, admission, canonical)

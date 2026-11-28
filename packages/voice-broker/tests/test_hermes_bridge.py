@@ -177,12 +177,13 @@ def test_a_consult_is_a_turn_of_the_resolved_session(gateway: Gateway):
     resume = gateway.calls[0]
     assert resume == ("session.resume", {"session_id": RESOLVED, "omit_messages": True})
     (submit,) = submits(gateway)
-    # Exactly these: no voice_turn, no surface override, nothing that bypasses approvals.
     assert submit == {
         "session_id": CANONICAL,
         "submission_id": "voice-broker:kitchen-1:1",
         "text": "What time is it?",
         "api_text": "Answer briefly.\n\nWhat time is it?",
+        "surface": "voice-live",
+        "voice_turn": True,
     }
     # Only the own completion led to a read of the receipt, the one with the result.
     receipts = [params for method, params in gateway.calls if method == "prompt.receipt"]
