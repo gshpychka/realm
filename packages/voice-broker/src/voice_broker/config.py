@@ -245,6 +245,8 @@ class Config:
     routing: Routing | None = None
     # Parallel mode; None: Home Assistant does not hear the audio.
     home_assistant: HomeAssistantAudio | None = None
+    # Time to hear the first utterance before conversational idle applies.
+    initial_idle_timeout_s: float = 10.0
 
 
 def _live(raw: dict[str, Any]) -> Live:
@@ -450,6 +452,7 @@ def load(path: Path) -> Config:
         agent=_agent(raw["agent"]),
         calls=_calls(raw["calls"]),
         idle_timeout_s=float(raw["idle_timeout_s"]),
+        initial_idle_timeout_s=float(raw.get("initial_idle_timeout_s", 10.0)),
         max_conversation_s=float(raw["max_conversation_s"]),
         recordings_dir=Path(raw["recordings_dir"]) if raw.get("recordings_dir") else None,
         routing=routing,

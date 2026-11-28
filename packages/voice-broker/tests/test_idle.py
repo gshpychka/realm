@@ -17,7 +17,7 @@ IDLE_S = 3.0
 # The watchdog's poll interval.
 POLL_S = 0.5
 # What a conversation reads of the config: no cap reached, no recordings.
-CONFIG = SimpleNamespace(idle_timeout_s=IDLE_S, max_conversation_s=600.0, recordings_dir=None)
+CONFIG = SimpleNamespace(idle_timeout_s=IDLE_S, initial_idle_timeout_s=10.0, max_conversation_s=600.0, recordings_dir=None)
 
 
 class Clock:
@@ -110,8 +110,8 @@ def test_speech_still_on_its_way_to_live_holds_the_conversation_open_past_3s(mon
 
     ended, reason = run_watchdog(monkeypatch, lambda c: [(20.0, heard)], session)
     assert reason == EndReason.IDLE
-    # The watchdog marked activity at its last poll while hearing, just before 20 s.
-    assert 20.0 - POLL_S + IDLE_S < ended <= 20.0 + IDLE_S + POLL_S
+    # The buffered initial utterance uses the first-turn listening window.
+    assert 20.0 - POLL_S + CONFIG.initial_idle_timeout_s < ended <= 20.0 + CONFIG.initial_idle_timeout_s + POLL_S
 
 
 def test_reply_audio_still_queued_holds_the_conversation_open_past_3s(monkeypatch):

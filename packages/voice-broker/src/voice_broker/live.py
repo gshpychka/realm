@@ -320,6 +320,7 @@ class _MicPacer:
             await asyncio.gather(self._task, return_exceptions=True)
         if self.pending_samples:
             log.info("conversation ended with %.1f s of mic audio unsent", self.pending_samples / self._rate)
+        log.info("mic: %.2f s forwarded to Live", self.sent_samples / self._rate)
         self._queue.clear()
         self.pending_samples = 0
         self._idle.set()

@@ -200,6 +200,7 @@ in
       # backend result (conversation.py's watchdog); Live's own turn
       # endpointing is separate.
       idle_timeout_s = 3;
+      initial_idle_timeout_s = 10;
       max_conversation_s = 600;
     };
   };

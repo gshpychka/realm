@@ -27,6 +27,7 @@ from .alignment import AlignedBlock, Aligner
 from .config import Config
 from .dsp import speaker_to_mic_rate
 from .protocol import (
+    MIC_RATE,
     SPEAKER_RATE,
     ControlType,
     MicFrame,
@@ -99,6 +100,10 @@ class Conversation:
         self._first_mic = False
         self._first_sound_sample: int | None = None
         self._first_sound_played = False
+        self._heard_activity = False
+        self._mic_samples = 0
+        self._raw_peak = 0
+        self._clean_peak = 0
         self._last_activity = time.monotonic()
         self._last_played = time.monotonic()
         self._ended = asyncio.Event()
@@ -133,6 +138,7 @@ class Conversation:
             async with self._session.open(self):
                 opened = True
                 await self.set_phase(Phase.LISTENING)
+                self._last_activity = time.monotonic()
                 tasks = [
                     device,
                     asyncio.create_task(self._receive(), name="openai"),
@@ -160,6 +166,12 @@ class Conversation:
             device.cancel()
             await asyncio.gather(device, return_exceptions=True)
             self._recorder.close()
+            log.info(
+                "mic: %.2f s processed, raw peak %d, clean peak %d",
+                self._mic_samples / MIC_RATE,
+                self._raw_peak,
+                self._clean_peak,
+            )
             try:
                 await self._device.send(encode_control(ControlType.END))
                 await self._device.close()
@@ -203,6 +215,7 @@ class Conversation:
             await self._device.send(encode_control(ControlType.PHASE, phase=phase.value))
 
     def mark_activity(self) -> None:
+        self._heard_activity = True
         self._last_activity = time.monotonic()
 
     # -- device side ---------------------------------------------------------
@@ -248,6 +261,9 @@ class Conversation:
     async def _process_block(self, block: AlignedBlock) -> None:
         self._aec.process_reverse(block.reference)
         cleaned = np.frombuffer(self._aec.process_capture(block.mic), dtype=np.int16)
+        self._mic_samples += len(cleaned)
+        self._raw_peak = max(self._raw_peak, int(block.mic.max()), -int(block.mic.min()))
+        self._clean_peak = max(self._clean_peak, int(cleaned.max()), -int(cleaned.min()))
         self._recorder.block(block.mic, block.reference, cleaned)
         if self.assistant_audible:
             self.mark_activity()
@@ -307,8 +323,9 @@ class Conversation:
                 # Speech the mic pacer still holds is activity the model hasn't reacted to yet: the idle
                 # time starts once it has all reached the model, so a request said while Live was
                 # starting is never ended unheard.
-                self.mark_activity()
+                self._last_activity = now
             busy = self.assistant_audible or self._session.busy
-            if not busy and now - self._last_activity > self._config.idle_timeout_s:
+            idle_timeout = self._config.idle_timeout_s if self._heard_activity else self._config.initial_idle_timeout_s
+            if not busy and now - self._last_activity > idle_timeout:
                 self._end(EndReason.IDLE)
                 return
