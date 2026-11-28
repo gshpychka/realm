@@ -23,12 +23,32 @@ in
               ) (old.nativeBuildInputs or [ ]);
             })
           ) original.pmPackages;
+          # The Python source builds the runtime wheel independently of the command wrapper.
+          callPackage =
+            path: args:
+            original.callPackage path (
+              args
+              // lib.optionalAttrs (args ? pythonSrc) {
+                pythonSrc = pkgs.applyPatches {
+                  name = "hermes-host-source";
+                  src = args.pythonSrc;
+                  patches = [
+                    ./hermes-agent/background-memory-approval.patch
+                    ./hermes-agent/cron-worker-ownership.patch
+                    ./hermes-agent/restart-continuation.patch
+                  ];
+                };
+              }
+            );
         });
     settings = {
+      memory.write_approval = false;
+      cron.require_restart_safe_scope = true;
       updates.check = false;
       timezone = config.time.timeZone;
       approvals.mode = "off";
       agent.service_tier = "fast";
+      agent.restart_continue = true;
       model = {
         provider = "openai-codex";
         default = "gpt-6.2-sol";
