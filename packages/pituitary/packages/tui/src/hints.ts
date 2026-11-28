@@ -39,19 +39,22 @@ const SPARED: readonly Hint[] = [MOVE, PAGE, PICK];
 
 /**
  * A popup's hint line: its keys in order, then where the list stands, in `columns`. A key the
- * operator unbound, given as null, is left out. A line too long for its columns drops the
- * moving, paging and picking keys before anything else, so a list's own keys, the key that
- * dismisses it and the count stay; only then is it cut at the end.
+ * operator unbound, given as null, is left out. The count keeps its cells whatever the keys
+ * need. Keys that do not fit beside it lose the moving, paging and picking keys first, so a
+ * list's own keys and the key that dismisses it stay; only then do keys drop from the end,
+ * whole, and a first key too long alone is cut at its end.
  */
 export function hintLine(hints: readonly (Hint | null)[], count: string | null, columns: number): string {
   let kept = hints.filter((hint) => hint !== null);
-  const line = () =>
-    [...kept.map(([keys, does]) => `${keys} ${does}`), ...(count ? [count] : [])].join(" · ");
+  const keys = () => kept.map(([keys, does]) => `${keys} ${does}`).join(" · ");
+  const room = count ? columns - Bun.stringWidth(` · ${count}`) : columns;
   for (const spared of SPARED) {
-    if (Bun.stringWidth(line()) <= columns) break;
+    if (Bun.stringWidth(keys()) <= room) break;
     kept = kept.filter((hint) => hint !== spared);
   }
-  return ellipsize(line(), columns);
+  while (kept.length > 1 && Bun.stringWidth(keys()) > room) kept = kept.slice(0, -1);
+  if (!count) return ellipsize(keys(), columns);
+  return kept.length > 0 && room > 0 ? `${ellipsize(keys(), room)} · ${count}` : ellipsize(count, columns);
 }
 
 /** The dismissing key's hint, when the operator has one bound. */

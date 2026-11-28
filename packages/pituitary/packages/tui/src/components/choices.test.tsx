@@ -8,10 +8,10 @@ import { KeymapProvider } from "../keymap-context.tsx";
 import { Dialog, dialogTitle, GRACE_MS } from "./dialog.tsx";
 import { Picker } from "./picker.tsx";
 
-async function draw(view: ReactNode) {
+async function draw(view: ReactNode, width = 80) {
   const environment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  const app = await createTestRenderer({ width: 80, height: 24 });
+  const app = await createTestRenderer({ width, height: 24 });
   const root = createRoot(app.renderer);
   act(() => flushSync(() => root.render(view)));
   await app.renderOnce();
@@ -208,6 +208,43 @@ test("a long label is cut at its end, so the details line up at the right edge p
     // Text the row does not show still finds it.
     await app.type("zebra");
     expect(app.captureCharFrame()).toContain("▶ short");
+  } finally {
+    app.close();
+  }
+});
+
+test("a short label leaves its room to a long detail, as a task's role does to its objective", async () => {
+  const app = await draw(
+    <Picker
+      spec={{
+        title: "tasks",
+        items: [
+          {
+            label: "coordinator",
+            detail: "waiting for builder · Ship an accessible settings page",
+            value: "lead",
+            current: true,
+          },
+          {
+            label: "builder",
+            detail: "Environment image unavailable · Fix the environment and continue",
+            value: "b",
+          },
+        ],
+        onPick() {},
+      }}
+      onClose={() => {}}
+    />,
+    60,
+  );
+  try {
+    const rows = app.captureCharFrame().split("\n");
+    expect(rows.find((row) => row.includes("coordinator"))).toMatch(
+      /│ ▶ coordinator · current waiting for builder · Ship an a… │/,
+    );
+    expect(rows.find((row) => row.includes("builder") && !row.includes("coordinator"))).toMatch(
+      /│ {3}builder Environment image unavailable · Fix the envir… │/,
+    );
   } finally {
     app.close();
   }

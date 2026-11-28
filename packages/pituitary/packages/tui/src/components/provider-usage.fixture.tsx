@@ -50,6 +50,7 @@ function Preview() {
         }}
         cardOpen={open}
         onCard={() => setOpen((value) => !value)}
+        usageCommand="usage"
       />
     </box>
   );

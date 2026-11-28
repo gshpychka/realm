@@ -55,7 +55,7 @@ export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
     const quit = clear ? `${clear} twice to quit` : exit ? `${exit} to quit` : null;
     return (
       <Line
-        text={ellipsize(hint ?? `${agent} stopped${quit ? ` · ${quit}` : ""}`, width - PADDING)}
+        text={hint ?? `${agent} stopped${quit ? ` · ${quit}` : ""}`}
         tone={hint ? theme.dim : theme.error}
       />
     );
@@ -97,10 +97,14 @@ export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
   return null;
 }
 
+/**
+ * What is left once the agent cannot be reached, wrapped rather than cut: the command that
+ * resumes its session, such as `cd <project> && pituitary --session <id>`, is whole or wrong.
+ */
 function Line({ text, tone = theme.dim }: { text: string; tone?: string }) {
   return (
-    <box flexShrink={0} height={1} paddingLeft={1} paddingRight={1}>
-      <text selectable={false} fg={tone} wrapMode="none">
+    <box flexShrink={0} paddingLeft={1} paddingRight={1}>
+      <text selectable={false} fg={tone} wrapMode="word">
         {text}
       </text>
     </box>

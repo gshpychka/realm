@@ -117,9 +117,11 @@ context or `/login` for a refused credential; `ctrl+o` shows the rest of the err
 The footer's credit-card icon opens usage for the selected provider credential. Click
 it, press `alt+u`, or use `/usage` to open the details; `alt+u` or `/usage off` closes
 them, as does `esc` (twice from insert mode) while nothing runs for it to interrupt, and
-`/usage refresh` requests an update. Without a provider report, as in Dura, the card
-shows the session's estimated cost. Percentages mean **used**. The panel keeps the
-session's estimated model cost separate from provider-reported account usage.
+`/usage refresh` requests an update. Pi renames commands whose names collide, as
+`/usage:1` and `/usage:2`; the card's hint names Pituitary's as Pi does. Without a
+provider report, as in Dura, the card shows the session's estimated cost. Percentages
+mean **used**. The panel keeps the session's estimated model cost separate from
+provider-reported account usage.
 
 | Credential | Provider-reported data |
 | --- | --- |

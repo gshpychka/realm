@@ -75,6 +75,8 @@ for (const cols of [44, 120])
       assert.match(unavailable, /usage unavailable/);
       // Esc closes the card while nothing runs, twice from the draft's insert mode.
       assert.match(unavailable, /alt\+u \/ esc esc close/);
+      // Where the line has room, it names the usage command as Pi registered it.
+      if (cols === 120) assert.match(unavailable, /esc esc close · \/usage refresh updates/);
       await app.terminal.submit("inspect");
       await app.terminal.waitText("Observed the API response.");
       // While the run goes, esc interrupts it, so the card names only its own key.

@@ -33,6 +33,8 @@ export interface FooterProps {
   onCard?(): void;
   /** The interrupt's keys, such as `esc esc`, while they close the card: nothing runs for them to stop. */
   escapes?: string | undefined;
+  /** Pi's name for the provider usage extension's command, when Pi has loaded it. */
+  usageCommand?: string | undefined;
 }
 
 /** Context use at which the percentage warns, then alarms, as pi's own footer does. */
@@ -443,6 +445,7 @@ export function Footer(props: FooterProps) {
           now={now}
           sessionCost={props.stats?.cost}
           escapes={props.escapes}
+          command={props.usageCommand}
         />
       ) : null}
       {rows.map((row, index) => (

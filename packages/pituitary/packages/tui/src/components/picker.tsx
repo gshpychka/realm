@@ -238,16 +238,23 @@ export function Picker({
 
 /**
  * One item: its label cut at the end to the room its detail leaves, and the detail at the right
- * edge, so details line up down the list. The detail takes at most half the row. The item in
- * effect now says so after its label, cutting the label for the mark unless that would leave
- * the label narrower than the mark.
+ * edge, so details line up down the list. The label keeps what it needs, with its mark, up to
+ * half the row, and the detail takes the rest: a short label, such as a task's role, leaves
+ * its room to a long detail, such as the task's objective. The item in effect now says so
+ * after its label, cutting the label for the mark unless that would leave the label narrower
+ * than the mark; a label without its mark leaves the mark's room to the detail too.
  */
 function Row({ item, cells }: { item: PickItem; cells: number }) {
   const icon = item.icon ? Bun.stringWidth(item.icon.glyph) + 1 : 0;
-  const detail = item.detail ? ellipsize(item.detail, Math.floor(cells / 2) - 1 - icon) : "";
-  const room = cells - (detail ? Bun.stringWidth(detail) + 1 + icon : 0);
   const mark = Bun.stringWidth(CURRENT);
-  const current = Boolean(item.current) && room >= 2 * mark;
+  const fit = (after: number) => {
+    const label = Math.min(Bun.stringWidth(item.label) + after, Math.floor(cells / 2));
+    const detail = item.detail ? ellipsize(item.detail, cells - label - 1 - icon) : "";
+    return { detail, room: cells - (detail ? Bun.stringWidth(detail) + 1 + icon : 0) };
+  };
+  const marked = item.current ? fit(mark) : null;
+  const current = marked !== null && marked.room >= 2 * mark;
+  const { detail, room } = current ? marked : fit(0);
   return (
     <>
       <text

@@ -24,6 +24,11 @@ export interface UsagePanelProps {
   sessionCost?: number;
   /** The interrupt's keys, such as `esc esc`, while they close the card: nothing runs for them to stop. */
   escapes?: string | undefined;
+  /**
+   * Pi's name for the usage extension's command, which Pi renames when another extension's
+   * collides. Without it the panel names no command, since an unknown one reaches the model.
+   */
+  command?: string | undefined;
 }
 
 /** Share of the terminal's height the scrolled metrics and notes may fill. */
@@ -43,14 +48,14 @@ function scrollRows(terminalHeight: number): number {
  * Only the metrics and notes list is bounded to a share of the terminal's height; the header
  * rows above it are not. Its last row says how to close it and check again.
  */
-export function UsagePanel({ report, now, sessionCost, escapes }: UsagePanelProps) {
+export function UsagePanel({ report, now, sessionCost, escapes, command }: UsagePanelProps) {
   const { width, height } = useTerminalDimensions();
   const toggle = useKeyHint("app.usage.toggle");
   const mark = providerMark(report.provider);
   const stale = isUsageStale(report, now);
   const statusTone = report.state === "error" ? theme.error : stale ? palette.yellow : theme.dim;
   const hasBody = report.metrics.length > 0 || report.notes.length > 0;
-  const closes = [toggle, escapes].filter(Boolean).join(" / ");
+  const closes = [toggle, escapes].filter(Boolean).join(" / ") || (command ? `/${command} off` : null);
   return (
     <box
       flexDirection="column"
@@ -105,10 +110,7 @@ export function UsagePanel({ report, now, sessionCost, escapes }: UsagePanelProp
       ) : null}
       <text fg={theme.dim} wrapMode="none" selectable={false}>
         {hintLine(
-          [
-            [closes || "/usage off", "close"],
-            ["/usage refresh", "updates"],
-          ],
+          [closes ? [closes, "close"] : null, command ? [`/${command} refresh`, "updates"] : null],
           null,
           width - 2,
         )}

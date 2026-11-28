@@ -37,7 +37,7 @@ import { PasteEvents } from "./paste-events.ts";
 import type { PiControls } from "./pi.ts";
 import { PiStatuses, PiWidgets, usePiUI } from "./pi-ui.tsx";
 import { remains } from "./remains.ts";
-import { ellipsize } from "./text-width.ts";
+import { ellipsize, wrappedRows } from "./text-width.ts";
 import { theme } from "./theme.ts";
 import { worked } from "./transcript.ts";
 import { useAsk } from "./use-ask.ts";
@@ -260,7 +260,10 @@ export function App({
     [expanded, thinking, interruptHint, commands],
   );
   const completions = useCompletion(editor, commands, localCwd);
-  const workingRows = statusUp(view, closed) ? (closed || !TRAVELS ? 1 : 2) : 0;
+  // A travelling fire takes two rows beside the status; a closed status wraps its hint, such as
+  // the command that resumes the session, inside its padding.
+  const statusRows = closed ? wrappedRows(hint ?? "", screenColumns - 2) : TRAVELS ? 2 : 1;
+  const workingRows = statusUp(view, closed) ? statusRows : 0;
   const room = Math.max(
     0,
     screenRows - draftRows - footerRows - workingRows - (team ? teamRows(team, screenColumns) : 0),
@@ -904,6 +907,7 @@ export function App({
               cardOpen={card.open}
               onCard={card.toggle}
               escapes={stops ? undefined : interruptHint || undefined}
+              usageCommand={regular?.usageCommand}
             />
           </box>
           <Mascot stage={stage} still={STILL} burn={BURN} light={FIRELIGHT} left={REMAINS} />
