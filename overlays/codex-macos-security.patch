@@ -1,0 +1,239 @@
+diff --git a/keyring-store/src/lib.rs b/keyring-store/src/lib.rs
+--- a/keyring-store/src/lib.rs
++++ b/keyring-store/src/lib.rs
+@@ -1,4 +1,5 @@
++#[cfg(not(target_os = "macos"))]
+ use keyring::Entry;
+ use keyring::Error as KeyringError;
+ use std::error::Error;
+ use std::fmt;
+@@ -57,6 +58,8 @@
+ mod error_display_tests;
+ 
+ mod error_kind;
++#[cfg(target_os = "macos")]
++mod macos_security;
+ 
+ impl From<CredentialStoreError> for std::io::Error {
+     fn from(error: CredentialStoreError) -> Self {
+@@ -77,8 +80,13 @@
+ impl KeyringStore for DefaultKeyringStore {
+     fn load(&self, service: &str, account: &str) -> Result<Option<String>, CredentialStoreError> {
+         trace!("keyring.load start");
+-        let entry = Entry::new(service, account).map_err(CredentialStoreError::new)?;
+-        match entry.get_password() {
++        #[cfg(target_os = "macos")]
++        let result = macos_security::load(service, account);
++        #[cfg(not(target_os = "macos"))]
++        let result = Entry::new(service, account)
++            .map_err(CredentialStoreError::new)?
++            .get_password();
++        match result {
+             Ok(password) => {
+                 trace!("keyring.load success");
+                 Ok(Some(password))
+@@ -96,8 +104,13 @@
+ 
+     fn save(&self, service: &str, account: &str, value: &str) -> Result<(), CredentialStoreError> {
+         trace!("keyring.save start");
+-        let entry = Entry::new(service, account).map_err(CredentialStoreError::new)?;
+-        match entry.set_password(value) {
++        #[cfg(target_os = "macos")]
++        let result = macos_security::save(service, account, value);
++        #[cfg(not(target_os = "macos"))]
++        let result = Entry::new(service, account)
++            .map_err(CredentialStoreError::new)?
++            .set_password(value);
++        match result {
+             Ok(()) => {
+                 trace!("keyring.save success");
+                 Ok(())
+@@ -111,8 +124,13 @@
+ 
+     fn delete(&self, service: &str, account: &str) -> Result<bool, CredentialStoreError> {
+         trace!("keyring.delete start");
+-        let entry = Entry::new(service, account).map_err(CredentialStoreError::new)?;
+-        match entry.delete_credential() {
++        #[cfg(target_os = "macos")]
++        let result = macos_security::delete(service, account);
++        #[cfg(not(target_os = "macos"))]
++        let result = Entry::new(service, account)
++            .map_err(CredentialStoreError::new)?
++            .delete_credential();
++        match result {
+             Ok(()) => {
+                 trace!("keyring.delete success");
+                 Ok(true)
+diff --git a/keyring-store/src/macos_security.rs b/keyring-store/src/macos_security.rs
+new file mode 100644
+--- /dev/null
++++ b/keyring-store/src/macos_security.rs
+@@ -0,0 +1,168 @@
++use super::KeyringError;
++use security_framework::item::ItemClass;
++use security_framework::item::ItemSearchOptions;
++use security_framework::item::Reference;
++use security_framework::item::SearchResult;
++use security_framework::os::macos::keychain::SecKeychain;
++use security_framework::os::macos::keychain::SecPreferencesDomain;
++use std::io;
++use std::process::Command;
++use std::process::Output;
++
++const SECURITY: &str = "/usr/bin/security";
++const DUPLICATE_ITEM: i32 = -25299;
++// The helper returns the low byte of errSecItemNotFound as its exit status.
++const ITEM_NOT_FOUND: i32 = 44;
++
++pub(super) fn load(service: &str, account: &str) -> Result<String, KeyringError> {
++    let output = run("find-generic-password", service, account, &["-g"])?;
++    // The -w flag uses unmarked hex for non-printable passwords. The -g
++    // flag distinguishes that encoding from literal hex-looking passwords.
++    let value = output
++        .stderr
++        .split(|&byte| byte == b'\n')
++        .find_map(|line| line.strip_prefix(b"password: "))
++        .and_then(decode_display)
++        .ok_or_else(|| invalid_output("Keychain password"))?;
++    String::from_utf8(value).map_err(|error| KeyringError::BadEncoding(error.into_bytes()))
++}
++
++pub(super) fn save(service: &str, account: &str, value: &str) -> Result<(), KeyringError> {
++    keyring::Entry::new(service, account)?;
++    let keychain = SecKeychain::default_for_domain(SecPreferencesDomain::User)
++        .map_err(keyring::macos::decode_error)?;
++    match keychain.add_generic_password(service, account, value.as_bytes()) {
++        Ok(()) => return Ok(()),
++        Err(error) if error.code() == DUPLICATE_ITEM => {}
++        Err(error) => return Err(keyring::macos::decode_error(error)),
++    }
++
++    // Match an item reference without decrypting the old password. The
++    // native API also keeps the new value out of command-line arguments.
++    let mut items = ItemSearchOptions::new()
++        .keychains(std::slice::from_ref(&keychain))
++        .class(ItemClass::generic_password())
++        .service(service)
++        .account(account)
++        .load_refs(true)
++        .limit(1)
++        .search()
++        .map_err(keyring::macos::decode_error)?;
++    let Some(SearchResult::Ref(Reference::KeychainItem(mut item))) = items.pop() else {
++        return Err(invalid_output("Keychain item reference"));
++    };
++    item.set_password(value.as_bytes())
++        .map_err(keyring::macos::decode_error)
++}
++
++pub(super) fn delete(service: &str, account: &str) -> Result<(), KeyringError> {
++    run("delete-generic-password", service, account, &[]).map(|_| ())
++}
++
++fn run(
++    operation: &str,
++    service: &str,
++    account: &str,
++    options: &[&str],
++) -> Result<Output, KeyringError> {
++    // Preserve the native keyring's validation of empty identifiers, which
++    // Keychain can otherwise interpret as wildcards.
++    keyring::Entry::new(service, account)?;
++
++    // The native keyring uses the user domain's default keychain only.
++    let default = Command::new(SECURITY)
++        .args(["default-keychain", "-d", "user"])
++        .output()
++        .map_err(platform_failure)?;
++    if !default.status.success() {
++        return Err(command_failed("default-keychain", &default));
++    }
++    let displayed_path = std::str::from_utf8(&default.stdout)
++        .map_err(|_| invalid_output("default Keychain path"))?;
++    let keychain = decode_display(displayed_path.trim().as_bytes())
++        .filter(|path| !path.is_empty())
++        .and_then(|path| String::from_utf8(path).ok())
++        .ok_or_else(|| invalid_output("default Keychain path"))?;
++
++    let output = Command::new(SECURITY)
++        .args([operation, "-s", service, "-a", account])
++        .args(options)
++        .arg(keychain)
++        .output()
++        .map_err(platform_failure)?;
++    if output.status.success() {
++        Ok(output)
++    } else if output.status.code() == Some(ITEM_NOT_FOUND)
++        && output.stderr.starts_with(b"security: SecKeychainSearchCopyNext:")
++    {
++        Err(KeyringError::NoEntry)
++    } else {
++        Err(command_failed(operation, &output))
++    }
++}
++
++// SecurityTool prints printable data in quotes and prefixes binary data
++// with 0x. Binary data can be followed by a quoted preview.
++fn decode_display(display: &[u8]) -> Option<Vec<u8>> {
++    if display.is_empty() {
++        return Some(Vec::new());
++    }
++    if let Some(hex) = display.strip_prefix(b"0x") {
++        let hex = hex.split(|&byte| byte == b' ').next()?;
++        if hex.is_empty() || hex.len() % 2 != 0 {
++            return None;
++        }
++        return hex
++            .chunks_exact(2)
++            .map(|pair| {
++                let high = char::from(pair[0]).to_digit(16)?;
++                let low = char::from(pair[1]).to_digit(16)?;
++                Some(((high << 4) | low) as u8)
++            })
++            .collect();
++    }
++    Some(display.strip_prefix(b"\"")?.strip_suffix(b"\"")?.to_vec())
++}
++
++fn platform_failure(error: io::Error) -> KeyringError {
++    KeyringError::PlatformFailure(Box::new(error))
++}
++
++fn invalid_output(description: &str) -> KeyringError {
++    platform_failure(io::Error::new(
++        io::ErrorKind::InvalidData,
++        format!("unexpected output for {description}"),
++    ))
++}
++
++fn command_failed(operation: &str, output: &Output) -> KeyringError {
++    // Preserve native Keychain error types where the truncated OSStatus
++    // identifies one of the errors classified by the keyring backend.
++    let native_errors = [-25291_i32, -25292, -25293, -25294, -25295, -4];
++    if let Some(code) = native_errors
++        .into_iter()
++        .find(|&code| output.status.code() == Some(i32::from(code as u8)))
++    {
++        return keyring::macos::decode_error(security_framework::base::Error::from_code(code));
++    }
++    // -g writes the password to stderr. Never put captured output in an error.
++    platform_failure(io::Error::other(format!(
++        "security {operation} failed with {}",
++        output.status
++    )))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::decode_display;
++
++    #[test]
++    fn decodes_security_output_without_ambiguity() {
++        assert_eq!(decode_display(b"\"deadbeef\"").as_deref(), Some(&b"deadbeef"[..]));
++        assert_eq!(decode_display(b"0x61C3A9  \"a\\303\\251\"").as_deref(), Some("aé".as_bytes()));
++        assert_eq!(decode_display(b"0x5C ").as_deref(), Some(&b"\\"[..]));
++        assert_eq!(decode_display(b"").as_deref(), Some(&b""[..]));
++        assert_eq!(decode_display(b"0x1"), None);
++        assert_eq!(decode_display(b"0xZZ"), None);
++    }
++}
