@@ -2,16 +2,19 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { resolve } from "node:path";
 import type { RpcCommand, RpcResponse } from "@earendil-works/pi-coding-agent";
 import {
+  type BashResult,
   type CommandResult,
   type ConversationLink,
   encodeJsonLine,
   type ImageContent,
   JsonLineDecoder,
+  type RunningShell,
   type SessionCommand,
   type SessionEvent,
   type SessionSnapshot,
   type SessionState,
   type SessionStats,
+  SHELL_OUTPUT_LIMIT,
   scrub,
 } from "@pituitary/session";
 import type { Keymap } from "./keymap.ts";
@@ -131,6 +134,7 @@ const EVENTS = new Set([
   "auto_retry_start",
   "auto_retry_end",
   "runtime_error",
+  "bash_execution_update",
 ]);
 
 /** What the extension UI hears when a Pi process ends without its runtime saying so. */
@@ -161,6 +165,8 @@ export class PiConversation implements ConversationLink, PiUiPort {
     string,
     { callId: string; name: string; output?: string; details?: unknown }
   >();
+  /** The operator's shell commands Pi is running, by the request that runs each. */
+  private readonly shells = new Map<string, RunningShell>();
   private nextId = 0;
   private sequence = 0;
   private closed?: string;
@@ -292,6 +298,7 @@ export class PiConversation implements ConversationLink, PiUiPort {
       pendingTools: [...this.tools.values()],
       retry: this.retry,
       queue: this.queue,
+      shells: [...this.shells.values()],
     }));
   }
 
@@ -325,6 +332,48 @@ export class PiConversation implements ConversationLink, PiUiPort {
     return readResult(request.kind, reply.result);
   }
 
+  /**
+   * Runs the operator's shell command through Pi, which records it in the session once it
+   * ends: `!` gives its output to the model with the next prompt, `!!`, `excludeFromContext`,
+   * keeps it out. Its start, its output as it streams and its end reach the view as events; a
+   * command Pi cannot run ends with the reason.
+   */
+  bash(command: string, excludeFromContext: boolean): Promise<void> {
+    const id = this.newId();
+    this.shells.set(id, { id, command, excludeFromContext, output: "" });
+    this.emit({ type: "bash_start", id, command, excludeFromContext });
+    const end = (outcome: { result: BashResult } | { error: string }) => {
+      this.shells.delete(id);
+      this.emit({ type: "bash_end", id, ...outcome });
+    };
+    // The end is reported as Pi's answer arrives, before any later record is handled.
+    return this.send(
+      { type: "bash", command, excludeFromContext } satisfies RpcCommand,
+      (data) => end({ result: data as BashResult }),
+      id,
+    ).catch((error: unknown) => end({ error: error instanceof Error ? error.message : String(error) }));
+  }
+  /** Whether a shell command the operator ran is still running. */
+  get shellRunning(): boolean {
+    return this.shells.size > 0;
+  }
+  /** Stops the operator's running shell command, whose end then says it was cancelled. */
+  async abortBash(): Promise<void> {
+    await this.rpc({ type: "abort_bash" });
+  }
+  /**
+   * Moves the session to another point of its tree, summarizing the branch it leaves when
+   * asked; null when it stayed, by an extension's choice or an abort. Moving to a prompt leaves
+   * it to be written again: the session stands just before it, and `text` holds it.
+   */
+  async navigate(request: Omit<BridgeRequest<"navigate">, "kind">): Promise<{ text: string } | null> {
+    const { cancelled, text } = await this.bridge({ kind: "navigate", ...request });
+    if (cancelled) return null;
+    // The runtime and its commands stay; the view starts afresh on the branch the session is on now.
+    this.replaced();
+    return { text };
+  }
+
   /** Starts a new session. False when an extension kept Pi on this one. */
   async newSession(): Promise<boolean> {
     const { cancelled } = await this.replace(() => this.rpc({ type: "new_session" }), moved);
@@ -354,7 +403,7 @@ export class PiConversation implements ConversationLink, PiUiPort {
     const { path } = await this.rpc({ type: "export_html", ...(outputPath ? { outputPath } : {}) });
     return resolve(launched, path);
   }
-  /** The operator's prompts on the current branch, oldest first, with the entries Pi forks at. */
+  /** The operator's prompts on the current branch, oldest first, with the entries Pi forks and moves at. */
   async branchPrompts(): Promise<BranchPrompt[]> {
     const { entries, leafId } = await this.rpc({ type: "get_entries" });
     return branchPrompts(entries, leafId);
@@ -712,6 +761,15 @@ export class PiConversation implements ConversationLink, PiUiPort {
       case "tool_execution_end":
         this.tools.delete(event.toolCallId);
         break;
+      case "bash_execution_update": {
+        const shell = event.id === undefined ? undefined : this.shells.get(event.id);
+        if (shell)
+          this.shells.set(shell.id, {
+            ...shell,
+            output: (shell.output + event.delta).slice(-SHELL_OUTPUT_LIMIT),
+          });
+        break;
+      }
     }
   }
   private fail(reason: string): void {

@@ -30,7 +30,15 @@ import { editExternally } from "./external-editor.ts";
 import { firelight } from "./firelight.ts";
 import { usePullRequest } from "./github/use-pull-request.ts";
 import { type Hint, hintLine, MOVE } from "./hints.ts";
-import { type Action, actionFor, isListAction, type Keymap, type ListAction, loadKeymap } from "./keymap.ts";
+import {
+  type Action,
+  actionFor,
+  isListAction,
+  type Keymap,
+  LIST_OF,
+  type ListAction,
+  loadKeymap,
+} from "./keymap.ts";
 import { KeymapProvider, keyHint } from "./keymap-context.tsx";
 import { modelTitle } from "./model-names.ts";
 import { PasteEvents } from "./paste-events.ts";
@@ -191,8 +199,15 @@ export function App({
   const interruptHint = keymap["app.interrupt"]
     .map((binding) => (/^(esc|escape)$/i.test(binding) ? escapes : binding))
     .join(" / ");
-  // The interrupt stops a run, a retry or a compaction; with none going it closes the footer's card.
-  const stops = view.running || view.retry !== null || view.phase === "compacting";
+  const summarizing = regular?.summarizing ?? false;
+  // The interrupt stops a run, a retry, a compaction, a branch's summary or a shell command; with
+  // none going it closes the footer's card.
+  const stops =
+    view.running ||
+    view.retry !== null ||
+    view.phase === "compacting" ||
+    summarizing ||
+    view.entries.some((entry) => entry.kind === "bash" && entry.running !== undefined);
   const stage = useMemo(() => new MascotStage(TRAVELS ? undefined : ["corner"]), []);
   const queued = view.queue.steering.length + view.queue.followUp.length;
   const operatorDialog: DialogRequest | null = operatorQuestion
@@ -263,7 +278,7 @@ export function App({
   // A travelling fire takes two rows beside the status; a closed status wraps its hint, such as
   // the command that resumes the session, inside its padding.
   const statusRows = closed ? wrappedRows(hint ?? "", screenColumns - 2) : TRAVELS ? 2 : 1;
-  const workingRows = statusUp(view, closed) ? statusRows : 0;
+  const workingRows = statusUp(view, closed, summarizing) ? statusRows : 0;
   const room = Math.max(
     0,
     screenRows - draftRows - footerRows - workingRows - (team ? teamRows(team, screenColumns) : 0),
@@ -391,7 +406,7 @@ export function App({
       ([action, bindings]) => {
         if (!bindings.length) return [];
         if (isListAction(action))
-          return sessions && !readonly ? [`${line(bindings, action)} · in /resume`] : [];
+          return sessions && !readonly ? [`${line(bindings, action)} · in /${LIST_OF[action]}`] : [];
         return (!action.startsWith("app.team.") || team) &&
           (!action.startsWith("app.session.") || sessions) &&
           (action !== "app.ui.reload" || onReload) &&
@@ -484,6 +499,7 @@ export function App({
       return;
     }
     toBottom();
+    if (regular?.shell(text)) return;
     const own = builtin(text);
     if (own) {
       command(own.name, own.args);
@@ -555,6 +571,11 @@ export function App({
       command("fork");
       return true;
     },
+    "app.session.tree": () => {
+      if (!regular) return false;
+      command("tree");
+      return true;
+    },
     "app.team.tasks": () => {
       if (!team) return false;
       showTasks();
@@ -597,7 +618,7 @@ export function App({
       if (view.retry) session.abortRetry();
       else if (view.phase === "compacting") abort();
       else if (view.running) void restoreQueue(session.interrupt());
-      else card.close();
+      else if (!regular?.stop()) card.close();
       return true;
     },
     "app.message.followUp": () => {
@@ -809,7 +830,14 @@ export function App({
             overflow="hidden"
             justifyContent="flex-end"
           >
-            <Working view={view} hint={shownHint} closed={closed} escapes={interruptHint} agent={agent} />
+            <Working
+              view={view}
+              hint={shownHint}
+              closed={closed}
+              escapes={interruptHint}
+              agent={agent}
+              summarizing={summarizing}
+            />
             <Queue queue={view.queue} dequeue={keymap["app.message.dequeue"][0]} rows={queueRows} />
             {resultTask && team ? (
               <TaskResult
@@ -871,7 +899,7 @@ export function App({
                 note={
                   canChooseModel && state && !state.model
                     ? "Choose a model · ctrl+l"
-                    : statusUp(view, closed)
+                    : statusUp(view, closed, summarizing)
                       ? null
                       : shownHint
                 }

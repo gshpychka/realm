@@ -45,6 +45,7 @@ screen stay where they are while the conversation changes under them.
 | `/new` | `alt+n` | Start a new session |
 | `/resume [all]` | `alt+r` | Switch to a saved session of this project, or of every project with `all` |
 | `/fork` | `alt+f` | Start a new session from before an earlier prompt, that prompt in the draft |
+| `/tree` | | Move to another point of this session; where you were stays as a branch |
 | `/clone` | | Copy this session into a new one |
 | `/export [path]` | | Write this session as an HTML page, into the directory Pi's process started in unless the path is absolute |
 | `/reload` | | Reload Pi's extensions, skills, prompt templates, context files, and keybindings |
@@ -63,12 +64,35 @@ works puts queued messages back in the draft and stops the run or compaction fir
 does. A fork puts the earlier prompt in place of the draft; `esc u` brings the draft back.
 As Pi's own, `/reload` asks to wait while a run or compaction is under way.
 
-`/login`, `/logout`, `/settings`, `/scoped-models`, `/trust`, `/import`, `/share`, and
-`/tree` open Pi's own screen on the current session while Pi is idle, with the command ready
-to run on `enter`. `ctrl+d` on its empty editor, or `ctrl+c` twice, returns to Pituitary on
-the session Pi ends on, with the draft and the conversation as they were. Pi reopens that
-session at its last entry, so of a `/tree` move only one that leaves a branch summary
-carries back; a move without one, and the prompt Pi puts in its editor, stay behind.
+`/tree` lists every branch of the session, as Pi's own tree does: a chain of entries stays in
+one column and the branches step in where they fork, with `├─` and `└─`, the branch the
+session is on first and in colour, and the point it stands on reads `· current`. Rows show
+prompts, replies, shell commands, extensions' messages and summaries, with their labels and
+times; the filter matches more of each than its first line. `shift+l` labels the entry under
+the cursor, an empty label taking it off (Pi's `app.tree.editLabel`); `app.session.tree` binds
+a key to open the list, which neither Pi nor Pituitary does by default. Picking an entry asks
+whether to summarize the branch you leave: no summary, a summary, or one with your own
+instructions, unless Pi's `branchSummary.skipPrompt` setting skips the question. While the
+summary is written, `esc` stops it and the list comes back; the summary then shows in the
+conversation as `[branch]`, its text behind `ctrl+o`. Moving to a prompt moves the session to
+just before it and puts the prompt in place of the draft to send again, edited or not; `esc u`
+brings the draft back. A move to any other entry leaves the draft as it was.
+
+`/login`, `/logout`, `/settings`, `/scoped-models`, `/trust`, `/import`, and `/share` open
+Pi's own screen on the current session while Pi is idle, with the command ready to run on
+`enter`. `ctrl+d` on its empty editor, or `ctrl+c` twice, returns to Pituitary on the session
+Pi ends on, with the draft and the conversation as they were.
+
+## Shell commands
+
+A draft that starts with `!` runs the rest as a shell command through Pi, in Pi's working
+directory, as Pi's own editor does: `!git status --short`. Its output streams into the
+conversation, its latest lines up to half the screen until `ctrl+o`, and Pi gives it to the
+model with your next prompt. `!!` runs a command whose output stays out of the model's context, which the
+conversation marks. One command runs at a time; `esc` stops it. The leading `!` or `!!` shows
+as a chip in the draft, and `↑` recalls earlier commands with your prompts. Extensions' messages
+that ask not to be shown, such as context an extension adds for the model, stay out of the
+conversation.
 
 ## Connect your provider
 
@@ -226,7 +250,7 @@ external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 | --- | --- |
 | enter / shift+enter | Send / newline |
 | alt+enter | Queue a follow-up |
-| esc | Leave insert mode, then interrupt; close a picker, or the usage card while nothing runs |
+| esc | Leave insert mode, then interrupt, or stop a shell command or a branch summary; close a picker, or the usage card while nothing runs |
 | ctrl+l / ctrl+p / shift+tab | Choose model / cycle model / cycle thinking |
 | ctrl+o / ctrl+t / ctrl+f | Expand work / toggle thinking / browse work |
 | alt+r / alt+f / alt+n | Resume / fork / start a session (regular Pi) |

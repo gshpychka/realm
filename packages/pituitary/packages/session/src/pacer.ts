@@ -26,9 +26,10 @@ export interface EventPacerOptions {
  * Rate-limits the two high-volume event streams so a fast agent cannot outrun the
  * renderer, at the cost of at most one flush interval of latency.
  *
- * Assistant deltas are applied in order within a frame. Tool updates carry the whole
- * output so far, so only the newest one per tool call has to be applied. Every other
- * event is a barrier: pending work is applied first, then the event, immediately.
+ * Assistant deltas and the output of the operator's shell commands are applied in order
+ * within a frame. Tool updates carry the whole output so far, so only the newest one per
+ * tool call has to be applied. Every other event is a barrier: pending work is applied
+ * first, then the event, immediately.
  */
 export class EventPacer {
   private readonly messages: SessionEvent[] = [];
@@ -58,7 +59,7 @@ export class EventPacer {
   handle(event: SessionEvent): void {
     if (this.disposed) return;
 
-    if (event.type === "message_update") {
+    if (event.type === "message_update" || event.type === "bash_execution_update") {
       this.messages.push(event);
       if (this.messages.length >= this.maxPending) this.flush();
       else this.arm("message");

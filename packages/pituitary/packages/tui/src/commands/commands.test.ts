@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mentionAt, rank } from "../files.ts";
-import { BUILTINS, builtin, type Command, suggest } from "./commands.ts";
+import { BUILTINS, builtin, type Command, shellCommand, suggest } from "./commands.ts";
 
 const extra: Command[] = [
   { name: "review", description: "", source: "builtin" },
@@ -18,6 +18,19 @@ describe("builtin", () => {
     expect(builtin("/review focus on tests")).toBeNull();
     expect(builtin("/skill:lint")).toBeNull();
     expect(builtin("model")).toBeNull();
+  });
+});
+
+describe("shellCommand", () => {
+  test("reads a draft as Pi's editor does: ! runs a command, !! keeps its output from the model", () => {
+    expect(shellCommand("!git status --short")).toEqual({ command: "git status --short", excluded: false });
+    expect(shellCommand("  !! cat .env \n")).toEqual({ command: "cat .env", excluded: true });
+    expect(shellCommand("!")).toEqual({ command: "", excluded: false });
+  });
+
+  test("leaves every other draft to the model", () => {
+    expect(shellCommand("run !this")).toBeNull();
+    expect(shellCommand("/tree")).toBeNull();
   });
 });
 

@@ -1,5 +1,5 @@
 import type { SessionSnapshot } from "./client.ts";
-import { contentToText, imageCount, type SessionEvent } from "./protocol.ts";
+import { type BashResult, contentToText, imageCount, type SessionEvent } from "./protocol.ts";
 
 export type Phase = "idle" | "streaming" | "compacting" | "retrying";
 
@@ -28,6 +28,8 @@ export interface UserEntry {
   text: string;
   /** Images the message carries, which its text names `[image 1]` onward. */
   images: number;
+  /** The session message's key, by which the session's own entry for the prompt is found. */
+  key?: string;
 }
 
 export interface AssistantEntry {
@@ -75,11 +77,34 @@ export interface CustomEntry {
   details?: unknown;
 }
 
+/**
+ * A shell command the operator ran: `!` gives its output to the model with the next prompt,
+ * `!!` keeps it out. Pi records it once it ends; until then the request running it streams its output.
+ */
+export interface BashEntry {
+  kind: "bash";
+  id: string;
+  command: string;
+  output: string;
+  /** Run with `!!`: the model is never sent its output. */
+  excluded: boolean;
+  /** The request running the command, until Pi answers it. */
+  running?: string;
+  /** Absent while it runs, and when the command was killed before it exited. */
+  exitCode?: number;
+  cancelled?: boolean;
+  /** Pi kept only the output's tail; `fullOutputPath` holds all of it. */
+  truncated?: boolean;
+  fullOutputPath?: string;
+  /** Why Pi could not run the command. */
+  error?: string;
+}
+
 /** History pi folded into a summary: a compaction, or a branch left behind. */
 export interface SummaryEntry {
   kind: "summary";
   id: string;
-  of: "compaction";
+  of: "compaction" | "branch";
   text: string;
   /** Context tokens before a compaction. */
   tokensBefore?: number;
@@ -105,7 +130,14 @@ export interface TurnEntry {
   after?: string;
 }
 
-export type Entry = UserEntry | AssistantEntry | NoticeEntry | CustomEntry | SummaryEntry | TurnEntry;
+export type Entry =
+  | UserEntry
+  | AssistantEntry
+  | NoticeEntry
+  | CustomEntry
+  | SummaryEntry
+  | TurnEntry
+  | BashEntry;
 
 export interface SessionView {
   phase: Phase;
@@ -180,8 +212,11 @@ interface Message {
   exitCode?: number | null;
   cancelled?: boolean;
   truncated?: boolean;
+  fullOutputPath?: string;
   excludeFromContext?: boolean;
   customType?: string;
+  /** Whether an extension's custom message is drawn; one with `false` is context for the model alone. */
+  display?: boolean;
   summary?: string;
   tokensBefore?: number;
   stopReason?: string;
@@ -191,9 +226,12 @@ interface Message {
 }
 
 /** A key that picks `message` out of its session: pi stamps each message with the time it made it. */
-function place(message: Message): string | null {
+export function messageKey(message: Pick<Message, "entryId" | "role" | "timestamp">): string | null {
   return message.entryId ?? (message.timestamp === undefined ? null : `${message.role}@${message.timestamp}`);
 }
+
+/** The most of a running command's output kept as it streams: its latest characters. */
+export const SHELL_OUTPUT_LIMIT = 64 * 1024;
 
 /**
  * The conversation a stored session holds, as a view. A tool call with no result in
@@ -220,7 +258,7 @@ export function restore(
         type: "message_end",
         message,
       } as SessionEvent);
-      const key = place(message as Message);
+      const key = messageKey(message as Message);
       const kept = key === null ? undefined : following.get(key);
       if (key === null || !kept) return next;
       following.delete(key);
@@ -253,6 +291,16 @@ export function restore(
       args: {},
       partialResult: { content: [{ type: "text", text: tool.output ?? "" }], details: tool.details },
     });
+  for (const shell of live?.shells ?? [])
+    view = reduce(
+      reduce(view, {
+        type: "bash_start",
+        id: shell.id,
+        command: shell.command,
+        excludeFromContext: shell.excludeFromContext,
+      }),
+      { type: "bash_execution_update", id: shell.id, delta: shell.output },
+    );
   if (live?.state.isCompacting) view = { ...view, phase: "compacting" };
   if (live?.retry) {
     const { errorMessage, ...retry } = live.retry;
@@ -315,6 +363,10 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
         output: emptySession.output,
         turn: null,
         entries: closed.entries.map((entry) => {
+          if (entry.kind === "bash" && entry.running !== undefined) {
+            const { running: _running, ...ended } = entry;
+            return { ...ended, cancelled: true };
+          }
           if (entry.kind !== "assistant") return entry;
           return {
             ...entry,
@@ -393,7 +445,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
       const counted = {
         ...state,
         messages: state.messages + 1,
-        last: place(message),
+        last: messageKey(message),
         turn: recorded(state.turn, message),
       };
       if (message.role !== "assistant") return counted;
@@ -482,6 +534,27 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
     case "extension_error":
       // Local, so a later snapshot keeps it where it happened.
       return note(state, "warning", extensionFailure(event), true);
+
+    case "bash_start":
+      return append(state, (id) => ({
+        kind: "bash",
+        id,
+        command: event.command,
+        output: "",
+        excluded: event.excludeFromContext,
+        running: event.id,
+      }));
+
+    case "bash_execution_update":
+      return patchBash(state, event.id, (entry) => ({
+        ...entry,
+        output: (entry.output + event.delta).slice(-SHELL_OUTPUT_LIMIT),
+      }));
+
+    case "bash_end":
+      return patchBash(state, event.id, ({ running: _running, ...entry }) =>
+        event.result ? { ...entry, ...ended(event.result) } : { ...entry, error: event.error ?? "failed" },
+      );
 
     default:
       return state;
@@ -576,6 +649,10 @@ export function transcript(state: SessionView): string {
       case "summary":
         lines.push(`[${entry.of}] ${entry.text}`);
         break;
+      case "bash":
+        lines.push(`$ ${entry.command}`);
+        if (entry.output.trim()) lines.push(entry.output.trimEnd());
+        break;
       case "turn":
         // A turn's figures are not part of what was said.
         break;
@@ -588,13 +665,16 @@ export function transcript(state: SessionView): string {
 
 function startMessage(state: SessionView, message: Message): SessionView {
   switch (message.role) {
-    case "user":
+    case "user": {
+      const key = messageKey(message);
       return append(state, (id) => ({
         kind: "user",
         id,
         text: contentToText(message.content),
         images: imageCount(message.content),
+        ...(key === null ? {} : { key }),
       }));
+    }
     case "assistant":
       return append(state, (id) => ({
         kind: "assistant",
@@ -616,6 +696,8 @@ function startMessage(state: SessionView, message: Message): SessionView {
       }));
     }
     case "custom":
+      // An extension's context for the model alone; it still counts among the messages.
+      if (message.display === false) return state;
       return append(state, (id) => ({
         kind: "custom",
         id,
@@ -631,9 +713,52 @@ function startMessage(state: SessionView, message: Message): SessionView {
         text: message.summary ?? "",
         ...(message.tokensBefore === undefined ? {} : { tokensBefore: message.tokensBefore }),
       }));
+    case "branchSummary":
+      return append(state, (id) => ({ kind: "summary", id, of: "branch", text: message.summary ?? "" }));
+    case "bashExecution":
+      return append(state, (id) => ({
+        kind: "bash",
+        id,
+        command: message.command ?? "",
+        excluded: message.excludeFromContext === true,
+        ...ended({
+          output: message.output ?? "",
+          ...(typeof message.exitCode === "number" ? { exitCode: message.exitCode } : {}),
+          cancelled: message.cancelled === true,
+          truncated: message.truncated === true,
+          ...(message.fullOutputPath ? { fullOutputPath: message.fullOutputPath } : {}),
+        }),
+      }));
     default:
       return state;
   }
+}
+
+/** What a finished command's entry says of how it ended, leaving out what did not happen. */
+function ended(
+  result: BashResult,
+): Pick<BashEntry, "output" | "exitCode" | "cancelled" | "truncated" | "fullOutputPath"> {
+  return {
+    output: result.output,
+    ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
+    ...(result.cancelled ? { cancelled: true } : {}),
+    ...(result.truncated ? { truncated: true } : {}),
+    ...(result.fullOutputPath ? { fullOutputPath: result.fullOutputPath } : {}),
+  };
+}
+
+/** Applies `patch` to the running command that the request `call` runs. */
+function patchBash(
+  state: SessionView,
+  call: string | undefined,
+  patch: (entry: BashEntry) => BashEntry,
+): SessionView {
+  const index = state.entries.findLastIndex((entry) => entry.kind === "bash" && entry.running === call);
+  const entry = state.entries[index];
+  if (call === undefined || entry?.kind !== "bash") return state;
+  const entries = [...state.entries];
+  entries[index] = patch(entry);
+  return { ...state, entries };
 }
 
 /** A call's state once `result` arrives: failed when the result says so, finished when it was running. */

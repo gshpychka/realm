@@ -18,6 +18,8 @@ const command = (name: string, source: "extension" | "prompt", path: string) => 
 /** What get_commands answers: a reload and a new session each load another prompt template. */
 let commands = bridge ? [command(BRIDGE_NAME, "extension", bridge)] : [];
 let reloadFails = false;
+/** The shell command running until `fixture_bash_end`, by its request's id. */
+let shell: string | undefined;
 const write = (...records: unknown[]) =>
   process.stdout.write(records.map((record) => `${JSON.stringify(record)}\n`).join(""));
 const runtime = (cwd?: string) => ({
@@ -124,6 +126,24 @@ for await (const line of input) {
             toolCall: { type: "toolCall", id: "read-stream", name: "read", arguments: { path: "README.md" } },
           },
         },
+      );
+      break;
+    case "bash":
+      // Pi streams a command's output under the id of the request that runs it.
+      shell = request.id;
+      write({ type: "bash_execution_update", id: request.id, delta: "building\n" });
+      break;
+    case "fixture_bash_end":
+      write(
+        { type: "bash_execution_update", id: shell, delta: "done\n" },
+        {
+          id: shell,
+          type: "response",
+          command: "bash",
+          success: true,
+          data: { output: "building\ndone\n", exitCode: 0, cancelled: false, truncated: false },
+        },
+        response(),
       );
       break;
     case "fixture_compaction_start":

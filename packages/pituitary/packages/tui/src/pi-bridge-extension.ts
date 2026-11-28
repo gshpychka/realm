@@ -7,6 +7,7 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
   getAgentDir,
+  type SessionEntry,
   type SessionInfo,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
@@ -21,6 +22,8 @@ import {
   encodeRuntime,
   RUNTIME_STATUS,
   type SessionSummary,
+  type TreeKind,
+  type TreeNode,
 } from "./pi-bridge.ts";
 
 /**
@@ -88,7 +91,98 @@ async function answer(pi: ExtensionAPI, call: BridgeCall, ctx: ExtensionCommandC
     case "reload":
       await ctx.reload();
       return null;
+    case "tree": {
+      const manager = ctx.sessionManager;
+      return {
+        nodes: manager.getEntries().map((entry) => treeNode(entry, manager.getLabel(entry.id))),
+        leaf: manager.getLeafId(),
+        skipSummaryPrompt: pi.getSettings().branchSummary?.skipPrompt === true,
+      };
+    }
+    case "navigate": {
+      const target = ctx.sessionManager.getEntry(call.entryId);
+      if (!target) throw new Error("That point is no longer in this session.");
+      const { cancelled } = await ctx.navigateTree(call.entryId, {
+        summarize: call.summarize,
+        ...(call.instructions ? { customInstructions: call.instructions } : {}),
+      });
+      // Pi puts the prompt it moved before in its own editor, which RPC has none of.
+      return { cancelled, text: cancelled ? "" : writtenAgain(target) };
+    }
+    case "label":
+      pi.setLabel(call.entryId, call.label || undefined);
+      return null;
   }
+}
+
+/** The most of an entry's text the tree carries: enough for its row, and for the filter to find it by. */
+const TREE_TEXT = 400;
+
+/** An entry as the tree picker needs it: what it is, the start of what it says, and its label. */
+function treeNode(entry: SessionEntry, label: string | undefined): TreeNode {
+  const [kind, text] = described(entry);
+  return {
+    id: entry.id,
+    parent: entry.parentId,
+    kind,
+    text: text.slice(0, TREE_TEXT),
+    ...(label ? { label } : {}),
+    ...(entry.type === "compaction" ? { tokens: entry.tokensBefore } : {}),
+    at: Date.parse(entry.timestamp),
+  };
+}
+
+/** What kind of row an entry has in the tree, and what it says. */
+function described(entry: SessionEntry): [TreeKind, string] {
+  switch (entry.type) {
+    case "message": {
+      const { message } = entry;
+      switch (message.role) {
+        case "user":
+          return ["user", textOf(message.content)];
+        case "assistant":
+          return [
+            "assistant",
+            textOf(message.content) ||
+              (message.stopReason === "aborted" ? "interrupted" : (message.errorMessage ?? "")),
+          ];
+        case "toolResult":
+          return ["tool", ""];
+        case "bashExecution":
+          return ["bash", message.command];
+        default:
+          return ["other", ""];
+      }
+    }
+    case "custom_message":
+      return ["custom", `${entry.customType}: ${textOf(entry.content)}`];
+    case "compaction":
+      return ["compaction", ""];
+    case "branch_summary":
+      return ["branch", entry.summary];
+    default:
+      return ["other", ""];
+  }
+}
+
+/** What Pi puts back in its editor when the session moves to before `entry`; empty when it puts nothing. */
+function writtenAgain(entry: SessionEntry): string {
+  if (entry.type === "message" && entry.message.role === "user") return textOf(entry.message.content, "");
+  if (entry.type === "custom_message") return textOf(entry.content, "");
+  return "";
+}
+
+/** The text blocks of a message's content, with `separator` between them. */
+function textOf(content: unknown, separator = "\n"): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((block) =>
+      block && typeof block === "object" && block.type === "text" && typeof block.text === "string"
+        ? [block.text]
+        : [],
+    )
+    .join(separator);
 }
 
 /** How many session files are read at once to count their prompts. */

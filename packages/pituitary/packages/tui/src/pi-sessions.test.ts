@@ -31,13 +31,14 @@ const entries = [
   entry("b3", "b2", { role: "assistant" }, 9),
 ];
 
-test("prompts come from the current branch only, oldest first", () => {
+test("prompts come from the current branch only, oldest first, keyed as the transcript keys them", () => {
   const prompts = branchPrompts(entries, "b3");
   expect(prompts.map((prompt) => prompt.entryId)).toEqual(["u1", "b2"]);
   expect(prompts[0]).toEqual({
     entryId: "u1",
     text: "first prompt\nwith detail",
     at: at(30),
+    key: `user@${at(30)}`,
   });
   expect(branchPrompts(entries, "a2").map((prompt) => prompt.entryId)).toEqual(["u1", "u2"]);
   expect(branchPrompts(entries, null)).toEqual([]);

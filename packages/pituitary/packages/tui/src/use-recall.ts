@@ -72,6 +72,7 @@ function historyOf(entries: readonly Entry[]): string[] {
   return prompts(
     entries.flatMap((entry) => {
       if (entry.kind === "user") return [entry.text];
+      if (entry.kind === "bash") return [`${entry.excluded ? "!!" : "!"}${entry.command}`];
       return [];
     }),
   );

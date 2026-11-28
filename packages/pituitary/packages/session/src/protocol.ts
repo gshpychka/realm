@@ -45,6 +45,16 @@ export interface ToolResult {
   content: unknown;
   details?: unknown;
 }
+/** How a shell command the operator ran ended, as Pi answers its RPC `bash` command. */
+export interface BashResult {
+  output: string;
+  /** Absent when the command was killed before it exited. */
+  exitCode?: number;
+  cancelled: boolean;
+  /** Pi kept only the output's tail; `fullOutputPath` holds all of it. */
+  truncated: boolean;
+  fullOutputPath?: string;
+}
 export type SessionEvent =
   | { type: "message_start"; message: unknown }
   | { type: "message_end"; message: unknown }
@@ -68,7 +78,15 @@ export type SessionEvent =
   | { type: "runtime_error"; source: string; event: string; error: string }
   /** An extension's handler threw; `extensionPath` is its file, or `command:<name>` for a command. */
   | { type: "extension_error"; extensionPath: string; event: string; error: string }
-  | { type: "thinking_level_changed"; level: string };
+  | { type: "thinking_level_changed"; level: string }
+  /**
+   * A shell command the operator ran, `!` or `!!` in the draft. Pi streams its output by the id
+   * of the request that runs it; the adapter that sends the request reports its start and end,
+   * which Pi itself does not, since it records the command only once it has ended.
+   */
+  | { type: "bash_start"; id: string; command: string; excludeFromContext: boolean }
+  | { type: "bash_execution_update"; id?: string; delta: string }
+  | { type: "bash_end"; id: string; result?: BashResult; error?: string };
 
 type InputCommand = {
   type: "prompt" | "steer" | "follow_up";

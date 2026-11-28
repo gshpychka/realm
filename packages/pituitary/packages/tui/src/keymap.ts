@@ -12,6 +12,8 @@ export const ACTIONS = {
   "app.session.new": ["alt+n"],
   "app.session.resume": ["alt+r"],
   "app.session.fork": ["alt+f"],
+  /** Opens the session's tree; unbound unless the operator binds it, as in Pi. */
+  "app.session.tree": [],
   "app.interrupt": ["escape"],
   "app.clear": ["ctrl+c"],
   "app.exit": ["ctrl+d"],
@@ -37,8 +39,8 @@ export const ACTIONS = {
 } as const satisfies Record<string, readonly string[]>;
 
 /**
- * What a key does inside the resume list, named as pi names these actions. As in pi, they may
- * share keys with the actions above, which apply everywhere else.
+ * What a key does inside the resume list or the tree list, named as pi names these actions. As
+ * in pi, they may share keys with the actions above, which apply everywhere else.
  */
 export const LIST_ACTIONS = {
   "app.session.rename": ["ctrl+r"],
@@ -46,13 +48,23 @@ export const LIST_ACTIONS = {
   "app.session.delete": ["ctrl+x"],
   /** Switches the list between this project's sessions and every project's, as pi's does. */
   "tui.input.tab": ["tab"],
+  /** Labels the entry under the cursor. As in pi's tree, a capital L does it rather than filter. */
+  "app.tree.editLabel": ["shift+l"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type Action = keyof typeof ACTIONS;
 export type ListAction = keyof typeof LIST_ACTIONS;
 export type Keymap = Record<Action | ListAction, readonly string[]>;
 
-/** Whether `action` applies only inside the resume list. */
+/** The command whose list each list action works in. */
+export const LIST_OF: Record<ListAction, "resume" | "tree"> = {
+  "app.session.rename": "resume",
+  "app.session.delete": "resume",
+  "tui.input.tab": "resume",
+  "app.tree.editLabel": "tree",
+};
+
+/** Whether `action` applies only inside a list. */
 export const isListAction = (action: string): action is ListAction => Object.hasOwn(LIST_ACTIONS, action);
 
 /** The parts of a key event a binding is matched against. */
@@ -103,8 +115,9 @@ export function actionFor(keymap: Keymap, key: KeyLike): Action | null {
 export function keymap(overrides: Record<string, unknown> = {}): Keymap {
   const map: Keymap = { ...ACTIONS, ...LIST_ACTIONS };
   type Named = keyof Keymap;
-  // A key belongs to one action everywhere outside lists, and to one inside the resume list.
-  const claim = (action: Named, key: string) => `${isListAction(action) ? "list" : "app"} ${bindingId(key)}`;
+  // A key belongs to one action everywhere outside lists, and to one inside each list.
+  const claim = (action: Named, key: string) =>
+    `${isListAction(action) ? LIST_OF[action] : "app"} ${bindingId(key)}`;
   const assigned = new Map<string, Named>();
   for (const [action, value] of Object.entries(overrides)) {
     const keys = keysOf(value);

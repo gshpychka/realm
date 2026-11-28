@@ -11,6 +11,7 @@ export const HIGHLIGHTS: Record<string, Record<string, string | boolean>> = {
   PiPlaceholder: { fg: theme.dim },
   PiImage: { fg: theme.image, bg: theme.imageTint },
   PiImageEdge: { fg: theme.imageTint },
+  PiShell: { fg: theme.tool, bg: theme.imageTint, bold: true },
 };
 
 /**
@@ -143,6 +144,24 @@ local function mark_images()
 end
 
 vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, { callback = mark_images })
+
+-- A draft that starts with ! runs as a shell command, and one with !! keeps its output from pi.
+-- The marks show as a chip; the text stays as typed.
+local shell = vim.api.nvim_create_namespace("pi_shell")
+
+local function mark_shell()
+  vim.api.nvim_buf_clear_namespace(0, shell, 0, -1)
+  local first = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or ""
+  local indent, marks = first:match("^(%s*)(!!?)")
+  if marks then
+    vim.api.nvim_buf_set_extmark(0, shell, 0, #indent, { end_col = #indent + #marks, hl_group = "PiShell" })
+  end
+end
+
+vim.api.nvim_create_autocmd(
+  { "TextChanged", "TextChangedI", "TextChangedP", "ModeChanged" },
+  { callback = mark_shell }
+)
 
 -- startinsert takes effect only once nvim next reads input, so a request can land in
 -- between; a key enters insert mode in order with the requests after it.

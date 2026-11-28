@@ -10,6 +10,10 @@ import { Detail, type DetailIcon } from "./detail.tsx";
 
 export interface PickItem {
   label: string;
+  /** Drawn dim before the label and its mark, such as a tree's lines; the filter does not read it. */
+  lead?: string;
+  /** Leads the label, such as the kind of entry a tree's row stands for. */
+  mark?: DetailIcon;
   detail?: string;
   /** Leads the detail. */
   icon?: DetailIcon;
@@ -242,9 +246,16 @@ export function Picker({
  * half the row, and the detail takes the rest: a short label, such as a task's role, leaves
  * its room to a long detail, such as the task's objective. The item in effect now says so
  * after its label, cutting the label for the mark unless that would leave the label narrower
- * than the mark; a label without its mark leaves the mark's room to the detail too.
+ * than the mark; a label without its mark leaves the mark's room to the detail too. A lead and
+ * a label's mark come first and keep their cells; a lead deeper than half the row keeps its end,
+ * which joins the label.
  */
-function Row({ item, cells }: { item: PickItem; cells: number }) {
+function Row({ item, cells: row }: { item: PickItem; cells: number }) {
+  const deepest = Math.floor(row / 2);
+  const lead =
+    item.lead && item.lead.length > deepest ? item.lead.slice(item.lead.length - deepest) : item.lead;
+  const cells =
+    row - (lead ? Bun.stringWidth(lead) : 0) - (item.mark ? Bun.stringWidth(item.mark.glyph) + 1 : 0);
   const icon = item.icon ? Bun.stringWidth(item.icon.glyph) + 1 : 0;
   const mark = Bun.stringWidth(CURRENT);
   const fit = (after: number) => {
@@ -257,6 +268,12 @@ function Row({ item, cells }: { item: PickItem; cells: number }) {
   const { detail, room } = current ? marked : fit(0);
   return (
     <>
+      {lead || item.mark ? (
+        <text selectable={false} flexShrink={0} wrapMode="none">
+          {lead ? <span fg={theme.dim}>{lead}</span> : null}
+          {item.mark ? <span fg={item.mark.colour ?? theme.dim}>{`${item.mark.glyph} `}</span> : null}
+        </text>
+      ) : null}
       <text
         selectable={false}
         fg={item.current ? palette.yellow : theme.assistant}

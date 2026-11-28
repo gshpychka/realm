@@ -24,6 +24,7 @@ import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { type Item, type Reply, transcriptOf, type Work } from "../transcript.ts";
 import { turnLine } from "../working.ts";
+import { BashView } from "./bash.tsx";
 import { Link } from "./link.tsx";
 import { Markdown } from "./markdown.tsx";
 import { boxId, scrollWork, WorkBox } from "./work.tsx";
@@ -86,7 +87,16 @@ function withImageChips(text: string, images: number): ReactNode {
 /** An entry the conversation draws as it is, which is any but the model's replies. */
 type Plain = Exclude<Item, Work | Reply>;
 
-const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; display: Display }) {
+const EntryView = memo(function EntryView({
+  entry,
+  display,
+  rows,
+}: {
+  entry: Plain;
+  display: Display;
+  /** Rows a shell command's output shows until ctrl+o. */
+  rows: number;
+}) {
   const expand = useKeyHint("app.tools.expand");
   switch (entry.kind) {
     case "user":
@@ -120,9 +130,11 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
             <box flexDirection="row">
               <text fg={theme.dim}>
                 [{entry.of}]
-                {entry.tokensBefore === undefined
-                  ? ""
-                  : ` compacted from ${glyphs.tokens} ${entry.tokensBefore.toLocaleString("en")} tokens`}
+                {entry.of === "branch"
+                  ? " summary of the branch you left"
+                  : entry.tokensBefore === undefined
+                    ? ""
+                    : ` compacted from ${glyphs.tokens} ${entry.tokensBefore.toLocaleString("en")} tokens`}
               </text>
               {!display.expanded && expand ? (
                 <text selectable={false} fg={theme.dim} flexShrink={0} wrapMode="none">
@@ -140,6 +152,8 @@ const EntryView = memo(function EntryView({ entry, display }: { entry: Plain; di
           <text fg={theme.dim}>{turnLine(entry)}</text>
         </box>
       );
+    case "bash":
+      return <BashView entry={entry} expanded={display.expanded} rows={rows} escapes={display.escapes} />;
     case "notice":
       return <Notice entry={entry} expanded={display.expanded} commands={display.commands} />;
   }
@@ -209,10 +223,12 @@ const ReplyView = memo(
 /** A key on the welcome screen, what it does, and the shorter words a narrow screen takes. */
 type WelcomeRow = readonly [keys: string, does: string, short?: string];
 
-const editorKeys = (local: boolean): readonly WelcomeRow[] => [
+/** The draft's own keys; regular Pi's draft also runs the operator's shell commands. */
+const editorKeys = (local: boolean, shell: boolean): readonly WelcomeRow[] => [
   ["enter", "send"],
   ["shift+enter  ctrl+j", "new line"],
   local ? ["/  @", "commands, and files to mention", "commands, files"] : ["/", "commands"],
+  ...(shell ? [["!  !!", "run a shell command; !! keeps its output from pi", "shell command"] as const] : []),
   ["pgup  pgdn", "scroll"],
 ];
 
@@ -249,7 +265,7 @@ export function Welcome({
   const interrupt = bound("app.interrupt");
   const rows = (
     [
-      ...editorKeys(local),
+      ...editorKeys(local, sessions),
       [bound("app.message.followUp"), `queue a follow-up while ${agent} works`, "queue a follow-up"],
       [
         interrupt ? escapes : "",
@@ -385,6 +401,11 @@ function useHistoryAnchor(
 
 /** Rows an open box shows before it scrolls: a third of the terminal, and never too few to read. */
 const boxRows = (height: number) => Math.max(6, Math.floor(height / 3));
+/**
+ * Rows of output a shell command the operator ran shows until ctrl+o, its latest: half the
+ * terminal, more than a box of the model's work, since the operator asked to see it.
+ */
+const shellRows = (height: number) => Math.max(6, Math.floor(height / 2));
 
 /** What a key does while the keyboard walks the boxes. */
 type Walk = { kind: "leave" } | { kind: "toggle" } | { kind: "pick" | "scroll"; by: number };
@@ -573,7 +594,7 @@ export function Conversation({
           case "reply":
             return <ReplyView key={item.id} reply={item} />;
           default:
-            return <EntryView key={item.id} entry={item} display={display} />;
+            return <EntryView key={item.id} entry={item} display={display} rows={shellRows(height)} />;
         }
       })}
     </scrollbox>

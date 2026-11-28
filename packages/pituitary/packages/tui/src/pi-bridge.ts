@@ -1,9 +1,9 @@
 /**
  * Pituitary's own channel into Pi, for what Pi's RPC lacks: listing and managing saved
- * sessions, and reloading resources. The frontend sends a request as the arguments of the
- * bridge extension's command, and the extension answers through a status that the frontend
- * takes out of the stream before any extension UI sees it. Both sides share this module,
- * so it imports nothing.
+ * sessions, moving through the session's tree, and reloading resources. The frontend sends a
+ * request as the arguments of the bridge extension's command, and the extension answers
+ * through a status that the frontend takes out of the stream before any extension UI sees
+ * it. Both sides share this module, so it imports nothing.
  */
 
 /**
@@ -37,6 +37,38 @@ export interface SessionSummary {
   first: string;
 }
 
+/** What an entry of the session tree holds, as far as the tree picker tells entries apart. */
+export const TREE_KINDS = [
+  "user",
+  "assistant",
+  "tool",
+  "bash",
+  "custom",
+  "compaction",
+  "branch",
+  "other",
+] as const;
+export type TreeKind = (typeof TREE_KINDS)[number];
+
+/** One entry of the session tree, with only what the tree picker draws. */
+export interface TreeNode {
+  id: string;
+  /** The entry it follows; null for the session's first. */
+  parent: string | null;
+  kind: TreeKind;
+  /**
+   * The start of what it says: a prompt, a reply, a command, an extension's message or a
+   * summary. Empty for what the picker leaves out, such as a tool's result.
+   */
+  text: string;
+  /** The operator's label on it. */
+  label?: string;
+  /** A compaction's context tokens before it. */
+  tokens?: number;
+  /** When Pi recorded it, in milliseconds since the epoch. */
+  at: number;
+}
+
 /** What each kind of request carries, and what its reply holds. */
 export interface BridgeKinds {
   /** This project's saved sessions, or every project's. */
@@ -46,6 +78,26 @@ export interface BridgeKinds {
   "delete-session": { request: { path: string }; result: { trashed: boolean } };
   /** Reloads extensions, skills, prompts, themes and context files. */
   reload: { request: Record<never, never>; result: null };
+  /**
+   * The session's entries on every branch, where it stands among them, and whether Pi's
+   * settings skip asking to summarize the branch a move leaves (`branchSummary.skipPrompt`).
+   */
+  tree: {
+    request: Record<never, never>;
+    result: { nodes: TreeNode[]; leaf: string | null; skipSummaryPrompt: boolean };
+  };
+  /**
+   * Moves the session to the entry `entryId`, summarizing the branch it leaves when asked, with
+   * `instructions` for the summary. Pi leaves a prompt, or an extension's message, to be written
+   * again: the session moves to just before it, and `text` holds it. `cancelled` when an
+   * extension, or an abort, kept the session where it was.
+   */
+  navigate: {
+    request: { entryId: string; summarize: boolean; instructions?: string };
+    result: { cancelled: boolean; text: string };
+  };
+  /** Labels an entry of the session; an empty label takes the label off. */
+  label: { request: { entryId: string; label: string }; result: null };
 }
 export type BridgeKind = keyof BridgeKinds;
 export type BridgeRequest<K extends BridgeKind = BridgeKind> = K extends BridgeKind
@@ -113,6 +165,24 @@ export function decodeCall(args: string): BridgeCall {
       return { id, kind: "delete-session", path: value.path as string };
     case "reload":
       return { id, kind: "reload" };
+    case "tree":
+      return { id, kind: "tree" };
+    case "navigate": {
+      if (!text(value.entryId) || typeof value.summarize !== "boolean")
+        fail("navigate needs an entryId and whether to summarize.");
+      const instructions = typeof value.instructions === "string" ? value.instructions.trim() : "";
+      return {
+        id,
+        kind: "navigate",
+        entryId: value.entryId as string,
+        summarize: value.summarize as boolean,
+        ...(instructions ? { instructions } : {}),
+      };
+    }
+    case "label":
+      if (!text(value.entryId) || typeof value.label !== "string")
+        fail("label needs an entryId and a label.");
+      return { id, kind: "label", entryId: value.entryId as string, label: (value.label as string).trim() };
     default:
       return fail(`Unknown bridge request: ${String(value.kind)}`);
   }
@@ -141,9 +211,38 @@ export function readResult<K extends BridgeKind>(kind: K, result: unknown): Brid
     }
     case "delete-session":
       return { trashed: isFields(result) && result.trashed === true } as BridgeResult<K>;
+    case "tree": {
+      const fields = isFields(result) ? result : {};
+      return {
+        nodes: Array.isArray(fields.nodes) ? fields.nodes.filter(isTreeNode) : [],
+        leaf: text(fields.leaf) ? fields.leaf : null,
+        skipSummaryPrompt: fields.skipSummaryPrompt === true,
+      } as BridgeResult<K>;
+    }
+    case "navigate": {
+      // A reply that cannot say the session stayed is read as a move, which the view then reads afresh.
+      const fields = isFields(result) ? result : {};
+      return {
+        cancelled: fields.cancelled === true,
+        text: typeof fields.text === "string" ? fields.text : "",
+      } as BridgeResult<K>;
+    }
     default:
       return null as BridgeResult<K>;
   }
+}
+
+function isTreeNode(value: unknown): value is TreeNode {
+  return (
+    isFields(value) &&
+    text(value.id) &&
+    (value.parent === null || text(value.parent)) &&
+    TREE_KINDS.includes(value.kind as TreeKind) &&
+    typeof value.text === "string" &&
+    typeof value.at === "number" &&
+    (value.label === undefined || typeof value.label === "string") &&
+    (value.tokens === undefined || typeof value.tokens === "number")
+  );
 }
 
 function isSummary(value: unknown): value is SessionSummary {

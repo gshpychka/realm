@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import type { UserEntry } from "@pituitary/session";
 import {
   type Dispatch,
   type RefObject,
@@ -9,13 +10,14 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { type Command, PI_SCREENS } from "./commands/commands.ts";
+import { type Command, PI_SCREENS, shellCommand } from "./commands/commands.ts";
 import type { EditorHandle } from "./components/editor.tsx";
 import type { PickerKey, PickerSpec } from "./components/picker.tsx";
 import type { Keymap } from "./keymap.ts";
 import type { PiControls, PiWorkspace } from "./pi.ts";
 import type { SessionSummary } from "./pi-bridge.ts";
 import { PI_EXTENSIONS } from "./pi-extensions.ts";
+import { treeNavigation } from "./pi-navigation.ts";
 import { forkRows, sessionDetail, sessionLabel, sessionRows } from "./pi-sessions.ts";
 import { tilde } from "./place.ts";
 import type { Question } from "./use-ask.ts";
@@ -49,14 +51,29 @@ export interface Pi {
   usageCommand: string | undefined;
   /** Opens or closes the provider usage card, through Pituitary's usage extension, whatever Pi named its command. */
   showUsage(open: boolean): void;
+  /**
+   * Runs a draft that is a shell command, `!command`, or `!!command` to keep its output from
+   * the model; false for any other draft. A draft it cannot run yet goes back to the editor.
+   */
+  shell(draft: string): boolean;
+  /** Moves back before the prompt the transcript shows as `prompt`, which goes into the draft, as /tree does. */
+  editAt(prompt: UserEntry): void;
+  /** A move is summarizing the branch it leaves. */
+  summarizing: boolean;
+  /**
+   * Stops what Pituitary set Pi doing outside a run: a move summarizing the branch it leaves,
+   * or the operator's shell command. False when there is neither.
+   */
+  stop(): boolean;
 }
 
 const subscribeNone = () => () => {};
 const NO_WORKSPACE: PiWorkspace = { cwd: process.cwd(), commands: [] };
 
 /**
- * Regular Pi's sessions run from Pituitary's own screen: new, fork, clone and resume replace
- * the session without remounting anything, so the draft and its undo history stay. Null for Dura.
+ * Regular Pi's sessions run from Pituitary's own screen: new, fork, tree, clone and resume
+ * replace or move the session without remounting anything, so the draft and its undo history
+ * stay. The operator's shell commands run through Pi too. Null for Dura.
  */
 export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePiOptions): Pi | null {
   const conversation = pi?.conversation;
@@ -69,6 +86,8 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
   latest.current = session;
   const resumed = useRef(false);
   const [keymap, setKeymap] = useState(() => pi?.keymap());
+  // What stops a move that is summarizing the branch it leaves, while one is.
+  const [stopSummary, setStopSummary] = useState<(() => void) | null>(null);
   const commands = useMemo(
     () =>
       workspace.commands
@@ -90,6 +109,7 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
         flash,
         terminal,
         reloadKeys: () => setKeymap(pi.keymap()),
+        summarizing: (stop) => setStopSummary(() => stop),
       })
     : null;
   // `pituitary --resume` opens the picker once the session has loaded.
@@ -115,6 +135,30 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
           .prompt(`/${name} ${open ? "on" : "off"}`)
           .catch((error) => session.notify("warning", describe(error)));
     },
+    shell: (draft) => {
+      const shell = shellCommand(draft);
+      if (!shell) return false;
+      const refused = !shell.command
+        ? "type a command after ! to run it, or after !! to keep its output from pi"
+        : // As in Pi, one command runs at a time.
+          link.shellRunning
+          ? "a shell command is already running · stop it first"
+          : null;
+      if (refused) {
+        editor.current?.set(draft);
+        flash(refused);
+      } else void link.bash(shell.command, shell.excluded);
+      return true;
+    },
+    editAt: actions.editAt,
+    summarizing: stopSummary !== null,
+    stop: () => {
+      if (stopSummary) stopSummary();
+      else if (link.shellRunning)
+        void link.abortBash().catch((error) => session.notify("error", describe(error)));
+      else return false;
+      return true;
+    },
   };
 }
 
@@ -133,8 +177,12 @@ function sessionActions(
     flash,
     terminal,
     reloadKeys,
-  }: Omit<UsePiOptions, "pi" | "session"> & { reloadKeys(): void },
-): Pick<Pi, "run"> {
+    summarizing,
+  }: Omit<UsePiOptions, "pi" | "session"> & {
+    reloadKeys(): void;
+    summarizing(stop: (() => void) | null): void;
+  },
+): Pick<Pi, "run" | "editAt"> {
   const { conversation } = pi;
   const notify: SessionController["notify"] = (level, text, file) => latest.current.notify(level, text, file);
   const kept = () => notify("info", "An extension kept Pi on this session.");
@@ -165,6 +213,18 @@ function sessionActions(
     const queued = await settle();
     if (queued) intoDraft(queued);
   };
+
+  const tree = treeNavigation({
+    conversation,
+    pick,
+    ask,
+    flash,
+    notify,
+    editor,
+    settle,
+    intoDraft,
+    summarizing,
+  });
 
   const forkAt = async (entryId: string) => {
     const queued = await settle();
@@ -335,6 +395,8 @@ function sessionActions(
           return go(name, () => resume(args === "all" ? "all" : "here"));
         case "fork":
           return go(name, fork);
+        case "tree":
+          return go(name, tree.open);
         case "clone":
           return go(name, clone);
         case "reload": {
@@ -369,6 +431,7 @@ function sessionActions(
       if (!PI_SCREENS.some((command) => command.name === name)) return false;
       return go(name, () => screen(`/${name}${args ? ` ${args}` : ""}`));
     },
+    editAt: (prompt) => void tree.editAt(prompt).catch(failed("tree")),
   };
 }
 

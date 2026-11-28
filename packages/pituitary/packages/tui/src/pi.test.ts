@@ -149,6 +149,35 @@ test("a Pi snapshot captures its precise stream position, including live tools",
   }
 });
 
+test("the operator's shell command streams under its request and ends as Pi answers; a snapshot keeps it while it runs", async () => {
+  const client = open();
+  try {
+    await client.getState();
+    const events: SessionEvent[] = [];
+    client.onEvent((event) => events.push(event));
+    const ran = client.bash("make test", true);
+    const snapshot = await client.getSnapshot();
+    expect(client.shellRunning).toBe(true);
+    expect(snapshot.shells).toEqual([
+      { id: expect.any(String), command: "make test", excludeFromContext: true, output: "building\n" },
+    ]);
+    await ask(client, "fixture_bash_end");
+    await ran;
+    expect(client.shellRunning).toBe(false);
+    expect(events.map((event) => event.type)).toEqual([
+      "bash_start",
+      "bash_execution_update",
+      "bash_execution_update",
+      "bash_end",
+    ]);
+    const id = snapshot.shells?.[0]?.id;
+    expect(events.every((event) => "id" in event && event.id === id)).toBe(true);
+    expect(events.at(-1)).toMatchObject({ result: { output: "building\ndone\n", exitCode: 0 } });
+  } finally {
+    await client.close();
+  }
+});
+
 test("Pi process exit rejects outstanding requests and notifies an attached frontend", async () => {
   const client = open();
   try {

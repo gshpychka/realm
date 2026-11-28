@@ -36,4 +36,14 @@ export interface SessionSnapshot {
   pendingToolCalls: readonly string[];
   pendingTools?: readonly { callId: string; name: string; output?: string; details?: unknown }[];
   queue?: { steering: readonly string[]; followUp: readonly string[] };
+  /** The operator's shell commands still running, which the session records only once they end. */
+  shells?: readonly RunningShell[];
+}
+/** A shell command the operator ran that has yet to end, with its output so far. */
+export interface RunningShell {
+  /** The request that runs it, which its streamed output names. */
+  id: string;
+  command: string;
+  excludeFromContext: boolean;
+  output: string;
 }

@@ -42,10 +42,19 @@ function saved(project: string, prompts: string[]): SessionManager {
   return manager;
 }
 
-/** The bridge loaded into a stand-in for Pi, its command run in `mode` on the open session `open`. */
-function load(open: SessionManager, mode: "rpc" | "interactive" = "rpc") {
+/**
+ * The bridge loaded into a stand-in for Pi, its command run in `mode` on the open session `open`.
+ * A move through the tree is cancelled when `cancel` says so.
+ */
+function load(
+  open: SessionManager,
+  mode: "rpc" | "interactive" = "rpc",
+  { skipPrompt, cancel = false }: { skipPrompt?: boolean; cancel?: boolean } = {},
+) {
   const statuses: [string, string | undefined][] = [];
   const named: string[] = [];
+  const labels: [string, string | undefined][] = [];
+  const moves: [entryId: unknown, options: unknown][] = [];
   const handlers = new Map<string, (event: unknown, ctx: unknown) => void>();
   let command: ((args: string, ctx: ExtensionCommandContext) => Promise<void>) | undefined;
   const pi = {
@@ -55,6 +64,8 @@ function load(open: SessionManager, mode: "rpc" | "interactive" = "rpc") {
       command = options.handler;
     },
     setSessionName: (name: string) => named.push(name),
+    setLabel: (entryId: string, label: string | undefined) => labels.push([entryId, label]),
+    getSettings: () => (skipPrompt === undefined ? {} : { branchSummary: { skipPrompt } }),
   } as unknown as ExtensionAPI;
   bridge(pi);
   const ctx = {
@@ -63,6 +74,10 @@ function load(open: SessionManager, mode: "rpc" | "interactive" = "rpc") {
     ui: { setStatus: (key: string, text: string | undefined) => statuses.push([key, text]) },
     sessionManager: open,
     reload: async () => {},
+    navigateTree: async (entryId: string, options: unknown) => {
+      moves.push([entryId, options]);
+      return { cancelled: cancel };
+    },
   } as unknown as ExtensionCommandContext;
   let next = 0;
   /** Runs one request and returns the reply it set. */
@@ -76,6 +91,8 @@ function load(open: SessionManager, mode: "rpc" | "interactive" = "rpc") {
     ask,
     statuses,
     named,
+    labels,
+    moves,
     start: () => handlers.get("session_start")?.({}, ctx),
     stop: () => handlers.get("session_shutdown")?.({}, ctx),
   };
@@ -150,4 +167,79 @@ test("a malformed request is answered by its id; outside RPC the bridge does not
   expect(await elsewhere.ask({ kind: "sessions", all: false })).toBeUndefined();
   elsewhere.start();
   expect(elsewhere.statuses).toEqual([]);
+});
+
+test("the tree carries every entry, lean, with labels, the leaf, and whether Pi asks to summarize", async () => {
+  const open = saved("app", ["first", "second"]);
+  const [, firstReply, second] = open.getEntries();
+  open.appendLabelChange(second?.id as string, "checkpoint");
+  // Going back before the second prompt and asking again forks the tree there.
+  open.branch(firstReply?.id as string);
+  open.appendMessage({
+    role: "user",
+    content: [
+      { type: "text", text: "third" },
+      { type: "image", data: "", mimeType: "image/png" },
+    ],
+    timestamp: 9,
+  });
+  const { ask } = load(open, "rpc", { skipPrompt: true });
+  const { result } = await ask({ kind: "tree" });
+  expect(result.leaf).toBe(open.getLeafId());
+  expect(result.skipSummaryPrompt).toBe(true);
+  const kinds = result.nodes.map((node: { kind: string; text: string }) => [node.kind, node.text]);
+  expect(kinds).toEqual([
+    ["user", "first"],
+    ["assistant", "Reply to: first"],
+    ["user", "second"],
+    ["assistant", "Reply to: second"],
+    // Pi's own bookkeeping is in the tree, without words.
+    ["other", ""],
+    ["user", "third"],
+  ]);
+  expect(result.nodes[2]).toMatchObject({ label: "checkpoint", parent: firstReply?.id });
+  expect(result.nodes[5]).toMatchObject({ parent: firstReply?.id, at: expect.any(Number) });
+  expect((await load(open).ask({ kind: "tree" })).result.skipSummaryPrompt).toBe(false);
+});
+
+test("a move to a prompt gives back its text to write again; any other move, or one cancelled, none", async () => {
+  const open = saved("app", ["first", "second"]);
+  const [firstReply, second] = open
+    .getEntries()
+    .slice(1, 3)
+    .map((entry) => entry.id);
+  const { ask, moves } = load(open);
+  expect(
+    await ask({ kind: "navigate", entryId: second, summarize: true, instructions: "keep it short" }),
+  ).toEqual({
+    id: "1",
+    ok: true,
+    result: { cancelled: false, text: "second" },
+  });
+  expect(moves[0]).toEqual([second, { summarize: true, customInstructions: "keep it short" }]);
+  expect((await ask({ kind: "navigate", entryId: firstReply, summarize: false })).result).toEqual({
+    cancelled: false,
+    text: "",
+  });
+  expect(moves[1]).toEqual([firstReply, { summarize: false }]);
+  expect(await ask({ kind: "navigate", entryId: "gone", summarize: false })).toMatchObject({
+    ok: false,
+    error: "That point is no longer in this session.",
+  });
+  const kept = load(open, "rpc", { cancel: true });
+  expect((await kept.ask({ kind: "navigate", entryId: second, summarize: false })).result).toEqual({
+    cancelled: true,
+    text: "",
+  });
+});
+
+test("a label is set through Pi, and an empty one takes it off", async () => {
+  const open = saved("app", ["first"]);
+  const { ask, labels } = load(open);
+  await ask({ kind: "label", entryId: "e1", label: " checkpoint " });
+  await ask({ kind: "label", entryId: "e1", label: "" });
+  expect(labels).toEqual([
+    ["e1", "checkpoint"],
+    ["e1", undefined],
+  ]);
 });

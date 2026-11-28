@@ -844,3 +844,126 @@ test("interleaved tool arguments follow their content block until authoritative 
   expect(tool).not.toHaveProperty("streaming");
   expect(tool).not.toHaveProperty("contentIndex");
 });
+
+/** Distinct message times for messages these tests make themselves. */
+let clock = 1_000;
+const stamp = () => ++clock;
+
+describe("the operator's shell commands", () => {
+  const ran = (fields: Record<string, unknown>) => ({
+    role: "bashExecution",
+    command: "make test",
+    output: "ok\n",
+    exitCode: 0,
+    cancelled: false,
+    truncated: false,
+    timestamp: stamp(),
+    ...fields,
+  });
+
+  test("stream into a running entry that ends as Pi answers", () => {
+    const view = run([
+      { type: "bash_start", id: "r1", command: "make test", excludeFromContext: false },
+      { type: "bash_execution_update", id: "r1", delta: "building\n" },
+      { type: "bash_execution_update", id: "other", delta: "not this one" },
+      { type: "bash_execution_update", id: "r1", delta: "1 failed\n" },
+    ]);
+    expect(view.entries).toMatchObject([
+      { kind: "bash", command: "make test", output: "building\n1 failed\n", excluded: false, running: "r1" },
+    ]);
+    const ended = reduce(view, {
+      type: "bash_end",
+      id: "r1",
+      result: {
+        output: "1 failed\n",
+        exitCode: 2,
+        cancelled: false,
+        truncated: true,
+        fullOutputPath: "/tmp/out",
+      },
+    });
+    expect(ended.entries[0]).toEqual({
+      kind: "bash",
+      id: "e1",
+      command: "make test",
+      output: "1 failed\n",
+      excluded: false,
+      exitCode: 2,
+      truncated: true,
+      fullOutputPath: "/tmp/out",
+    });
+    expect(transcript(ended)).toBe("$ make test\n1 failed");
+    // Pi's command is not a message of the session until Pi records it.
+    expect(ended.messages).toBe(0);
+  });
+
+  test("a command Pi cannot run ends with the reason, and one a disconnect leaves running is cancelled", () => {
+    const started = run([{ type: "bash_start", id: "r1", command: "ls", excludeFromContext: true }]);
+    expect(
+      reduce(started, { type: "bash_end", id: "r1", error: "Pi's own screen is open" }).entries[0],
+    ).toMatchObject({
+      error: "Pi's own screen is open",
+    });
+    const closed = reduce(started, { type: "closed" }).entries[0];
+    expect(closed).toMatchObject({ kind: "bash", cancelled: true, excluded: true });
+    expect(closed).not.toHaveProperty("running");
+  });
+
+  test("Pi's record of a command draws as it ended, with or without its output in the model's context", () => {
+    const view = restore([
+      ran({}),
+      ran({ command: "cat secrets", excludeFromContext: true, exitCode: 1, output: "" }),
+      ran({ command: "sleep 9", cancelled: true, exitCode: undefined }),
+    ]);
+    expect(view.entries).toMatchObject([
+      { kind: "bash", command: "make test", output: "ok\n", excluded: false, exitCode: 0 },
+      { kind: "bash", command: "cat secrets", excluded: true, exitCode: 1 },
+      { kind: "bash", command: "sleep 9", cancelled: true },
+    ]);
+    expect(view.entries[2]).not.toHaveProperty("exitCode");
+    expect(view.messages).toBe(3);
+  });
+
+  test("a snapshot taken while one runs keeps it running, and its output goes on streaming into it", () => {
+    const view = restore([stored.user("q")], undefined, {
+      sequence: 5,
+      state: fakeSessionState,
+      messages: [stored.user("q")],
+      pendingToolCalls: [],
+      shells: [{ id: "r1", command: "make", excludeFromContext: false, output: "half" }],
+    });
+    expect(view.entries.map((entry) => entry.kind)).toEqual(["user", "bash"]);
+    expect(reduce(view, { type: "bash_execution_update", id: "r1", delta: "way" }).entries[1]).toMatchObject({
+      output: "halfway",
+      running: "r1",
+    });
+  });
+});
+
+describe("what Pi folds away or keeps from view", () => {
+  test("a branch left behind is a summary of the branch", () => {
+    const view = restore([
+      stored.user("q"),
+      { role: "branchSummary", summary: "Tried the cache first.", fromId: "a1", timestamp: stamp() },
+    ]);
+    expect(view.entries[1]).toMatchObject({ kind: "summary", of: "branch", text: "Tried the cache first." });
+    expect(transcript(view)).toBe("> q\n[branch] Tried the cache first.");
+  });
+
+  test("an extension's message for the model alone is not drawn, and still counts", () => {
+    const hidden = {
+      ...(stored.custom({ customType: "memory", text: "context" }) as object),
+      display: false,
+    };
+    const shown = { ...(stored.custom({ customType: "plan", text: "1. read" }) as object), display: true };
+    const view = restore([stored.user("q"), hidden, shown]);
+    expect(view.entries.map((entry) => entry.kind)).toEqual(["user", "custom"]);
+    expect(transcript(view)).toBe("> q\n[plan] 1. read");
+    expect(view.messages).toBe(3);
+  });
+
+  test("a prompt keeps the key of its message, by which the session's entry for it is found", () => {
+    const prompt = { role: "user", content: "q", timestamp: 1234 };
+    expect(restore([prompt]).entries[0]).toMatchObject({ kind: "user", key: "user@1234" });
+  });
+});

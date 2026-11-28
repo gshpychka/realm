@@ -19,6 +19,8 @@ export interface WorkingProps {
   escapes: string;
   /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
   agent: string;
+  /** A move through the session's tree is summarizing the branch it leaves. */
+  summarizing?: boolean;
 }
 
 /** The time now, redrawn each second while `active`. */
@@ -34,8 +36,8 @@ function useNow(active: boolean): number {
 }
 
 /** Whether the status line above the editor is up; a passing hint takes its words while it is. */
-export function statusUp(view: SessionView, closed: string | null): boolean {
-  return closed !== null || view.running || view.retry !== null || view.phase === "compacting";
+export function statusUp(view: SessionView, closed: string | null, summarizing = false): boolean {
+  return closed !== null || view.running || view.retry !== null || view.phase === "compacting" || summarizing;
 }
 
 /**
@@ -43,7 +45,7 @@ export function statusUp(view: SessionView, closed: string | null): boolean {
  * on the operator, compacting, or waiting to retry, with the key that stops it. A passing
  * key hint takes the line's words, and the fire stays while pi works.
  */
-export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
+export function Working({ view, hint, closed, escapes, agent, summarizing = false }: WorkingProps) {
   const clear = useKeyHint("app.clear");
   const exit = useKeyHint("app.exit");
   const now = useNow(view.running || view.retry !== null || view.phase === "compacting");
@@ -60,7 +62,7 @@ export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
       />
     );
   }
-  if (hint && (view.retry || view.phase === "compacting" || view.running))
+  if (hint && (view.retry || view.phase === "compacting" || view.running || summarizing))
     return <Busy text={ellipsize(hint, room)} tone={theme.dim} tick={tick} />;
   if (view.retry) {
     const wait = Math.max(0, Math.ceil((view.retry.at - now) / 1000));
@@ -76,6 +78,17 @@ export function Working({ view, hint, closed, escapes, agent }: WorkingProps) {
       />
     );
   }
+  if (summarizing)
+    return (
+      <Busy
+        text={ellipsize(
+          `${glyphs.summary} summarizing the branch you leave${escapes ? ` · ${escapes} stops` : ""}`,
+          room,
+        )}
+        tone={theme.tool}
+        tick={tick}
+      />
+    );
   if (view.phase === "compacting")
     return (
       <Busy

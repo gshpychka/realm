@@ -43,6 +43,11 @@ export const SESSION_COMMANDS: readonly Command[] = [
     args: "[all]",
   },
   { name: "fork", description: "start a new session from an earlier prompt", source: "builtin" },
+  {
+    name: "tree",
+    description: "move to another point of this session; where you were stays as a branch",
+    source: "builtin",
+  },
   { name: "clone", description: "copy this session into a new one", source: "builtin" },
   {
     name: "reload",
@@ -56,11 +61,6 @@ export const SESSION_COMMANDS: readonly Command[] = [
 export const PI_SCREENS: readonly Command[] = [
   { name: "login", description: "connect a provider or subscription · opens Pi", source: "builtin" },
   { name: "logout", description: "disconnect a provider · opens Pi", source: "builtin" },
-  {
-    name: "tree",
-    description: "navigate the session tree · opens Pi; only a move with a summary carries back",
-    source: "builtin",
-  },
   { name: "settings", description: "change Pi settings · opens Pi", source: "builtin" },
   { name: "scoped-models", description: "choose models for cycling · opens Pi", source: "builtin" },
   { name: "trust", description: "manage project trust · opens Pi", source: "builtin" },
@@ -77,6 +77,18 @@ export function named(
   const name = match?.[1];
   if (!name || !commands.some((command) => command.name === name)) return null;
   return { name, args: (match[2] ?? "").trim() };
+}
+
+/**
+ * The shell command a draft runs, as Pi's own editor reads one: `!command` gives its output to
+ * the model with the next prompt, `!!command` keeps it out. `null` for any other draft; an
+ * empty command when nothing follows the marks.
+ */
+export function shellCommand(text: string): { command: string; excluded: boolean } | null {
+  const draft = text.trim();
+  if (!draft.startsWith("!")) return null;
+  const excluded = draft.startsWith("!!");
+  return { command: draft.slice(excluded ? 2 : 1).trim(), excluded };
 }
 
 /** The built-in command `text` runs, with what follows its name; `null` when pi should receive it. */

@@ -51,6 +51,15 @@ describe("keymap", () => {
     expect(map["app.model.select"]).toEqual([]);
   });
 
+  test("each list's keys are its own: a key taken in one list stays free in another", () => {
+    const map = keymap({ "app.session.rename": "ctrl+e", "app.tree.editLabel": "ctrl+e" });
+    expect(map["app.session.rename"]).toEqual(["ctrl+e"]);
+    expect(map["app.tree.editLabel"]).toEqual(["ctrl+e"]);
+    expect(keymap()["app.tree.editLabel"]).toEqual(["shift+l"]);
+    // Pi binds no key to its tree, and neither does Pituitary.
+    expect(keymap()["app.session.tree"]).toEqual([]);
+  });
+
   test("the resume list's keys share keys with the rest without taking them", () => {
     // Pi binds its own list's delete to ctrl+d, which closes the frontend everywhere else.
     const map = keymap({ "app.session.delete": "ctrl+d", "app.session.rename": "ctrl+e" });
