@@ -173,6 +173,7 @@
         authorizedKeys = with config.my.sshKeys; [
           main
           openclaw
+          hermes
           reaper
         ];
       };

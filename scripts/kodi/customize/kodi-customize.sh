@@ -309,6 +309,19 @@ bingie_progress() {
   done
 }
 
+# Balanced XML ranges keep these patches scoped to each info-menu layout.
+bingie_media_info() {
+  if out=$(python3 "$HERE/kodi-bingie-info.py" "$SKIN" 2>&1); then
+    if [ -n "$out" ]; then
+      log "$out"
+      reload_skin=1
+    fi
+  else
+    log "Bingie media info patch failed: $out"
+    status=1
+  fi
+}
+
 # Kodi rewrites guisettings.xml from memory when it exits, so the file is only
 # written while Kodi is stopped, i.e. at boot before kodi.service.
 settings_file() {
@@ -517,6 +530,7 @@ if [ -d "$SKIN" ]; then
   bingie_osd_buttons
   bingie_subtitles_toggle
   bingie_progress
+  bingie_media_info
   bingie_startup_mask
   install_overrides
 fi
