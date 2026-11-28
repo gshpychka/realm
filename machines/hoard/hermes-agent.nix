@@ -30,15 +30,19 @@ in
               args
               // lib.optionalAttrs (args ? pythonSrc) {
                 pythonSrc = pkgs.applyPatches {
-                  name = "hermes-automatic-memory-source";
+                  name = "hermes-host-source";
                   src = args.pythonSrc;
-                  patches = [ ./hermes-agent/background-memory-approval.patch ];
+                  patches = [
+                    ./hermes-agent/background-memory-approval.patch
+                    ./hermes-agent/cron-worker-ownership.patch
+                  ];
                 };
               }
             );
         });
     settings = {
       memory.write_approval = false;
+      cron.require_restart_safe_scope = true;
       updates.check = false;
       timezone = config.time.timeZone;
       approvals.mode = "off";

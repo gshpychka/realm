@@ -1,0 +1,252 @@
+diff --git a/cron/jobs.py b/cron/jobs.py
+index 5558dae..beedee5 100644
+--- a/cron/jobs.py
++++ b/cron/jobs.py
+@@ -2784,6 +2784,21 @@ def claim_job_for_fire(
+     return _under_fire_fence(job_id, lambda: _with_job(job_id, apply, False))
+ 
+ 
++def adopt_fire_claim(job_id: str, *, expected_owner: str, execution_id: str) -> Optional[dict]:
++    """Bind this fire's stable fencing token to its adopted execution."""
++    def apply(jobs, _i, job):
++        claim = job.get("fire_claim")
++        if not isinstance(claim, dict) or claim.get("by") != expected_owner:
++            return None
++        claim = dict(claim, at=_hermes_now().isoformat(),
++                     job_id=job_id, execution_id=execution_id)
++        job["fire_claim"] = claim
++        save_jobs(jobs)
++        return dict(claim)
++
++    return _under_fire_fence(job_id, lambda: _with_job(job_id, apply, None))
++
++
+ def heartbeat_fire_claim(job_id: str, *, expected_owner: str) -> bool:
+     """Refresh an active ``fire_claim`` without extending another owner's lease: an execution may
+     outlive the TTL, and the owner check stops a stale runner from refreshing a recovered claim.
+diff --git a/cron/scheduler.py b/cron/scheduler.py
+index 7df27bf..3f44ce8 100644
+--- a/cron/scheduler.py
++++ b/cron/scheduler.py
+@@ -55,6 +55,31 @@ from agent.turn_failure_copy import is_max_iteration_handoff
+ logger = logging.getLogger(__name__)
+ 
+ 
++@dataclass(frozen=True)
++class _AdoptedCronExecution:
++    """A scheduled session exclusively owned by its adopted execution."""
++
++    home: Path
++    job_id: str
++    execution_id: str
++
++    @property
++    def session_id(self) -> str:
++        return f"cron_{self.job_id}_{self.execution_id}"
++
++
++_adopted_cron_execution = contextvars.ContextVar("adopted_cron_execution", default=None)
++
++
++def _worker_execution(job: dict):
++    assignment = _adopted_cron_execution.get()
++    if assignment is not None and (
++        assignment.home, assignment.job_id, assignment.execution_id
++    ) == (_get_hermes_home().resolve(), job["id"], job.get("execution_id")):
++        return assignment
++    return None
++
++
+ def _set_cron_session_title(session_db, session_id, base_title):
+     """Persist a non-blank, unique title for a finished cron session; returns it (None if unset).
+     Runs BEFORE end_session()/close() so no write races the close. Duplicate title (unique-index
+@@ -1875,8 +1900,8 @@ def _init_cron_mcp_tools(job_id: str) -> None:
+ def _open_cron_session_db(job: dict):
+     """Bound store acquisition separately from the conversation watchdog.
+ 
+-    Canonical runs borrow the owner's exact store and fail closed on acquisition
+-    errors. Only the legacy non-owner helper path may return no session store.
++    Gateway admissions borrow their owner's exact store. Adopted workers own
++    their execution-specific sessions. Both fail closed on acquisition errors.
+     """
+     # Initialize the SQLite session store so cron job messages are persisted and discoverable via
+     # session_search (same pattern as gateway/run.py) — only now, after every early-return path (wake-gate,
+@@ -1888,6 +1913,7 @@ def _open_cron_session_db(job: dict):
+     # timeout proceeds without a session store instead of blocking the run forever.
+     from gateway.session_cron import current_execution
+     owner = current_execution()
++    worker = _worker_execution(job)
+     from agent.runtime_session_store import WorkerPersistenceError, is_worker_process
+     if owner is None and is_worker_process():
+         # Do not turn an unsupported worker assignment into the legacy None
+@@ -1929,14 +1955,14 @@ def _open_cron_session_db(job: dict):
+             # Abandon a wedged connect() rather than blocking shutdown on it.
+             _session_db_pool.shutdown(wait=False)
+     except concurrent.futures.TimeoutError:
+-        if owner is not None:
++        if owner is not None or worker is not None:
+             raise TimeoutError("Canonical cron session store acquisition timed out")
+         logger.error(
+             "Job '%s': SessionDB init did not return within %.0fs — proceeding "
+             "without a session store for this run instead of blocking it forever",
+             job.get("id", "?"), _session_db_timeout)
+     except Exception as e:
+-        if owner is not None:
++        if owner is not None or worker is not None:
+             raise
+         logger.debug("Job '%s': SQLite session store not available: %s", job.get("id", "?"), e)
+     return None
+@@ -2590,7 +2616,8 @@ def run_job(
+     owner_execution = current_execution()
+     if owner_execution is not None and owner_execution[2:] != (job['id'], execution_id):
+         owner_execution = None
+-    if not job.get("no_agent") and owner_execution is None:
++    worker_execution = _worker_execution(job)
++    if not job.get("no_agent") and owner_execution is None and worker_execution is None:
+         from cron.scheduler_authority import run_canonical_job
+         return run_canonical_job(job, extra_prompt=extra_prompt, cancel_event=cancel_event,
+                                  execution_id=execution_id)
+@@ -2602,8 +2629,9 @@ def run_job(
+         return early
+     from run_agent import AIAgent
+ 
+-    _cron_session_id = (owner_execution[1] if owner_execution is not None else
+-                        f"cron_{job_id}_{_hermes_now().strftime('%Y%m%d_%H%M%S')}")
++    _cron_session_id = (worker_execution.session_id if worker_execution is not None else
++                       owner_execution[1] if owner_execution is not None else
++                       f"cron_{job_id}_{_hermes_now().strftime('%Y%m%d_%H%M%S')}")
+     logger.info("Running job '%s' (ID: %s)", job_name, job_id)
+     logger.info("Prompt: %s", prompt[:100])
+ 
+@@ -3915,13 +3943,24 @@ def _run_external_worker_payload(payload_path: Path, ack_path: Path) -> bool:
+         GatewayStartupMixin._register_config_hooks(
+             "Cron external worker: config hook registration failed", level=logging.WARNING)
+         with use_cron_store(profile_home):
+-            if adopt_claimed_execution(execution_id) is None:
++            adopted = adopt_claimed_execution(execution_id)
++            if adopted is None:
+                 logger.error(
+                     "Cron external worker refused execution %s: durable ownership "
+                     "could not be established",
+                     execution_id,
+                 )
+                 return False
++            if (adopted["job_id"] != job["id"] or adopted["pid"] != os.getpid()
++                    or adopted["status"] != "running"):
++                raise RuntimeError("Cron worker execution assignment does not match its adoption")
++            if job.get("fire_claim") is not None:
++                from cron.jobs import adopt_fire_claim
++                claim = adopt_fire_claim(job["id"], expected_owner=job["fire_claim"]["by"],
++                                         execution_id=execution_id)
++                if claim is None:
++                    raise RuntimeError("Cron worker could not adopt its fire claim")
++                job["fire_claim"] = claim
+             try:
+                 ack_path.parent.mkdir(parents=True, exist_ok=True)
+                 # Publish via write-to-temp + atomic rename. Writing ack_path in place
+@@ -3949,6 +3988,8 @@ def _run_external_worker_payload(payload_path: Path, ack_path: Path) -> bool:
+                 return False
+             old_external_execution = os.environ.get("_HERMES_CRON_EXTERNAL_WORKER")
+             os.environ["_HERMES_CRON_EXTERNAL_WORKER"] = execution_id
++            assignment_token = _adopted_cron_execution.set(
++                _AdoptedCronExecution(profile_home, job["id"], execution_id))
+             try:
+                 completed = run_one_job(job, adapters=None, loop=None, verbose=False)
+                 # Successful return: the worker recorded its outcome. If it raises,
+@@ -3957,6 +3998,7 @@ def _run_external_worker_payload(payload_path: Path, ack_path: Path) -> bool:
+                     ack_path.with_suffix(".stderr").unlink(missing_ok=True)
+                 return completed
+             finally:
++                _adopted_cron_execution.reset(assignment_token)
+                 if old_external_execution is None:
+                     os.environ.pop("_HERMES_CRON_EXTERNAL_WORKER", None)
+                 else:
+diff --git a/cron/scheduler_ownership.py b/cron/scheduler_ownership.py
+index 2c0c05a..5e25837 100644
+--- a/cron/scheduler_ownership.py
++++ b/cron/scheduler_ownership.py
+@@ -149,9 +149,14 @@ def live_gateway_ticking(home: Optional[Path | str] = None) -> Optional[dict]:
+ 
+ 
+ def _claim_owner_is_dead(claim: dict[str, Any]) -> bool:
+-    """True when the claim's ``by`` names a process on THIS host that provably no longer exists.
+-    ``_machine_id()`` stamps ``host:pid[:token]``; a foreign host, an explicit HERMES_MACHINE_ID,
+-    or any liveness-probe failure returns False (fail safe: only a proven death shortens the TTL)."""
++    """True when a claim's bound execution or same-host dispatch process is provably gone.
++    Liveness-probe failures preserve the claim; only proven death shortens its TTL."""
++    if claim.get("execution_id") and claim.get("job_id"):
++        try:
++            from cron.executions import execution_owner_live
++            return not execution_owner_live(claim["execution_id"], claim["job_id"])
++        except Exception:
++            return False
+     parts = str(claim.get("by") or "").split(":")
+     if len(parts) < 2 or not parts[1].isdigit():
+         return False
+diff --git a/hermes_state_keys.py b/hermes_state_keys.py
+index 38abd6e..d3bfae4 100644
+--- a/hermes_state_keys.py
++++ b/hermes_state_keys.py
+@@ -15,6 +15,7 @@ import re
+ CRON_PRINCIPAL_ID = 'cron-owner'
+ CRON_REQUEST_PREFIX = 'cron:'
+ _LEGACY_CRON_RUN_ID = re.compile(r'^cron_(.+)_\d{8}_\d{6}$')
++_WORKER_CRON_RUN_ID = re.compile(r'^cron_(.+)_([0-9a-f]{32})$')
+ 
+ 
+ def cron_request_id(job_id, execution_id):
+@@ -59,6 +60,12 @@ def legacy_cron_run_job(session_id):
+     return match.group(1) if match else None
+ 
+ 
++def worker_cron_run_identity(session_id):
++    """The adopted worker session's exact job and execution identity, else None."""
++    match = _WORKER_CRON_RUN_ID.match(str(session_id or ''))
++    return match.groups() if match else None
++
++
+ def admission_fingerprint(*, canonical_target: str, payload: dict) -> str:
+     """Canonical payload identity after authorization and immutable media capture."""
+     encoded = json.dumps(
+diff --git a/hermes_state_portability.py b/hermes_state_portability.py
+index f794ca6..128b00d 100644
+--- a/hermes_state_portability.py
++++ b/hermes_state_portability.py
+@@ -18,7 +18,7 @@ from hermes_cli.timefmt import coerce_epoch
+ from hermes_state_ids import new_session_id
+ from hermes_state_keys import (
+     CRON_PRINCIPAL_ID, CRON_REQUEST_PREFIX, cron_request_range, cron_run_from_request, legacy_cron_run_job,
+-    prefix_range,
++    prefix_range, worker_cron_run_identity,
+ )
+ from hermes_state_local import POLICY_PREFIX
+ from hermes_state_common import SCHEMA_SQL, _shape_preview, _sql_preview_raw, _sql_session_last_active
+@@ -110,11 +110,15 @@ _CRON_ADMISSION_SQL = (
+     f" OR {_CRON_POLICY_JOB_SQL} = :job_id)")
+ _CRON_RUN_IDS_SQL = (
+     "SELECT id FROM sessions WHERE source = 'cron' AND id >= :prefix AND id < :prefix_hi"
+-    " AND substr(id, length(:prefix) + 1) GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]'"
++    " AND (substr(id, length(:prefix) + 1) GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]'"
++    " OR (length(id) = length(:prefix) + 32 AND substr(id, length(:prefix) + 1) NOT GLOB '*[^0-9a-f]*'))"
+     f" UNION ALL SELECT target_session_id FROM session_admissions WHERE {_CRON_ADMISSION_SQL}")
+ _CRON_EXECUTION_SQL = (
+-    "(SELECT substr(request_id, length(:request_lo) + 1) FROM session_admissions"
+-    f" WHERE target_session_id = s.id AND {_CRON_ADMISSION_SQL} LIMIT 1)")
++    "COALESCE((SELECT substr(request_id, length(:request_lo) + 1) FROM session_admissions"
++    f" WHERE target_session_id = s.id AND {_CRON_ADMISSION_SQL} LIMIT 1),"
++    " CASE WHEN s.id >= :prefix AND s.id < :prefix_hi AND length(s.id) = length(:prefix) + 32"
++    " AND substr(s.id, length(:prefix) + 1) NOT GLOB '*[^0-9a-f]*'"
++    " THEN substr(s.id, length(:prefix) + 1) END)")
+ 
+ 
+ def _export_timings(messages: list[dict[str, Any]], session_id: Optional[str] = None) -> dict[str, Any]:
+@@ -274,6 +278,9 @@ class SessionPortabilityMixin:
+         """``{"cron_job_id", "cron_execution_id"}`` of a cron run session, else None: a legacy id
+         names its job (no execution), a unified-runtime run is one probe of its scheduler admission
+         (and, when its request id is ambiguous, of the job its creation receipt's policy names)."""
++        worker_run = worker_cron_run_identity(session_id)
++        if worker_run is not None:
++            return {"cron_job_id": worker_run[0], "cron_execution_id": worker_run[1]}
+         legacy_job = legacy_cron_run_job(session_id)
+         if legacy_job is not None:
+             return {"cron_job_id": legacy_job, "cron_execution_id": None}
