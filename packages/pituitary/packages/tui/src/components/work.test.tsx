@@ -21,6 +21,7 @@ for (const whole of [true, false]) {
         kind: "work",
         id: "answer:text",
         live,
+        latest: false,
         steps: [{ kind: "text", id: "answer:text", text: "Checking **the build**." }],
       };
       return (
@@ -31,8 +32,8 @@ for (const whole of [true, false]) {
           thinking
           selected={false}
           rows={6}
+          columns={60}
           onToggle={() => {}}
-          onResized={() => {}}
         />
       );
     }
@@ -65,15 +66,16 @@ test("a short open work box takes only the rows its steps need", async () => {
             kind: "work",
             id: "thought",
             live: false,
-            steps: [{ kind: "thinking", id: "thought", text: "Consider the bound." }],
+            latest: false,
+            steps: [{ kind: "thinking", id: "thought", text: "Consider the bound.", done: true }],
           }}
           open
           whole={false}
           thinking
           selected={false}
           rows={10}
+          columns={60}
           onToggle={() => {}}
-          onResized={() => {}}
         />,
       ),
     );
@@ -95,14 +97,20 @@ test("a live work box grows to its cap and follows new steps without leaving bla
     update = setText;
     return (
       <WorkBox
-        work={{ kind: "work", id: "thought", live: true, steps: [{ kind: "thinking", id: "thought", text }] }}
+        work={{
+          kind: "work",
+          id: "thought",
+          live: true,
+          latest: false,
+          steps: [{ kind: "thinking", id: "thought", text, done: false }],
+        }}
         open
         whole={false}
         thinking
         selected={false}
         rows={6}
+        columns={60}
         onToggle={() => {}}
-        onResized={() => {}}
       />
     );
   }

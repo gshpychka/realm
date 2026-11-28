@@ -164,7 +164,7 @@ test("custom work and interrupt hints match dispatch, and unbound hints disappea
         assert.match(menu, /ctrl\+x close/);
         assert.doesNotMatch(menu, /esc close/);
         await app.terminal.write("\x18");
-        await app.terminal.waitText("aborted");
+        await app.terminal.waitText("interrupted");
         await app.capture("keybindings-custom-interrupt");
       }
     } finally {
@@ -211,9 +211,10 @@ test("configured work and thinking keys dispatch to the visible work box", async
     await app.terminal.waitText("You said: consider this");
     await app.terminal.waitIdle();
     await app.terminal.write("\x1bo");
+    await app.terminal.waitText("╭ ▾");
     await app.terminal.waitText("I will reason through the request.");
     await app.terminal.write("\x1bt");
-    await app.terminal.waitIdle();
+    await app.terminal.waitText("thought · 1 line · alt+t");
     assert.doesNotMatch(await app.terminal.text(), /I will reason through the request\./);
     await app.terminal.write("\x1bt");
     await app.terminal.waitText("I will reason through the request.");

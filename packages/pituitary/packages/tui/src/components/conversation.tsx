@@ -1,8 +1,9 @@
 import { pathToFileURL } from "node:url";
-import type { KeyEvent, ScrollBoxRenderable } from "@opentui/core";
-import { useKeyboard, useTerminalDimensions } from "@opentui/react";
+import type { ScrollBoxRenderable } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import type { Entry, NoticeEntry } from "@pituitary/session";
 import {
+  Fragment,
   memo,
   type ReactNode,
   type RefObject,
@@ -15,19 +16,23 @@ import {
 } from "react";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
-import type { Action } from "../keymap.ts";
-import { keyHint, useKeyHint, useKeymap } from "../keymap-context.tsx";
+import { hintLine } from "../hints.ts";
+import { useKeyHint } from "../keymap-context.tsx";
 import { tilde } from "../place.ts";
 import type { SkillOf } from "../skills.ts";
-import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { type Item, type Reply, transcriptOf, type Work } from "../transcript.ts";
+import { type CursorKeys, cursorHints, joinKeys, type Stop, stopId, stopsOf } from "../transcript-cursor.ts";
+import { useCursor } from "../use-cursor.ts";
+import { useOpenBoxes } from "../use-open-boxes.ts";
+import { parseUserText, skillsIn } from "../user-text.ts";
 import { turnLine } from "../working.ts";
 import { BashView } from "./bash.tsx";
 import { Link } from "./link.tsx";
 import { Markdown } from "./markdown.tsx";
 import { UserMessage } from "./user-message.tsx";
-import { boxId, scrollWork, WorkBox } from "./work.tsx";
+import { Welcome } from "./welcome.tsx";
+import { bodyRows, scrolls, scrollWork, WorkBox } from "./work.tsx";
 
 const NOTICE = {
   info: { mark: glyphs.info, colour: theme.dim },
@@ -50,6 +55,8 @@ function Marked({ mark, colour, children }: { mark: string; colour: string; chil
 export interface Display {
   /** Tool output, summaries, and long commands shown whole, as ctrl+o asks. */
   expanded: boolean;
+  /** How many times ctrl+o has set every box one way, each time undoing what was set box by box. */
+  expansions: number;
   /** Thinking shown as text; a one-line marker otherwise, as ctrl+t asks. */
   thinking: boolean;
   /** The keys that reach the interrupt from where the draft stands, such as `esc esc`. */
@@ -66,6 +73,15 @@ export interface Display {
 /** An entry the conversation draws as it is, which is any but the model's replies. */
 type Plain = Exclude<Item, Work | Reply>;
 
+/**
+ * What names an entry the same however the view is rebuilt, which renumbers entries: a prompt's
+ * session message, or else the entry's place with what it says.
+ */
+const lasting = (entry: Plain) =>
+  entry.kind === "user" && entry.key !== undefined
+    ? `key:${entry.key}`
+    : `${entry.id}:${"text" in entry ? entry.text : ""}`;
+
 const EntryView = memo(function EntryView({
   entry,
   display,
@@ -76,7 +92,7 @@ const EntryView = memo(function EntryView({
   display: Display;
   /** Rows a shell command's output shows until ctrl+o. */
   rows: number;
-  /** The terminal's width, which a shell command's output wraps within. */
+  /** The conversation's width, which a shell command's output wraps within. */
   columns: number;
 }) {
   const expand = useKeyHint("app.tools.expand");
@@ -151,8 +167,7 @@ function Notice({
 }) {
   const expand = useKeyHint("app.tools.expand");
   const { mark, colour } = NOTICE[entry.level];
-  const { text, remedy, detail } =
-    entry.level === "info" ? { text: entry.text } : explain(entry.text, commands);
+  const { text, remedy, detail } = explained(entry, commands);
   return (
     <box flexDirection="column" flexShrink={0} marginTop={1}>
       <Marked mark={mark} colour={colour}>
@@ -173,6 +188,16 @@ function Notice({
   );
 }
 
+/** A notice in the words it shows: an info as it is, a warning or error explained. */
+const explained = (entry: NoticeEntry, commands: ReadonlySet<string>) =>
+  entry.level === "info" ? { text: entry.text } : explain(entry.text, commands);
+
+/** How a reply's note reads: a limit reached stands out, an interruption stays quiet. */
+const NOTE_TONE = {
+  warning: { mark: glyphs.warning, colour: theme.tool },
+  quiet: { mark: " ", colour: theme.dim },
+} as const;
+
 /** What the model says once its work is done, and why it stopped short when it did. */
 const ReplyView = memo(
   function ReplyView({ reply }: { reply: Reply }) {
@@ -184,8 +209,8 @@ const ReplyView = memo(
           </Marked>
         ) : null}
         {reply.note ? (
-          <Marked mark={glyphs.warning} colour={theme.tool}>
-            <text fg={theme.tool}>{reply.note}</text>
+          <Marked mark={NOTE_TONE[reply.note.tone].mark} colour={NOTE_TONE[reply.note.tone].colour}>
+            <text fg={NOTE_TONE[reply.note.tone].colour}>{reply.note.text}</text>
           </Marked>
         ) : null}
       </box>
@@ -197,126 +222,12 @@ const ReplyView = memo(
     before.reply.note === after.reply.note,
 );
 
-/** A key on the welcome screen, what it does, and the shorter words a narrow screen takes. */
-type WelcomeRow = readonly [keys: string, does: string, short?: string];
-
-/** The draft's own keys; regular Pi's draft also runs the operator's shell commands. */
-const editorKeys = (local: boolean, shell: boolean): readonly WelcomeRow[] => [
-  ["enter", "send"],
-  ["shift+enter  ctrl+j", "new line"],
-  local ? ["/  @", "commands, and files to mention", "commands, files"] : ["/", "commands"],
-  ...(shell ? [["!  !!", "run a shell command; !! keeps its output from pi", "shell command"] as const] : []),
-  ["pgup  pgdn", "scroll"],
-];
-
-/** Cells between the key column and what the key does. */
-const KEY_GAP = 2;
-/** Cells the key column leaves for what the keys do, where it can. */
-const DOES_LEAST = 16;
-
-/**
- * The empty conversation: where to start, and the keys. When one row's words do not fit, every
- * row that has shorter words takes them, so the list reads alike.
- */
-export function Welcome({
-  escapes,
-  agent,
-  local = true,
-  modelSelectable = local,
-  providerUsage = false,
-  sessions = false,
-}: {
-  escapes: string;
-  /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
-  agent: string;
-  local?: boolean;
-  modelSelectable?: boolean;
-  /** The footer's card shows the provider's usage beside the session's cost. */
-  providerUsage?: boolean;
-  /** Regular Pi's saved sessions can be resumed, forked and started afresh. */
-  sessions?: boolean;
-}) {
-  const { width } = useTerminalDimensions();
-  const bindings = useKeymap();
-  const bound = (action: Action) => keyHint(bindings, action) ?? "";
-  const interrupt = bound("app.interrupt");
-  const rows = (
-    [
-      ...editorKeys(local, sessions),
-      [bound("app.message.followUp"), `queue a follow-up while ${agent} works`, "queue a follow-up"],
-      [
-        interrupt ? escapes : "",
-        interrupt === "esc" && escapes !== "esc"
-          ? "leave insert mode, then interrupt"
-          : "interrupt and take back queued messages",
-        "interrupt",
-      ],
-      [bound("app.tools.expand"), "open every box of work at full length", "open every box"],
-      [bound("app.tools.browse"), "step through boxes: ↑↓ enter j k", "step through boxes"],
-      [bound("app.thinking.toggle"), "show or hide thinking", "toggle thinking"],
-      [modelSelectable ? bound("app.model.select") : "", "pick a model"],
-      [modelSelectable ? bound("app.model.cycleForward") : "", "take the next model", "next model"],
-      providerUsage
-        ? [bound("app.usage.toggle"), "show usage and cost", "usage and cost"]
-        : [bound("app.usage.toggle"), "show session cost", "session cost"],
-      [bound("app.editor.external"), "edit in $VISUAL"],
-      [
-        sessions
-          ? [bound("app.session.resume"), bound("app.session.fork"), bound("app.session.new")]
-              .filter(Boolean)
-              .join("  ")
-          : "",
-        "resume, fork or start a session",
-        "sessions",
-      ],
-      [sessions ? bound("app.skills") : "", "choose a skill for the draft", "skills"],
-      [
-        [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
-        "quit",
-      ],
-    ] satisfies readonly WelcomeRow[]
-  ).filter(([keys]) => keys);
-  const inner = Math.max(0, width - 2);
-  // The key column fits the longest key shown, leaving room for the short descriptions.
-  const keyColumn = Math.max(
-    0,
-    Math.min(Math.max(...rows.map(([keys]) => Bun.stringWidth(keys))) + KEY_GAP, inner - DOES_LEAST),
-  );
-  const room = inner - keyColumn;
-  const short = rows.some(([, does, brief]) => brief !== undefined && Bun.stringWidth(does) > room);
-  return (
-    <box
-      flexDirection="column"
-      flexGrow={1}
-      flexBasis={0}
-      flexShrink={1}
-      overflow="hidden"
-      paddingLeft={1}
-      paddingRight={1}
-    >
-      <text selectable={false} fg={theme.dim} flexShrink={0}>
-        Ask {agent} something to get started.
-      </text>
-      <box flexDirection="column" flexShrink={0} marginTop={1}>
-        {rows.map(([keys, does, brief]) => (
-          <box key={keys} flexDirection="row" flexShrink={0} height={1}>
-            <text selectable={false} fg={theme.tool} width={keyColumn} flexShrink={0} wrapMode="none">
-              {ellipsize(keys, keyColumn - KEY_GAP)}
-            </text>
-            <text selectable={false} fg={theme.dim} wrapMode="none">
-              {ellipsize(short && brief ? brief : does, room)}
-            </text>
-          </box>
-        ))}
-      </box>
-    </box>
-  );
-}
-
 export interface ConversationProps {
   entries: Entry[];
   /** A run is in progress. */
   running: boolean;
+  /** Cells the conversation's rows take across, beside whatever shares the screen's width with it. */
+  columns: number;
   /** Local sessions can complete paths and choose models from the operator's configuration. */
   local?: boolean;
   /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
@@ -331,8 +242,17 @@ export interface ConversationProps {
   skillOf?: SkillOf;
   /** How many of the latest entries are drawn; the earlier ones wait for the operator to scroll back. */
   window: number;
-  /** The keyboard steps through the boxes of work, the latest picked first. */
+  /** The keyboard walks the conversation with the transcript cursor, the latest item selected first. */
   browsing: boolean;
+  /** Draws more of the entries before the window, as up past the cursor's first item asks. */
+  onEarlier?(): void;
+  /** What the cursor's keys do beyond showing an item another way, such as copying it. */
+  keys?: CursorKeys;
+  /** The cursor's keys for its selection as a hint line in `hintColumns`, or null while it is away. */
+  onHint?(hint: string | null): void;
+  hintColumns?: number;
+  /** Whether the viewport has left the conversation's latest rows below it. */
+  onBelow?(below: boolean): void;
   /** Hands the keyboard back, as esc asks while browsing. */
   onLeave(): void;
   ref: RefObject<ScrollBoxRenderable | null>;
@@ -379,6 +299,27 @@ function useHistoryAnchor(
   };
 }
 
+/**
+ * What each frame of the scrollbox measures, once it is laid out and every size agrees: the rows
+ * its content leaves empty below it, counting those the open box `last` takes beyond its bound,
+ * which that box may then take; and whether rows of the conversation are out of view below.
+ */
+function useMeasures(last: string | null, onBelow: ((below: boolean) => void) | undefined) {
+  const [room, setRoom] = useState(0);
+  const measure = useCallback(
+    (box: ScrollBoxRenderable) => {
+      // The content is at least as tall as the viewport, so the rows its items take end at the last.
+      const end = box.content.getChildren().at(-1);
+      const used = end ? end.y + end.height - box.content.y : 0;
+      const body = last ? bodyRows(box, { id: last }) : 0;
+      setRoom(Math.max(0, box.viewport.height - used + body));
+      onBelow?.(box.scrollHeight - box.viewport.height - box.scrollTop >= 1);
+    },
+    [last, onBelow],
+  );
+  return { room, measure };
+}
+
 /** Rows an open box shows before it scrolls: a third of the terminal, and never too few to read. */
 const boxRows = (height: number) => Math.max(6, Math.floor(height / 3));
 /**
@@ -387,113 +328,42 @@ const boxRows = (height: number) => Math.max(6, Math.floor(height / 3));
  */
 const shellRows = (height: number) => Math.max(6, Math.floor(height / 2));
 
-/** What a key does while the keyboard walks the boxes. */
-type Walk = { kind: "leave" } | { kind: "toggle" } | { kind: "pick" | "scroll"; by: number };
-
-const WALK = new Map<string, Walk>([
-  ["escape", { kind: "leave" }],
-  ["up", { kind: "pick", by: -1 }],
-  ["down", { kind: "pick", by: 1 }],
-  ["return", { kind: "toggle" }],
-  ["space", { kind: "toggle" }],
-  ["k", { kind: "scroll", by: -1 }],
-  ["j", { kind: "scroll", by: 1 }],
-]);
-
-function stepOf(key: KeyEvent): Walk | null {
-  if (key.ctrl && key.name === "c") return { kind: "leave" };
-  return key.ctrl || key.meta ? null : (WALK.get(key.name) ?? null);
-}
-
-/** Boxes the operator opened or closed; ctrl+o setting every box one way clears them. */
-interface Pins {
-  /** Whether every box was open at full length when these were set. */
-  whole: boolean;
-  open: ReadonlyMap<string, boolean>;
-}
-
-const UNPINNED: ReadonlyMap<string, boolean> = new Map();
-
-/**
- * Which boxes are open: each while the model works in it, every one when `whole`, and any
- * the operator opened or closed, until `whole` changes.
- */
-function useOpenBoxes(whole: boolean) {
-  const [pins, setPins] = useState<Pins>({ whole, open: UNPINNED });
-  const pinned = pins.whole === whole ? pins.open : UNPINNED;
-  const isOpen = (work: Work) => pinned.get(work.id) ?? (whole || work.live);
-  const toggle = useCallback(
-    (id: string, open: boolean) =>
-      setPins((current) => ({
-        whole,
-        open: new Map(current.whole === whole ? current.open : UNPINNED).set(id, open),
-      })),
-    [whole],
-  );
-  return { isOpen, toggle };
-}
-
-interface Walking {
-  browsing: boolean;
-  boxes: readonly Work[];
-  scroll: RefObject<ScrollBoxRenderable | null>;
-  isOpen(work: Work): boolean;
-  toggle(id: string, open: boolean): void;
-  onLeave(): void;
-}
-
-/** The box `chosen` names among `boxes`, or the latest while it names none of them. */
-function pickOf(boxes: readonly Work[], chosen: string | null): Work | null {
-  return boxes.find((work) => work.id === chosen) ?? boxes.at(-1) ?? null;
-}
-
-/** The box `by` steps away from `work` among `boxes`, stopping at either end. */
-function neighbour(boxes: readonly Work[], work: Work, by: number): Work {
-  return boxes[Math.max(0, Math.min(boxes.length - 1, boxes.indexOf(work) + by))] ?? work;
-}
-
 /** Scrolls `work` by `by` rows while it has rows to give, and the conversation after, as the wheel does. */
 function scrollThrough(view: ScrollBoxRenderable | null, work: Work, by: number): void {
   if (view && !scrollWork(view, work, by)) view.scrollBy(by);
 }
 
-/**
- * The keyboard walking the boxes while `browsing`, from the latest: the box it has picked,
- * kept in view as the pick moves and as the box changes size.
- */
-function useWalk({ browsing, boxes, scroll, isOpen, toggle, onLeave }: Walking) {
-  const [chosen, setChosen] = useState<string | null>(null);
-  useEffect(() => {
-    if (!browsing) setChosen(null);
-  }, [browsing]);
-  const selected = browsing ? pickOf(boxes, chosen) : null;
-
-  const reveal = useCallback((id: string) => scroll.current?.scrollChildIntoView(boxId({ id })), [scroll]);
-  const selectedId = selected?.id ?? null;
-  const picked = useRef(selectedId);
-  picked.current = selectedId;
-  // Layout settles only after the commit, so a box that changes size says so once it has.
-  const resized = useCallback(
-    (id: string) => {
-      if (id === picked.current) reveal(id);
-    },
-    [reveal],
+/** How the cursor marks a selected item other than a box: a bar down its left, in the conversation's margin. */
+function Selectable({
+  stop,
+  selected,
+  onResized,
+  children,
+}: {
+  stop: Stop;
+  selected: boolean;
+  onResized(id: string): void;
+  children: ReactNode;
+}) {
+  const id = stopId(stop);
+  return (
+    <box id={id} flexDirection="column" flexShrink={0} onSizeChange={() => onResized(id)}>
+      {children}
+      {selected && stop.kind !== "work" ? (
+        // Every item stands a row below the one before it; the bar runs beside the item alone.
+        <box
+          position="absolute"
+          left={-1}
+          top={1}
+          bottom={0}
+          width={1}
+          border={["left"]}
+          borderStyle="heavy"
+          borderColor={theme.cursor}
+        />
+      ) : null}
+    </box>
   );
-  useEffect(() => {
-    if (selectedId) reveal(selectedId);
-  }, [selectedId, reveal]);
-
-  useKeyboard((key) => {
-    const step = browsing ? stepOf(key) : null;
-    if (!step) return;
-    key.preventDefault();
-    if (step.kind === "leave") onLeave();
-    else if (step.kind === "pick" && selected) setChosen(neighbour(boxes, selected, step.by).id);
-    else if (step.kind === "toggle" && selected) toggle(selected.id, !isOpen(selected));
-    else if (step.kind === "scroll" && selected) scrollThrough(scroll.current, selected, step.by);
-  });
-
-  return { selected, resized };
 }
 
 /**
@@ -503,6 +373,7 @@ function useWalk({ browsing, boxes, scroll, isOpen, toggle, onLeave }: Walking) 
 export function Conversation({
   entries,
   running,
+  columns,
   local,
   agent,
   modelSelectable,
@@ -512,22 +383,98 @@ export function Conversation({
   skillOf,
   window,
   browsing,
+  onEarlier,
+  keys = {},
+  onHint,
+  hintColumns = 80,
+  onBelow,
   onLeave,
   ref,
 }: ConversationProps) {
-  const { width, height } = useTerminalDimensions();
+  const { height } = useTerminalDimensions();
   const earlier = Math.max(0, entries.length - window);
-  const clearHistoryAnchor = useHistoryAnchor(ref, earlier, window, entries.length > 0);
+  const drawn = entries.length > 0;
+  const clearHistoryAnchor = useHistoryAnchor(ref, earlier, window, drawn);
   const items = useMemo(
     () => transcriptOf(entries.slice(earlier), running, skillOf),
     [entries, earlier, running, skillOf],
   );
-  const boxes = items.filter((item): item is Work => item.kind === "work");
-  const whole = display.expanded;
-  const { isOpen, toggle } = useOpenBoxes(whole);
-  const { selected, resized } = useWalk({ browsing, boxes, scroll: ref, isOpen, toggle, onLeave });
+  const stops = useMemo(() => stopsOf(items), [items]);
+  const stopOf = useMemo(() => new Map<Item, Stop>(stops.map((stop) => [stop.item, stop])), [stops]);
+  const { isOpen, isWhole, toggle, stretch, last } = useOpenBoxes(display.expanded, display.expansions);
+  // Entries whose details the cursor showed, as ctrl+o shows every entry's, by `lasting`.
+  const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
+  const flip = (entry: Plain) =>
+    setShown((before) => {
+      const next = new Set(before);
+      if (!next.delete(lasting(entry))) next.add(lasting(entry));
+      return next;
+    });
+  const showsMore = (entry: Plain) => (shown.has(lasting(entry)) ? "fold" : "expand");
+  const own: CursorKeys = {
+    work: [
+      {
+        keys: ["enter", "space"],
+        does: (work) => (isOpen(work) ? "close" : "open"),
+        run: (work) => toggle(work.id, !isOpen(work)),
+      },
+      {
+        keys: ["o"],
+        does: (work) => (isOpen(work) && isWhole(work) ? "bound" : "full length"),
+        run: stretch,
+      },
+      {
+        keys: ["j", "k"],
+        label: "j k",
+        does: () => "scroll",
+        applies: (work) => isOpen(work) && !isWhole(work) && scrolls(ref.current, work),
+        run: (work, key) => scrollThrough(ref.current, work, key === "j" ? 1 : -1),
+      },
+    ],
+    prompt: [
+      {
+        keys: ["enter", "space"],
+        does: (prompt) => (shown.has(lasting(prompt)) ? "hide skill" : "show skill"),
+        applies: (prompt) => !display.expanded && skillsIn(parseUserText(prompt.text)).length > 0,
+        run: flip,
+      },
+    ],
+    summary: [
+      {
+        keys: ["enter", "space"],
+        does: showsMore,
+        applies: () => !display.expanded,
+        run: flip,
+      },
+    ],
+    notice: [
+      {
+        keys: ["enter", "space"],
+        does: showsMore,
+        applies: (notice) =>
+          !display.expanded &&
+          notice.kind === "notice" &&
+          explained(notice, display.commands).detail !== undefined,
+        run: flip,
+      },
+    ],
+  };
+  const table = joinKeys(own, keys);
+  const { selected, resized } = useCursor({
+    browsing,
+    stops,
+    keys: table,
+    scroll: ref,
+    onLeave,
+    onEarlier: earlier > 0 ? onEarlier : undefined,
+  });
+  const hint = browsing ? hintLine(cursorHints(table, selected, "esc"), null, hintColumns) : null;
+  useEffect(() => onHint?.(hint), [hint, onHint]);
+  // The box opened last takes whatever rows the conversation leaves empty below it.
+  const { room, measure } = useMeasures(last, onBelow);
+  const expandedDisplay = useMemo(() => ({ ...display, expanded: true }), [display]);
 
-  if (entries.length === 0)
+  if (!drawn)
     return (
       <Welcome
         escapes={display.escapes}
@@ -539,6 +486,7 @@ export function Conversation({
       />
     );
   const rows = boxRows(height);
+  const selectedId = selected ? stopId(selected) : null;
   return (
     <scrollbox
       ref={ref}
@@ -552,7 +500,10 @@ export function Conversation({
       paddingLeft={1}
       paddingRight={1}
       verticalScrollbarOptions={SCROLLBAR}
-      renderAfter={clearHistoryAnchor}
+      renderAfter={function (this: ScrollBoxRenderable) {
+        clearHistoryAnchor();
+        measure(this);
+      }}
     >
       {earlier > 0 ? (
         <text selectable={false} fg={theme.dim} flexShrink={0}>
@@ -560,34 +511,42 @@ export function Conversation({
         </text>
       ) : null}
       {items.map((item) => {
-        switch (item.kind) {
-          case "work":
-            return (
-              <WorkBox
-                key={item.id}
-                work={item}
-                open={isOpen(item)}
-                whole={whole}
-                thinking={display.thinking}
-                selected={item === selected}
-                rows={rows}
-                onToggle={toggle}
-                onResized={resized}
-              />
-            );
-          case "reply":
-            return <ReplyView key={item.id} reply={item} />;
-          default:
-            return (
-              <EntryView
-                key={item.id}
-                entry={item}
-                display={display}
-                rows={shellRows(height)}
-                columns={width}
-              />
-            );
-        }
+        const stop = stopOf.get(item);
+        const view = (() => {
+          switch (item.kind) {
+            case "work":
+              return (
+                <WorkBox
+                  work={item}
+                  open={isOpen(item)}
+                  whole={isWhole(item)}
+                  thinking={display.thinking}
+                  selected={stop !== undefined && stopId(stop) === selectedId}
+                  rows={item.id === last ? Math.max(rows, room) : rows}
+                  columns={columns}
+                  onToggle={toggle}
+                />
+              );
+            case "reply":
+              return <ReplyView reply={item} />;
+            default:
+              return (
+                <EntryView
+                  entry={item}
+                  display={shown.has(lasting(item)) ? expandedDisplay : display}
+                  rows={shellRows(height)}
+                  columns={columns}
+                />
+              );
+          }
+        })();
+        return stop ? (
+          <Selectable key={item.id} stop={stop} selected={stopId(stop) === selectedId} onResized={resized}>
+            {view}
+          </Selectable>
+        ) : (
+          <Fragment key={item.id}>{view}</Fragment>
+        );
       })}
     </scrollbox>
   );

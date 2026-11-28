@@ -145,6 +145,17 @@ export async function waitMatch(terminal: TuiTest, pattern: RegExp, timeoutMs = 
   }
 }
 
+/** Resolves with the screen once `pattern` no longer matches it, as an item leaving the screen asks. */
+export async function waitGone(terminal: TuiTest, pattern: RegExp, timeoutMs = 5000): Promise<string> {
+  const start = Date.now();
+  for (;;) {
+    const screen = await terminal.text();
+    if (!pattern.test(screen)) return screen;
+    if (Date.now() - start > timeoutMs) throw new Error(`screen still matched ${pattern}:\n${screen}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 /**
  * The cells where `text` shows last on screen, as many as it has characters, for what the text
  * alone does not say, such as colour. Columns count characters, which fits rows of one-cell ones.
@@ -166,6 +177,15 @@ export function unscrolled(screen: string, columns = COLS): string {
     .split("\n")
     .map((row) => [...row].slice(0, columns - 1).join(""))
     .join("\n");
+}
+
+/** What the latest OSC 52 clipboard write among `raw`, the bytes the UI wrote, carries. */
+export function copied(raw: string): string {
+  const write = "\x1b]52;c;";
+  const start = raw.lastIndexOf(write);
+  if (start === -1) return "";
+  const encoded = /^[A-Za-z0-9+/=]*/.exec(raw.slice(start + write.length))?.[0] ?? "";
+  return Buffer.from(encoded, "base64").toString("utf8");
 }
 
 /** The status line of a run in progress, whatever the run is doing. */
@@ -330,7 +350,7 @@ function isolatedTmux() {
 }
 
 export interface LaunchOptions {
-  /** Native Faux provider fixture: hello, long, tool, thinking, or sprawl. */
+  /** Native Faux provider fixture: hello, long, tool, steps, thinking, or sprawl. */
   scenario?: string;
   /** Milliseconds between scripted events, for observing intermediate states. */
   delayMs?: number;

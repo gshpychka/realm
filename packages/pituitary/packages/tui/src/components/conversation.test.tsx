@@ -32,11 +32,13 @@ test("a narrow reply includes every wrapped row beside its mark in its first fra
           agent="pi"
           entries={entries}
           running={false}
+          columns={44}
           display={{
             expanded: false,
             thinking: false,
             escapes: "esc esc",
             shellStops: "",
+            expansions: 0,
             commands: new Set(),
           }}
           window={100}
@@ -83,11 +85,13 @@ test("narrowing a long reply keeps its wrapped tail in view", async () => {
           agent="pi"
           entries={entries}
           running={false}
+          columns={44}
           display={{
             expanded: false,
             thinking: false,
             escapes: "esc esc",
             shellStops: "",
+            expansions: 0,
             commands: new Set(),
           }}
           window={100}
@@ -141,11 +145,13 @@ test("a narrow streamed reply keeps its latest line visible through completion",
         agent="pi"
         entries={entries}
         running={!reply.done}
+        columns={30}
         display={{
           expanded: false,
           thinking: false,
           escapes: "esc esc",
           shellStops: "",
+          expansions: 0,
           commands: new Set(),
         }}
         window={100}
@@ -199,7 +205,15 @@ test("loading earlier history moves back one page while keeping the reading posi
         agent="pi"
         entries={active ? entries : []}
         running={false}
-        display={{ expanded: false, thinking: false, escapes: "esc", shellStops: "", commands: new Set() }}
+        columns={60}
+        display={{
+          expanded: false,
+          thinking: false,
+          escapes: "esc",
+          shellStops: "",
+          expansions: 0,
+          commands: new Set(),
+        }}
         window={window}
         browsing={false}
         onLeave={() => {}}
@@ -235,7 +249,7 @@ test("a history prepend with unchanged geometry cannot anchor a later resize", a
     id: `work-${index}`,
     text: "",
     thinking: "consider it",
-    tools: [],
+    tools: [{ id: `call-${index}`, name: "bash", args: { command: "ls" }, state: "ok", output: "" }],
     done: true,
   }));
   const scroll = createRef<ScrollBoxRenderable>();
@@ -251,7 +265,15 @@ test("a history prepend with unchanged geometry cannot anchor a later resize", a
         agent="pi"
         entries={entries}
         running={false}
-        display={{ expanded, thinking: true, escapes: "esc", shellStops: "", commands: new Set() }}
+        columns={60}
+        display={{
+          expanded,
+          thinking: true,
+          escapes: "esc",
+          shellStops: "",
+          expansions: 0,
+          commands: new Set(),
+        }}
         window={window}
         browsing={false}
         onLeave={() => {}}

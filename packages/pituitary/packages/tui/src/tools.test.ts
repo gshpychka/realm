@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Entry, ToolView } from "@pituitary/session";
-import { compact, filetypeOf, heading, latestTasks, preview, took, toolGlyph } from "./tools.ts";
+import { compact, filetypeOf, heading, latestTasks, preview, toolGlyph } from "./tools.ts";
 
 const tool = (
   name: string,
@@ -84,19 +84,6 @@ describe("latestTasks", () => {
 
   test("is empty with no todo call", () => {
     expect(latestTasks([])).toEqual([]);
-  });
-});
-
-describe("took", () => {
-  test("prints the time between start and end", () => {
-    expect(took(tool("bash", {}, "", { startedAt: 1000, endedAt: 3450 }))).toBe("2.5s");
-    expect(took(tool("bash", {}))).toBeNull();
-  });
-
-  test("a quick call other than a command shows no duration", () => {
-    expect(took(tool("read", {}, "", { startedAt: 0, endedAt: 200 }))).toBeNull();
-    expect(took(tool("read", {}, "", { startedAt: 0, endedAt: 1500 }))).toBe("1.5s");
-    expect(took(tool("bash", {}, "", { startedAt: 0, endedAt: 50 }))).toBe("0.1s");
   });
 });
 

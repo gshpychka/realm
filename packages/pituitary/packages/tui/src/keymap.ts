@@ -21,7 +21,17 @@ export const ACTIONS = {
   "app.message.followUp": ["alt+enter"],
   "app.message.dequeue": ["up"],
   "app.tools.expand": ["ctrl+o"],
-  /** pituitary's own: steps through the boxes of thinking and tool calls from the keyboard. */
+  /**
+   * Jump to the conversation's first drawn rows, and back to its latest, following what comes.
+   * Pi binds these to ctrl+home and ctrl+end, which nvim's insert mode moves the cursor with;
+   * alt with home and end means nothing to it, nor to Pi or Pituitary otherwise.
+   */
+  "tui.altScreen.top": ["alt+home"],
+  "tui.altScreen.bottom": ["alt+end"],
+  /**
+   * pituitary's own: the transcript cursor, which walks every prompt, box, reply, shell command,
+   * summary and notice from the latest.
+   */
   "app.tools.browse": ["ctrl+f"],
   "app.thinking.toggle": ["ctrl+t"],
   "app.thinking.cycle": ["shift+tab"],

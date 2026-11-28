@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionEvent } from "./protocol.ts";
 import {
-  abortedRun,
   agentRun,
   assistantTurn,
   failedTurn,
@@ -40,7 +39,6 @@ test("a live snapshot restores the partial reply so later deltas continue it", (
   };
   const view = restore(messages, undefined, snapshot);
   expect(view.running).toBe(true);
-  expect(view.turn).toBeNull();
   expect(reduce(view, { type: "agent_settled" }).entries.some((entry) => entry.kind === "turn")).toBe(false);
   expect(view.entries.at(-1)).toMatchObject({
     kind: "assistant",
@@ -312,16 +310,6 @@ describe("native failure presentation", () => {
     ).toMatchObject({ kind: "notice", level: "error", text: "conversation: boom" });
   });
 
-  test("an aborted reply says so", () => {
-    const view = run([
-      { type: "agent_start" },
-      ...userTurn("q"),
-      { type: "message_start", message: stored.assistant({}) },
-      ...abortedRun(),
-    ]);
-    expect(transcript(view)).toContain("! aborted");
-  });
-
   test("a retry drops the failed attempt, as pi drops it from the session", () => {
     const view = run([
       { type: "agent_start" },
@@ -434,9 +422,6 @@ describe("what the run is doing", () => {
     expect(activityOf(run([...prompt, ...reply.slice(0, opened + 1)]))).toEqual({ kind: "reading" });
     expect(activityOf(run([...prompt, ...reply.slice(0, thinking + 1)]))).toEqual({ kind: "thinking" });
     expect(activityOf(run([...prompt, ...reply.slice(0, writing + 1)]))).toEqual({ kind: "writing" });
-    const streamingCall = assistantTurn({ toolCall: call });
-    const started = streamingCall.findIndex((event) => isDelta(event, "toolcall_start"));
-    expect(activityOf(run([...prompt, ...streamingCall.slice(0, started + 1)]))).toEqual({ kind: "writing" });
   });
 
   test("a tool call is what the run does from the reply's end until its result, which the model then reads", () => {
@@ -588,7 +573,7 @@ describe("the turn's summary", () => {
       typeof event !== "number" && event.type === "message_end" ? [event.message] : [],
     );
 
-  test("ends a turn with the time it worked, its output tokens, the tool calls pi ran, and when it ended", () => {
+  test("ends a turn with the time it worked, its output tokens, and when it ended", () => {
     const view = play([
       1_000,
       { type: "agent_start" },
@@ -601,19 +586,7 @@ describe("the turn's summary", () => {
     ]);
     const [turn] = turns(view);
     expect(view.entries.at(-1)).toBe(turn);
-    expect(turn).toMatchObject({ worked: 12_500, output: 1_600, tools: 1, endedAt: 13_500 });
-    expect(turn).not.toHaveProperty("outcome");
-  });
-
-  test("counts each tool call pi takes up", () => {
-    const view = play([
-      { type: "agent_start" },
-      ...assistantTurn({ toolCall: call }),
-      { type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: {} },
-      { type: "tool_execution_start", toolCallId: "c2", toolName: "read", args: {} },
-      ...end,
-    ] as SessionEvent[]);
-    expect(turns(view)[0]).toMatchObject({ tools: 2 });
+    expect(turn).toMatchObject({ worked: 12_500, output: 1_600, endedAt: 13_500 });
   });
 
   test("leaves out the time a dialog held the turn", () => {
@@ -647,19 +620,6 @@ describe("the turn's summary", () => {
     ]);
     expect(turns(view)).toHaveLength(1);
     expect(turns(view)[0]).toMatchObject({ worked: 6_000, output: 20 + 50 });
-    expect(turns(view)[0]).not.toHaveProperty("outcome");
-  });
-
-  test("says when the operator interrupted the turn, or an error ended it", () => {
-    const interrupted = play([
-      { type: "agent_start" },
-      ...userTurn("q"),
-      { type: "message_start", message: stored.assistant({}) },
-      ...abortedRun(),
-    ]);
-    expect(turns(interrupted)[0]).toMatchObject({ outcome: "interrupted" });
-    const failed = play([{ type: "agent_start" }, ...userTurn("q"), ...failedTurn("400 too long"), ...end]);
-    expect(turns(failed)[0]).toMatchObject({ outcome: "error" });
   });
 
   test("a turn this client joined partway, or one pi never finished, has none", () => {
@@ -772,7 +732,6 @@ test("a live snapshot preserves the retry countdown without inventing a partial 
     phase: "retrying",
     running: true,
     retry: { attempt: 2, maxAttempts: 3, at: 5000, error: "overloaded" },
-    turn: null,
   });
 });
 

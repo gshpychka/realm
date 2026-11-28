@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import type { UserEntry } from "@pituitary/session";
 import {
   type Dispatch,
   type RefObject,
@@ -57,6 +58,10 @@ export interface Pi {
    * the model; false for any other draft. A draft it cannot run yet goes back to the editor.
    */
   shell(draft: string): boolean;
+  /** Forks a new session from before the prompt the transcript shows as `prompt`, which goes into the draft. */
+  forkAt(prompt: UserEntry): void;
+  /** Moves back before the prompt the transcript shows as `prompt`, which goes into the draft, as /tree does. */
+  editAt(prompt: UserEntry): void;
   /** A move is summarizing the branch it leaves. */
   summarizing: boolean;
   /**
@@ -141,6 +146,8 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
     commands,
     keymap,
     run: actions.run,
+    forkAt: actions.forkAt,
+    editAt: actions.editAt,
     usageCommand: link.commandOf(PI_EXTENSIONS.usage),
     showUsage: (open) => {
       const name = link.commandOf(PI_EXTENSIONS.usage);
@@ -195,7 +202,7 @@ function sessionActions(
     /** Says a move is summarizing, with what stops it; what it returns says the move is done. */
     summarizing(stop: () => void): () => void;
   },
-): Pick<Pi, "run"> {
+): Pick<Pi, "run" | "forkAt" | "editAt"> {
   const { conversation } = pi;
   const notify: SessionController["notify"] = (level, text, file) => latest.current.notify(level, text, file);
   const kept = () => notify("info", "An extension kept Pi on this session.");
@@ -261,6 +268,22 @@ function sessionActions(
       `Forked into a new session · editing your earlier prompt${draft.trim() ? " · esc u brings your draft back" : ""}`,
     );
   };
+  /**
+   * The session's own entry for the prompt the transcript shows as `prompt`, which the branch the
+   * session is on holds. Prompts sent within the same millisecond share a key; their text tells them apart.
+   */
+  const entryOf = async (prompt: UserEntry): Promise<string | null> => {
+    if (prompt.key === undefined) return null;
+    const found = (await conversation.branchPrompts()).filter((each) => each.key === prompt.key);
+    return (found.find((each) => each.text === prompt.text) ?? found[0])?.entryId ?? null;
+  };
+  /** Runs `work` on the session's entry for `prompt`, or says the prompt is not on this branch. */
+  const atPrompt = (name: string, work: (entryId: string) => Promise<void>) => (prompt: UserEntry) =>
+    void entryOf(prompt)
+      .then((entryId) =>
+        entryId ? work(entryId) : notify("info", "That prompt is not on the branch the session is on."),
+      )
+      .catch(failed(name));
   const fork = async () => {
     const prompts = await conversation.branchPrompts();
     if (!prompts.length) return notify("info", "There is no earlier prompt to fork from yet.");
@@ -402,6 +425,8 @@ function sessionActions(
     return true;
   };
   return {
+    forkAt: atPrompt("fork", forkAt),
+    editAt: atPrompt("tree", tree.editAt),
     run(name, args) {
       switch (name) {
         case "new":

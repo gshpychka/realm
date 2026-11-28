@@ -2,6 +2,7 @@ import type { Entry, ToolView } from "@pituitary/session";
 import { detailsOf, type Task } from "./details.ts";
 import type { Glyph } from "./glyphs.ts";
 import { counted } from "./plural.ts";
+import { duration, span } from "./working.ts";
 
 /** A tool call's one-line heading: what it acted on, in the terms of that tool. */
 export interface Heading {
@@ -61,7 +62,11 @@ const HEADINGS = new Map<string, (args: Args, tool: ToolView) => Heading>([
   ["bash", (args) => ({ title: "$", detail: text(args.command) })],
   ["grep", (args) => ({ title: "grep", detail: searched(args) })],
   ["find", (args) => ({ title: "find", detail: searched(args) })],
-  ["ls", (args) => ({ title: "ls", detail: text(args.path) || "." })],
+  // Pi lists `.` for a call naming no path; one still being written may name one yet.
+  [
+    "ls",
+    (args, tool) => ({ title: "ls", detail: text(args.path) || (tool.streaming === undefined ? "." : "") }),
+  ],
   ["todo", (args) => ({ title: "todo", detail: text(args.action) })],
   ["ask_user_question", (args) => ({ title: "ask", detail: questions(args) })],
   ["subagent", (args) => ({ title: "subagent", detail: text(args.description) || text(args.prompt) })],
@@ -69,10 +74,15 @@ const HEADINGS = new Map<string, (args: Args, tool: ToolView) => Heading>([
   ["plan_mode_complete", () => ({ title: "plan", detail: "ready" })],
 ]);
 
-/** A call's heading in its tool's own terms, or its arguments on one line for a tool with none. */
-export function heading(tool: ToolView): Heading {
+/**
+ * A call's heading in its tool's own terms, or its arguments on one line, cut to `width`, for a
+ * tool with none.
+ */
+export function heading(tool: ToolView, width?: number): Heading {
   const args = tool.args as Args;
-  return HEADINGS.get(tool.name)?.(args, tool) ?? { title: tool.name || "tool", detail: compact(args) };
+  return (
+    HEADINGS.get(tool.name)?.(args, tool) ?? { title: tool.name || "tool", detail: compact(args, width) }
+  );
 }
 
 /** Icons of the tools a heading names, by tool name. */
@@ -143,15 +153,29 @@ export function latestTasks(entries: readonly Entry[]): Task[] {
   return [];
 }
 
-/** Calls under this long show no duration, except commands, whose time is always worth seeing. */
-const NOTABLE_MS = 1000;
+/** Calls quicker than this show no duration: the time says nothing a glance needs. */
+const NOTABLE_MS = 500;
+/** A running call shows the time it has taken once it has run this long, by `now`. */
+const RUNNING_MS = 2000;
 
-/** How long a call took, when that is worth showing. */
-export function took(tool: ToolView): string | null {
-  if (tool.startedAt === undefined || tool.endedAt === undefined) return null;
+/**
+ * How long a call took, or has taken by `now` while it runs, when that is worth showing: to a
+ * tenth of a second under ten seconds once it has ended, in whole seconds while it ticks.
+ */
+export function took(tool: ToolView, now: number): string | null {
+  if (tool.startedAt === undefined) return null;
+  if (tool.endedAt === undefined) {
+    const ms = now - tool.startedAt;
+    return tool.state === "running" && tool.streaming === undefined && ms >= RUNNING_MS ? duration(ms) : null;
+  }
   const ms = tool.endedAt - tool.startedAt;
-  if (tool.name !== "bash" && ms < NOTABLE_MS) return null;
-  return `${(ms / 1000).toFixed(1)}s`;
+  return ms < NOTABLE_MS ? null : span(ms);
+}
+
+/** A heading's detail on one row: its first line, then how many lines it leaves out, as ` … +3 lines`. */
+export function firstLine(detail: string): { line: string; more: string } {
+  const [line = "", ...rest] = detail.replace(/\n+$/, "").split("\n");
+  return { line, more: rest.length > 0 ? ` … +${counted(rest.length, "line")}` : "" };
 }
 
 /** Filetypes the bundled tree-sitter grammars highlight, by extension. */

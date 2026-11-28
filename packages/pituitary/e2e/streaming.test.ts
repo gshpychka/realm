@@ -43,7 +43,13 @@ test("escape aborts the run and the session settles", async () => {
   await settled(app.terminal);
   const screen = await app.capture("aborted");
   assert.doesNotMatch(screen, RUNNING, `did not settle:\n${screen}`);
-  assert.match(screen, /aborted/, `abort notice missing:\n${screen}`);
+  // The cut reply says it was interrupted, beneath its last line, in place of a notice of its own.
+  assert.match(
+    screen,
+    /● line 1 of the long answer[\s\S]*\n {3}interrupted\n/,
+    `interruption missing:\n${screen}`,
+  );
+  assert.doesNotMatch(screen, /aborted/);
   await app.close();
 });
 

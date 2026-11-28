@@ -22,14 +22,15 @@ import {
   type TeamQuestion,
   type TeamTask,
   taskState,
+  teamPanelWidth,
   teamRows,
   wideTeam,
 } from "./components/team.tsx";
 import { STATUS_INSET, statusUp, Working } from "./components/working.tsx";
+import { actingKeys } from "./cursor-keys.ts";
 import { editExternally } from "./external-editor.ts";
 import { firelight } from "./firelight.ts";
 import { usePullRequest } from "./github/use-pull-request.ts";
-import { type Hint, hintLine, MOVE } from "./hints.ts";
 import {
   type Action,
   actionFor,
@@ -47,7 +48,6 @@ import { PiStatuses, PiWidgets, usePiUI } from "./pi-ui.tsx";
 import { remains } from "./remains.ts";
 import { ellipsize, wrappedRows } from "./text-width.ts";
 import { theme } from "./theme.ts";
-import { worked } from "./transcript.ts";
 import { useAsk } from "./use-ask.ts";
 import { useBranch } from "./use-branch.ts";
 import { useCard } from "./use-card.ts";
@@ -58,6 +58,7 @@ import { usePi } from "./use-pi.ts";
 import { type Offer, useOffers, useRecall, walksDraft } from "./use-recall.ts";
 import { useSession } from "./use-session.ts";
 import { useSkills } from "./use-skills.ts";
+import { useSwitch } from "./use-switch.ts";
 import { reconnectHint, resumeCommand } from "./working.ts";
 
 export interface AppProps {
@@ -87,8 +88,14 @@ export interface AppProps {
 const QUIT_WINDOW_MS = 500;
 /** Entries the conversation draws at first, and how many more each step back shows. */
 const WINDOW = 150;
-/** Actions that still work while the keyboard walks the boxes: they show the boxes otherwise, or leave. */
-const BROWSE_ACTIONS = new Set<Action>(["app.tools.browse", "app.tools.expand", "app.thinking.toggle"]);
+/** Actions that still work while the cursor walks the conversation: they show it otherwise, move through it, or leave. */
+const BROWSE_ACTIONS = new Set<Action>([
+  "app.tools.browse",
+  "app.tools.expand",
+  "app.thinking.toggle",
+  "tui.altScreen.top",
+  "tui.altScreen.bottom",
+]);
 const ARCHIVE_ACTIONS = new Set<Action>([
   ...BROWSE_ACTIONS,
   "app.clear",
@@ -118,9 +125,6 @@ const PAGES = new Map<string, -1 | 1>([
   ["pageup", -1],
   ["pagedown", 1],
 ]);
-/** The keys that walk the boxes of work, shown while they do. */
-const BROWSE_KEYS: readonly Hint[] = [MOVE, ["enter", "open"], ["j k", "scroll"], ["esc", "back"]];
-
 /** Holds the fire on one frame, for captures and reduced motion. */
 const STILL = process.env.PITUITARY_STILL === "1";
 
@@ -180,9 +184,14 @@ export function App({
   const started = useRef(false);
   const prompted = useRef(false);
   const [hint, flash] = useFlash();
-  const [expanded, setExpanded] = useState(initialView?.expanded ?? false);
-  const [thinking, setThinking] = useState(initialView?.thinking ?? true);
+  const boxes = useSwitch(initialView?.expanded ?? false);
+  const thoughts = useSwitch(initialView?.thinking ?? true);
+  const expanded = boxes.on;
+  const thinking = thoughts.on;
   const [browsing, setBrowsing] = useState(false);
+  const [cursorHint, setCursorHint] = useState<string | null>(null);
+  // The viewport has left the latest rows of the conversation below it.
+  const [below, setBelow] = useState(false);
   const [picker, setPicker] = useState<PickerSpec | null>(null);
   const regular = usePi({ pi, session, editor, pick: setPicker, ask: asking.ask, flash, terminal: handoff });
   const piKeys = regular?.keymap;
@@ -266,12 +275,13 @@ export function App({
   const display = useMemo<Display>(
     () => ({
       expanded,
+      expansions: boxes.flips,
       thinking,
       escapes: interruptHint,
       shellStops: working ? "" : interruptHint,
       commands: new Set(commands.map((command) => command.name)),
     }),
-    [expanded, thinking, interruptHint, working, commands],
+    [expanded, boxes.flips, thinking, interruptHint, working, commands],
   );
   const completions = useCompletion(editor, commands, localCwd);
   // A travelling fire takes two rows beside the status; a closed status wraps its hint, such as
@@ -481,10 +491,20 @@ export function App({
     return summarizing;
   };
 
+  /** Back to the conversation's latest rows, which then follow what comes. */
   const toBottom = () => {
     const box = scroll.current;
     if (box) box.scrollTop = box.scrollHeight;
   };
+
+  const cursorKeys = actingKeys({
+    copy: (text, what) =>
+      flash(
+        renderer.copyToClipboardOSC52(text) ? `copied ${what}` : "the terminal refused the clipboard write",
+      ),
+    prompts: readonly ? undefined : (regular ?? undefined),
+    leave: () => setBrowsing(false),
+  });
 
   const submit = (text: string, followUp = false) => {
     if (!text.trim()) return;
@@ -655,17 +675,25 @@ export function App({
     },
     "app.message.copy": runs("copy"),
     "app.tools.expand": () => {
-      setExpanded((current) => !current);
+      flash(boxes.flip() ? "boxes: all open at full length" : "boxes: folded");
+      return true;
+    },
+    "tui.altScreen.top": () => {
+      scroll.current?.scrollTo(0);
+      return true;
+    },
+    "tui.altScreen.bottom": () => {
+      toBottom();
       return true;
     },
     "app.tools.browse": () => {
       if (browsing) setBrowsing(false);
-      else if (worked(view.entries)) setBrowsing(true);
-      else flash("no thinking or tool calls to step through yet");
+      else if (view.entries.some((entry) => entry.kind !== "turn")) setBrowsing(true);
+      else flash("nothing in the conversation to pick yet");
       return true;
     },
     "app.thinking.toggle": () => {
-      setThinking((current) => !current);
+      flash(thoughts.flip() ? "thinking: shown" : "thinking: hidden");
       return true;
     },
     "app.thinking.cycle": () =>
@@ -721,7 +749,10 @@ export function App({
     return true;
   };
 
-  /** While the keyboard walks the boxes the conversation takes its keys; these show it otherwise, page it, or leave. */
+  /**
+   * While the transcript cursor walks the conversation's items the conversation takes their keys;
+   * these show it otherwise, page it, or leave.
+   */
   const browseKey = (key: KeyEvent, action: Action | null, text: string, standing: Offer | null) => {
     const took = action && BROWSE_ACTIONS.has(action) ? actions[action](key, text, standing) : pageKey(key);
     if (took) key.preventDefault();
@@ -803,8 +834,15 @@ export function App({
     }
   });
 
-  // The browse keys fit the narrower of the places a hint shows: the status line beside the fire.
-  const shownHint = browsing ? hintLine(BROWSE_KEYS, null, screenColumns - STATUS_INSET) : hint;
+  // A passing hint, such as what a cursor key copied, shows over the cursor's own keys for a moment.
+  const shownHint = hint ?? (browsing ? cursorHint : null);
+  // While pi works the status line takes the hint, and the draft's rule says when its output is out of view.
+  const latest = keyHint(keymap, "tui.altScreen.bottom") ?? "pgdn";
+  const editorNote = statusUp(view, closed, summarizing)
+    ? below
+      ? `↓ more below · ${latest}`
+      : null
+    : shownHint;
   return (
     <KeymapProvider value={keymap}>
       <MascotProvider value={stage}>
@@ -823,6 +861,8 @@ export function App({
               ref={scroll}
               entries={view.entries}
               running={view.running}
+              // A wide screen's team panel takes its share of the row beside the conversation.
+              columns={screenColumns - (wide && team ? teamPanelWidth(screenColumns) : 0)}
               local={workspace.local && !readonly}
               agent={agent}
               modelSelectable={canChooseModel && !readonly}
@@ -832,6 +872,12 @@ export function App({
               skillOf={skills.skillOf}
               window={window}
               browsing={browsing}
+              onEarlier={() => setWindow((current) => current + WINDOW)}
+              keys={cursorKeys}
+              onHint={setCursorHint}
+              // The cursor's keys fit the narrower of the places a hint shows: the status line beside the fire.
+              hintColumns={screenColumns - STATUS_INSET}
+              onBelow={setBelow}
               onLeave={() => setBrowsing(false)}
             />
             {wide && team ? <TeamCards team={team} wide open={selectTask} /> : null}
@@ -918,13 +964,7 @@ export function App({
                 agent={agent}
                 initialDraft={initialView?.draft}
                 initialCursor={initialView?.cursor}
-                note={
-                  canChooseModel && state && !state.model
-                    ? "Choose a model · ctrl+l"
-                    : statusUp(view, closed, summarizing)
-                      ? null
-                      : shownHint
-                }
+                note={canChooseModel && state && !state.model ? "Choose a model · ctrl+l" : editorNote}
                 confirm={offers.asking}
                 flag={skills.flag}
                 skills={skills.names}

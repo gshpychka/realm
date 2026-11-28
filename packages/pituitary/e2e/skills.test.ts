@@ -4,7 +4,15 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { cellsOf, normalMode, pastGrace, RUNNING, unscrolled, waitMatch } from "./helpers/harness.ts";
+import {
+  cellsOf,
+  normalMode,
+  pastGrace,
+  RUNNING,
+  unscrolled,
+  waitGone,
+  waitMatch,
+} from "./helpers/harness.ts";
 import { re } from "./helpers/pattern.ts";
 import { launchPi } from "./helpers/pi.ts";
 
@@ -200,6 +208,8 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     assert.match(expanded, new RegExp(`✓ ${glyphs.skill} skill release-notes`));
     await app.terminal.write(CTRL_O);
     await waitMatch(app.terminal, /^(?![\s\S]*Gather the merged)/);
+    // The rule says which way ctrl+o went, for a moment.
+    await waitGone(app.terminal, /boxes: folded/);
 
     // Up brings the prompt back as typed, never the expanded skill.
     await app.terminal.write(UP);
@@ -339,7 +349,8 @@ test("queued skills show as chips, come back as typed, and still load when the r
     // The conversation wraps again at a narrower width once it has drawn there.
     await app.terminal.resize(80, 24);
     await waitMatch(app.terminal, /^━{80}\n/m);
-    await waitMatch(app.terminal, /^ +\S.*each team finds its own changes quickly *$/m);
+    // The prompt's bar runs down the row it wraps to.
+    await waitMatch(app.terminal, /^ ▌ \S.*each team finds its own changes quickly *$/m);
     await waitMatch(app.terminal, /another ask +· ctrl\+o/);
     await app.terminal.waitIdle();
     const narrow = await app.capture("skills-interrupted-80");
@@ -427,14 +438,14 @@ test("queued skills show as chips, come back as typed, and still load when the r
     await app.terminal.submit("read the draft");
     await app.terminal.waitText("Read the draft.");
     await app.terminal.waitIdle();
-    assert.match(await app.terminal.text(), /▸ \S+ 1 tool\b/);
+    assert.match(await app.terminal.text(), /▸ \S+ read SKILL\.md\b/);
     await app.terminal.write(CTRL_O);
     await app.terminal.waitText("docs/draft/SKILL.md");
     await app.terminal.waitIdle();
     const plain = await app.capture("skills-plain-read");
     assert.doesNotMatch(plain, /used skill|skill draft/);
     await app.terminal.write(CTRL_O);
-    await waitMatch(app.terminal, /▸ \S+ 1 tool\b/);
+    await waitMatch(app.terminal, /▸ \S+ read SKILL\.md\b/);
 
     // A read of the skill's file that fails loads nothing, and the work says the skill failed.
     rmSync(join(app.agent, "skills", "release-notes", "SKILL.md"));
@@ -476,17 +487,18 @@ test("queued skills show as chips, come back as typed, and still load when the r
       await app.terminal.waitText(`Plain words ${index}.`);
       await app.terminal.waitIdle();
       assert.equal(app.provider.requests.at(-1)?.prompt, lines.join("\n"));
-      // The message's rows, after the mark that leads them: the transcript's, then the draft's.
-      const rows = (mark: string) =>
+      // The message's rows, after the mark that leads them and what leads each row after: the
+      // transcript's bar runs down all of them, and the draft's later rows are indented.
+      const rows = (mark: string, next: string) =>
         // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-        new RegExp(`^ ${mark} ${lines.map(escaped).join(" *\\n {3}")} *$`, "m");
+        new RegExp(`^ ${mark} ${lines.map(escaped).join(` *\\n${next}`)} *$`, "m");
       const shown = unscrolled(await app.capture(`skills-lookalike-${index}`));
-      assert.match(shown, rows("▌"));
+      assert.match(shown, rows("▌", " ▌ "));
       assert.doesNotMatch(shown, re`skill x${glyphs.chipEnd}`);
       await app.terminal.write(UP);
       await app.terminal.waitText("↑ again for the previous prompt");
       await app.terminal.write(UP);
-      await waitMatch(app.terminal, rows("»"));
+      await waitMatch(app.terminal, rows("»", " {3}"));
       await app.terminal.write(CTRL_C);
       await app.terminal.waitText("» ask pi");
     }

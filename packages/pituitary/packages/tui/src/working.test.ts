@@ -1,14 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import {
-  emptySession,
-  reduce,
-  type SessionEvent,
-  type SessionView,
-  type TurnEntry,
-} from "@pituitary/session";
+import { emptySession, reduce, type SessionEvent, type SessionView } from "@pituitary/session";
 import { agentRun, assistantTurn, toolRun, userTurn } from "../../session/src/session.fixture.ts";
 import { glyphs } from "./glyphs.ts";
-import { clock, count, duration, turnLine, workingLine } from "./working.ts";
+import { clock, count, duration, workingLine } from "./working.ts";
 
 function run(events: SessionEvent[], at = 1_000): SessionView {
   return events.reduce<SessionView>((view, event) => reduce(view, event, at), emptySession);
@@ -94,37 +88,6 @@ describe("count", () => {
       "999k",
       "1.2M",
     ]);
-  });
-});
-
-describe("turnLine", () => {
-  const endedAt = new Date(2026, 8, 28, 14, 32, 50).getTime();
-  const turn = (figures: Partial<TurnEntry>): TurnEntry => ({
-    kind: "turn",
-    id: "e1",
-    worked: 12_400,
-    output: 1_640,
-    tools: 2,
-    endedAt,
-    ...figures,
-  });
-
-  test("gives the time worked, the output tokens, the tool calls, and the local time it ended", () => {
-    expect(turnLine(turn({}))).toBe(`${glyphs.turn} 12s · ${glyphs.tokens} 1.6k · 2 tools · 14:32`);
-    expect(turnLine(turn({ tools: 1 }))).toBe(`${glyphs.turn} 12s · ${glyphs.tokens} 1.6k · 1 tool · 14:32`);
-  });
-
-  test("leaves out tools and tokens the turn had none of", () => {
-    expect(turnLine(turn({ tools: 0, output: 0 }))).toBe(`${glyphs.turn} 12s · 14:32`);
-  });
-
-  test("ends with how the turn ended when it did not end with a finished reply", () => {
-    expect(turnLine(turn({ outcome: "interrupted" }))).toBe(
-      `${glyphs.turn} 12s · ${glyphs.tokens} 1.6k · 2 tools · 14:32 · interrupted`,
-    );
-    expect(turnLine(turn({ tools: 0, outcome: "error" }))).toBe(
-      `${glyphs.turn} 12s · ${glyphs.tokens} 1.6k · 14:32 · error`,
-    );
   });
 });
 

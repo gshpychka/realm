@@ -80,8 +80,9 @@ test("a reply cut at the model's output limit says so and what to do, with words
     await waitMatch(app.terminal, re`think it over[\s\S]*${note}`);
     await settled(app.terminal);
     const thought = await app.capture("native-cut-thinking");
-    // The note follows the box of work, with no empty reply before it.
-    assert.match(thought, re`▌ think it over\n\n ▸ [^\n]+\n\n [^\n]*${note}`);
+    // The note follows the box of work and the latest steps it keeps until the next prompt, with
+    // no empty reply before it.
+    assert.match(thought, re`▌ think it over\n\n ▸ [^\n]+(\n {3}[^\n]+)*\n\n [^\n]*${note}`);
   } finally {
     await app.close();
   }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AssistantEntry, Entry, ToolView } from "@pituitary/session";
-import { type Item, summary, transcriptOf, type Work, worked } from "./transcript.ts";
+import { type Item, transcriptOf } from "./transcript.ts";
 
 const tool = (id: string, state: ToolView["state"] = "ok"): ToolView => ({
   id,
@@ -53,26 +53,6 @@ describe("transcriptOf", () => {
     ]);
   });
 
-  test("the box stays live until the last reply ends without calling a tool", () => {
-    const working = [user("u"), reply("a1", { tools: [tool("t1", "running")] })];
-    expect(shape(transcriptOf(working, true))).toEqual(["user", "work(t1) live"]);
-
-    // Words still arriving may yet lead to a tool call, so the box waits on them.
-    const answering = [...working, reply("a2", { thinking: "so", text: "It is", done: false })];
-    expect(shape(transcriptOf(answering, true))).toEqual([
-      "user",
-      "work(t1 a2:thinking) live",
-      "reply(It is) streaming",
-    ]);
-
-    const answered = [...working, reply("a2", { thinking: "so", text: "It is done." })];
-    expect(shape(transcriptOf(answered, true))).toEqual([
-      "user",
-      "work(t1 a2:thinking)",
-      "reply(It is done.)",
-    ]);
-  });
-
   test("words that went on to a tool call move into the box as narration", () => {
     const entries = [
       user("u"),
@@ -98,27 +78,5 @@ describe("transcriptOf", () => {
 
   test("a reply that failed before it said anything leaves nothing", () => {
     expect(transcriptOf([user("u"), reply("a1", { stopReason: "error" })], false)).toEqual([user("u")]);
-  });
-});
-
-describe("summary", () => {
-  const boxOf = (entry: AssistantEntry) => transcriptOf([entry], true)[0] as Work;
-
-  test("says whether the model thought, how many tools it called, and how many failed", () => {
-    const busy = reply("a1", {
-      thinking: "hm",
-      tools: [tool("t1"), tool("t2", "error"), tool("t3", "running")],
-    });
-    expect(summary(boxOf(busy))).toBe("thought · 3 tools · 1 failed");
-    expect(summary(boxOf(reply("a2", { tools: [tool("t1")] })))).toBe("1 tool");
-    expect(summary(boxOf(reply("a3", { thinking: "hm", text: "Hi." })))).toBe("thought");
-  });
-});
-
-describe("worked", () => {
-  test("holds for thinking or a tool call, and not for words alone", () => {
-    expect(worked([user("u"), reply("a", { text: "Hi." })])).toBe(false);
-    expect(worked([reply("a", { thinking: "hm", text: "Hi." })])).toBe(true);
-    expect(worked([reply("a", { tools: [tool("t")] })])).toBe(true);
   });
 });

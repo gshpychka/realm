@@ -171,5 +171,10 @@ export function treeNavigation({
   return {
     /** Opens the tree list. */
     open: () => open(),
+    /** Moves back before the prompt at `entryId`, as picking it in the list does, its text into the draft. */
+    editAt: async (entryId: string) => {
+      const { skipSummaryPrompt } = await conversation.bridge({ kind: "tree" });
+      await move(entryId, skipSummaryPrompt);
+    },
   };
 }

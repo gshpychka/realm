@@ -5,7 +5,7 @@ import { KeyHint } from "../keymap-context.tsx";
 import { tilde } from "../place.ts";
 import { counted } from "../plural.ts";
 import { tailRows } from "../text-width.ts";
-import { palette, theme } from "../theme.ts";
+import { OPERATOR_BAR, palette, theme } from "../theme.ts";
 import { Link } from "./link.tsx";
 import { STATE } from "./tool-call.tsx";
 
@@ -58,10 +58,16 @@ export const BashView = memo(function BashView({ entry, expanded, rows, columns,
     : null;
   return (
     <box flexDirection="column" flexShrink={0} marginTop={1}>
-      <box flexDirection="row" flexShrink={0} backgroundColor={palette.surface} paddingRight={1}>
-        <text selectable={false} fg={theme.user} flexShrink={0}>
-          ▌{" "}
-        </text>
+      <box
+        flexDirection="row"
+        flexShrink={0}
+        backgroundColor={palette.surface}
+        border={["left"]}
+        borderColor={theme.user}
+        customBorderChars={OPERATOR_BAR}
+        paddingLeft={1}
+        paddingRight={1}
+      >
         <text selectable={false} fg={entry.excluded ? theme.dim : theme.tool} flexShrink={0}>
           ${" "}
         </text>

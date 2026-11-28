@@ -65,6 +65,24 @@ export const brand = {
   google: "#4285f4",
 } as const;
 
+/**
+ * A left border of `▌`, which marks what the operator sent down its whole height: their prompts
+ * and shell commands.
+ */
+export const OPERATOR_BAR = {
+  topLeft: "▌",
+  topRight: " ",
+  bottomLeft: "▌",
+  bottomRight: " ",
+  horizontal: " ",
+  vertical: "▌",
+  topT: " ",
+  bottomT: " ",
+  leftT: "▌",
+  rightT: " ",
+  cross: " ",
+} as const;
+
 /** Colours by role, so screens stay consistent. */
 export const theme = {
   bg: palette.bg,
@@ -82,4 +100,6 @@ export const theme = {
   /** A skill's chip in a message and in the draft: its label, and the tint it sits on. */
   skill: palette.yellow,
   skillTint: palette.rule,
+  /** What the transcript cursor has selected: a box's frame and title, or the bar beside any other item. */
+  cursor: palette.yellow,
 } as const;

@@ -3,6 +3,7 @@ import {
   EventPacer,
   emptySession,
   type ImageContent,
+  type LocalAction,
   note,
   reduce,
   restore,
@@ -42,6 +43,8 @@ export function useSession(link: ConversationLink): SessionController {
   const generation = useRef(0);
   const sync = useRef<() => Promise<void>>(async () => {});
   const notice = useRef<SessionController["notify"]>(() => {});
+  /** Applies a change the client makes to the view itself, after the events it has received. */
+  const local = useRef<(action: LocalAction) => void>(() => {});
   useEffect(() => {
     let active = true;
     generation.current++;
@@ -65,6 +68,12 @@ export function useSession(link: ConversationLink): SessionController {
       },
       onFlush: () => setView(reduced.current),
     });
+    local.current = (action) => {
+      if (!active) return;
+      pacer.flush();
+      reduced.current = reduce(reduced.current, action);
+      setView(reduced.current);
+    };
     notice.current = (level, text, file) => {
       if (!active) return;
       pacer.flush();
@@ -227,6 +236,8 @@ export function useSession(link: ConversationLink): SessionController {
     const taken = await takeMessages();
     const draft = taken.map(typed).join("\n\n");
     if (own !== generation.current) return draft;
+    // The calls running now end by the interruption, which their results do not say.
+    local.current({ type: "interrupting" });
     try {
       await link.abort();
       // As Pi expanded them, so every skill among them stays loaded, not only a leading one.

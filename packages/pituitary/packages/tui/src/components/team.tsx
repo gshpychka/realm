@@ -129,7 +129,7 @@ const WIDE_COLUMNS = 120;
 export const wideTeam = (columns: number) => columns >= WIDE_COLUMNS;
 
 /** The side panel's share of the screen, kept wide enough to tell objectives apart. */
-function teamPanelWidth(columns: number): number {
+export function teamPanelWidth(columns: number): number {
   return Math.max(35, Math.min(60, Math.round(columns * 0.3)));
 }
 

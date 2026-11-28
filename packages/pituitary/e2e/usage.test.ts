@@ -98,7 +98,7 @@ for (const cols of [44, 120])
       // While the run goes, the interrupt stops it rather than closing the card.
       await normalMode(app.terminal);
       await app.terminal.keyboard.press("Escape");
-      await app.terminal.waitText("aborted");
+      await app.terminal.waitText("interrupted");
       await settled(app.terminal);
       await app.terminal.waitIdle();
       const screen = await app.capture(`usage-api-${cols}`);

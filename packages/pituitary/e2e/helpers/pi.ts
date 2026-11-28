@@ -1,4 +1,13 @@
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -93,11 +102,11 @@ function replyStream(api: Api, text: string): { head: unknown[]; tail: unknown[]
   };
 }
 
-/** A reply that calls `name` with `args`, streamed whole in `api`. */
-function toolStream(api: Api, name: string, args: Record<string, unknown>): unknown[] {
+/** A reply that calls `name` with `args`, streamed whole in `api`, under the call id `id`. */
+function toolStream(api: Api, name: string, args: Record<string, unknown>, id: string): unknown[] {
   const json = JSON.stringify(args);
   if (api === "completions") {
-    const call = { index: 0, id: "call_1", type: "function", function: { name, arguments: json } };
+    const call = { index: 0, id, type: "function", function: { name, arguments: json } };
     return [
       {
         id: "chunk",
@@ -107,7 +116,7 @@ function toolStream(api: Api, name: string, args: Record<string, unknown>): unkn
       "[DONE]",
     ];
   }
-  const item = { type: "function_call", id: "fc_1", call_id: "call_1", name };
+  const item = { type: "function_call", id: `fc_${id}`, call_id: id, name };
   return [
     { type: "response.created", response: { id: "resp", status: "in_progress" } },
     { type: "response.output_item.added", output_index: 0, item: { ...item, arguments: "" } },
@@ -129,6 +138,8 @@ const sse = (events: readonly unknown[]) =>
 export async function fakeProvider(): Promise<Provider> {
   const requests: Received[] = [];
   const queued: Reply[] = [];
+  // Each call has an id of its own, as a provider gives it, so a run's calls stay apart.
+  let calls = 0;
   const server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => {
@@ -147,7 +158,7 @@ export async function fakeProvider(): Promise<Provider> {
       }
       if (typeof reply === "object" && "tool" in reply) {
         response.writeHead(200, { "content-type": "text/event-stream" });
-        response.end(sse(toolStream(api, reply.tool, reply.arguments)));
+        response.end(sse(toolStream(api, reply.tool, reply.arguments, `call_${++calls}`)));
         return;
       }
       const { text, until, headers } = typeof reply === "string" ? { text: reply } : reply;
@@ -202,7 +213,10 @@ export interface PiLaunchOptions {
   skillFiles?: Record<string, string>;
   /** Prompt templates Pi finds in its agent directory, by name: each file's content. */
   prompts?: Record<string, string>;
-  /** Pi settings over the scenario's own, which turn Pi's retries off. */
+  /**
+   * Pi settings over the scenario's own, which turn Pi's retries off: how much history a
+   * compaction keeps, or whether a tree move asks for a summary.
+   */
   settings?: Record<string, unknown>;
   /** Pituitary's own key bindings, its `keybindings.json`: keys by action. */
   keybindings?: Record<string, string | string[]>;
@@ -223,6 +237,8 @@ export interface PiLaunchOptions {
   project?: string;
   /** Text on the first frame; the footer's model name by default. */
   ready?: string;
+  /** Records every byte Pituitary writes to the terminal, for `raw()`. */
+  record?: boolean;
 }
 
 export interface PiLaunch extends Harness {
@@ -235,6 +251,8 @@ export interface PiLaunch extends Harness {
   provider: Provider;
   /** The session files Pi has written for every project, oldest first. */
   sessions(): string[];
+  /** Everything Pituitary wrote to the terminal, when launched with `record`. */
+  raw(): string;
   /**
    * Closes Pituitary. The launch that made HOME also closes its provider and removes HOME, so a
    * relaunch `from` it closes first.
@@ -265,6 +283,7 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
     apiModels,
     from,
     project = "sample",
+    record = false,
   } = options;
   const first = apiModels?.[0];
   const ready = options.ready ?? (first ? (first.name ?? first.id) : MODEL_NAME);
@@ -316,6 +335,7 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
       cols,
       rows,
       ready,
+      record: record ? join(home, "terminal.raw") : undefined,
       env: {
         HOME: home,
         XDG_CONFIG_HOME: join(home, ".config"),
@@ -338,6 +358,7 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
       agent,
       provider,
       sessions: () => sessionFiles(join(agent, "sessions")),
+      raw: () => readFileSync(join(home, "terminal.raw"), "latin1"),
       close: async () => {
         try {
           await harness.close();
@@ -354,7 +375,7 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
 
 /**
  * Pi's agent directory pointed at the provider and, `signedIn`, signed in to it: ChatGPT by
- * default, or an API key for `apiModels`.
+ * default, or an API key for `apiModels`, with `settings` among its own.
  */
 function signIn(
   agent: string,
