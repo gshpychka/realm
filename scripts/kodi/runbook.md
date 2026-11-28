@@ -34,7 +34,8 @@ boot and after each Bingie, Bingie Widgets or PKC update:
   layouts for library movies, episodes and TV shows. TV shows require confirmation
   to mark every library episode. The action saves Kodi's watched state, clears
   resume points and verifies the result silently, keeping the menu open. Its
-  checkmark fills the button's icon area; PKC handles Plex synchronization
+  native item refresh makes **Play** follow the saved resume state. Its checkmark
+  fills the button's icon area; PKC handles Plex synchronization
 - shows a compact IMDb logo and named rating on the main screen and in video details, including the
   seasons view's selected episode. Helper metadata supplies its explicit IMDb
   rating when the library value is absent; missing IMDb values hide the badge.

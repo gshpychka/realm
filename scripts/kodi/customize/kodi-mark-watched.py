@@ -36,6 +36,24 @@ def mark_item(kind, dbid):
         raise RuntimeError(f"Kodi did not save watched state for {kind} {dbid}")
 
 
+def refresh_info(kind, dbid):
+    if xbmcgui.getCurrentWindowDialogId() != 12003:
+        return
+    if (xbmc.getInfoLabel("ListItem.DBType") != kind
+            or xbmc.getInfoLabel("ListItem.DBID") != str(dbid)):
+        return
+    details = rpc(f"VideoLibrary.Get{kind.capitalize()}Details", **{
+        kind + "id": dbid, "properties": ["file", "title"],
+    })[kind + "details"]
+    item = xbmcgui.ListItem(label=details["label"], path=details["file"])
+    tag = item.getVideoInfoTag()
+    tag.setDbId(dbid)
+    tag.setMediaType(kind)
+    tag.setTitle(details["title"])
+    # The active native dialog accepts a fresh item without closing or changing focus.
+    xbmcgui.Dialog().info(item)
+
+
 def main():
     kind, value = sys.argv[1:]
     if kind not in ("movie", "episode", "tvshow") or not value.isdecimal():
@@ -53,6 +71,7 @@ def main():
             mark_item("episode", episode["episodeid"])
     else:
         mark_item(kind, dbid)
+    refresh_info(kind, dbid)
 
 
 if __name__ == "__main__":
