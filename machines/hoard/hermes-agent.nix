@@ -49,7 +49,7 @@ in
       agent.service_tier = "fast";
       model = {
         provider = "openai-codex";
-        default = "gpt-6.1-sol";
+        default = "gpt-6.2-sol";
       };
       auxiliary.voice_chat = {
         provider = "openai-codex";
