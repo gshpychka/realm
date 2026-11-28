@@ -115,6 +115,19 @@ test("managed UI reload, host restart and archive preserve one native conversati
       await app.capture("managed-reconnected"),
       /The host kept this reply across frontend and runtime restarts/,
     );
+    // A frontend whose host goes away keeps the draft, and names the key that brings the run back.
+    await app.terminal.type("Are you still there?");
+    await app.terminal.waitText("Are you still there?");
+    host.stdin.write("restart\n");
+    await message((item) => item.restarted === true && item !== restarted);
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("reloads this frontend");
+    await app.terminal.waitIdle();
+    const lost = await app.capture("managed-host-lost");
+    assert.match(lost, /Disconnected · ctrl\+r reloads this frontend/);
+    assert.match(lost, /^ » .*Are you still there\?$/m);
+    await app.terminal.write("\x12");
+    await app.terminal.waitExit({ timeout: 10000 });
     await app.close();
     app = undefined;
     host.stdin.write("archive\n");

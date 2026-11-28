@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -6,7 +7,7 @@ import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { cellsOf, pastGrace, press, RUNNING, waitMatch } from "./helpers/harness.ts";
 import { re } from "./helpers/pattern.ts";
-import { killPi, launchPi, type PiLaunch } from "./helpers/pi.ts";
+import { killPi, launchPi, MODEL, MODEL_NAME, type PiLaunch } from "./helpers/pi.ts";
 
 after(async () => {
   await closeAll();
@@ -104,9 +105,9 @@ function savedSession(app: PiLaunch, prompt: string): { id: string; file: string
 
 /**
  * Writes a session beside `from`, as Pi would: its header and settings with a new id, then one
- * exchange that opens with `prompt`, at the times `from` holds.
+ * exchange that opens with `prompt`, made `hoursAgo` before `from`'s.
  */
-function seedSession(from: string, prompt: string): void {
+function seedSession(from: string, prompt: string, hoursAgo: number): void {
   const [header, ...entries] = entriesOf(from);
   const settings = entries.filter(
     (entry) => entry.type === "model_change" || entry.type === "thinking_level_change",
@@ -121,12 +122,17 @@ function seedSession(from: string, prompt: string): void {
     entryId: string,
     parentId: unknown,
     text: string,
-  ) => ({
-    ...entry,
-    id: entryId,
-    parentId,
-    message: { ...(entry?.message as object), content: [{ type: "text", text }] },
-  });
+  ) => {
+    const said = entry?.message as { timestamp: number };
+    const at = said.timestamp - hoursAgo * 3_600_000;
+    return {
+      ...entry,
+      id: entryId,
+      parentId,
+      timestamp: new Date(at).toISOString(),
+      message: { ...said, timestamp: at, content: [{ type: "text", text }] },
+    };
+  };
   const lines = [
     { ...header, id },
     ...settings,
@@ -137,19 +143,9 @@ function seedSession(from: string, prompt: string): void {
   writeFileSync(file, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
 }
 
-/** Resolves once the screen, its rows run together, holds `text`, as a line the terminal wrapped does. */
-async function waitJoined(app: PiLaunch, text: string, timeoutMs = 10_000): Promise<string> {
-  const start = Date.now();
-  for (;;) {
-    const screen = await app.terminal.text();
-    if (screen.replaceAll("\n", "").includes(text)) return screen;
-    if (Date.now() - start > timeoutMs) throw new Error(`screen never held ${text}:\n${screen}`);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
-
 test("sessions are started afresh, listed, renamed and resumed without leaving the screen", async () => {
-  const app = await launchPi({ extensions: { "demo.ts": DEMO } });
+  // The project's name holds a space, which a shell reads as two words.
+  const app = await launchPi({ extensions: { "demo.ts": DEMO }, project: "my project" });
   let again: PiLaunch | undefined;
   try {
     await app.terminal.waitText("demo ready");
@@ -257,12 +253,14 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     mkdirSync(join(app.cwd, ".pi", "prompts"), { recursive: true });
     writeFileSync(
       join(app.cwd, ".pi", "prompts", "only-here.md"),
-      "---\ndescription: a prompt of the sample project\n---\nhello from sample\n",
+      "---\ndescription: a prompt of the first project\n---\nhello from the first project\n",
     );
-    // A saved session whose first prompt carries a terminal control and runs past a list row.
+    // A session last at work three hours ago, whose first prompt carries a terminal control and
+    // runs past a list row.
     seedSession(
       planning.file,
       "he\x1b[31mllo and a much longer first prompt that runs on past the width of a row in the list of sessions, so the row cuts it",
+      3,
     );
     // `pituitary --resume` in a project without sessions lists every project's at once, in place
     // of Pi's own picker, and Pi moves to the project the chosen session began in.
@@ -270,36 +268,36 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     await again.terminal.waitText("resume · every project's sessions · none in this project yet");
     await again.terminal.waitIdle();
     const everywhere = await again.capture("sessions-resume-all");
-    assert.match(everywhere, /Planning +just now · 1 prompt · ~\/sample +│/);
-    // The terminal control is never drawn, and the long prompt is cut at its end, its details whole
-    // at the right edge with every other row's.
-    const rows = everywhere.split("\n");
-    const seeded = rows.find((row) => row.includes("hello")) ?? "";
-    const named = rows.find((row) => row.includes("Planning")) ?? "";
+    assert.match(everywhere, /Planning +just now · 1 prompt · ~\/my project +│/);
+    // The terminal control is never drawn, and the long prompt is cut at its end, its details,
+    // which say how long ago it was at work, whole at the right edge.
+    const seeded = everywhere.split("\n").find((row) => row.includes("hello")) ?? "";
     assert.match(
       seeded,
-      /^│ {3}hello and a much longer first prompt .*\S… +just now · 1 prompt · ~\/sample │$/,
+      /^│ {3}hello and a much longer first prompt .*\S… +3h ago · 1 prompt · ~\/my project │$/,
     );
-    assert.equal(seeded.length, named.length);
-    const [hello] = await cellsOf(again.terminal, "hello");
+    // What follows the control is drawn as every other row is, in no colour of its own.
     const [plan] = await cellsOf(again.terminal, "Planning");
-    assert.deepEqual(hello?.fg, plan?.fg);
+    for (const cell of await cellsOf(again.terminal, "llo and a much")) {
+      assert.deepEqual(cell.fg, plan?.fg);
+      assert.deepEqual(cell.bg, plan?.bg);
+    }
     // The filter finds a renamed session by its first prompt too.
     await again.terminal.type("second");
     await again.terminal.waitText("1 of 3");
     await again.terminal.waitText("▶ Ongoing");
     await again.terminal.keyboard.press("Enter");
     await again.terminal.waitText("Reply to: second question");
-    await again.terminal.waitText("Working in ~/sample, where this session started");
+    await again.terminal.waitText("Working in ~/my project, where this session started");
     await again.terminal.waitIdle();
     const moved = await again.capture("sessions-resumed-elsewhere");
-    assert.match(moved, /^ ~\/sample /m);
+    assert.match(moved, /^ ~\/my project /m);
     // Pi's commands follow the session to its project.
     await again.terminal.type("/only-here");
-    await again.terminal.waitText("a prompt of the sample project");
+    await again.terminal.waitText("a prompt of the first project");
     await again.capture("sessions-moved-commands");
     await again.terminal.keyboard.press("Enter");
-    await again.terminal.waitText("Reply to: hello from sample");
+    await again.terminal.waitText("Reply to: hello from the first project");
     await again.terminal.waitIdle();
     // Pi writes an export where its process started, and the notice says so.
     await again.terminal.submit("/export");
@@ -319,18 +317,26 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     await again.terminal.waitText("Disconnected · run");
     await again.terminal.waitIdle();
     const lost = await again.capture("sessions-disconnected");
-    const resume = `cd ${app.cwd} && pituitary --session ${ongoing.id}`;
-    // The status wraps where it must, so its words are compared without the breaks.
-    const unwrapped = (text: string) => text.replace(/\s+/g, "");
-    assert.ok(unwrapped(lost).includes(unwrapped(`Disconnected · run ${resume}`)), lost);
     assert.doesNotMatch(lost, /…/);
     assert.match(lost, /» still there\?/);
     assert.equal(app.provider.requests.length, asked);
-    // So does the exit line, once the draft is cleared.
+    // So does the exit line, once the draft is cleared, on one row of a wide terminal.
     await again.terminal.write(CTRL_C);
     await waitMatch(again.terminal, /» ask pi/);
+    await again.terminal.resize(200, 28);
     await again.terminal.write(CTRL_D);
-    await waitJoined(again, `Resume: ${resume}`);
+    const exit = await waitMatch(again.terminal, re.m`^Resume: (.+ --session ${ongoing.id})$`);
+    const pasted = re.m`^Resume: (.+ --session ${ongoing.id})$`.exec(exit)?.[1] ?? "";
+    // The status said the same, wrapped where it must, so its words are compared without the breaks.
+    const unwrapped = (text: string) => text.replace(/\s+/g, "");
+    assert.ok(unwrapped(lost).includes(unwrapped(`Disconnected · run ${pasted}`)), lost);
+    // Pasted into a shell, the command starts Pituitary in the project the session moved to, on
+    // that session.
+    const ran = spawnSync("sh", ["-c", `pituitary() { pwd; printf '%s\\n' "$@"; }; ${pasted}`], {
+      cwd: again.cwd,
+      encoding: "utf8",
+    });
+    assert.deepEqual(ran.stdout.trim().split("\n"), [app.cwd, "--session", ongoing.id], ran.stderr);
   } finally {
     // The relaunch closes first: closing the launch it came from removes their HOME.
     await again?.close();
@@ -490,6 +496,17 @@ test("a new session while Pi works takes the queued messages back into the draft
       app.provider.requests.map((request) => request.prompt),
       ["a long task"],
     );
+
+    // Pi lost before the new session's first prompt has written nothing to resume, so the status
+    // says to start Pituitary again rather than naming a session, and the draft stays.
+    killPi(app);
+    await app.terminal.waitText("Conversation disconnected: Pi exited");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Disconnected · restart pituitary");
+    await app.terminal.waitIdle();
+    const lost = await app.capture("sessions-disconnected-unsaved");
+    assert.doesNotMatch(lost, /--session/);
+    assert.match(lost, /» and a note for later/);
   } finally {
     release();
     await app.close();
@@ -537,6 +554,8 @@ test("without Pituitary's bridge Pi is asked nothing; extension failures show, a
     const reread = await app.terminal.text();
     assert.match(reread, /shown-note-marker/);
     assert.doesNotMatch(reread, /hidden-memory-marker/);
+    // An extension's failure is kept too.
+    assert.match(reread, /demo\.ts · before_agent_start: demo handler exploded/);
   } finally {
     await app.close();
   }
@@ -565,10 +584,14 @@ test("Pi's own screens take the terminal and give it back with the conversation 
     // Pi came back on the same session, so the model still sees the first exchange.
     assert.match(JSON.stringify(app.provider.requests.at(-1)?.body.input), /first question/);
 
-    // Pi's own screen can move to another session, and the conversation comes back on that one.
+    // A session started after Pi's own screen runs on the model the operator chose, as the first did.
     await app.terminal.submit("/new");
     await waitMatch(app.terminal, /^(?![\s\S]*first question)/);
     await ask(app, "second question");
+    assert.match((await app.terminal.text()).split("\n").at(-1) ?? "", re`${MODEL_NAME}`);
+    assert.equal(app.provider.requests.at(-1)?.body.model, MODEL);
+
+    // Pi's own screen can move to another session, and the conversation comes back on that one.
     await app.terminal.submit("/settings");
     await app.terminal.waitText("Press enter to run /settings");
     await app.terminal.write(CTRL_C);

@@ -137,8 +137,20 @@ const SESSION_FLAGS = new Map([
   ["-n", true],
 ]);
 
-/** Resume the session as Pi last saved it, without replaying initial model/session overrides. */
-export function resumePiArgs(args: readonly string[], sessionFile?: string): string[] {
+/** A model as Pi names it: its provider and its id there. */
+export interface PiModel {
+  provider: string;
+  id: string;
+}
+
+/**
+ * Pi's arguments for starting again on `sessionFile` and `model`, the model Pi was running on,
+ * in place of the operator's initial session, model and thinking flags. A Pi process gives
+ * every session it starts or resumes the model its `--model` names, so the model carries over
+ * to sessions started after the restart, as the operator's `--model` did before it, rather
+ * than falling back to Pi's default.
+ */
+export function resumePiArgs(args: readonly string[], sessionFile?: string, model?: PiModel): string[] {
   const kept: string[] = [];
   for (let index = 0; index < args.length; index++) {
     const arg = args[index] as string;
@@ -146,5 +158,10 @@ export function resumePiArgs(args: readonly string[], sessionFile?: string): str
     if (!SESSION_FLAGS.has(flag)) kept.push(arg);
     else if (SESSION_FLAGS.get(flag) && !arg.includes("=")) index++;
   }
-  return sessionFile ? [...kept, "--session", sessionFile] : kept;
+  return [
+    ...kept,
+    ...(sessionFile ? ["--session", sessionFile] : []),
+    // With its provider named, Pi reads the id whole, though ids hold slashes.
+    ...(model ? ["--provider", model.provider, "--model", model.id] : []),
+  ];
 }

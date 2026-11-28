@@ -63,6 +63,13 @@ export async function serveConversationFixture(
         return text.includes("think")
           ? fauxAssistantMessage([fauxThinking("Weighing the request.")], { stopReason: "length" })
           : fauxAssistantMessage("partial answer", { stopReason: "length" });
+      // A provider refusing the credential, in the words Anthropic's API refuses one.
+      if (scenario === "refused")
+        return fauxAssistantMessage([], {
+          stopReason: "error",
+          errorMessage:
+            '401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+        });
       return fauxAssistantMessage(
         scenario === "thinking"
           ? [fauxThinking("I will reason through the request."), { type: "text", text: `You said: ${text}` }]

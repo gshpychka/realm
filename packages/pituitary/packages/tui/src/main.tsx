@@ -13,6 +13,7 @@ import { loadPiKeymap } from "./keymap.ts";
 import { prewarm } from "./nvim/engine.ts";
 import { type PiControls, PiConversation } from "./pi.ts";
 import { extensionArgs, HANDOFF_EXTENSION, PI_EXTENSIONS } from "./pi-extensions.ts";
+import type { HandoffResult } from "./pi-handoff.ts";
 import { mark } from "./profile.ts";
 import { RELOAD_UI } from "./ui-state.ts";
 import { resumeCommand } from "./working.ts";
@@ -86,32 +87,43 @@ async function runPi(agent: PiCommand): Promise<void> {
       process.stdout.write(`Resume: ${resumeCommand(sessionId, cwd)}\n`);
     process.exit(0);
   };
-  /** Pi's own screen on the current session, then Pi over RPC again on the session it ends on. */
+  /**
+   * Pi's own screen on the current session and model, then Pi over RPC again on the session it
+   * ends on and the model it runs there.
+   */
   const handoff = async (command: string) => {
     const state = await client.getState().catch(() => undefined);
     await client.suspend();
     const scratch = mkdtempSync(join(tmpdir(), "pituitary-handoff-"));
-    const result = join(scratch, "session");
+    const result = join(scratch, "result.json");
     const saved = (file?: string) => (file && existsSync(file) ? file : undefined);
     const carried = saved(state?.sessionFile);
-    let selected = carried;
+    const running = state?.model && { provider: state.model.provider, id: state.model.id };
+    let ended: HandoffResult = { sessionFile: carried, model: running };
     try {
       try {
-        spawnSync(agent.command, [...resumePiArgs(agent.args, carried), "--extension", HANDOFF_EXTENSION], {
-          stdio: "inherit",
-          cwd: client.workspace().cwd,
-          env: { ...process.env, PITUITARY_HANDOFF: command, PITUITARY_HANDOFF_RESULT: result },
-        });
+        spawnSync(
+          agent.command,
+          [...resumePiArgs(agent.args, carried, running), "--extension", HANDOFF_EXTENSION],
+          {
+            stdio: "inherit",
+            cwd: client.workspace().cwd,
+            env: { ...process.env, PITUITARY_HANDOFF: command, PITUITARY_HANDOFF_RESULT: result },
+          },
+        );
       } finally {
         // Pi draws its screen inline and prints its own resume line as it exits. The screen is
         // cleared, at once, so the instructions Pituitary prints when it closes are not read
         // alongside Pi's.
         writeSync(process.stdout.fd, CLEAR_SCREEN);
       }
-      if (existsSync(result)) selected = saved(readFileSync(result, "utf8").trim()) ?? carried;
+      if (existsSync(result)) {
+        const recorded = JSON.parse(readFileSync(result, "utf8")) as HandoffResult;
+        ended = { sessionFile: saved(recorded.sessionFile) ?? carried, model: recorded.model ?? running };
+      }
     } finally {
       rmSync(scratch, { recursive: true, force: true });
-      await client.resume([...resumePiArgs(agent.args, selected), ...extensionArgs()]);
+      await client.resume([...resumePiArgs(agent.args, ended.sessionFile, ended.model), ...extensionArgs()]);
     }
   };
   const pi: PiControls = {

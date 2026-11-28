@@ -1,4 +1,5 @@
-import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { type ConversationClient, connectConversation } from "@realm/dura/client";
@@ -8,6 +9,8 @@ import { ManagedWorkspace } from "./managed.tsx";
 import { type ManagedView, RELOAD_UI, readManagedView, writeManagedView } from "./ui-state.ts";
 
 const directory = mkdtempSync("/tmp/pituitary-team-fixture-");
+/** The operator's workspace, where applying puts the accepted code; a scenario names a real one. */
+const workspace = process.env.PITUITARY_FIXTURE_WORKSPACE ?? "/work/workspace";
 const at = "2026-10-23T10:00:00.000Z";
 const hash = "a".repeat(64);
 const declaration = {
@@ -74,7 +77,7 @@ const detail: RunDetail = {
   run: {
     id: "run-team",
     name: "command-menu",
-    cwd: "/work/workspace",
+    cwd: workspace,
     objective: coordinator.objective,
     model: null,
     created: at,
@@ -236,11 +239,6 @@ const saved = readManagedView(process.env.PITUITARY_UI_STATE);
 let selected = process.env.PITUITARY_UI_RESUME === "1" ? (saved?.taskId ?? "coordinator") : "coordinator";
 if (!tasks.some((task) => task.id === selected)) selected = "coordinator";
 let coordinatorConnections = 0;
-/** What the operator asked of Dura, one line each, in the file a scenario names to read them. */
-const record = (line: string) => {
-  const file = process.env.PITUITARY_FIXTURE_ACTIONS;
-  if (file) appendFileSync(file, `${line}\n`);
-};
 const runtime = {
   inspect: async () => structuredClone(detail),
   connect: async (_run: unknown, control: boolean, id?: string) => {
@@ -262,10 +260,27 @@ const runtime = {
     if (!task) throw new Error("Unknown question task");
     task.status = "running";
   },
-  retry: async (taskId: string, revision: number) => record(`retry ${taskId} ${revision}`),
+  // A retry starts a fresh attempt, which first starts its environment.
+  retry: async (taskId: string) => {
+    const task = detail.tasks.find((task) => task.id === taskId);
+    const last = detail.attempts.find((attempt) => attempt.id === task?.currentAttemptId);
+    if (!task || !last) throw new Error("Unknown retried task");
+    const number = last.number + 1;
+    detail.attempts.push({
+      ...last,
+      id: `${last.id}-${number}`,
+      number,
+      status: "starting",
+      desired: "running",
+      error: null,
+    });
+    task.currentAttemptId = `${last.id}-${number}`;
+    task.status = "running";
+  },
   revise: async () => {},
   integrate: async () => {},
-  apply: async (runId: string) => record(`apply ${runId}`),
+  // Applying writes the accepted code into the operator's workspace.
+  apply: async () => writeFileSync(join(workspace, "menu.ts"), "export const menu = 'accepted';\n"),
 };
 let current: ConversationClient = await runtime.connect("run-team", saved?.control ?? true, selected);
 const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });

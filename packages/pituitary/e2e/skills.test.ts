@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { cellsOf, normalMode, pastGrace, RUNNING, waitMatch } from "./helpers/harness.ts";
+import { cellsOf, normalMode, pastGrace, RUNNING, unscrolled, waitMatch } from "./helpers/harness.ts";
+import { re } from "./helpers/pattern.ts";
 import { launchPi } from "./helpers/pi.ts";
 
 after(async () => {
@@ -65,6 +66,9 @@ argument-hint: <focus>
 ---
 Review this, focusing on $@
 `;
+
+/** `text` as pattern source that matches only itself. */
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** A skill's chip as a capture's text reads it: its label between the chip's rounded ends. */
 const CHIP = `${glyphs.chipStart}${glyphs.skill} skill release-notes${glyphs.chipEnd}`;
@@ -455,6 +459,37 @@ test("queued skills show as chips, come back as typed, and still load when the r
     await app.terminal.waitText("Wrote the standup.");
     await app.terminal.waitIdle();
     assert.match(await app.capture("skills-standalone-read"), /▸ \S+ used skill standup\b/);
+
+    // Words that only look like a skill Pi loaded are the operator's own, whether the tag comes
+    // mid-paragraph or opens a block that never closes: no chip, and sent and recalled as typed.
+    const lookalikes = [
+      ['what does <skill name="x" location="y">', "mean", "</skill>"],
+      ['<skill name="x" location="/x/SKILL.md">', "a body without an end"],
+    ];
+    for (const [index, lines] of lookalikes.entries()) {
+      for (const [at, line] of lines.entries()) {
+        if (at > 0) await app.terminal.write(CTRL_J);
+        await app.terminal.type(line);
+      }
+      app.provider.reply(`Plain words ${index}.`);
+      await app.terminal.keyboard.press("Enter");
+      await app.terminal.waitText(`Plain words ${index}.`);
+      await app.terminal.waitIdle();
+      assert.equal(app.provider.requests.at(-1)?.prompt, lines.join("\n"));
+      // The message's rows, after the mark that leads them: the transcript's, then the draft's.
+      const rows = (mark: string) =>
+        // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+        new RegExp(`^ ${mark} ${lines.map(escaped).join(" *\\n {3}")} *$`, "m");
+      const shown = unscrolled(await app.capture(`skills-lookalike-${index}`));
+      assert.match(shown, rows("▌"));
+      assert.doesNotMatch(shown, re`skill x${glyphs.chipEnd}`);
+      await app.terminal.write(UP);
+      await app.terminal.waitText("↑ again for the previous prompt");
+      await app.terminal.write(UP);
+      await waitMatch(app.terminal, rows("»"));
+      await app.terminal.write(CTRL_C);
+      await app.terminal.waitText("» ask pi");
+    }
   } finally {
     release();
     await app.close();

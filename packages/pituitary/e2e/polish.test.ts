@@ -4,11 +4,46 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { boot, launch, pastGrace, REPO, waitMatch } from "./helpers/harness.ts";
+import { boot, launch, pastGrace, REPO, unscrolled, waitMatch } from "./helpers/harness.ts";
 import { re } from "./helpers/pattern.ts";
 import { launchPi } from "./helpers/pi.ts";
 
 const CTRL_O = "\x0f";
+
+/** A provider's error longer than a brief holds. */
+const LONG_ERROR =
+  "The request could not be processed because the conversation holds a tool result that follows no matching tool call, which the provider requires before every result it reads; remove that result or add its call, and then send the request again.";
+
+/**
+ * An extension whose `/fail` reports a crash with its own file's frames, on lines 401 and 429:
+ * numbers that, leading an error or after the word status, a provider sends for a refused
+ * credential and for limiting its rate.
+ */
+const FRAMES = (() => {
+  const lines = [
+    "export default function (pi) {",
+    '  pi.registerCommand("fail", {',
+    '    description: "crash deep in the extension",',
+    "    handler: async (_args, ctx) => {",
+    "      try {",
+    "        outer();",
+    "      } catch (error) {",
+    '        const own = error.stack.split("\\n").filter((line, index) => index === 0 || line.includes("frames.ts"));',
+    '        ctx.ui.notify(own.join("\\n"), "error");',
+    "      }",
+    "    },",
+    "  });",
+    "}",
+  ];
+  while (lines.length < 400) lines.push("");
+  lines.push("function inner(settings) { return settings.depth; }");
+  while (lines.length < 428) lines.push("");
+  lines.push("function outer() { return inner(undefined); }");
+  return `${lines.join("\n")}\n`;
+})();
+
+/** `text` without its whitespace, for words the terminal wraps wherever it must. */
+const unwrapped = (text: string) => text.replace(/\s+/g, "");
 
 after(closeAll);
 
@@ -248,11 +283,16 @@ test("a long queued message keeps to one row on a narrow terminal, and keys in a
     await app.terminal.write("\x1b[Z");
     await waitMatch(app.terminal, re.m`^ ▶ ${listed[2] as string}\b`);
     assert.equal(await chosen(), listed[2]);
+    await app.terminal.waitIdle();
     assert.doesNotMatch(await app.terminal.text(), /thinking: /);
     await app.terminal.keyboard.press("Tab");
     await waitMatch(app.terminal, re.m`» ${listed[2] as string} *$`);
     await app.terminal.write("\x03");
     await app.terminal.waitText("» ask pi");
+    // Outside the list shift+tab cycles the thinking level, from the medium it started at to the
+    // next of Faux Model's levels: the burst left it as it was.
+    await app.terminal.write("\x1b[Z");
+    await app.terminal.waitText("thinking: high");
 
     await app.terminal.submit("write a lot");
     await app.terminal.waitText("line 1 of the long answer");
@@ -271,6 +311,7 @@ test("regular Pi names its model, insets extension statuses, counts down dialogs
   const app = await launchPi({
     apiModels: [{ id: "fake-1", name: "Fake One" }],
     argv: ["--extension", join(REPO, "packages/tui/src/pi-extension-ui.fixture.ts")],
+    extensions: { "frames.ts": FRAMES },
     // A full context shows as the provider refused it, rather than after Pi compacts and retries.
     settings: { compaction: { enabled: false } },
   });
@@ -350,8 +391,11 @@ test("regular Pi names its model, insets extension statuses, counts down dialogs
     await app.terminal.waitText("does not have permission");
     await app.terminal.waitIdle();
     const forbidden = await app.capture("pi-error-forbidden");
-    assert.match(forbidden, /403.*Your API key does not have permission to use the specified resource\./);
-    assert.equal(forbidden.match(/\/login/g)?.length, 1);
+    // Nothing comes between the message and the key that shows the rest.
+    assert.match(
+      forbidden,
+      /^ \S+ 403: Your API key does not have permission to use the specified resource\. · ctrl\+o$/m,
+    );
 
     // A provider that limits the rate asks for patience.
     app.provider.reply({
@@ -384,6 +428,44 @@ test("regular Pi names its model, insets extension statuses, counts down dialogs
       await app.capture("pi-error-context"),
       /400: This model's maximum context length[\s\S]*?tokens\. · \/compact frees context/,
     );
+
+    // An error too long for a brief is cut where a word ends, and ctrl+o shows it whole.
+    app.provider.reply({
+      status: 400,
+      body: { error: { message: LONG_ERROR, type: "invalid_request_error" } },
+    });
+    await app.terminal.submit("and this");
+    await app.terminal.waitText("The request could not be processed");
+    await app.terminal.waitIdle();
+    const cut = unscrolled(await app.capture("pi-error-long"));
+    const brief = (/^ \S+ 400: (The request could not[\s\S]*?)… · ctrl\+o *$/m.exec(cut)?.[1] ?? "").replace(
+      /\s*\n\s*/g,
+      " ",
+    );
+    assert.ok(brief.length > 0 && brief.length < LONG_ERROR.length, cut);
+    assert.ok(LONG_ERROR.startsWith(brief), cut);
+    assert.match(LONG_ERROR.slice(brief.length), /^[\s,;]/);
+    await app.terminal.write(CTRL_O);
+    // The detail is the body the provider sent.
+    await waitMatch(app.terminal, /"message":"The request/);
+    await app.terminal.waitIdle();
+    const whole = unscrolled(await app.capture("pi-error-long-detail"));
+    assert.ok(unwrapped(whole).includes(unwrapped(LONG_ERROR)), whole);
+    await app.terminal.write(CTRL_O);
+
+    // A crash whose frames sit on lines numbered as a refused credential's or a busy provider's
+    // statuses is neither: it offers no /login, and no wait.
+    await app.terminal.submit("/fail");
+    await app.terminal.waitText("Cannot read properties of undefined (reading 'depth')");
+    await app.terminal.waitIdle();
+    assert.match(
+      unscrolled(await app.capture("pi-error-frames")),
+      /^ \S+ Cannot read properties of undefined \(reading 'depth'\) · ctrl\+o *$/m,
+    );
+    await app.terminal.write(CTRL_O);
+    await waitMatch(app.terminal, /frames\.ts:401:\d+\)[\s\S]*frames\.ts:429:\d+\)/);
+    await app.capture("pi-error-frames-detail");
+    await app.terminal.write(CTRL_O);
 
     // An error an extension reports with its stack shows its message, and the frames only expanded.
     await app.terminal.submit("/crash");

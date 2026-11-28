@@ -385,18 +385,8 @@ function signIn(
       },
     }),
   );
-  // A refused request shows as it failed, rather than after Pi's retries. The provider's first
-  // model is Pi's default, as an operator's settings name one, so a session Pi starts without
-  // `--model`, as after its own screens, talks to the provider too.
-  writeFileSync(
-    join(agent, "settings.json"),
-    JSON.stringify({
-      retry: { enabled: false },
-      defaultProvider: "openai",
-      defaultModel: apiModels?.[0]?.id ?? MODEL,
-      ...settings,
-    }),
-  );
+  // A refused request shows as it failed, rather than after Pi's retries.
+  writeFileSync(join(agent, "settings.json"), JSON.stringify({ retry: { enabled: false }, ...settings }));
 }
 
 /** Ends the launch's Pi at once, as a crash would, leaving Pituitary running. */

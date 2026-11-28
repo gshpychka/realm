@@ -55,6 +55,19 @@ test("native conversation commands rename and inspect persisted conversation met
     await app.close();
   }
 });
+test("a refused credential in a Dura conversation says so, and offers no /login, which only regular Pi has", async () => {
+  const app = await launch({ scenario: "refused" });
+  try {
+    await app.terminal.submit("hello");
+    await app.terminal.waitText("invalid x-api-key");
+    await settled(app.terminal);
+    const refused = await app.capture("native-refused");
+    assert.match(refused, /^ \S+ 401:? invalid x-api-key · ctrl\+o$/m);
+    assert.doesNotMatch(refused, /\/login/);
+  } finally {
+    await app.close();
+  }
+});
 test("a reply cut at the model's output limit says so and what to do, with words of its own or none", async () => {
   const app = await launch({ scenario: "cut" });
   try {

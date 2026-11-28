@@ -157,6 +157,17 @@ export async function cellsOf(terminal: TuiTest, text: string): Promise<Cell[]> 
   return terminal.cells([...line.slice(0, line.lastIndexOf(text))].length, row, [...text].length, 1);
 }
 
+/**
+ * `screen` without the last of its `columns`, where a conversation longer than the screen draws
+ * its scrollbar. Columns count characters, which fits rows of one-cell ones.
+ */
+export function unscrolled(screen: string, columns = COLS): string {
+  return screen
+    .split("\n")
+    .map((row) => [...row].slice(0, columns - 1).join(""))
+    .join("\n");
+}
+
 /** The status line of a run in progress, whatever the run is doing. */
 export const RUNNING = / · \d+s( · |\s*$)/m;
 

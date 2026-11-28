@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
@@ -10,19 +10,18 @@ after(async () => {
 });
 test("team conversations, attention and retained results stay readable in compact and wide terminals", async () => {
   const home = mkdtempSync("/tmp/pituitary-team-ui-");
+  // The operator's workspace, which the run applies its accepted code to.
+  const workspace = join(home, "workspace");
+  mkdirSync(workspace);
+  const applied = join(workspace, "menu.ts");
   let app: Harness | undefined;
   const env = {
     HOME: home,
     PITUITARY_GH: "",
     PITUITARY_STILL: "1",
     PITUITARY_UI_STATE: join(home, "frontend.json"),
-    PITUITARY_FIXTURE_ACTIONS: join(home, "actions"),
+    PITUITARY_FIXTURE_WORKSPACE: workspace,
   };
-  /** What the operator asked Dura to do so far, as the fixture recorded it. */
-  const actions = () =>
-    existsSync(env.PITUITARY_FIXTURE_ACTIONS)
-      ? readFileSync(env.PITUITARY_FIXTURE_ACTIONS, "utf8").trim().split("\n").filter(Boolean)
-      : [];
   const launch = (cols: number, resume = false) =>
     boot({
       entry: join(REPO, "packages/tui/src/managed.fixture.tsx"),
@@ -88,17 +87,18 @@ test("team conversations, attention and retained results stay readable in compac
     await app.terminal.type("r");
     await app.terminal.waitText("r again to start a fresh attempt");
     await app.capture("team-retry-confirm");
-    // Esc steps out of the confirmation without retrying.
+    // Esc steps out of the confirmation without retrying: the task is still the failure it was.
     await app.terminal.keyboard.press("Escape");
     await app.terminal.waitText("r retry · e revise");
-    assert.deepEqual(actions(), []);
-    // The second press retries, once.
+    await app.terminal.waitIdle();
+    assert.match(await app.terminal.text(), /result · builder · revision 1 · Environment image unavailable/);
+    // The second press retries: a fresh attempt starts its environment.
     await pastGrace();
     await app.terminal.type("r");
     await app.terminal.waitText("r again to start a fresh attempt");
     await app.terminal.type("r");
-    await waitMatch(app.terminal, /^(?![\s\S]*r again to start a fresh attempt)/);
-    assert.deepEqual(actions(), ["retry failed-builder 1"]);
+    await app.terminal.waitText("result · builder · revision 1 · starting environment");
+    assert.doesNotMatch(await app.terminal.text(), /r again to start a fresh attempt/);
     // Esc closes the panel, and the draft is still there.
     await app.terminal.keyboard.press("Escape");
     await waitMatch(app.terminal, /^(?![\s\S]*result · builder)/);
@@ -133,28 +133,35 @@ test("team conversations, attention and retained results stay readable in compac
     assert.match(result, /✓ types/);
     assert.doesNotMatch(result, /i integrate/);
     await pastGrace();
-    // An accepted task has nothing to retry.
-    const asked = actions().length;
+    // An accepted task has nothing to retry, and stays verified.
     await app.terminal.type("r");
     await app.terminal.type("r");
     await app.terminal.waitIdle();
-    assert.doesNotMatch(await app.terminal.text(), /r again to start a fresh attempt/);
+    const kept = await app.terminal.text();
+    assert.doesNotMatch(kept, /r again to start a fresh attempt/);
+    assert.match(kept, /result · reviewer · revision 1 · verified/);
     // Applying to the operator's workspace waits for a second press, which another key or esc forgoes.
     await app.terminal.type("a");
-    await app.terminal.waitText("a again to apply to /work/workspace");
+    await app.terminal.waitText(`a again to apply to ${workspace}`);
     await app.terminal.type("x");
     await app.terminal.waitText("a apply · e revise");
     await app.terminal.type("a");
-    await app.terminal.waitText("a again to apply to /work/workspace");
+    await app.terminal.waitText(`a again to apply to ${workspace}`);
     await app.terminal.keyboard.press("Escape");
     await app.terminal.waitText("a apply · e revise");
+    await app.terminal.waitIdle();
     assert.match(await app.terminal.text(), /result · reviewer/);
-    assert.equal(actions().length, asked);
+    assert.equal(existsSync(applied), false);
+    // The second press puts the accepted code in the workspace.
     await app.terminal.type("a");
-    await app.terminal.waitText("a again to apply to /work/workspace");
+    await app.terminal.waitText(`a again to apply to ${workspace}`);
     await app.terminal.type("a");
     await waitMatch(app.terminal, /^(?![\s\S]*a again to apply)/);
-    assert.deepEqual(actions().slice(asked), ["apply run-team"]);
+    const asked = Date.now();
+    while (!existsSync(applied)) {
+      if (Date.now() - asked > 5000) throw new Error("the accepted code never reached the workspace");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     await pastGrace();
     await app.terminal.type("i");
     await app.terminal.waitIdle();
