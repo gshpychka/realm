@@ -151,6 +151,11 @@ def watched_button(template):
 
 
 def info_menu(text):
+    for setting in ("trakt", "plot"):
+        text = text.replace(
+            f'<visible>Skin.HasSetting(videoinfo_button_{setting})</visible>',
+            '<visible>false</visible>',
+        )
     for group in ("700", "701"):
         text = replace_elements(text, "control", {"type": "grouplist", "id": group}, hide)
     # Both the horizontal and vertical info layouts have their own play buttons.
