@@ -1,8 +1,8 @@
 """Patch Bingie's media details and info-menu controls, preserving source XML."""
 
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 
 # Bingie's XML contains raw ampersands. Match balanced element ranges without
@@ -12,8 +12,10 @@ def replace_elements(text, tag, attributes, transform, expected=1):
     tokens = re.compile(r"</?" + tag + r"\b[^>]*>")
     spans = []
     for match in opening.finditer(text):
-        if not all(re.search(r'\b' + key + r'="' + re.escape(value) + r'"', match[0])
-                   for key, value in attributes.items()):
+        if not all(
+            re.search(r"\b" + key + r'="' + re.escape(value) + r'"', match[0])
+            for key, value in attributes.items()
+        ):
             continue
         depth = 1
         for token in tokens.finditer(text, match.end()):
@@ -27,17 +29,19 @@ def replace_elements(text, tag, attributes, transform, expected=1):
         else:
             raise ValueError(f"unclosed {tag}: {attributes}")
     if len(spans) != expected:
-        raise ValueError(f"anchor not found or not unique: {tag} {attributes} ({len(spans)})")
+        raise ValueError(
+            f"anchor not found or not unique: {tag} {attributes} ({len(spans)})"
+        )
     for start, end in reversed(spans):
         text = text[:start] + transform(text[start:end]) + text[end:]
     return text
 
 
 def hide(block):
-    marker = '<!-- kodi-customize: hide thumbs -->'
+    marker = "<!-- kodi-customize: hide thumbs -->"
     if marker not in block:
         end = block.index(">") + 1
-        block = block[:end] + '\n<visible>false</visible>' + marker + block[end:]
+        block = block[:end] + "\n<visible>false</visible>" + marker + block[end:]
     return block
 
 
@@ -72,7 +76,7 @@ def rating_row(name, label_id, variable):
     </include>'''
 
 
-VARIABLES = '''
+VARIABLES = """
     <!-- kodi-customize: IMDb variables -->
     <variable name="KodiCustomizeIMDbRating">
         <value condition="$EXP[IsMainMenuOpened] + Integer.IsGreater(Window(Home).Property(ListItem.IMDbRating),0)">$INFO[Window(Home).Property(ListItem.IMDbRating)]</value>
@@ -85,22 +89,37 @@ VARIABLES = '''
         <value></value>
     </variable>
     <!-- kodi-customize: end IMDb variables -->
-'''
+"""
 
 
 def details(text):
-    for name in ("MPAA_Details_Row", "MPAA_Details_RowNew", "MPAA_Details_RowUS", "MPAA_Details_RowUS_Fixed_Size"):
+    for name in (
+        "MPAA_Details_Row",
+        "MPAA_Details_RowNew",
+        "MPAA_Details_RowUS",
+        "MPAA_Details_RowUS_Fixed_Size",
+    ):
         text = replace_elements(text, "include", {"name": name}, age_rating)
     for name in ("Thumbs_Up_Details_Row", "Thumbs_Down_Details_Row"):
-        text = replace_elements(text, "include", {"name": name},
-                                lambda block: replace_elements(block, "control", {"type": "image"}, hide))
+        text = replace_elements(
+            text,
+            "include",
+            {"name": name},
+            lambda block: replace_elements(block, "control", {"type": "image"}, hide),
+        )
     for name, label_id, variable in (
         ("Percentage_Rating_Details_Row", "6113", "KodiCustomizeIMDbRating"),
-        ("Percentage_Rating_Details_Row_Seasons", "61132", "KodiCustomizeIMDbRatingSeasons"),
+        (
+            "Percentage_Rating_Details_Row_Seasons",
+            "61132",
+            "KodiCustomizeIMDbRatingSeasons",
+        ),
     ):
-        text = replace_elements(text, "include", {"name": name},
-                                lambda block: rating_row(name, label_id, variable))
-    pattern = r'\n    <!-- kodi-customize: IMDb variables -->.*?<!-- kodi-customize: end IMDb variables -->\n'
+        row = rating_row(name, label_id, variable)
+        text = replace_elements(
+            text, "include", {"name": name}, lambda block, row=row: row
+        )
+    pattern = r"\n    <!-- kodi-customize: IMDb variables -->.*?<!-- kodi-customize: end IMDb variables -->\n"
     if re.search(pattern, text, re.S):
         return re.sub(pattern, lambda match: VARIABLES, text, flags=re.S)
     if text.count("</includes>") != 1:
@@ -109,71 +128,107 @@ def details(text):
 
 
 def age_rating(block):
-    marker = '<!-- kodi-customize: age rating in details -->'
+    marker = "<!-- kodi-customize: age rating in details -->"
     if marker not in block:
-        block = re.sub(r'(<control\b[^>]*>)',
-                       r'\1\n<visible>Window.IsVisible(movieinformation) | Window.IsVisible(1190)</visible>' + marker,
-                       block, count=1)
+        block = re.sub(
+            r"(<control\b[^>]*>)",
+            r"\1\n<visible>Window.IsVisible(movieinformation) | Window.IsVisible(1190)</visible>"
+            + marker,
+            block,
+            count=1,
+        )
     return block
 
 
 def widget_focus(text):
-    anchor = '<onfocus>SetProperty(ListItem.Rating, $ESCINFO[Container($PARAM[widgetid]).ListItem.Rating],Home)</onfocus>'
-    extra = '<onfocus>SetProperty(ListItem.IMDbRating,$ESCINFO[Container($PARAM[widgetid]).ListItem.Rating(imdb)],Home)</onfocus>'
+    anchor = "<onfocus>SetProperty(ListItem.Rating, $ESCINFO[Container($PARAM[widgetid]).ListItem.Rating],Home)</onfocus>"
+    extra = "<onfocus>SetProperty(ListItem.IMDbRating,$ESCINFO[Container($PARAM[widgetid]).ListItem.Rating(imdb)],Home)</onfocus>"
     if extra not in text:
         if text.count(anchor) != 1:
             raise ValueError("anchor not found: widget rating focus")
-        text = text.replace(anchor, extra + '\n' + anchor)
+        text = text.replace(anchor, extra + "\n" + anchor)
     return text
 
 
 def widget_clear(text):
-    anchor = '<onload>ClearProperty(ListItem.Rating,Home)</onload>'
-    extra = '<onload>ClearProperty(ListItem.IMDbRating,Home)</onload>'
+    anchor = "<onload>ClearProperty(ListItem.Rating,Home)</onload>"
+    extra = "<onload>ClearProperty(ListItem.IMDbRating,Home)</onload>"
     if extra not in text:
         if text.count(anchor) != 1:
             raise ValueError("anchor not found: widget rating clear")
-        text = text.replace(anchor, extra + '\n' + anchor)
+        text = text.replace(anchor, extra + "\n" + anchor)
     return text
 
 
 def watched_button(template):
     button = template.replace('id="52"', 'id="9700"', 1)
-    button = re.sub(r'\s*<visible>.*?</visible>', '', button, flags=re.S)
-    condition = '!String.IsEmpty(ListItem.DBID) + [String.IsEqual(ListItem.DBType,movie) | String.IsEqual(ListItem.DBType,episode) | String.IsEqual(ListItem.DBType,tvshow)]'
-    button = button.replace('id="9700">', 'id="9700">\n<visible>' + condition + '</visible>', 1)
-    button = re.sub(r'<label>.*?</label>', '<label>Mark as watched</label>', button, count=1, flags=re.S)
-    button = button.replace('dialogs/videoinfo/info/play_beginning.png', 'kodi-customize/watched.png')
-    button = re.sub(r'\s*<!--.*?-->', '', button, flags=re.S)
-    button = re.sub(r'\s*<onclick\b[^>]*>.*?</onclick>', '', button, flags=re.S)
-    action = 'RunScript(/storage/.config/kodi-customize/kodi-mark-watched.py,$INFO[ListItem.DBType],$INFO[ListItem.DBID])'
-    return button.rsplit('</control>', 1)[0] + '<onclick>' + action + '</onclick>\n</control>'
+    button = re.sub(r"\s*<visible>.*?</visible>", "", button, flags=re.S)
+    condition = "!String.IsEmpty(ListItem.DBID) + [String.IsEqual(ListItem.DBType,movie) | String.IsEqual(ListItem.DBType,episode) | String.IsEqual(ListItem.DBType,tvshow)]"
+    button = button.replace(
+        'id="9700">', 'id="9700">\n<visible>' + condition + "</visible>", 1
+    )
+    button = re.sub(
+        r"<label>.*?</label>",
+        "<label>Mark as watched</label>",
+        button,
+        count=1,
+        flags=re.S,
+    )
+    button = button.replace(
+        "dialogs/videoinfo/info/play_beginning.png", "kodi-customize/watched.png"
+    )
+    button = re.sub(r"\s*<!--.*?-->", "", button, flags=re.S)
+    button = re.sub(r"\s*<onclick\b[^>]*>.*?</onclick>", "", button, flags=re.S)
+    action = "RunScript(/storage/.config/kodi-customize/kodi-mark-watched.py,$INFO[ListItem.DBType],$INFO[ListItem.DBID])"
+    return (
+        button.rsplit("</control>", 1)[0]
+        + "<onclick>"
+        + action
+        + "</onclick>\n</control>"
+    )
 
 
 def info_menu(text):
     for setting in ("trakt", "plot"):
         text = text.replace(
-            f'<visible>Skin.HasSetting(videoinfo_button_{setting})</visible>',
-            '<visible>false</visible>',
+            f"<visible>Skin.HasSetting(videoinfo_button_{setting})</visible>",
+            "<visible>false</visible>",
         )
     for group in ("700", "701"):
-        text = replace_elements(text, "control", {"type": "grouplist", "id": group}, hide)
+        text = replace_elements(
+            text, "control", {"type": "grouplist", "id": group}, hide
+        )
     # Both the horizontal and vertical info layouts have their own play buttons.
-    text = re.sub(r'\n<!-- kodi-customize: watched button -->\n.*?<!-- kodi-customize: end watched button -->',
-                  '', text, flags=re.S)
-    text = replace_elements(text, "control", {"type": "radiobutton", "id": "52"},
-                            lambda block: block + '\n<!-- kodi-customize: watched button -->\n'
-                            + watched_button(block) + '\n<!-- kodi-customize: end watched button -->', expected=2)
+    text = re.sub(
+        r"\n<!-- kodi-customize: watched button -->\n.*?<!-- kodi-customize: end watched button -->",
+        "",
+        text,
+        flags=re.S,
+    )
+    text = replace_elements(
+        text,
+        "control",
+        {"type": "radiobutton", "id": "52"},
+        lambda block: (
+            block
+            + "\n<!-- kodi-customize: watched button -->\n"
+            + watched_button(block)
+            + "\n<!-- kodi-customize: end watched button -->"
+        ),
+        expected=2,
+    )
     return text
 
 
 def main():
     skin = Path(sys.argv[1])
     pending = []
-    for filename, transform in (("IncludesBingie.xml", details),
-                                ("IncludesDialogVideoInfo.xml", info_menu),
-                                ("IncludesFunctions.xml", widget_focus),
-                                ("Custom_1157_FlushWidgetProps.xml", widget_clear)):
+    for filename, transform in (
+        ("IncludesBingie.xml", details),
+        ("IncludesDialogVideoInfo.xml", info_menu),
+        ("IncludesFunctions.xml", widget_focus),
+        ("Custom_1157_FlushWidgetProps.xml", widget_clear),
+    ):
         path = skin / filename
         before = path.read_text()
         after = transform(before)

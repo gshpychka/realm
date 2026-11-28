@@ -61,19 +61,13 @@ export default class Sender extends AWS.Lambda.Function<Sender>()(
     // one reply per batch, so a failed send redelivers only that reply
     yield* SQS.consumeQueueMessages(Replies, { batchSize: 1 }, (records) =>
       records.pipe(
-        Stream.runForEach((record) =>
-          decodeReply(record.body).pipe(Effect.flatMap(sendReply)),
-        ),
+        Stream.runForEach((record) => decodeReply(record.body).pipe(Effect.flatMap(sendReply))),
         Effect.orDie,
       ),
     );
 
     return {};
   }).pipe(
-    Effect.provide([
-      AWS.Lambda.QueueEventSource,
-      DynamoDB.PutItemHttp,
-      DynamoDB.DeleteItemHttp,
-    ]),
+    Effect.provide([AWS.Lambda.QueueEventSource, DynamoDB.PutItemHttp, DynamoDB.DeleteItemHttp]),
   ),
 ) {}

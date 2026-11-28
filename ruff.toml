@@ -16,3 +16,7 @@ select = [
 "scripts/kodi/customize/snippets/pkc-hdr.py" = ["F821"]
 # spliced into Bingie's widget code before set_stream_details, where stream_details is a local
 "scripts/kodi/customize/snippets/bingie-widgets-streams.py" = ["F821"]
+# spliced into Bingie's widget JSON-RPC request, where jsonmethod and fields are locals
+"scripts/kodi/customize/snippets/bingie-widgets-rating-fields.py" = ["F821"]
+# spliced into Bingie's widget list item builder, where item and liz are locals
+"scripts/kodi/customize/snippets/bingie-widgets-ratings.py" = ["F821"]
