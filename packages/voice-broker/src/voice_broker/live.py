@@ -502,11 +502,12 @@ class LiveSession:
             self._parallel.home.start()
             self._spawn(self._listen_home())
         try:
-            history_task = self._spawn(self._load_history())
+            # The opening of an agent-initiated call supplies its context.
+            history_task = self._spawn(self._load_history()) if not self._opening else None
             connected = time.monotonic()
             async with self._connect() as conn:
                 log.info("startup: Live WebSocket connected in %.1f ms", (time.monotonic() - connected) * 1000)
-                history = await history_task
+                history = await history_task if history_task is not None else []
                 starting = time.monotonic()
                 await conn.session.start(session=self._session_config(history))
                 async for event in conn:

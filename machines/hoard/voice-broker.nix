@@ -193,7 +193,7 @@ in
           max_messages = 300;
           max_age_s = 24 * 60 * 60;
           # Keeps the Live session prefill short.
-          max_chars = 2000;
+          max_chars = 1000;
         };
       };
       # The conversation ends this long after the last speech, reply audio or
