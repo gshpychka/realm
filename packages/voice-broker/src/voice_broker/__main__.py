@@ -28,7 +28,7 @@ from .calls import Calls
 from .config import Config, Device
 from .conversation import Conversation
 from .home_assistant import HomeAssistant
-from .live import LiveSession, Mode, Parallel, Routed, live_connector
+from .live import LiveSession, Mode, Parallel, Routed, WarmConnections, live_connector
 from .protocol import MIC_RATE, ProtocolError, parse_start
 from .routing import router
 
@@ -68,7 +68,8 @@ class Broker:
         self._by_mac = {state.device.mac: state for state in self._devices.values()}
         self._authorized: WeakKeyDictionary[ServerConnection, _DeviceState] = WeakKeyDictionary()
         openai = AsyncOpenAI(api_key=config.openai_api_key)
-        self._connect = live_connector(openai)
+        self._live_connections = WarmConnections(live_connector(openai), len(config.devices))
+        self._connect = self._live_connections.connect
         # The one classifier, gating (routing) or only shadowing (parallel): config.load allows one mode.
         classifier = config.routing or (config.home_assistant.shadow if config.home_assistant else None)
         self._router = router(classifier, openai) if classifier else None
@@ -185,6 +186,7 @@ class Broker:
         log.info("conversation over: %s", reason)
 
     async def run(self) -> None:
+        self._live_connections.start()
         try:
             server: Server
             async with serve(
@@ -215,6 +217,7 @@ class Broker:
                 calls.close()
                 server.close()
         finally:
+            await self._live_connections.aclose()
             await self._agent.aclose()
             if self._router is not None:
                 await self._router.aclose()

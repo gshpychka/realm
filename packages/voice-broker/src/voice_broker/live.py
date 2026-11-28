@@ -80,10 +80,8 @@ _PACE_AHEAD_S = 0.25
 _PIECE_SAMPLES = SPEAKER_RATE // 10
 # Leads the initial messages, which are the agent's conversation before this one.
 _HISTORY_LEAD = "Your text conversation with the user so far; the spoken conversation follows it."
-# Ends the initial messages of a call: the backend is what the instructions call the agent.
-_OPENING_LEAD = (
-    "You opened this conversation for the backend, which has something to tell the user. Begin by telling them: "
-    "{opening}\nDelegate the user's response to the backend, whatever it is."
+_CALL_INSTRUCTIONS = (
+    "You opened this conversation for the backend. Delegate the user's response to the backend, whatever it is."
 )
 
 _NO_TRANSCRIPT = "No transcript of the request arrived; ask the user to repeat it."
@@ -367,6 +365,79 @@ def live_connector(client: AsyncOpenAI) -> LiveConnector:
     return lambda: client.live.connect(max_retries=0)
 
 
+@dataclass(eq=False)
+class _WarmConnection:
+    connection: AsyncLiveConnection
+    claimed: asyncio.Event = field(default_factory=asyncio.Event)
+    released: asyncio.Event = field(default_factory=asyncio.Event)
+    ready: asyncio.Future[bool] = field(default_factory=lambda: asyncio.get_running_loop().create_future())
+
+
+class WarmConnections:
+    """Unstarted WebSockets ready for new conversations."""
+
+    def __init__(self, connect: LiveConnector, count: int) -> None:
+        self._connect = connect
+        self._count = count
+        self._idle: deque[_WarmConnection] = deque()
+        self._workers: list[asyncio.Task[None]] = []
+
+    def start(self) -> None:
+        self._workers = [asyncio.create_task(self._maintain()) for _ in range(self._count)]
+
+    @asynccontextmanager
+    async def connect(self) -> AsyncIterator[AsyncLiveConnection]:
+        while self._idle:
+            spare = self._idle.popleft()
+            spare.claimed.set()
+            try:
+                if await spare.ready:
+                    log.info("startup: using a warm Live WebSocket")
+                    yield spare.connection
+                    return
+            finally:
+                spare.released.set()
+        async with self._connect() as connection:
+            yield connection
+
+    async def _maintain(self) -> None:
+        while True:
+            try:
+                async with self._connect() as connection:
+                    spare = _WarmConnection(connection)
+                    # An idle connection carries no model session or audio.
+                    self._idle.append(spare)
+                    received = asyncio.create_task(connection.recv())
+                    claimed = asyncio.create_task(spare.claimed.wait())
+                    try:
+                        await asyncio.wait((received, claimed), return_when=asyncio.FIRST_COMPLETED)
+                        if spare.claimed.is_set() and not received.done():
+                            # The SDK permits cancelling recv before the session starts.
+                            received.cancel()
+                            await asyncio.gather(received, return_exceptions=True)
+                            if not spare.ready.done():
+                                spare.ready.set_result(True)
+                            await spare.released.wait()
+                    finally:
+                        if spare in self._idle:
+                            self._idle.remove(spare)
+                        if not spare.ready.done():
+                            spare.ready.set_result(False)
+                        received.cancel()
+                        claimed.cancel()
+                        await asyncio.gather(received, claimed, return_exceptions=True)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning("warming Live connection failed: %s", type(e).__name__)
+            await asyncio.sleep(1)
+
+    async def aclose(self) -> None:
+        for worker in self._workers:
+            worker.cancel()
+        await asyncio.gather(*self._workers, return_exceptions=True)
+
+
 class LiveSession:
     def __init__(
         self,
@@ -445,6 +516,8 @@ class LiveSession:
                         break
                     if event.type == "error":
                         raise SessionRefused(f"{event.error.message} ({event.error.code})")
+                if self._opening:
+                    await conn.session.commentary.append(content=self._opening, delegation_id=None)
                 # What the mic sent so far goes first, paced, and every later block after it.
                 self._mic.start(lambda samples: conn.session.input_audio.append(audio=_audio(samples)))
                 self._conn = conn
@@ -501,7 +574,9 @@ class LiveSession:
             },
             "delegation": {"type": "client"},
         }
-        if items := _initial_items(history, self._opening):
+        if self._opening:
+            config["instructions"] += "\n" + _CALL_INSTRUCTIONS
+        if items := _initial_items(history):
             config["input"] = items
         return config
 
@@ -999,12 +1074,12 @@ def _home_note(result: HomeTurn) -> tuple[str, bool] | None:
             return None
 
 
-def _initial_items(history: list[Turn], opening: str | None) -> list[InitialItemParam]:
-    """Live's initial messages: the newest of `history`, led by what it is, then the opening of a call."""
+def _initial_items(history: list[Turn]) -> list[InitialItemParam]:
+    """Live's recent text conversation."""
     items: list[InitialItemParam] = []
     if history:
         items.append(_developer(_HISTORY_LEAD))
-        room = _INPUT_MAX_ITEMS - 1 - (1 if opening else 0)
+        room = _INPUT_MAX_ITEMS - 1
         for role, text in history[-room:]:
             if role == "user":
                 items.append({"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]})
@@ -1012,8 +1087,6 @@ def _initial_items(history: list[Turn], opening: str | None) -> list[InitialItem
                 items.append(
                     {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": text}]}
                 )
-    if opening:
-        items.append(_developer(_OPENING_LEAD.format(opening=opening)))
     return items
 
 
