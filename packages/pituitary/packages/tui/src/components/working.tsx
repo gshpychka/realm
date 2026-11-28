@@ -7,7 +7,7 @@ import { useKeyHint } from "../keymap-context.tsx";
 import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { useNow } from "../use-now.ts";
-import { type WorkingLine, workingLine } from "../working.ts";
+import { consultingWords, type WorkingLine, workingLine } from "../working.ts";
 import { MascotSlot, useMascotTakes } from "./mascot.tsx";
 
 export interface WorkingProps {
@@ -22,19 +22,42 @@ export interface WorkingProps {
   agent: string;
   /** A move through the session's tree is summarizing the branch it leaves. */
   summarizing?: boolean;
+  /** The models giving second opinions, by name. */
+  consulting?: readonly string[];
 }
 
 /** Whether the status line above the editor is up; a passing hint takes its words while it is. */
-export function statusUp(view: SessionView, closed: string | null, summarizing = false): boolean {
-  return closed !== null || view.running || view.retry !== null || view.phase === "compacting" || summarizing;
+export function statusUp(
+  view: SessionView,
+  closed: string | null,
+  summarizing = false,
+  consulting: readonly string[] = [],
+): boolean {
+  return (
+    closed !== null ||
+    view.running ||
+    view.retry !== null ||
+    view.phase === "compacting" ||
+    summarizing ||
+    consulting.length > 0
+  );
 }
 
 /**
  * What pi is doing right now, above the editor: reading, thinking, writing, running a tool, waiting
- * on the operator, compacting, or waiting to retry, with the key that stops it. A passing
- * key hint takes the line's words, and the fire stays while pi works.
+ * on the operator, compacting, or waiting to retry, with the key that stops it, and the models
+ * giving second opinions. A passing key hint takes the line's words, and the fire stays while pi
+ * works.
  */
-export function Working({ view, hint, closed, escapes, agent, summarizing = false }: WorkingProps) {
+export function Working({
+  view,
+  hint,
+  closed,
+  escapes,
+  agent,
+  summarizing = false,
+  consulting = NOBODY,
+}: WorkingProps) {
   const clear = useKeyHint("app.clear");
   const exit = useKeyHint("app.exit");
   const now = useNow(view.running || view.retry !== null || view.phase === "compacting");
@@ -51,7 +74,7 @@ export function Working({ view, hint, closed, escapes, agent, summarizing = fals
       />
     );
   }
-  if (hint && (view.retry || view.phase === "compacting" || view.running || summarizing))
+  if (hint && (view.retry || view.phase === "compacting" || view.running || summarizing || consulting.length))
     return <Busy text={ellipsize(hint, room)} tone={theme.dim} tick={tick} />;
   if (view.retry) {
     const wait = Math.max(0, Math.ceil((view.retry.at - now) / 1000));
@@ -87,17 +110,34 @@ export function Working({ view, hint, closed, escapes, agent, summarizing = fals
       />
     );
   if (view.running) {
-    const line = workingLine(view, now, escapes, room);
+    // The run's own words come first; the second opinions take what is left, up to half the line.
+    const aside = consulting.length ? ` · ${consultingWords(consulting)}` : "";
+    const beside = Bun.stringWidth(aside) <= room / 2 ? aside : "";
+    const line = workingLine(view, now, escapes, room - Bun.stringWidth(beside));
     const text = (
       <>
         <span fg={DOING[line.kind]}>{line.doing}</span>
         {line.figures}
+        {beside ? <span fg={theme.opinion}>{beside}</span> : null}
       </>
     );
     return <Busy text={text} tone={theme.dim} tick={tick} />;
   }
+  if (consulting.length)
+    return (
+      <Busy
+        text={ellipsize(
+          `${consultingWords(consulting)} · /consult cancel stops ${consulting.length === 1 ? "it" : "them"}`,
+          room,
+        )}
+        tone={theme.opinion}
+        tick={tick}
+      />
+    );
   return null;
 }
+
+const NOBODY: readonly string[] = [];
 
 /**
  * What is left once the agent cannot be reached, wrapped rather than cut: the command that

@@ -1,11 +1,14 @@
 import type { BashEntry, CustomEntry, NoticeEntry, SummaryEntry, UserEntry } from "@pituitary/session";
+import { isOpinion, type OpinionEntry } from "./consult/consult.ts";
+import type { LiveConsult } from "./consult/consults.ts";
 import { type Hint, MOVE } from "./hints.ts";
 import { type KeyLike, matches } from "./keymap.ts";
 import type { Item, Reply, Work } from "./transcript.ts";
 
 /**
  * What the transcript cursor stops on, by kind: every item the conversation draws but a turn's
- * figures, which say nothing of their own to act on.
+ * figures, which say nothing of their own to act on, and the cards of second opinions under way
+ * after them.
  */
 export interface Stops {
   work: Work;
@@ -14,6 +17,8 @@ export interface Stops {
   shell: BashEntry;
   summary: SummaryEntry;
   notice: NoticeEntry | CustomEntry;
+  opinion: OpinionEntry;
+  consult: LiveConsult;
 }
 
 export type StopKind = keyof Stops;
@@ -21,9 +26,9 @@ export type StopKind = keyof Stops;
 /** An item the cursor can select, with the kind its keys are looked up by. */
 export type Stop = { [K in StopKind]: { kind: K; item: Stops[K] } }[StopKind];
 
-/** The stops among `items`, in the order the conversation draws them. */
-export function stopsOf(items: readonly Item[]): Stop[] {
-  return items.flatMap((item): Stop[] => {
+/** The stops among `items`, in the order the conversation draws them, then the `consults` drawn after them. */
+export function stopsOf(items: readonly Item[], consults: readonly LiveConsult[] = []): Stop[] {
+  const drawn = items.flatMap((item): Stop[] => {
     switch (item.kind) {
       case "work":
         return [{ kind: "work", item }];
@@ -35,8 +40,9 @@ export function stopsOf(items: readonly Item[]): Stop[] {
         return [{ kind: "shell", item }];
       case "summary":
         return [{ kind: "summary", item }];
-      case "notice":
       case "custom":
+        return [isOpinion(item) ? { kind: "opinion", item } : { kind: "notice", item }];
+      case "notice":
         return [{ kind: "notice", item }];
       case "turn":
         return [];
@@ -44,10 +50,19 @@ export function stopsOf(items: readonly Item[]): Stop[] {
         return item satisfies never;
     }
   });
+  return [...drawn, ...consults.map((item): Stop => ({ kind: "consult", item }))];
 }
 
 /** Which stop `stop` is, unique among a conversation's stops. */
 export const stopId = (stop: Stop) => `${stop.kind}:${stop.item.id}`;
+
+/**
+ * Where the cursor starts among `stops`: the conversation's latest item. The cards of second
+ * opinions under way come after it, a move down, so a cursor opened to go back to the
+ * conversation does not start on one.
+ */
+export const latestStop = (stops: readonly Stop[]): Stop | null =>
+  stops.findLast((stop) => stop.kind !== "consult") ?? stops.at(-1) ?? null;
 
 /** A key the cursor answers on one kind of stop. */
 export interface CursorKey<T> {
@@ -110,7 +125,5 @@ export function pressed(table: CursorKeys, stop: Stop, key: KeyLike): (() => voi
 /** The hint line's keys while the cursor rests on `stop`: moving, what applies to it, and leaving. */
 export function cursorHints(table: CursorKeys, stop: Stop | null, leave: string): Hint[] {
   const own = stop ? keysFor(table, stop) : [];
-  // A key the item takes for its own, such as esc on a running consultation, no longer leaves.
-  const leaves = !own.some((each) => each.keys.some((name) => matches({ name: "escape" }, name)));
-  return [MOVE, ...own.map((each) => each.hint), ...(leaves ? [[leave, "back"] as const] : [])];
+  return [MOVE, ...own.map((each) => each.hint), [leave, "back"]];
 }

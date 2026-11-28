@@ -121,7 +121,7 @@ export const WorkBox = memo(function WorkBox({
 }, same);
 
 /** Cells the conversation's padding and scrollbar take from each of its rows. */
-const MARGIN = 3;
+export const MARGIN = 3;
 /** Cells an open box's frame takes beside its title: its corners, and the least of its top rule. */
 const TITLE_FRAME = 6;
 /** Cells the latest steps are indented under the title by. */

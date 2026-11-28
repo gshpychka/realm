@@ -17,6 +17,7 @@ import {
   scrub,
   type UnrecordedShell,
 } from "@pituitary/session";
+import type { ConsultLaunch } from "./consult/consult.ts";
 import type { Keymap } from "./keymap.ts";
 import {
   BRIDGE_STATUS,
@@ -67,6 +68,8 @@ export interface PiOptions {
   bridge?: string;
   /** Receives Pi's stderr and what this adapter cannot present. */
   log?(text: string): void;
+  /** Receives Pi's stderr in place of `log`, such as a consultant's, whose failure Pi gives only there. */
+  stderr?(text: string): void;
 }
 
 type RpcType = RpcCommand["type"];
@@ -101,6 +104,8 @@ export interface PiControls {
   resumeAtStart?: boolean;
   /** Reads Pi's keybindings with Pituitary's own over them, at start and after each /reload. */
   keymap(): Keymap;
+  /** How a second opinion's consultant starts its own Pi. */
+  consult: ConsultLaunch;
 }
 
 type Pending = { resolve(data: unknown): void; reject(error: Error): void };
@@ -463,7 +468,7 @@ export class PiConversation implements ConversationLink, PiUiPort {
     child.stdout.on("data", (chunk: Buffer) => {
       for (const record of decoder.push(chunk)) if (live()) this.receive(record);
     });
-    child.stderr.on("data", (chunk: Buffer) => this.options.log?.(chunk.toString()));
+    child.stderr.on("data", (chunk: Buffer) => (this.options.stderr ?? this.options.log)?.(chunk.toString()));
     child.stdin.on("error", (error) => {
       if (live()) this.fail(`Pi input closed: ${error.message}`);
     });

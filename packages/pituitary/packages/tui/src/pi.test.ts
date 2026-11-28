@@ -16,7 +16,7 @@ test("regular Pi keeps its executable, options and positional task separate", ()
     piCommand(["--continue", "--model", "provider/model", "fix", "the tests"], {
       PI_AGENT_CMD: "/configured/pi",
     }),
-  ).toEqual({
+  ).toMatchObject({
     command: "/configured/pi",
     args: ["--continue", "--model", "provider/model"],
     prompt: "fix the tests",

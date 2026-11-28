@@ -30,13 +30,13 @@ const MAIN = join(REPO, "packages/tui/src/main.tsx");
  * What the provider answers one request with: the reply's text, or that text with response
  * headers, such as a provider's rate limits, and an `until` that holds the reply's end back
  * until it settles, keeping Pi at work; a call of one of Pi's tools, which Pi runs and answers
- * with the next request; or an error status with its JSON body. Replies stream in the API the
- * request came in.
+ * with the next request, held back whole until `until` settles; or an error status with its JSON
+ * body. Replies stream in the API the request came in.
  */
 export type Reply =
   | string
   | { text: string; until?: Promise<unknown>; headers?: Record<string, string> }
-  | { tool: string; arguments: Record<string, unknown> }
+  | { tool: string; arguments: Record<string, unknown>; until?: Promise<unknown> }
   | { status: number; body: unknown };
 
 /** A request the provider received: its JSON body, and the latest prompt in it. */
@@ -51,6 +51,8 @@ export interface Provider {
   readonly requests: Received[];
   /** Queues replies for the next requests; with none queued, a reply repeats the prompt. */
   reply(...replies: Reply[]): void;
+  /** Queues replies for the next requests to `model`, by its id, which it takes before those `reply` queued. */
+  replyTo(model: string, ...replies: Reply[]): void;
   readonly port: number;
   close(): Promise<void>;
 }
@@ -60,6 +62,8 @@ export interface ApiModel {
   id: string;
   /** What Pi's registry names it; without one Pi shows the id. */
   name?: string;
+  /** The tokens its context holds; Pi's default without one. */
+  contextWindow?: number;
 }
 
 /**
@@ -138,6 +142,7 @@ const sse = (events: readonly unknown[]) =>
 export async function fakeProvider(): Promise<Provider> {
   const requests: Received[] = [];
   const queued: Reply[] = [];
+  const queuedFor = new Map<string, Reply[]>();
   // Each call has an id of its own, as a provider gives it, so a run's calls stay apart.
   let calls = 0;
   const server = createServer((request, response) => {
@@ -150,7 +155,8 @@ export async function fakeProvider(): Promise<Provider> {
       const api = apiOf(request);
       const received = { body: parsed, prompt: latestPrompt(parsed) };
       requests.push(received);
-      const reply = queued.shift() ?? `Reply to: ${received.prompt}`;
+      const reply =
+        queuedFor.get(String(parsed.model))?.shift() ?? queued.shift() ?? `Reply to: ${received.prompt}`;
       if (typeof reply === "object" && "status" in reply) {
         response.writeHead(reply.status, { "content-type": "application/json" });
         response.end(JSON.stringify(reply.body));
@@ -158,7 +164,9 @@ export async function fakeProvider(): Promise<Provider> {
       }
       if (typeof reply === "object" && "tool" in reply) {
         response.writeHead(200, { "content-type": "text/event-stream" });
-        response.end(sse(toolStream(api, reply.tool, reply.arguments, `call_${++calls}`)));
+        const call = sse(toolStream(api, reply.tool, reply.arguments, `call_${++calls}`));
+        if (!reply.until) response.end(call);
+        else void reply.until.then(() => response.end(call));
         return;
       }
       const { text, until, headers } = typeof reply === "string" ? { text: reply } : reply;
@@ -175,6 +183,7 @@ export async function fakeProvider(): Promise<Provider> {
   return {
     requests,
     reply: (...replies) => queued.push(...replies),
+    replyTo: (model, ...replies) => queuedFor.set(model, [...(queuedFor.get(model) ?? []), ...replies]),
     port: (server.address() as AddressInfo).port,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
@@ -251,6 +260,8 @@ export interface PiLaunch extends Harness {
   provider: Provider;
   /** The session files Pi has written for every project, oldest first. */
   sessions(): string[];
+  /** The session files second opinions' consultants have written, oldest first. */
+  consultSessions(): string[];
   /** Everything Pituitary wrote to the terminal, when launched with `record`. */
   raw(): string;
   /**
@@ -339,6 +350,7 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
       env: {
         HOME: home,
         XDG_CONFIG_HOME: join(home, ".config"),
+        XDG_STATE_HOME: join(home, ".local", "state"),
         PI_AGENT_CMD: "node",
         PI_AGENT_ARGS: (withoutBridge ? [bridgeless(home), ...pi] : pi).join(" "),
         PI_CODING_AGENT_DIR: agent,
@@ -358,6 +370,7 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
       agent,
       provider,
       sessions: () => sessionFiles(join(agent, "sessions")),
+      consultSessions: () => sessionFiles(join(home, ".local", "state", "pituitary", "consults")),
       raw: () => readFileSync(join(home, "terminal.raw"), "latin1"),
       close: async () => {
         try {

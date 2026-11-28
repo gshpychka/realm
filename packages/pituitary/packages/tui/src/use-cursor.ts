@@ -1,7 +1,7 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { type RefObject, useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { type CursorKeys, pressed, type Stop, stopId } from "./transcript-cursor.ts";
+import { type CursorKeys, latestStop, pressed, type Stop, stopId } from "./transcript-cursor.ts";
 
 export interface CursorOptions {
   /** The keyboard walks the conversation, from its latest item. */
@@ -22,9 +22,9 @@ const MOVES = new Map([
   ["down", 1],
 ]);
 
-/** The stop `id` names among `stops`, or the latest when none does. */
+/** The stop `id` names among `stops`, or where the cursor starts when none does, as once its item goes. */
 const find = (stops: readonly Stop[], id: string | null) =>
-  stops.find((stop) => stopId(stop) === id) ?? stops.at(-1) ?? null;
+  stops.find((stop) => stopId(stop) === id) ?? latestStop(stops);
 
 /** Moves up past the first stop, owed until the entries before it are drawn: those before `first`. */
 interface Owed {
@@ -83,7 +83,7 @@ export function useCursor({ browsing, stops, keys, scroll, onLeave, onEarlier }:
     const first = list[0];
     if (!first) return;
     const at = list.findIndex((stop) => stopId(stop) === latest.current);
-    const from = at === -1 ? list.length - 1 : at;
+    const from = at !== -1 ? at : list.indexOf(latestStop(list) ?? first);
     if (from + by < 0 && onEarlier) {
       owed.current = { by: (owed.current?.by ?? 0) + from + by, first: stopId(first) };
       choose(stopId(first));

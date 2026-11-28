@@ -51,6 +51,9 @@ export function Welcome({
   const bindings = useKeymap();
   const bound = (action: Action) => keyHint(bindings, action) ?? "";
   const interrupt = bound("app.interrupt");
+  // Skills and second opinions share a row, which names only what a bound key does.
+  const skills = sessions ? bound("app.skills") : "";
+  const consult = sessions ? bound("app.consult") : "";
   const rows = (
     [
       ...editorKeys(local, sessions, bound("tui.altScreen.bottom")),
@@ -84,21 +87,40 @@ export function Welcome({
         "resume, fork or start a session",
         "sessions",
       ],
-      [sessions ? bound("app.skills") : "", "choose a skill for the draft", "skills"],
+      // One row for both keeps the list within the rows of a small terminal.
       [
-        [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
-        "quit",
+        [skills, consult].filter(Boolean).join("  "),
+        [skills && "choose a skill", consult && "ask for a second opinion"].filter(Boolean).join(" · "),
+        [skills && "skills", consult && "second opinion"].filter(Boolean).join(" · "),
       ],
     ] satisfies readonly WelcomeRow[]
   ).filter(([keys]) => keys);
+  const quitKeys = [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")]
+    .filter(Boolean)
+    .join("  ");
+  // How to leave stays in view however few rows the welcome gets, as extension statuses take some.
+  const quit: readonly WelcomeRow[] = quitKeys ? [[quitKeys, "quit"]] : [];
   const inner = Math.max(0, width - 2);
   // The key column fits the longest key shown, leaving room for the short descriptions.
   const keyColumn = Math.max(
     0,
-    Math.min(Math.max(...rows.map(([keys]) => Bun.stringWidth(keys))) + KEY_GAP, inner - DOES_LEAST),
+    Math.min(
+      Math.max(...[...rows, ...quit].map(([keys]) => Bun.stringWidth(keys))) + KEY_GAP,
+      inner - DOES_LEAST,
+    ),
   );
   const room = inner - keyColumn;
   const short = rows.some(([, does, brief]) => brief !== undefined && Bun.stringWidth(does) > room);
+  const row = ([keys, does, brief]: WelcomeRow) => (
+    <box key={keys} flexDirection="row" flexShrink={0} height={1}>
+      <text selectable={false} fg={theme.tool} width={keyColumn} flexShrink={0} wrapMode="none">
+        {ellipsize(keys, keyColumn - KEY_GAP)}
+      </text>
+      <text selectable={false} fg={theme.dim} wrapMode="none">
+        {ellipsize(short && brief ? brief : does, room)}
+      </text>
+    </box>
+  );
   return (
     <box
       flexDirection="column"
@@ -112,17 +134,12 @@ export function Welcome({
       <text selectable={false} fg={theme.dim} flexShrink={0}>
         Ask {agent} something to get started.
       </text>
-      <box flexDirection="column" flexShrink={0} marginTop={1}>
-        {rows.map(([keys, does, brief]) => (
-          <box key={keys} flexDirection="row" flexShrink={0} height={1}>
-            <text selectable={false} fg={theme.tool} width={keyColumn} flexShrink={0} wrapMode="none">
-              {ellipsize(keys, keyColumn - KEY_GAP)}
-            </text>
-            <text selectable={false} fg={theme.dim} wrapMode="none">
-              {ellipsize(short && brief ? brief : does, room)}
-            </text>
-          </box>
-        ))}
+      <box flexDirection="column" flexShrink={1} minHeight={0} marginTop={1}>
+        {/* Short of rows, the list loses its last keys before the quit row under it. */}
+        <box flexDirection="column" flexShrink={1} minHeight={0} overflow="hidden">
+          {rows.map(row)}
+        </box>
+        {quit.map(row)}
       </box>
     </box>
   );
