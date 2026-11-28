@@ -54,7 +54,7 @@ function doing(activity: Activity): string {
 
 /** What the working line says of the models giving second opinions, by name. */
 export function consultingWords(models: readonly string[]): string {
-  return `◆ ${models.length === 1 ? models[0] : `${models.length} models`} weighing in`;
+  return `${glyphs.opinion} ${models.length === 1 ? models[0] : `${models.length} models`} weighing in`;
 }
 
 /**

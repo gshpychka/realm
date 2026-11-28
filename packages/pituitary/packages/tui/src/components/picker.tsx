@@ -47,7 +47,7 @@ export interface PickerSpec {
    * marked, `picked`, in the list's order, or the highlighted one when none is.
    */
   onPick(value: string, picked: readonly string[]): void;
-  /** Space marks items, and enter picks those marked. */
+  /** Tab, or a click, marks items, and enter picks those marked. */
   multiple?: boolean;
   /** The items a list of `multiple` starts with marked, by value. */
   marked?: readonly string[];
@@ -142,10 +142,13 @@ export function Picker({
   const height = Math.max(1, Math.min(most, rows));
   const top = Math.max(0, Math.min(index - Math.floor(height / 2), shown.length - height));
   const visible = shown.slice(top, top + height);
-  const pick = (item: PickItem) => {
-    onClose();
+  /** Picks `item`, the highlighted one, or in a list of several those marked, with or without one highlighted. */
+  const pick = (item: PickItem | undefined) => {
     const picked = spec.items.filter((each) => marking.current.has(each.value)).map((each) => each.value);
-    spec.onPick(item.value, picked.length ? picked : [item.value]);
+    const value = item?.value ?? picked[0];
+    if (value === undefined) return;
+    onClose();
+    spec.onPick(value, picked.length ? picked : [value]);
   };
   // Consecutive input events can arrive before React draws their new state.
   const current = () => {
@@ -171,8 +174,8 @@ export function Picker({
     } else if (key.name === "pageup" || key.name === "pagedown") {
       key.preventDefault();
       move(key.name === "pageup" ? -height : height);
-    } else if (spec.multiple && key.name === "space" && !key.ctrl && !key.meta) {
-      // Space marks rather than filters: a list of several is filtered a word at a time.
+    } else if (spec.multiple && key.name === "tab" && !key.shift && !key.ctrl && !key.meta) {
+      // Tab marks, as in fzf, leaving space to the filter's words.
       key.preventDefault();
       const { matches: items, index } = current();
       const item = items[index];
@@ -236,8 +239,7 @@ export function Picker({
           }}
           onSubmit={() => {
             const { matches, index } = current();
-            const item = matches[index];
-            if (item) pick(item);
+            pick(matches[index]);
           }}
         />
       </box>
@@ -255,10 +257,13 @@ export function Picker({
             height={1}
             backgroundColor={chosen ? palette.rule : undefined}
             onMouseDown={(event) => {
-              if (event.button === 0) {
-                event.preventDefault();
-                pick(item);
-              }
+              if (event.button !== 0) return;
+              event.preventDefault();
+              // In a list of several a click marks the row, as tab does; enter then picks.
+              if (spec.multiple) {
+                select(top + offset);
+                mark(item.value);
+              } else pick(item);
             }}
           >
             <text
@@ -286,13 +291,7 @@ export function Picker({
       })}
       <text selectable={false} fg={theme.dim} wrapMode="none">
         {hintLine(
-          [
-            MOVE,
-            ...(spec.multiple ? [["space", "mark"] as const] : []),
-            picks,
-            ...keyHints,
-            ["esc", "close"],
-          ],
+          [MOVE, ...(spec.multiple ? [["tab", "mark"] as const] : []), picks, ...keyHints, ["esc", "close"]],
           `${shown.length} of ${spec.items.length}`,
           inner,
         )}

@@ -56,6 +56,14 @@ export function stopsOf(items: readonly Item[], consults: readonly LiveConsult[]
 /** Which stop `stop` is, unique among a conversation's stops. */
 export const stopId = (stop: Stop) => `${stop.kind}:${stop.item.id}`;
 
+/**
+ * Where the cursor starts among `stops`: the conversation's latest item. The cards of second
+ * opinions under way come after it, a move down, so a cursor opened to go back to the
+ * conversation does not start on one.
+ */
+export const latestStop = (stops: readonly Stop[]): Stop | null =>
+  stops.findLast((stop) => stop.kind !== "consult") ?? stops.at(-1) ?? null;
+
 /** A key the cursor answers on one kind of stop. */
 export interface CursorKey<T> {
   /** The keys, as bindings name them, such as `c` or `enter`. */
@@ -117,7 +125,5 @@ export function pressed(table: CursorKeys, stop: Stop, key: KeyLike): (() => voi
 /** The hint line's keys while the cursor rests on `stop`: moving, what applies to it, and leaving. */
 export function cursorHints(table: CursorKeys, stop: Stop | null, leave: string): Hint[] {
   const own = stop ? keysFor(table, stop) : [];
-  // A key the item takes for its own, such as esc on a running consultation, no longer leaves.
-  const leaves = !own.some((each) => each.keys.some((name) => matches({ name: "escape" }, name)));
-  return [MOVE, ...own.map((each) => each.hint), ...(leaves ? [[leave, "back"] as const] : [])];
+  return [MOVE, ...own.map((each) => each.hint), [leave, "back"]];
 }

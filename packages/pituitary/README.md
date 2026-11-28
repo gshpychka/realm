@@ -135,9 +135,11 @@ verdict, its key points, and what it recommends.
 
 The list of models opens with the models `programs.pituitary.consult.models` declares marked
 (`PITUITARY_CONSULT_MODELS`, comma-separated `provider/id`), or else those you chose last; the
-conversation's own model says so. `space` marks several, and `enter` asks those marked, or the
-highlighted one when none is. The draft `alt+o` asks empties only once you choose, so a quick
-`esc o` that arrives as the chord closes with `esc` and loses nothing.
+conversation's own model says so. `tab` or a click marks a model, as in fzf, so the filter
+takes several words; `enter` asks those marked, or the highlighted one when none is. A declared
+model that is not `provider/id` says so and cannot be asked. The draft `alt+o`
+asks empties only once you choose, so a quick `esc o` that arrives as the chord closes with
+`esc` and loses nothing.
 
 Each model answers in a Pi of its own: your Pi command with the flags of yours a reviewer takes
 (`-e`/`--extension`, `--no-extensions`, `--skill`, `--no-skills`, `--no-context-files`,
@@ -149,19 +151,24 @@ model's context window. Its session stays under `$XDG_STATE_HOME/pituitary/consu
 of your extensions asks it is cancelled, since nobody is there to answer.
 
 While they answer, each model has a card at the end of the conversation with its latest steps
-and its reply as it streams, side by side where each gets 60 columns, and the working line
-names them. `/consult cancel` stops them; `esc` on a card under the transcript cursor stops that
-one, or dismisses one that failed, and leaves the cursor. Plain `esc` never does. A model whose
-Pi cannot start, such as one Pi does not know, says why on its card, in Pi's words.
+and the latest rows of its reply as it streams, side by side where each gets 60 columns, and
+the working line names them. `/consult cancel` stops those still answering and clears those that
+failed. The transcript cursor starts on the conversation's latest item, with the cards a `↓`
+below it, where `x` stops one or clears it. `esc` only ever leaves the cursor, and plain `esc`
+never stops a model. A model that cannot answer, such as one Pi does not know or cannot sign in
+to, says why on its card, in Pi's words, and the card goes with your next prompt.
 
-An answer joins the conversation as a second opinion with what answering took. Pi keeps it in
-the session as a custom message, which the model reads as yours from its next request on. While
+An answer joins the conversation as a second opinion, under a row that says what it was about
+(your question, or the reply it weighs in on), with what answering took. Pi keeps it in the
+session as a custom message, which the model reads as yours from its next request on. While
 the agent works, Pi adds it as the agent's turn ends: a run that goes on reads it in its next
 request, as it would a steer, and one that ends there leaves it for your next prompt. An answer
-to a session Pi has since left is not recorded. On a second opinion, the cursor's `a` asks the
-agent to address it, steering a run under way, and `r` asks the model that gave it a follow-up
-in its own session, which records as a new opinion. The models stay for replies until
-Pituitary closes; a reply after a restart reopens the model's session.
+about a conversation Pi has since left, for another session or another point of the session's
+tree, is not recorded; its card keeps it for you to read. On a second opinion, the cursor's `a`
+asks the agent to address it, steering a run under way, and `r` asks the model that gave it a
+follow-up in its own session, which records as a new opinion. A follow-up Pi takes for one of
+its commands asks nothing, and its card says so. A model's Pi runs while its card shows; a
+reply starts it again on its own session, after a restart too.
 
 ## Connect your provider
 
@@ -230,7 +237,7 @@ takes; `esc` leaves.
 | Shell command | `c` copy the command and its output |
 | Summary or notice | `enter` expand or fold · `c` copy |
 | Second opinion | `a` ask the agent to address it · `r` reply to the model that gave it · `c` copy its answer |
-| Second opinion's card | `esc` stop it, or dismiss it once it failed, and leave |
+| Second opinion's card | `x` stop it, or clear it once it failed · `c` copy what it has said, and why it failed |
 
 Copies go to the terminal's clipboard (OSC 52), and the hint line says what was copied. An
 opened box takes the rows the conversation leaves empty below it. `ctrl+o` opens every box at

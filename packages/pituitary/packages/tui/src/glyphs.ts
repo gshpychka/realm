@@ -49,6 +49,8 @@ const NERD = {
   skill: "\u{f19d}",
   template: "\u{f0219}",
   extension: "\u{f0431}",
+  // Another model's second opinion, under way and recorded.
+  opinion: "◆",
 } as const;
 
 /** The same icons from plain Unicode, for a terminal font without Nerd Fonts. */
@@ -101,6 +103,8 @@ const PLAIN: Record<keyof typeof NERD, string> = {
   skill: "§",
   template: "¶",
   extension: "⊕",
+  // The plain diamond is a session's.
+  opinion: "❖",
 };
 
 export type Glyph = keyof typeof NERD;

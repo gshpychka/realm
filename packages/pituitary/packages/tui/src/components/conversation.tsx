@@ -103,7 +103,7 @@ const EntryView = memo(function EntryView({
     case "user":
       return <UserMessage entry={entry} expanded={display.expanded} />;
     case "custom":
-      if (isOpinion(entry)) return <OpinionView entry={entry} />;
+      if (isOpinion(entry)) return <OpinionView entry={entry} columns={columns} />;
       return (
         <box flexDirection="column" flexShrink={0} marginTop={1}>
           <Marked mark="●" colour={theme.dim}>

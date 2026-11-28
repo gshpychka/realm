@@ -1,6 +1,6 @@
 import type { BashEntry, UserEntry } from "@pituitary/session";
 import type { OpinionEntry } from "./consult/consult.ts";
-import { working } from "./consult/consults.ts";
+import { failed, type LiveConsult, stoppable } from "./consult/consults.ts";
 import type { Consult } from "./consult/use-consult.ts";
 import { type Reply, workText } from "./transcript.ts";
 import type { CursorKey, CursorKeys } from "./transcript-cursor.ts";
@@ -15,8 +15,11 @@ export interface ActingOptions {
    * session from before it, or this one moved back before it. None in Dura.
    */
   prompts?: Pick<Pi, "forkAt" | "editAt">;
-  /** Regular Pi's second opinions: asking about a reply, acting on an opinion, and cancelling one under way. None in Dura. */
-  consult?: Pick<Consult, "weighIn" | "address" | "reply" | "cancel">;
+  /**
+   * Regular Pi's second opinions: asking about a reply, acting on an opinion, and cancelling or
+   * copying one under way. None in Dura.
+   */
+  consult?: Pick<Consult, "weighIn" | "address" | "reply" | "cancel" | "textOf">;
   /** Hands the keyboard back to the draft, which going back to a prompt fills. */
   leave(): void;
 }
@@ -26,8 +29,9 @@ export interface ActingOptions {
  * on a prompt regular Pi's `f` forks a new session from before it and `e` edits it in place.
  * Both need the prompt's own entry in Pi's session, which a prompt keyed by its message has.
  * Regular Pi's `w` asks other models to weigh in on a reply; on a second opinion, `a` asks the
- * agent to address it and `r` replies to the model that gave it; `esc` on a second opinion's
- * card cancels it while it answers, or dismisses it once it failed, and leaves.
+ * agent to address it and `r` replies to the model that gave it; on a second opinion's card,
+ * `x` cancels it while it answers, or clears it once it failed, and `c` copies what it says.
+ * Esc leaves the cursor wherever it is, so pressing it again and again stops nothing.
  */
 export function actingKeys({ copy, prompts, consult, leave }: ActingOptions): CursorKeys {
   /** `c`, which copies an item as `text` words it, saying it copied `what`. */
@@ -89,13 +93,17 @@ export function actingKeys({ copy, prompts, consult, leave }: ActingOptions): Cu
     consult: consult
       ? [
           {
-            keys: ["esc"],
-            does: (card) => (working(card) ? "cancel" : "dismiss"),
-            // The cursor leaves with the card, so esc pressed again, as vim hands press it, cancels nothing more.
-            run: (card) => {
-              leave();
-              consult.cancel(card.id);
-            },
+            keys: ["x"],
+            does: (card) => (failed(card) ? "clear" : "cancel"),
+            // An answer going into the record joins the conversation however its card goes.
+            applies: (card) => stoppable(card) || failed(card),
+            run: (card) => consult.cancel(card.id),
+          },
+          {
+            keys: ["c"],
+            does: () => "copy",
+            applies: (card: LiveConsult) => card.round !== undefined || card.error !== undefined,
+            run: (card) => void consult.textOf(card).then((text) => copy(text, "the second opinion so far")),
           },
         ]
       : [],

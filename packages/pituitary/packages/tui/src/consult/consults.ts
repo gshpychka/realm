@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { type Entry, restore } from "@pituitary/session";
 import { PiConversation } from "../pi.ts";
-import { OPINION_TYPE, type Opinion, readOpinion } from "../pi-bridge.ts";
+import { OPINION_TYPE, type Opinion, type Position, readOpinion } from "../pi-bridge.ts";
 import { type Item, transcriptOf } from "../transcript.ts";
-import { type ConsultLaunch, type ConsultModel, consultantArgs } from "./consult.ts";
+import { type Asking, type ConsultLaunch, type ConsultModel, consultantArgs } from "./consult.ts";
 
 /** Where one question put to one consultant stands. */
 export type ConsultStatus =
@@ -27,14 +27,18 @@ export interface LiveConsult {
   /** Unique among the frontend's consultations; the opinion it records carries it. */
   id: string;
   model: ConsultModel;
-  question: string;
+  /** What the question is about, as the card's row names it. */
+  topic: string;
   status: ConsultStatus;
   /** Why it failed, in Pi's own words where it gave any. */
   error?: string;
   /** The consultant's own conversation, which its card draws as the main one is drawn. */
   link: PiConversation;
-  /** The prompts the consultant's session holds once this question is asked, 0 until then: the card draws what follows the last. */
-  round: number;
+  /**
+   * Which of the consultant's prompts the question is, counted from 1, once Pi has it: the
+   * card draws what answers that prompt alone, and nothing before then.
+   */
+  round?: number;
   /** When it was asked, in milliseconds since the epoch. */
   at: number;
 }
@@ -42,6 +46,16 @@ export interface LiveConsult {
 /** Whether `consult` is still at work: starting, answering, or recording its answer. */
 export const working = (consult: LiveConsult) =>
   consult.status === "starting" || consult.status === "answering" || consult.status === "recording";
+
+/**
+ * Whether cancelling `consult` stops it: it is starting or answering. An answer going into the
+ * record, or in it, joins the conversation all the same.
+ */
+export const stoppable = (consult: LiveConsult) =>
+  consult.status === "starting" || consult.status === "answering";
+
+/** Whether `consult` ended without an answer to record. */
+export const failed = (consult: LiveConsult) => consult.status === "failed";
 
 /** Lines of what a consultant's Pi wrote to stderr that say why it ended, the last it wrote. */
 const STDERR_LINES = 4;
@@ -59,13 +73,17 @@ interface Answer {
   tools: number;
 }
 
-/** A consultant's Pi process, which is kept for the operator's replies to it until the frontend closes. */
+/** A run that settles: `done` settles with it and fails when Pi ends first; `off` stops waiting for it. */
+interface Settling {
+  done: Promise<void>;
+  off(): void;
+}
+
+/** A consultant's Pi process, which runs while a card shows it. */
 class Consultant {
   readonly link: PiConversation;
   /** Its session file, once Pi has said where. */
   session?: string;
-  /** Whether it recorded an opinion, which a reply could continue. */
-  recorded = false;
   /** Why its Pi ended, once it has. */
   private ended?: string;
   private said = "";
@@ -99,21 +117,31 @@ class Consultant {
 
   /**
    * Asks `prompt` and waits for the answer, saying through `asked` which round of the
-   * session's prompts it is once Pi has it.
+   * session's prompts it is once Pi has it. Fails when Pi takes the prompt for an extension's
+   * command, which starts no run.
    */
   async ask(prompt: string, asked: (round: number) => void): Promise<Answer> {
     const before = await this.link.getSessionStats();
+    // The session's prompts are its user messages, each of which the reducer draws as a prompt.
     const round = (await this.link.getMessages()).filter(prompted).length + 1;
-    const settled = this.settled();
-    await this.link.prompt(prompt);
+    // Waiting from before the prompt goes: the run can settle in the same read as Pi's answer to it.
+    const settling = this.settling();
+    try {
+      const { disposition } = await this.link.rpc({ type: "prompt", message: prompt });
+      if (disposition === "handled")
+        throw new Error("Pi ran that as a command of its own, so nothing was asked.");
+    } catch (error) {
+      settling.off();
+      throw error;
+    }
     asked(round);
-    await settled;
+    await settling.done;
     const { sessionFile } = await this.link.getState();
     this.session = sessionFile;
     const view = restore(await this.link.getMessages());
     const after = await this.link.getSessionStats();
     return {
-      text: answerOf(view.entries),
+      text: answerOf(view.entries, round),
       ...(sessionFile ? { session: sessionFile } : {}),
       cost: after.cost - before.cost,
       tokens: after.tokens.total - before.tokens.total,
@@ -141,17 +169,23 @@ class Consultant {
     return this.link.close();
   }
 
-  /** Settles once the run Pi starts next settles; fails when Pi ends first. */
-  private settled(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const offs: (() => void)[] = [];
+  /** The run Pi starts next, settling. */
+  private settling(): Settling {
+    const offs: (() => void)[] = [];
+    const off = () => {
+      for (const each of offs.splice(0)) each();
+    };
+    const done = new Promise<void>((resolve, reject) => {
       const end = (finish: () => void) => {
-        for (const off of offs) off();
+        off();
         finish();
       };
       offs.push(this.link.onEvent((event) => event.type === "agent_settled" && end(resolve)));
       offs.push(this.link.onClose((reason) => end(() => reject(new Error(reason)))));
     });
+    // It is waited on only once Pi takes the prompt; a Pi that ends before then fails the prompt instead.
+    done.catch(() => {});
+    return { done, off };
   }
 }
 
@@ -159,24 +193,27 @@ const prompted = (message: unknown) =>
   typeof message === "object" && message !== null && "role" in message && message.role === "user";
 
 /**
- * The entries after a consultant's latest prompt, which answer it; none while the view holds
- * fewer than `round` prompts, before the round's own prompt reaches it.
+ * The entries that answer a consultant's prompt `round`: those after it, up to the prompt
+ * after it. None before the round is known, or while the view has yet to hold its prompt.
  */
-function answering(entries: readonly Entry[], round: number): readonly Entry[] {
-  if (entries.filter((entry) => entry.kind === "user").length < round) return [];
-  return entries.slice(entries.findLastIndex((entry) => entry.kind === "user") + 1);
+function answering(entries: readonly Entry[], round: number | undefined): readonly Entry[] {
+  if (round === undefined) return [];
+  const prompts = entries.flatMap((entry, index) => (entry.kind === "user" ? [index] : []));
+  const start = prompts[round - 1];
+  if (start === undefined) return [];
+  return entries.slice(start + 1, prompts[round] ?? entries.length);
 }
 
 /** What a consultant's card draws of its `round`: the work and the reply that answer it. */
-export function roundOf(entries: readonly Entry[], round: number, running: boolean): Item[] {
+export function roundOf(entries: readonly Entry[], round: number | undefined, running: boolean): Item[] {
   return transcriptOf(answering(entries, round), running).filter(
     (item) => item.kind === "work" || item.kind === "reply",
   );
 }
 
-/** The reply that answers the latest prompt; throws why there is none, as the request's failure or an interruption. */
-function answerOf(entries: readonly Entry[]): string {
-  const after = answering(entries, 0);
+/** The reply that answers prompt `round`; throws why there is none, as the request's failure or an interruption. */
+function answerOf(entries: readonly Entry[], round: number): string {
+  const after = answering(entries, round);
   // A request that failed last ends the round with its error; one a retry made good does not.
   const last = after.findLast(
     (entry) => entry.kind === "assistant" || (entry.kind === "notice" && entry.level === "error"),
@@ -195,9 +232,9 @@ export interface ConsultsOptions {
 }
 
 /**
- * The second opinions the operator asked for, each from a consultant of its own. They last as
- * long as the frontend: a session replaced under the conversation leaves them answering, and a
- * consultant that answered stays for the operator's reply to it.
+ * The second opinions the operator asked for, each from a consultant of its own, whose Pi runs
+ * while its card shows: a session replaced under the conversation leaves it answering, and a
+ * reply to its opinion starts it again on its session.
  */
 export class Consults {
   /** The models chosen last, which the next list starts with where none are declared. */
@@ -209,10 +246,15 @@ export class Consults {
 
   constructor(private readonly options: ConsultsOptions) {
     this.offs = [
-      // A card goes as the conversation draws its opinion, in the same frame.
       options.main.onEvent((event) => {
         if (event.type !== "message_start") return;
         const message = event.message as { role?: string; customType?: string; details?: unknown };
+        // The operator's next prompt moves on from the cards that failed, which go with it.
+        if (message.role === "user") {
+          if (this.live.some(failed)) this.set(this.live.filter((consult) => !failed(consult)));
+          return;
+        }
+        // A card goes as the conversation draws its opinion, in the same frame.
         const id =
           message.role === "custom" &&
           message.customType === OPINION_TYPE &&
@@ -234,58 +276,63 @@ export class Consults {
   readonly snapshot = (): readonly LiveConsult[] => this.live;
 
   /**
-   * Asks each of `models` `prompt` in Pi working in `cwd`, which its card shows as `question`,
-   * about the session whose file is `about`.
+   * Asks each of `models` `prompt` in Pi working in `cwd`, which its card names by `asking`'s
+   * topic, about the conversation as it stood `about`.
    */
-  start(models: readonly ConsultModel[], question: string, prompt: string, about: string, cwd: string): void {
-    for (const model of models) {
-      const consultant = new Consultant(model, this.options.launch, cwd);
-      this.consultants.add(consultant);
-      this.ask(consultant, question, prompt, about);
-    }
+  start(models: readonly ConsultModel[], asking: Asking, prompt: string, about: Position, cwd: string): void {
+    for (const model of models)
+      this.ask(new Consultant(model, this.options.launch, cwd), asking, prompt, about);
   }
 
   /**
-   * Asks the consultant that gave `opinion` `question`, in its Pi where that still runs, or in
-   * a new one on its session. False while it is still answering.
+   * Asks the consultant that gave `opinion` `asking`, in its Pi where a card still shows it, or
+   * in a new one on its session. False while it is still answering.
    */
-  followUp(opinion: Opinion & { session: string }, question: string, about: string, cwd: string): boolean {
-    const running = [...this.consultants].find((each) => each.alive && each.session === opinion.session);
-    if (running && this.live.some((consult) => consult.link === running.link && working(consult)))
-      return false;
+  followUp(opinion: Opinion & { session: string }, asking: Asking, about: Position, cwd: string): boolean {
+    const shown = [...this.consultants].find((each) => each.alive && each.session === opinion.session);
+    if (shown && this.live.some((consult) => consult.link === shown.link && working(consult))) return false;
     const consultant =
-      running ??
+      shown ??
       new Consultant(
         { provider: opinion.provider, id: opinion.model, ...(opinion.name ? { name: opinion.name } : {}) },
         this.options.launch,
         cwd,
         opinion.session,
       );
-    consultant.recorded = true;
-    this.consultants.add(consultant);
-    this.ask(consultant, question, question, about);
+    this.ask(consultant, asking, asking.question, about);
     return true;
   }
 
-  /**
-   * Takes the card `id` away. A consultant still at work stops, and answers a reply later in a
-   * new Pi on its session; one that never recorded an opinion has nothing a reply could continue.
-   */
-  cancel(id: string): void {
+  /** Takes the card `id` away, which stops its consultant if it is at work; the card it was. */
+  cancel(id: string): LiveConsult | undefined {
     const consult = this.live.find((each) => each.id === id);
-    if (!consult) return;
-    this.set(this.live.filter((each) => each !== consult));
-    const consultant = [...this.consultants].find((each) => each.link === consult.link);
-    if (!consultant || (!working(consult) && consultant.recorded)) return;
-    this.consultants.delete(consultant);
-    void consultant.close();
+    if (consult) this.set(this.live.filter((each) => each !== consult));
+    return consult;
   }
 
-  /** Takes every card away, stopping the consultants at work; how many there were. */
-  cancelAll(): number {
-    const cards = this.live.length;
-    for (const consult of this.live) this.cancel(consult.id);
-    return cards;
+  /**
+   * Stops every consultant starting or answering, and takes away the cards that failed; how
+   * many of each. An answer already recorded joins the conversation all the same, so its card stays.
+   */
+  cancelAll(): { stopped: number; cleared: number } {
+    const stopped = this.live.filter(stoppable).length;
+    const cleared = this.live.filter(failed).length;
+    this.set(this.live.filter((consult) => !stoppable(consult) && !failed(consult)));
+    return { stopped, cleared };
+  }
+
+  /** What the card `consult` says, as text: the reply so far to its question, and why it failed when it did. */
+  async textOf(consult: LiveConsult): Promise<string> {
+    // A consultant whose Pi has ended has only its error to give.
+    const reply = await consult.link.getSnapshot().then(
+      (snapshot) => {
+        const { entries } = restore(snapshot.messages, undefined, snapshot);
+        const said = roundOf(entries, consult.round, false).findLast((item) => item.kind === "reply");
+        return said?.kind === "reply" ? said.text : "";
+      },
+      () => "",
+    );
+    return [reply, consult.error ?? ""].filter(Boolean).join("\n\n");
   }
 
   /** Ends every consultant, as the frontend closes. */
@@ -296,10 +343,11 @@ export class Consults {
     this.consultants.clear();
   }
 
-  private ask(consultant: Consultant, question: string, prompt: string, about: string): void {
+  private ask(consultant: Consultant, asking: Asking, prompt: string, about: Position): void {
     const id = randomUUID();
     const { model, link } = consultant;
-    this.set([...this.live, { id, model, question, status: "starting", link, round: 0, at: Date.now() }]);
+    this.consultants.add(consultant);
+    this.set([...this.live, { id, model, topic: asking.topic, status: "starting", link, at: Date.now() }]);
     const update = (patch: Partial<LiveConsult>) =>
       this.set(this.live.map((consult) => (consult.id === id ? { ...consult, ...patch } : consult)));
     const listed = () => this.live.some((consult) => consult.id === id);
@@ -308,33 +356,37 @@ export class Consults {
       .then(async (answer) => {
         if (!listed()) return;
         update({ status: "recording" });
-        const { main } = this.options;
-        if ((await main.getState()).sessionFile !== about)
-          throw new Error("Not recorded: Pi has moved to another session since you asked.");
         const opinion: Opinion = {
           id,
           provider: model.provider,
           model: model.id,
           ...(model.name ? { name: model.name } : {}),
-          question,
+          question: asking.question,
+          topic: asking.topic,
           answer: answer.text,
           ...(answer.session ? { session: answer.session } : {}),
           cost: answer.cost,
           tokens: answer.tokens,
           tools: answer.tools,
         };
-        await main.bridge({ kind: "record-opinion", opinion });
-        consultant.recorded = true;
+        // Pi refuses it once the conversation is no longer the one it is about.
+        await this.options.main.bridge({ kind: "record-opinion", opinion, about });
         update({ status: "recorded" });
       })
       .catch((error: unknown) => {
-        // A cancelled consultation has nothing left to say; a failed one's card stays until dismissed.
+        // A cancelled consultation has nothing left to say; a failed one's card stays until the operator moves on.
         if (listed()) update({ status: "failed", error: consultant.why(error) });
       });
   }
 
   private set(live: readonly LiveConsult[]): void {
     this.live = live;
+    // A consultant's Pi runs while a card shows it; a reply to its opinion starts another on its session.
+    for (const consultant of this.consultants) {
+      if (live.some((consult) => consult.link === consultant.link)) continue;
+      this.consultants.delete(consultant);
+      void consultant.close();
+    }
     for (const listener of this.listeners) listener();
   }
 }

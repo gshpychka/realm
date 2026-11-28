@@ -324,6 +324,12 @@ test("regular Pi names its model, insets extension statuses, counts down dialogs
     // The footer names the model as Pi's registry does, never by its id.
     assert.match(start.split("\n").at(-1) ?? "", /Fake One/);
     assert.doesNotMatch(start, /fake-1/);
+    // On a small screen the extension's rows take the welcome's last keys, never how to quit.
+    await app.terminal.resize(80, 24);
+    await waitMatch(app.terminal, /twice +ctrl\+d +quit *\n━[\s\S]*\n demo status *\n.*Fake One/);
+    await app.terminal.waitIdle();
+    await app.capture("pi-polish-start-80");
+    await app.terminal.resize(100, 28);
     await app.terminal.submit("/ask");
     await app.terminal.waitText("Allow rm -rf build?");
     const counting = await waitMatch(app.terminal, /auto-cancels in [3-6]s/);

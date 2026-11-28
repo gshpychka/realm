@@ -130,9 +130,26 @@ export function consultantArgs(launch: ConsultLaunch, model: ConsultModel, sessi
   ];
 }
 
+/** What a consultant is asked, and what the rows that show the question name it by. */
+export interface Asking {
+  /** What the consultant reads. */
+  question: string;
+  /** What the question is about, on one row. */
+  topic: string;
+}
+
 /** What a consultant is asked when the operator asks nothing in particular. */
-export const DEFAULT_QUESTION =
-  "Review the conversation so far: is the approach sound, what mistakes do you see, what are the risks, and what would you do differently?";
+export const REVIEW: Asking = {
+  question:
+    "Review the conversation so far: is the approach sound, what mistakes do you see, what are the risks, and what would you do differently?",
+  topic: "review of the conversation so far",
+};
+
+/** The operator's own question, named by its first line. */
+export const asking = (question: string): Asking => ({
+  question,
+  topic: question.split("\n")[0]?.trim() ?? "",
+});
 
 /**
  * A consultant's first prompt: the conversation the operator had with `agent`, the model,
@@ -185,25 +202,28 @@ export function digestBudget(models: readonly ConsultModel[]): number {
 /** Lines of a reply its question quotes, which find it in the conversation. */
 const QUOTED = 3;
 
-/** What a consultant is asked of one of `agent`'s replies, quoting its first lines. */
-export function replyQuestion(reply: string, agent: string): string {
+/**
+ * What a consultant is asked of one of `agent`'s replies, quoting its first lines, which find it
+ * in the conversation; named by the first of them, which tells one reply from another.
+ */
+export function replyQuestion(reply: string, agent: string): Asking {
   const lines = reply
     .split("\n")
     .map((line) => line.trimEnd())
     .filter(Boolean)
     .slice(0, QUOTED);
-  return [
-    `Weigh in on this reply from ${agent}: is it right, and what would you do differently?`,
-    ...lines.map((line) => `> ${line}`),
-  ].join("\n");
+  return {
+    question: [
+      `Weigh in on this reply from ${agent}: is it right, and what would you do differently?`,
+      ...lines.map((line) => `> ${line}`),
+    ].join("\n"),
+    topic: `on “${lines[0]?.trim() ?? ""}”`,
+  };
 }
 
-/** The first line of a question, as a card's one row names it. */
-export const questionLine = (question: string): string => question.split("\n")[0]?.trim() ?? "";
-
-/** What asks the agent to weigh `opinion`, which it has just read. */
+/** What asks the agent to weigh `opinion`, which it has just read, named by its model and its topic. */
 export function addressPrompt(opinion: Opinion): string {
-  return `Address the second opinion from ${opinionModel(opinion)} above, on “${questionLine(opinion.question)}”: say where you agree or disagree and why, then act on what holds up.`;
+  return `Address the second opinion from ${opinionModel(opinion)} above (${opinion.topic}): say where you agree or disagree and why, then act on what holds up.`;
 }
 
 /** A conversation's custom entry that records a second opinion. */

@@ -18,15 +18,17 @@ import type { Reply } from "../transcript.ts";
 import type { Question } from "../use-ask.ts";
 import type { SessionController } from "../use-session.ts";
 import {
+  type Asking,
   addressPrompt,
+  asking,
   type ConsultModel,
-  DEFAULT_QUESTION,
   digestBudget,
   firstPrompt,
   modelAt,
+  REVIEW,
   replyQuestion,
 } from "./consult.ts";
-import { Consults, type LiveConsult, working } from "./consults.ts";
+import { Consults, type LiveConsult, stoppable, working } from "./consults.ts";
 
 export interface UseConsultOptions {
   pi: PiControls | undefined;
@@ -37,6 +39,11 @@ export interface UseConsultOptions {
   ask(question: Question): Promise<string | null>;
   /** Shows a passing hint. */
   flash(text: string): () => void;
+  /**
+   * Whether what would go to the agent has to wait, as while a move through the session's tree
+   * summarizes the branch it leaves; it says so itself.
+   */
+  held(): boolean;
 }
 
 /** Regular Pi's second opinions, as the App reaches them. */
@@ -55,8 +62,10 @@ export interface Consult {
   address(opinion: Opinion): void;
   /** Asks the consultant that gave `opinion` a follow-up the operator writes; its answer records as a new opinion. */
   reply(opinion: Opinion): void;
-  /** Takes the card `id` away, stopping its consultant when it is at work. */
+  /** Takes the card `id` away, stopping its consultant when it is at work, and says so. */
   cancel(id: string): void;
+  /** What the card `consult` says, as text: the reply so far, and why it failed when it did. */
+  textOf(consult: LiveConsult): Promise<string>;
 }
 
 const NONE: readonly LiveConsult[] = [];
@@ -73,9 +82,17 @@ type PiModel = RpcData<"get_available_models">["models"][number];
 /**
  * Second opinions from other models on regular Pi's conversation, each answered by a Pi of its
  * own with read-only tools, recorded in the conversation as it settles. They outlast session
- * replacements; their Pi processes end with the frontend. Null for Dura.
+ * replacements; a consultant's Pi runs while its card shows. Null for Dura.
  */
-export function useConsult({ pi, session, editor, pick, ask, flash }: UseConsultOptions): Consult | null {
+export function useConsult({
+  pi,
+  session,
+  editor,
+  pick,
+  ask,
+  flash,
+  held,
+}: UseConsultOptions): Consult | null {
   const [consults] = useState(() =>
     pi ? new Consults({ launch: pi.consult, main: pi.conversation }) : null,
   );
@@ -96,19 +113,18 @@ export function useConsult({ pi, session, editor, pick, ask, flash }: UseConsult
   };
 
   /** Asks `models` `question` about the conversation as it is. */
-  const begin = async (models: readonly ConsultModel[], question: string) => {
-    const { digest, omitted } = await conversation.bridge({
+  const begin = async (models: readonly ConsultModel[], question: Asking) => {
+    const { digest, omitted, at } = await conversation.bridge({
       kind: "consult-context",
       budget: digestBudget(models),
     });
-    const about = latest.current.state?.sessionFile;
-    if (!digest || !about) return notify("info", NOTHING_YET);
-    const prompt = firstPrompt({ digest, omitted, question, agent: agent() });
-    consults.start(models, question, prompt, about, conversation.workspace().cwd);
+    if (!digest) return notify("info", NOTHING_YET);
+    const prompt = firstPrompt({ digest, omitted, question: question.question, agent: agent() });
+    consults.start(models, question, prompt, at, conversation.workspace().cwd);
   };
 
   /** The list of models to ask `question`; `chosen` runs once they are chosen. */
-  const choose = (question: string, chosen?: () => void) => {
+  const choose = (question: Asking, chosen?: () => void) => {
     const { view, state } = latest.current;
     if (!view.entries.some((entry) => entry.kind === "user")) return notify("info", NOTHING_YET);
     void conversation
@@ -123,12 +139,19 @@ export function useConsult({ pi, session, editor, pick, ask, flash }: UseConsult
           icon: providerMark(model.provider),
           value: address(model),
         }));
-        // A declared model Pi does not list is offered all the same: asked, Pi says why it cannot answer.
+        // A declared model Pi does not list is offered all the same: asked, Pi says why it cannot
+        // answer. One that names no provider cannot be asked at all, which its row says.
         const unlisted = declared
           .filter((each) => !listed.some((item) => item.value === each))
-          .map((each): PickItem => ({ label: each, detail: "declared · Pi does not list it", value: each }));
+          .map(
+            (each): PickItem => ({
+              label: each,
+              detail: modelAt(each) ? "declared · Pi does not list it" : "declared · not provider/id",
+              value: each,
+            }),
+          );
         const marked = declared.length
-          ? declared
+          ? declared.filter((each) => modelAt(each))
           : consults.chosen.filter((each) => listed.some((item) => item.value === each));
         // The marked models lead the list, the conversation's own after them, so all are in view as it opens.
         const rank = (item: PickItem) => {
@@ -137,13 +160,11 @@ export function useConsult({ pi, session, editor, pick, ask, flash }: UseConsult
         };
         const items = [...unlisted, ...listed].sort((a, b) => rank(a) - rank(b));
         pick({
-          title: "second opinion · space marks several",
+          title: "second opinion · tab marks several",
           items,
           multiple: true,
           marked,
           onPick: (_, values) => {
-            chosen?.();
-            consults.chosen = values;
             const picked = values.flatMap((value): ConsultModel[] => {
               const model = models.find((each) => address(each) === value);
               if (!model) {
@@ -160,6 +181,13 @@ export function useConsult({ pi, session, editor, pick, ask, flash }: UseConsult
                 },
               ];
             });
+            const unaskable = values.filter((value) => !modelAt(value));
+            if (unaskable.length)
+              notify("warning", `/consult: name ${unaskable.join(", ")} as provider/id to ask it.`);
+            // Nothing asked leaves the draft as it was.
+            if (!picked.length) return;
+            chosen?.();
+            consults.chosen = values;
             void begin(picked, question).catch(failed);
           },
         });
@@ -172,19 +200,29 @@ export function useConsult({ pi, session, editor, pick, ask, flash }: UseConsult
     working: live.filter(working).map((consult) => modelName(consult.model)),
     run(args) {
       if (args === "cancel") {
-        const cancelled = consults.cancelAll();
-        if (cancelled === 0) notify("info", NOTHING_TO_CANCEL);
-        else flash(`cancelled ${counted(cancelled, "second opinion")}`);
+        const { stopped, cleared } = consults.cancelAll();
+        // An answer already recorded joins the conversation all the same, so nothing is said of it.
+        const said = [
+          stopped && `cancelled ${counted(stopped, "second opinion")}`,
+          cleared && `cleared ${stopped ? cleared : counted(cleared, "second opinion")} that failed`,
+        ].filter(Boolean);
+        if (said.length) flash(said.join(" · "));
+        else notify("info", NOTHING_TO_CANCEL);
         return;
       }
-      choose(args || DEFAULT_QUESTION);
+      choose(args ? asking(args) : REVIEW);
     },
     fromDraft() {
+      if (held()) return;
       const draft = editor.current?.text().trim() ?? "";
-      choose(draft || DEFAULT_QUESTION, draft ? () => editor.current?.set("") : undefined);
+      choose(draft ? asking(draft) : REVIEW, draft ? () => editor.current?.set("") : undefined);
     },
-    weighIn: (reply) => choose(replyQuestion(reply.text, agent())),
-    address: (opinion) => void latest.current.send(addressPrompt(opinion)),
+    weighIn(reply) {
+      if (!held()) choose(replyQuestion(reply.text, agent()));
+    },
+    address(opinion) {
+      if (!held()) void latest.current.send(addressPrompt(opinion));
+    },
     reply(opinion) {
       const { session: continued } = opinion;
       if (!continued) return notify("warning", "That opinion has no session of its own to continue.");
@@ -195,14 +233,14 @@ export function useConsult({ pi, session, editor, pick, ask, flash }: UseConsult
         placeholder: "your follow-up",
         submits: "asks it",
       })
-        .then((text) => {
+        .then(async (text) => {
           const question = text?.trim();
-          const about = latest.current.state?.sessionFile;
-          if (!question || !about) return;
+          if (!question) return;
+          const about = await conversation.bridge({ kind: "position" });
           if (
             !consults.followUp(
               { ...opinion, session: continued },
-              question,
+              asking(question),
               about,
               conversation.workspace().cwd,
             )
@@ -211,6 +249,12 @@ export function useConsult({ pi, session, editor, pick, ask, flash }: UseConsult
         })
         .catch(failed);
     },
-    cancel: (id) => consults.cancel(id),
+    cancel(id) {
+      const card = consults.cancel(id);
+      if (!card) return;
+      const name = modelName(card.model);
+      flash(stoppable(card) ? `cancelled ${name}'s second opinion` : `cleared ${name}'s second opinion`);
+    },
+    textOf: (consult) => consults.textOf(consult),
   };
 }

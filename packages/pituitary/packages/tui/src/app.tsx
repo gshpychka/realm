@@ -203,7 +203,16 @@ export function App({
   const [below, setBelow] = useState(false);
   const [picker, setPicker] = useState<PickerSpec | null>(null);
   const regular = usePi({ pi, session, editor, pick: setPicker, ask: asking.ask, flash, terminal: handoff });
-  const consult = useConsult({ pi, session, editor, pick: setPicker, ask: asking.ask, flash });
+  const consult = useConsult({
+    pi,
+    session,
+    editor,
+    pick: setPicker,
+    ask: asking.ask,
+    flash,
+    // Defined further on; it is asked only as keys arrive.
+    held: () => awaitingSummary(),
+  });
   const consulting = consult?.working;
   const piKeys = regular?.keymap;
   const keymap = useMemo(() => piKeys ?? keys ?? loadKeymap(), [piKeys, keys]);
@@ -635,7 +644,7 @@ export function App({
     },
     "app.consult": () => {
       if (!consult) return false;
-      if (!awaitingSummary()) consult.fromDraft();
+      consult.fromDraft();
       return true;
     },
     "app.team.tasks": () => {

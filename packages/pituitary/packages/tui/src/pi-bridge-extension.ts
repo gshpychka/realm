@@ -26,6 +26,7 @@ import {
   encodeRuntime,
   OPINION_TYPE,
   opinionText,
+  type Position,
   RUNTIME_STATUS,
   type SessionSummary,
   type TreeKind,
@@ -126,9 +127,17 @@ async function answer(pi: ExtensionAPI, call: BridgeCall, ctx: ExtensionCommandC
         ctx.sessionManager.getEntries(),
         ctx.sessionManager.getLeafId(),
       );
-      return digest(convertToLlm(messages), call.budget);
+      return { ...digest(convertToLlm(messages), call.budget), at: position(ctx) };
     }
-    case "record-opinion":
+    case "position":
+      return position(ctx);
+    case "record-opinion": {
+      const { session, leaf } = call.about;
+      if (ctx.sessionManager.getSessionId() !== session)
+        throw new Error("Not recorded: Pi has moved to another session since you asked.");
+      // The turns that followed keep the entry on the branch; a move elsewhere in the tree leaves it off.
+      if (leaf !== null && !ctx.sessionManager.getBranch().some((entry) => entry.id === leaf))
+        throw new Error("Not recorded: the session has moved to another point of its tree since you asked.");
       // Shown in the conversation, and the model's to read from its next request; it starts no run.
       pi.sendMessage(
         {
@@ -140,8 +149,15 @@ async function answer(pi: ExtensionAPI, call: BridgeCall, ctx: ExtensionCommandC
         { triggerTurn: false },
       );
       return null;
+    }
   }
 }
+
+/** Where the conversation stands: the session's id, which one kept in memory has too, and its leaf. */
+const position = (ctx: ExtensionCommandContext): Position => ({
+  session: ctx.sessionManager.getSessionId(),
+  leaf: ctx.sessionManager.getLeafId(),
+});
 
 type LlmMessage = ReturnType<typeof convertToLlm>[number];
 
