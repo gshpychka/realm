@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
@@ -9,6 +9,7 @@ import {
   pastGrace,
   press,
   RUNNING,
+  survivors,
   unscrolled,
   waitGone,
   waitMatch,
@@ -90,6 +91,21 @@ export default function (pi) {
 }
 `;
 
+/**
+ * Resolves once `count` Pi processes run with the launch's HOME: its own, and a consultant's for
+ * each card at work. Pi retitles its process `pi`.
+ */
+async function pisRunning(app: PiLaunch, count: number, timeoutMs = 10_000): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    const running = survivors(app.home).filter((line) => /^\d+ pi$/.test(line));
+    if (running.length === count) return;
+    if (Date.now() - start > timeoutMs)
+      throw new Error(`${running.length} Pi processes run, not ${count}:\n${running.join("\n")}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 /** Resolves once `file` exists. */
 async function exists(file: string, timeoutMs = 15_000): Promise<void> {
   const start = Date.now();
@@ -120,7 +136,12 @@ async function consult(app: PiLaunch, open: () => Promise<void>) {
 }
 
 test("a second opinion streams in a card, joins the conversation as an opinion the model reads next, and takes a reply", async () => {
-  const app = await launchPi({ apiModels: [MAIN, REVIEWER], env: DECLARED, extensions: { "note.ts": NOTE } });
+  const app = await launchPi({
+    apiModels: [MAIN, REVIEWER],
+    env: DECLARED,
+    extensions: { "note.ts": NOTE },
+    record: true,
+  });
   try {
     writeFileSync(join(app.cwd, "cache.ts"), "export const cache = new Map();\n");
     await turn(app, "plan the cache", "Use an LRU cache keyed by path.");
@@ -146,14 +167,16 @@ test("a second opinion streams in a card, joins the conversation as an opinion t
     assert.match(live, /Reviewer weighing in/);
 
     const [asked] = requestsTo(app, REVIEWER);
-    // The reviewer reads the conversation and the question, and works read-only.
-    assert.match(asked?.prompt ?? "", /\[User\]: plan the cache/);
-    assert.match(asked?.prompt ?? "", /\[Assistant\]: Use an LRU cache keyed by path\./);
-    assert.match(asked?.prompt ?? "", /The operator's question: is the cache plan sound\?/);
+    // The reviewer reads the conversation and the operator's question.
+    assert.match(asked?.prompt ?? "", /plan the cache/);
+    assert.match(asked?.prompt ?? "", /Use an LRU cache keyed by path\./);
+    assert.match(asked?.prompt ?? "", /is the cache plan sound\?/);
+    // It works read-only: it reads, and has no tool that writes, edits or runs a command.
     const tools = ((asked?.body.tools ?? []) as { function: { name: string } }[]).map(
       (tool) => tool.function.name,
     );
-    assert.deepEqual(tools.sort(), ["find", "grep", "ls", "read"]);
+    assert.ok(tools.includes("read"), tools.join(", "));
+    for (const changing of ["write", "edit", "bash"]) assert.ok(!tools.includes(changing), tools.join(", "));
 
     answer.release();
     await app.terminal.waitText("Reviewer weighs in");
@@ -166,17 +189,19 @@ test("a second opinion streams in a card, joins the conversation as an opinion t
     );
     assert.match(recorded, /1 tool call/);
 
-    // The model reads the opinion with its next request.
+    // The model reads the opinion, by whom it is, with its next request.
     await turn(app, "go ahead", "Bounded it.");
-    assert.match(
-      said(requestsTo(app, MAIN).at(-1)),
-      /Second opinion from Reviewer[^"]*Verdict: sound, but bound/,
-    );
+    assert.match(said(requestsTo(app, MAIN).at(-1)), /Reviewer[^"]*Verdict: sound, but bound/);
 
-    // On the opinion, a asks the agent to address it.
+    // On the opinion, c copies its answer, and a asks the agent to address it.
     await app.terminal.write(CTRL_F);
     await press(app.terminal, UP, "a address · r reply");
     await app.capture("consult-opinion-cursor");
+    await app.terminal.write("c");
+    await app.terminal.waitText("copied the opinion");
+    assert.equal(copied(app.raw()), "Verdict: sound, but bound the cache's size.");
+    // The hint stands in for the cursor's keys until it passes.
+    await waitGone(app.terminal, /copied the opinion/);
     app.provider.replyTo(MAIN.id, "Agreed; the bound stays.");
     await app.terminal.write("a");
     await app.terminal.waitText("Agreed; the bound stays.");
@@ -258,6 +283,13 @@ test("opinions that settle while the agent works wait on cards titled at any wid
     );
     assert.match(beside, /Bound it at a thousand entries\./);
     assert.doesNotMatch(beside, /weighs in/);
+    // Recorded answers join all the same, so /consult cancel has nothing to stop and leaves them.
+    await app.terminal.submit("/consult cancel");
+    await app.terminal.waitText("No second opinion is under way.");
+    assert.match(
+      await app.terminal.text(),
+      /recorded · joins as the turn ends[\s\S]*recorded · joins as the turn/,
+    );
 
     await app.terminal.resize(80, 24);
     await waitMatch(app.terminal, /╭─ ◆ Claude Haiku 4\.5 · recorded[^\n]*\n[\s\S]*╭─ ◆ Second Opinion/);
@@ -280,15 +312,19 @@ test("opinions that settle while the agent works wait on cards titled at any wid
     second.open();
     await app.terminal.waitText("Bounded the cache, as the reviewers said.");
     await app.terminal.waitIdle();
+    const joined = await app.capture("consult-joined-run");
+    // The opinions join after the first read, the steer after the second, and the run's answer
+    // follows it: nothing waited for the run to end, and nothing runs after it.
     assert.match(
-      await app.capture("consult-joined-run"),
-      /◆ Second Opinion Model With A Long Name weighs in[\s\S]*Bounded the cache, as the reviewers said\./,
+      joined,
+      /◆ Second Opinion Model With A Long Name weighs in[\s\S]*▸ \S+ read cache\.ts[\s\S]*▌ Address the second opinion from [\s\S]*● Bounded the cache, as the reviewers said\./,
     );
+    assert.doesNotMatch(joined, /Reply to:/);
     const [read, addressed] = requestsTo(app, MAIN).slice(-2);
-    // The run's request after the turn the opinions joined read them, as it would a steer.
-    assert.match(said(read), /Second opinion from Claude Haiku 4\.5[^"]*Bound it\./);
-    assert.match(said(read), /Bound it at a thousand entries\./);
-    // The one after it read the operator's steer.
+    // The run's request after the turn the opinions joined read them, by whom each is.
+    assert.match(said(read), /Claude Haiku 4\.5[^"]*Bound it\./);
+    assert.match(said(read), /Second Opinion Model With A Long Name[^"]*Bound it at a thousand entries\./);
+    // The one after it, which the run's answer answered, read the operator's steer.
     assert.match(
       addressed?.prompt ?? "",
       /Address the second opinion from (Claude Haiku 4\.5|Second Opinion Model With A Long Name) above/,
@@ -326,12 +362,12 @@ test("a long conversation reaches the reviewer trimmed to its context window, it
     const [request] = requestsTo(app, REVIEWER);
     const prompt = request?.prompt ?? "";
     assert.ok(main.length > 20_000, `the conversation holds ${main.length} characters`);
-    // The latest turns arrive whole, the oldest are left out and say so, and the default question is asked.
-    for (const step of [5, 6])
-      assert.match(prompt, new RegExp(`\\[User\\]: step ${step}\\n\\n\\[Assistant\\]: TURN-${step} `));
+    // The latest turns arrive whole, their prompts and their replies to the end, and the oldest are left out.
+    for (const step of [5, 6]) {
+      assert.ok(prompt.includes(`step ${step}`), `step ${step} is not among what the reviewer read`);
+      assert.ok(prompt.includes(`TURN-${step} ${filler}END-${step}`), `turn ${step} did not arrive whole`);
+    }
     assert.doesNotMatch(prompt, /TURN-1 |TURN-2 /);
-    assert.match(prompt, /\[\d earlier turns left out\]/);
-    assert.match(prompt, /The operator's question: Review the conversation so far/);
     // Everything the reviewer is sent, its tools too, fits its 6000 tokens at four characters a token.
     const sent = said(request).length + JSON.stringify(request?.body.tools ?? []).length;
     assert.ok(sent < 6000 * 4, `the reviewer was sent ${sent} characters`);
@@ -340,31 +376,51 @@ test("a long conversation reaches the reviewer trimmed to its context window, it
   }
 });
 
-test("the reviewer takes the operator's own extensions and context-file choice but not their other flags, and keeps its session apart", async () => {
-  const scratch = mkdtempSync("/tmp/pituitary-consult-");
-  const extension = join(scratch, "marker.ts");
-  writeFileSync(
-    extension,
-    `export default function (pi) {
+test("the reviewer takes the operator's own extensions, found from where Pituitary started, and context-file choice but not their other flags, and keeps its session apart", async () => {
+  // A session of another project, which the operator resumes from the one Pituitary starts in.
+  const first = await launchPi({ apiModels: [MAIN, REVIEWER], env: DECLARED, project: "elsewhere" });
+  let again: PiLaunch | undefined;
+  try {
+    await turn(first, "plan the cache", "Use an LRU cache keyed by path.");
+    await first.terminal.write(CTRL_D);
+    await first.terminal.waitText("Resume: pituitary --session");
+    // A context file Pi would read where the session works, but for the operator's --no-context-files.
+    writeFileSync(join(first.cwd, "AGENTS.md"), "CONTEXT-FILE-MARKER\n");
+    // The operator's extension, named from the project Pituitary starts in, where the session does not work.
+    const here = join(first.home, "sample");
+    mkdirSync(here, { recursive: true });
+    writeFileSync(
+      join(here, "marker.ts"),
+      `export default function (pi) {
   pi.on("before_agent_start", (event) => ({ systemPrompt: event.systemPrompt + "\\nOPERATOR-EXTENSION-MARKER" }));
 }
 `,
-  );
-  const app = await launchPi({
-    apiModels: [MAIN, REVIEWER],
-    env: DECLARED,
-    argv: ["--no-context-files", "-e", extension, "--append-system-prompt", "MAIN-ONLY-INSTRUCTIONS"],
-  });
-  try {
-    // A context file Pi would read, but for the operator's --no-context-files.
-    writeFileSync(join(app.cwd, "AGENTS.md"), "CONTEXT-FILE-MARKER\n");
-    await turn(app, "plan the cache", "Use an LRU cache keyed by path.");
+    );
+    const app = await launchPi({
+      from: first,
+      apiModels: [MAIN, REVIEWER],
+      env: DECLARED,
+      argv: [
+        "--resume",
+        "--no-context-files",
+        "-e",
+        "marker.ts",
+        "--append-system-prompt",
+        "MAIN-ONLY-INSTRUCTIONS",
+      ],
+    });
+    again = app;
+    await app.terminal.waitText("resume · every project's sessions");
+    await app.terminal.waitIdle();
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Working in ~/elsewhere, where this session started");
+    await turn(app, "bound it?", "Bounded.");
     app.provider.replyTo(REVIEWER.id, "Sound.");
     await consult(app, () => app.terminal.submit("/consult"));
     await app.terminal.waitText("Reviewer weighs in");
     await app.terminal.waitIdle();
 
-    const main = said(requestsTo(app, MAIN)[0]);
+    const main = said(requestsTo(app, MAIN).at(-1));
     const reviewer = said(requestsTo(app, REVIEWER)[0]);
     assert.match(main, /OPERATOR-EXTENSION-MARKER/);
     assert.match(main, /MAIN-ONLY-INSTRUCTIONS/);
@@ -382,14 +438,15 @@ test("the reviewer takes the operator's own extensions and context-file choice b
     assert.match(resume, /plan the cache/);
     assert.doesNotMatch(resume, /second opinion/);
   } finally {
-    await app.close();
-    rmSync(scratch, { recursive: true, force: true });
+    await again?.close();
+    await first.close();
   }
 });
 
-test("alt+o asks about the draft, which empties once the models are chosen, and w asks about a reply its opinion names", async () => {
+test("alt+o, which the welcome offers, asks about the draft, which empties once the models are chosen, and w asks about a reply its opinion names", async () => {
   const app = await launchPi({ apiModels: [MAIN, REVIEWER], env: DECLARED });
   try {
+    assert.match(await app.capture("consult-welcome"), /alt\+o +.*ask for a second opinion/);
     await turn(app, "plan the cache", "Use an LRU cache keyed by path.\n\nEvict the oldest entry first.");
     await app.terminal.type("is the eviction order right?");
     await app.terminal.write(ALT_O);
@@ -403,10 +460,7 @@ test("alt+o asks about the draft, which empties once the models are chosen, and 
     await consult(app, () => app.terminal.write(ALT_O));
     await app.terminal.waitText("The order is right.");
     await app.terminal.waitText("» ask pi");
-    assert.match(
-      requestsTo(app, REVIEWER)[0]?.prompt ?? "",
-      /The operator's question: is the eviction order right\?/,
-    );
+    assert.match(requestsTo(app, REVIEWER)[0]?.prompt ?? "", /is the eviction order right\?/);
 
     await app.terminal.write(CTRL_F);
     await press(app.terminal, UP, "w weigh in");
@@ -415,16 +469,40 @@ test("alt+o asks about the draft, which empties once the models are chosen, and 
     await consult(app, () => app.terminal.write("w"));
     await app.terminal.waitText("Evicting the oldest is right for this load.");
     await app.terminal.waitIdle();
+    // The reviewer is asked about the reply, which its question quotes beside the conversation's own copy.
     const weighed = requestsTo(app, REVIEWER).at(-1)?.prompt ?? "";
-    assert.match(
-      weighed,
-      /The operator's question: Weigh in on this reply from Main[^\n]*\n> Use an LRU cache keyed by path\.\n> Evict the oldest entry first\./,
-    );
+    for (const line of ["Use an LRU cache keyed by path.", "Evict the oldest entry first."])
+      assert.ok(weighed.split(line).length - 1 >= 2, `the question does not quote "${line}":\n${weighed}`);
     // The opinion says which reply it weighs in on, by its first line.
     assert.match(
       unscrolled(await app.capture("consult-weighed")),
       /◆ Reviewer weighs in *\n +on “Use an LRU cache keyed by path\.” *\n/,
     );
+  } finally {
+    await app.close();
+  }
+});
+
+test("alt+o bound to open every box does that, and the welcome no longer offers a second opinion", async () => {
+  const app = await launchPi({
+    apiModels: [MAIN, REVIEWER],
+    env: DECLARED,
+    keybindings: { "app.tools.expand": "alt+o" },
+  });
+  try {
+    const welcome = await app.capture("consult-welcome-rebound");
+    assert.match(welcome, /alt\+o +open every box/);
+    assert.doesNotMatch(welcome, /second opinion/);
+    writeFileSync(join(app.cwd, "cache.ts"), "export const cache = new Map();\n");
+    app.provider.replyTo(MAIN.id, { tool: "read", arguments: { path: "cache.ts" } }, "Read it.");
+    await app.terminal.submit("read the cache");
+    await app.terminal.waitText("Read it.");
+    await app.terminal.waitIdle();
+    assert.doesNotMatch(await app.terminal.text(), /export const cache/);
+    await app.terminal.write(ALT_O);
+    await app.terminal.waitText("export const cache = new Map();");
+    await app.terminal.waitIdle();
+    assert.doesNotMatch(await app.capture("consult-rebound-expanded"), new RegExp(LIST));
   } finally {
     await app.close();
   }
@@ -455,6 +533,8 @@ test("reviewers stand side by side where each has 60 columns and stacked where n
     assert.match(beside, /… \d+ earlier lines/);
     assert.doesNotMatch(beside, /Point 1 about/);
     assert.match(beside, /▌ plan the cache/);
+    // Each reviewer answers in a Pi of its own, beside the conversation's.
+    await pisRunning(app, 3);
 
     // Plain esc, pressed again and again, leaves them answering.
     for (let press = 0; press < 3; press++) await app.terminal.keyboard.press("Escape");
@@ -475,7 +555,7 @@ test("reviewers stand side by side where each has 60 columns and stacked where n
     await waitGone(app.terminal, /x cancel/);
     assert.match(await app.terminal.text(), /╭─ ◆ Reviewer · [\s\S]*╭─ ◆ Second · /);
 
-    // x on a card stops that one alone, and says so.
+    // x on a card stops that one alone, its Pi ends, and it says so.
     await app.terminal.write(CTRL_F);
     await app.terminal.waitText("w weigh in");
     await press(app.terminal, DOWN, "x cancel");
@@ -483,13 +563,24 @@ test("reviewers stand side by side where each has 60 columns and stacked where n
     await waitGone(app.terminal, /╭─ ◆ Reviewer/);
     await app.terminal.waitText("cancelled Reviewer's second opinion");
     await app.terminal.waitText("╭─ ◆ Second · ");
+    await pisRunning(app, 2);
+    first.release();
     await app.terminal.keyboard.press("Escape");
     await app.terminal.waitText("◆ Second weighing in");
     assert.match(await app.capture("consult-one-cancelled"), /╭─ ◆ Second · /);
     await app.terminal.submit("/consult cancel");
     await waitGone(app.terminal, /╭─ ◆ Second/);
     await app.terminal.waitText("cancelled 1 second opinion");
+    await pisRunning(app, 1);
+    second.release();
     assert.doesNotMatch(await app.capture("consult-cancelled"), /weighing in|weighs in/);
+    // What the cancelled reviewers would have answered never joins the conversation.
+    await turn(app, "carry on", "Carrying on.");
+    assert.doesNotMatch(await app.terminal.text(), /weighs in/);
+    assert.doesNotMatch(
+      said(requestsTo(app, MAIN).at(-1)),
+      /Bound the cache before it grows|Shard the cache/,
+    );
   } finally {
     first.release();
     second.release();
@@ -568,13 +659,16 @@ test("a reviewer that cannot answer says why on its card, in Pi's words, until c
   }
 });
 
-test("an opinion about a point of the tree the session has since left is not recorded, and w waits while the move summarizes", async () => {
+test("an opinion about a point of the tree the session has since left is not recorded, and w and a wait while the move summarizes", async () => {
   const app = await launchPi({ apiModels: [MAIN, REVIEWER], env: DECLARED });
   const answer = held("Verdict: beta is right.");
   const summary = held("The branch asked beta.");
   try {
     await turn(app, "alpha", "Alpha answer.");
     await turn(app, "beta", "Beta answer.");
+    app.provider.replyTo(REVIEWER.id, "Beta holds up.");
+    await consult(app, () => app.terminal.submit("/consult"));
+    await app.terminal.waitText("Reviewer weighs in");
     app.provider.replyTo(REVIEWER.id, answer.reply);
     await consult(app, () => app.terminal.submit("/consult"));
     await app.terminal.waitText("Verdict: beta is right.");
@@ -592,9 +686,14 @@ test("an opinion about a point of the tree the session has since left is not rec
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText("summarizing the branch you leave");
 
-    // Pi would answer on the branch the move leaves, so w on its reply waits, as the draft does.
+    // Pi would answer on the branch the move leaves, so a on the opinion and w on a reply wait, as the draft does.
     await app.terminal.write(CTRL_F);
-    await app.terminal.waitText("w weigh in");
+    await app.terminal.waitText("a address · r reply");
+    await app.terminal.write("a");
+    await app.terminal.waitText("the draft waits for the branch summary");
+    await waitGone(app.terminal, /the draft waits for the branch summary/);
+    await app.terminal.write(CTRL_F);
+    await press(app.terminal, UP, "w weigh in");
     await app.terminal.write("w");
     await app.terminal.waitText("the draft waits for the branch summary");
     assert.doesNotMatch(await app.terminal.text(), new RegExp(LIST));
@@ -611,6 +710,9 @@ test("an opinion about a point of the tree the session has since left is not rec
     // The card keeps the answer, which joins no conversation.
     assert.match(cardOn(refused, /╭─ ◆ Reviewer/), /Verdict: beta is right\./);
     assert.doesNotMatch(refused, /weighs in/);
+    // Nor did the agent hear of the opinion on the branch the move left.
+    assert.doesNotMatch(refused, /Address the second opinion/);
+    assert.ok(requestsTo(app, MAIN).every((request) => !/Address the second opinion/.test(request.prompt)));
   } finally {
     answer.release();
     summary.release();
