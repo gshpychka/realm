@@ -95,6 +95,10 @@ class Conversation:
         # Stream position just past the last queued audio that carries sound.
         self._sound_end: int | None = None
         self._phase: Phase | None = None
+        self._started = time.monotonic()
+        self._first_mic = False
+        self._first_sound_sample: int | None = None
+        self._first_sound_played = False
         self._last_activity = time.monotonic()
         self._last_played = time.monotonic()
         self._ended = asyncio.Event()
@@ -104,6 +108,7 @@ class Conversation:
 
     async def run(self) -> EndReason:
         started = time.monotonic()
+        self._started = started
         # The device streams from its first frame; the session holds what arrives before it is open.
         device = asyncio.create_task(self._device_loop(), name="device")
         running = asyncio.current_task()
@@ -183,6 +188,10 @@ class Conversation:
 
     def play(self, samples: np.ndarray) -> None:
         if len(samples) and (samples.max() > _SILENCE_PEAK or samples.min() < -_SILENCE_PEAK):
+            if self._first_sound_sample is None:
+                first = int(np.flatnonzero((samples > _SILENCE_PEAK) | (samples < -_SILENCE_PEAK))[0])
+                self._first_sound_sample = self._sent_samples + self._pending_samples + first
+                log.info("startup: first audible model audio at %.1f ms", (time.monotonic() - self._started) * 1000)
             self._sound_end = self._sent_samples + self._pending_samples + len(samples)
         self._pending.append(samples)
         self._pending_samples += len(samples)
@@ -216,12 +225,22 @@ class Conversation:
                     continue
                 match frame:
                     case MicFrame():
+                        if not self._first_mic:
+                            self._first_mic = True
+                            log.info("startup: first mic frame at %.1f ms", (time.monotonic() - self._started) * 1000)
                         self._aligner.add_mic(frame)
                         for block in self._aligner.blocks():
                             await self._process_block(block)
                     case PlayedReport():
                         self._aligner.add_played(frame)
                         self._last_played = time.monotonic()
+                        if (
+                            not self._first_sound_played
+                            and self._first_sound_sample is not None
+                            and self._aligner.played_speaker_samples > self._first_sound_sample
+                        ):
+                            self._first_sound_played = True
+                            log.info("startup: first audible audio played at %.1f ms", (self._last_played - self._started) * 1000)
         except ConnectionClosed:
             pass
         self._end(EndReason.DEVICE_GONE)

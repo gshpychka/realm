@@ -61,7 +61,8 @@ sudo -u voice-broker curl --fail --unix-socket /run/voice-broker-hermes/agent.so
   `task` is conversation text; `instructions` is execution guidance.
   The service deadline is 90 seconds.
 - `GET /history?limit=N` returns `{messages: [{role, text, timestamp}]}`,
-  with timestamps in seconds.
+  with timestamps in seconds, from the active session's persisted turns. Live
+  loads history concurrently with its connection and skips it after 250 ms.
 - `GET /health` reports readiness and the active canonical session ID.
 
 ### Deploy

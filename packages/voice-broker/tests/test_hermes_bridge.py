@@ -137,9 +137,15 @@ def bridge(gateway: Gateway, **overrides: Any) -> Bridge:
     async def resolve() -> str:
         return RESOLVED
 
+    async def read_history(limit: int) -> list[dict[str, Any]]:
+        if reason := gateway.refuse.get("session.history"):
+            raise Unavailable(reason)
+        return gateway.history[-limit:]
+
     fields: dict[str, Any] = {
         "connect": gateway.connect,
         "resolve": resolve,
+        "read_history": read_history,
         "refused": Refused,
         "lost": Lost,
         "consult_timeout_s": 5.0,
@@ -339,21 +345,16 @@ def test_no_active_session_submits_nothing(gateway: Gateway):
 
 def test_history_is_the_canonical_sessions_newest(gateway: Gateway):
     gateway.history = [
-        {"role": "user", "text": "first", "timestamp": 1.0, "row_id": 1},
-        {"role": "tool", "content": "{}", "name": "terminal", "timestamp": 2.0},
-        {"role": "assistant", "text": "second", "timestamp": 3.5, "reasoning": "private"},
-        {"role": "user", "text": "third"},
-    ]
-    messages = asyncio.run(bridge(gateway).history(limit=3))
-    assert messages == [
-        {"role": "tool", "text": None, "timestamp": 2.0},
+        {"role": "user", "text": "first", "timestamp": 1.0},
         {"role": "assistant", "text": "second", "timestamp": 3.5},
         {"role": "user", "text": "third", "timestamp": None},
     ]
-    assert gateway.calls == [
-        ("session.resume", {"session_id": RESOLVED, "omit_messages": True}),
-        ("session.history", {"session_id": CANONICAL}),
+    messages = asyncio.run(bridge(gateway).history(limit=2))
+    assert messages == [
+        {"role": "assistant", "text": "second", "timestamp": 3.5},
+        {"role": "user", "text": "third", "timestamp": None},
     ]
+    assert gateway.calls == []
 
 
 def test_unreadable_history_is_unavailable(gateway: Gateway):

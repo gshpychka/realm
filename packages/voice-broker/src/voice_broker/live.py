@@ -66,6 +66,7 @@ _AUDIO_EVENTS = frozenset({"session.output_audio.delta"})
 _APPEND_MAX_BYTES = 500
 # Live takes this many initial messages at most.
 _INPUT_MAX_ITEMS = 128
+_HISTORY_BUDGET_S = 0.25
 # Mic audio not yet sent to Live, at most: held while the session starts (the device gives a startup
 # 10 s), then while it catches up. More ends the conversation (MicOverflow): its start is never dropped.
 _BACKLOG_MAX_SAMPLES = SPEAKER_RATE * 15
@@ -430,16 +431,17 @@ class LiveSession:
             self._parallel.home.start()
             self._spawn(self._listen_home())
         try:
-            try:
-                history = await self._recall()
-            except HistoryUnavailable as e:
-                log.warning("starting without the recent conversation: %s", e)
-                history = []
+            history_task = self._spawn(self._load_history())
+            connected = time.monotonic()
             async with self._connect() as conn:
+                log.info("startup: Live WebSocket connected in %.1f ms", (time.monotonic() - connected) * 1000)
+                history = await history_task
+                starting = time.monotonic()
                 await conn.session.start(session=self._session_config(history))
                 async for event in conn:
                     self._log_event(event)
                     if event.type == "session.started":
+                        log.info("startup: Live session started in %.1f ms", (time.monotonic() - starting) * 1000)
                         break
                     if event.type == "error":
                         raise SessionRefused(f"{event.error.message} ({event.error.code})")
@@ -474,6 +476,20 @@ class LiveSession:
 
     def on_playback_finished(self) -> None:
         self._flush_transcripts()
+
+    async def _load_history(self) -> list[Turn]:
+        started = time.monotonic()
+        try:
+            async with asyncio.timeout(_HISTORY_BUDGET_S):
+                history = await self._recall()
+            elapsed = time.monotonic() - started
+            if elapsed >= _HISTORY_BUDGET_S:
+                raise TimeoutError
+            log.info("startup: loaded %d history turns in %.1f ms", len(history), elapsed * 1000)
+            return history
+        except (HistoryUnavailable, TimeoutError) as e:
+            log.warning("startup: continuing without history after %.1f ms: %s", (time.monotonic() - started) * 1000, e)
+            return []
 
     def _session_config(self, history: list[Turn]) -> SessionConfigParam:
         config: SessionConfigParam = {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import logging
 import os
 import re
@@ -19,7 +20,8 @@ from typing import Any, Protocol
 log = logging.getLogger("hermes_bridge")
 
 _CONSULT_TIMEOUT_S = 90.0
-_HISTORY_TIMEOUT_S = 8.0
+_HISTORY_TIMEOUT_S = 0.20
+_HEALTH_TIMEOUT_S = 8.0
 _TICK_S = 0.25
 _TICK_MAX_S = 5.0
 _RECONNECT_S = 0.5
@@ -73,6 +75,7 @@ class _Attempt:
 class Bridge:
     connect: Connect
     resolve: Resolve
+    read_history: Callable[[int], Awaitable[list[dict[str, Any]]]]
     # A request refusal before execution.
     refused: type[Exception]
     # An interrupted connection with an uncertain response.
@@ -171,24 +174,17 @@ class Bridge:
         """The newest `limit` conversation messages. Raises Unavailable."""
         try:
             async with asyncio.timeout(self.history_timeout_s):
-                session_id = await self.resolve()
-                async with self.connect() as client:
-                    canonical = await self._attach(client, session_id)
-                    history = await client.rpc("session.history", session_id=canonical)
+                return await self.read_history(limit)
         except Unavailable:
             raise
         except Exception as e:
             log.warning("history unreadable", exc_info=not isinstance(e, self.lost | TimeoutError))
             raise Unavailable(f"history:{type(e).__name__}") from e
-        messages = history.get("messages") if isinstance(history, dict) else None
-        if not isinstance(messages, list):
-            raise Unavailable("history:malformed")
-        return [_row(message) for message in messages[-limit:] if isinstance(message, dict)]
 
     async def health(self) -> dict[str, Any]:
         """Consultation readiness and the active session ID. Raises Unavailable."""
         try:
-            async with asyncio.timeout(self.history_timeout_s):
+            async with asyncio.timeout(_HEALTH_TIMEOUT_S):
                 session_id = await self.resolve()
                 async with self.connect() as client:
                     return {"ready": True, "session_id": await self._attach(client, session_id)}
@@ -250,16 +246,6 @@ def _string(answer: Any, key: str) -> str:
     return value
 
 
-def _row(message: dict[str, Any]) -> dict[str, Any]:
-    """A conversation message's role, text and timestamp."""
-    text, timestamp = message.get("text"), message.get("timestamp")
-    return {
-        "role": message.get("role"),
-        "text": text if isinstance(text, str) else None,
-        "timestamp": timestamp if isinstance(timestamp, int | float) and not isinstance(timestamp, bool) else None,
-    }
-
-
 @asynccontextmanager
 async def gateway(home: Path) -> AsyncIterator[Any]:
     """An authenticated connection to the active session service. Raises Unavailable."""
@@ -287,6 +273,30 @@ def resolve_session(home: Path, route: str) -> str:
     if not isinstance(session_id, str) or not session_id:
         raise Unavailable("no_session")
     return session_id
+
+
+def read_recent(home: Path, route: str, limit: int) -> list[dict[str, Any]]:
+    """Recent persisted user and assistant turns for the active route."""
+    from hermes_state import SessionDB
+
+    db = SessionDB(db_path=home / "state.db", read_only=True)
+    try:
+        row = db.find_latest_gateway_session_for_peer(source=route.split(":")[2], session_key=route)
+        session_id = row.get("id") if isinstance(row, dict) else None
+        if not isinstance(session_id, str) or not session_id:
+            raise Unavailable("no_session")
+        messages = db.get_messages(session_id, limit=limit, latest=True)
+        return [
+            {"role": message["role"], "text": message["content"], "timestamp": message.get("timestamp")}
+            for message in messages
+            if message.get("role") in {"user", "assistant"}
+            and isinstance(message.get("content"), str)
+            and message["content"].strip()
+            and message.get("display_kind") not in {"hidden", "internal_notification", "failed_turn"}
+            and not message.get("_compressed_summary")
+        ]
+    finally:
+        db.close()
 
 
 def telegram_route(chat_id_file: Path) -> str:
@@ -417,9 +427,11 @@ def main(argv: list[str] | None = None) -> None:
 
     from hermes_cli.gateway_client import GatewayClientError, GatewayRPCError
 
+    importlib.import_module("hermes_state")
     bridge = Bridge(
         connect=partial(gateway, home),
         resolve=partial(asyncio.to_thread, resolve_session, home, route),
+        read_history=partial(asyncio.to_thread, read_recent, home, route),
         refused=GatewayRPCError,
         lost=GatewayClientError,
     )
