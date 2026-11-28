@@ -53,7 +53,7 @@ export interface Pi {
 }
 
 const subscribeNone = () => () => {};
-const NO_WORKSPACE: PiWorkspace = { cwd: process.cwd(), commands: [] };
+const NO_WORKSPACE: PiWorkspace = { cwd: process.cwd(), commands: [], argumentHints: {} };
 
 /**
  * Regular Pi's sessions run from Pituitary's own screen: new, fork, clone and resume replace
@@ -74,16 +74,23 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
     () =>
       workspace.commands
         .filter((command) => command.name !== workspace.bridge)
-        .map(
-          (command): Command => ({
+        .map((command): Command => {
+          // A skill frames a request; a prompt template takes what its frontmatter declares.
+          const args =
+            command.source === "skill"
+              ? SKILL_REQUEST
+              : command.source === "prompt"
+                ? workspace.argumentHints[command.name]
+                : undefined;
+          return {
             name: command.name,
             description: command.description ?? "",
             source: command.source,
-            ...(command.source === "skill" ? { args: SKILL_REQUEST } : {}),
+            ...(args ? { args } : {}),
             scope: command.sourceInfo.scope,
             path: command.sourceInfo.path,
-          }),
-        ),
+          };
+        }),
     [workspace],
   );
   const actions = pi

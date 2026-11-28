@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { RUNNING, waitMatch } from "./helpers/harness.ts";
+import { normalMode, RUNNING, waitMatch } from "./helpers/harness.ts";
 import { launchPi } from "./helpers/pi.ts";
 
 after(async () => {
@@ -12,6 +13,7 @@ after(async () => {
 
 const UP = "\x1b[A";
 const CTRL_C = "\x03";
+const CTRL_J = "\n";
 const CTRL_O = "\x0f";
 const ALT_S = "\x1bs";
 const ALT_F = "\x1bf";
@@ -27,11 +29,32 @@ description: Draft release notes from the merged pull requests
 2. Group them by area and write one line per change.
 `;
 
+/** A skill whose name is longer than a list's label column. */
+const LONG_NAME = "a-very-long-skill-name-for-layout-checks";
+const LONG_SKILL = `---
+name: ${LONG_NAME}
+description: Checks layout
+---
+
+Check the layout.
+`;
+
+/** A prompt template that declares the argument it needs. */
+const REVIEW = `---
+description: Review the change
+argument-hint: <focus>
+---
+Review this, focusing on $@
+`;
+
 /** A skill's chip as a capture's text reads it: its label between the chip's rounded ends. */
 const CHIP = `${glyphs.chipStart}${glyphs.skill} skill release-notes${glyphs.chipEnd}`;
 
 test("a chosen skill leads the draft, shows as a chip once sent, loads in the work, and comes back as typed", async () => {
-  const app = await launchPi({ skills: { "release-notes": SKILL } });
+  const app = await launchPi({
+    skills: { "release-notes": SKILL, [LONG_NAME]: LONG_SKILL },
+    prompts: { review: REVIEW },
+  });
   try {
     const file = join(app.agent, "skills", "release-notes", "SKILL.md");
     // The skill completes by its own name, marked as a skill and asking for a request.
@@ -46,14 +69,50 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     await app.terminal.write(CTRL_C);
     await app.terminal.waitText("» ask pi");
 
-    // The list of skills puts the chosen one before what the draft holds, which becomes its request.
+    // A name too long for the list gives way to the request it asks for, which stays whole.
+    await app.terminal.type("/skill:");
+    await app.terminal.waitText("Checks layout");
+    await app.terminal.waitIdle();
+    assert.match(
+      await app.capture("skills-completion-long"),
+      /\/skill:a-very-long\S*… \[request\] +Checks layout/,
+    );
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
+    // A prompt template that declares an argument shows it, and enter waits for it.
+    await app.terminal.type("/review");
+    await app.terminal.waitText("/review <focus>");
+    await app.terminal.waitIdle();
+    assert.match(await app.capture("skills-template-completion"), /tab enter complete/);
+    await app.terminal.keyboard.press("Enter");
+    await waitMatch(app.terminal, /» \/review *$/m);
+    assert.equal(app.provider.requests.length, 0);
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
+    // `/skills` opens the list filtered by what follows it.
+    await app.terminal.submit("/skills rel");
+    await app.terminal.waitText("1 of 2");
+    await app.terminal.waitIdle();
+    assert.match(await app.capture("skills-command"), /filter rel/);
+    await app.terminal.keyboard.press("Enter");
+    await waitMatch(app.terminal, /» \/skill:release-notes *$/m);
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
+    // The list of skills puts the chosen one before what the draft holds, which becomes its
+    // request. Whose each skill is follows its name.
     await app.terminal.type("focus on the footer");
     await app.terminal.waitText("» focus on the footer");
     await app.terminal.write(ALT_S);
     await app.terminal.waitText("skills · the draft becomes the request");
     await app.terminal.waitIdle();
     const picker = await app.capture("skills-picker");
-    assert.match(picker, /▶ release-notes +user Draft release notes from the merged pull requests/);
+    assert.match(picker, / release-notes · user +Draft release notes from the merged pull requests/);
+    assert.match(picker, / a-very-long\S* · user +Checks layout/);
+    await app.terminal.type("release");
+    await app.terminal.waitText("1 of 2");
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText("» /skill:release-notes focus on the footer");
     await app.terminal.waitIdle();
@@ -118,10 +177,10 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
   }
 });
 
-test("a queued skill shows as a chip and comes back into the draft as typed; a /skill: past the start is flagged", async () => {
+test("a queued skill shows as a chip, comes back as typed, and still loads when the run is interrupted; the editor flags what Pi would not expand", async () => {
   const app = await launchPi({ skills: { "release-notes": SKILL } });
+  let release = () => {};
   try {
-    let release = () => {};
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -142,18 +201,68 @@ test("a queued skill shows as a chip and comes back into the draft as typed; a /
     // The run goes on, so the draft carries the steering mark.
     await app.terminal.waitText(`${glyphs.steering} /skill:release-notes later please`);
     await waitMatch(app.terminal, new RegExp(`^(?![\\s\\S]*${glyphs.steering} steering)`));
-    release();
-    await app.terminal.waitText("Working on it.");
+
+    // Queued again and the run interrupted, the message goes to Pi as Pi expanded it, so the
+    // skill loads in the prompt that follows.
+    await app.terminal.type(" and group them by area so that each team finds its own changes quickly");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText(queued);
+    app.provider.reply("Picked up the notes.");
+    await normalMode(app.terminal);
+    await app.terminal.keyboard.press("Escape");
+    await app.terminal.waitText("Picked up the notes.");
     await app.terminal.waitIdle();
+    const interrupted = await app.capture("skills-interrupted");
+    const resent = app.provider.requests[1]?.prompt ?? "";
+    assert.match(resent, /^<skill name="release-notes" /);
+    assert.match(resent, /its own changes quickly$/);
+    assert.ok(interrupted.includes(`▌ ${CHIP} later please and group`), interrupted);
+    // The key that shows the skill follows the request's last words, never alone on a row.
+    assert.match(interrupted, /quickly +· ctrl\+o/);
+    assert.doesNotMatch(interrupted, /^\W*· ctrl\+o/m);
+    // The conversation wraps again at a narrower width once it has drawn there.
+    await app.terminal.resize(80, 24);
+    await waitMatch(app.terminal, /^━{80}\n/m);
+    await waitMatch(app.terminal, /^ +that each team finds its own changes quickly +· ctrl\+o/m);
+    await app.terminal.waitIdle();
+    const narrow = await app.capture("skills-interrupted-80");
+    assert.doesNotMatch(narrow, /^\W*· ctrl\+o/m);
+    await app.terminal.resize(100, 28);
+    await waitMatch(app.terminal, /^━{100}\n/m);
 
     // Pi expands only a leading skill command, and the editor's rule says so.
-    await app.terminal.write(CTRL_C);
+    await app.terminal.write("i");
     await app.terminal.waitText("» ask pi");
     await app.terminal.type("please use /skill:release-notes");
     await app.terminal.waitText("a skill loads only from /skill: at the start of the draft");
     await app.terminal.waitIdle();
     await app.capture("skills-flag");
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+    // Pi reads the name up to the first space, so the request starts on the command's line.
+    await app.terminal.type("/skill:release-notes");
+    await app.terminal.write(CTRL_J);
+    await app.terminal.type("more words");
+    await app.terminal.waitText("start the request on the /skill:release-notes line");
+    await app.terminal.waitIdle();
+    await app.capture("skills-flag-line");
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
+    // A read of the skill's file that fails loads nothing, and the work says the skill failed.
+    rmSync(join(app.agent, "skills", "release-notes", "SKILL.md"));
+    app.provider.reply(
+      { tool: "read", arguments: { path: join(app.agent, "skills", "release-notes", "SKILL.md") } },
+      "The skill is gone.",
+    );
+    await app.terminal.submit("draft the notes");
+    await app.terminal.waitText("The skill is gone.");
+    await app.terminal.waitIdle();
+    const failed = await app.capture("skills-read-failed");
+    assert.match(failed, /▸ \S+ skill release-notes failed/);
+    assert.doesNotMatch(failed, /used skill/);
   } finally {
+    release();
     await app.close();
   }
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Command } from "./commands/commands.ts";
-import { piSkills, skillByFileName, skillFiles, skillFlag, withSkill } from "./skills.ts";
+import { piSkills, skillFiles, skillFlag, withSkill } from "./skills.ts";
 
 const commands: Command[] = [
   {
@@ -59,11 +59,6 @@ describe("skillFiles", () => {
     expect(skillOf("/work/app/README.md")).toBeNull();
     expect(skillOf("/elsewhere/skills/other/SKILL.md")).toBeNull();
   });
-
-  test("without a list, a SKILL.md is taken for the skill its directory names", () => {
-    expect(skillByFileName("/work/skills/lint/SKILL.md")).toBe("lint");
-    expect(skillByFileName("/work/skills/lint/notes.md")).toBeNull();
-  });
 });
 
 describe("withSkill", () => {
@@ -97,12 +92,6 @@ describe("skillFlag", () => {
   test("a skill Pi has not loaded goes as typed", () => {
     expect(skillFlag("/skill:nope fix it", names)).toBe("Pi has no skill nope, so it goes as typed");
     expect(skillFlag("/skill: fix it", names)).toBe("name a skill straight after /skill:");
-  });
-
-  test("Pi reads the name up to a space, so a line break straight after it loses the skill", () => {
-    expect(skillFlag("/skill:style\nfix it", names)).toBe(
-      "add a space after /skill:style: Pi reads the name up to one",
-    );
   });
 
   test("a /skill: anywhere but the start is sent as typed", () => {

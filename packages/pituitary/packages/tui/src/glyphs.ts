@@ -44,7 +44,8 @@ const NERD = {
   image: "\u{f02e9}",
   chipStart: "\u{e0b6}",
   chipEnd: "\u{e0b4}",
-  skill: "\u{f0e7}",
+  // A graduation cap: a bolt is Fast mode's.
+  skill: "\u{f19d}",
   template: "\u{f0219}",
   extension: "\u{f0431}",
 } as const;
@@ -95,7 +96,7 @@ const PLAIN: Record<keyof typeof NERD, string> = {
   image: "▣",
   chipStart: "▐",
   chipEnd: "▌",
-  skill: "ϟ",
+  skill: "§",
   template: "¶",
   extension: "⊕",
 };

@@ -83,6 +83,8 @@ export interface PiWorkspace {
   cwd: string;
   /** What Pi's extensions, prompt templates and skills offer, as Pi names them. */
   commands: readonly PiCommandInfo[];
+  /** What each prompt template takes, by name, as the bridge reports it; none without the bridge. */
+  argumentHints: Readonly<Record<string, string>>;
   /** Pi's name for the bridge's command: null when Pi has not loaded it, undefined until its commands load. */
   bridge?: string | null;
 }
@@ -185,7 +187,7 @@ export class PiConversation implements ConversationLink, PiUiPort {
   sessionId?: string;
 
   constructor(private readonly options: PiOptions) {
-    this.current = { cwd: options.cwd ?? process.cwd(), commands: [] };
+    this.current = { cwd: options.cwd ?? process.cwd(), commands: [], argumentHints: {} };
     this.launched = this.current.cwd;
     this.start(options.args ?? []);
   }
@@ -584,8 +586,14 @@ export class PiConversation implements ConversationLink, PiUiPort {
         // The runtime ended; when a replacement ends it, the next one's start is held.
         if (this.replacing > 0) this.held ??= new Map();
       } else {
-        const cwd = scrub(decodeRuntime(request.statusText))?.cwd;
-        if (cwd && cwd !== this.current.cwd) this.update({ cwd });
+        // Pi starts a runtime twice over when it replaces a session, with the same mark.
+        const mark = scrub(decodeRuntime(request.statusText));
+        const { cwd, argumentHints } = this.current;
+        if (
+          mark &&
+          (mark.cwd !== cwd || JSON.stringify(mark.argumentHints) !== JSON.stringify(argumentHints))
+        )
+          this.update(mark);
       }
     }
     if (request.method === "notify" && this.hold(request)) return;

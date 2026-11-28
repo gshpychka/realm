@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import type { Command } from "./commands/commands.ts";
-import { SKILL_COMMAND } from "./user-text.ts";
+import { SKILL_COMMAND, SKILL_NAME } from "./user-text.ts";
 
 /** A skill Pi has loaded, which `/skill:name request` runs. */
 export interface Skill {
@@ -12,9 +12,6 @@ export interface Skill {
   /** Its file, which the model reads to load it. */
   path: string;
 }
-
-/** What the name of a skill's command starts with, as Pi names it. */
-const SKILL_NAME = "skill:";
 
 /** The skills among Pi's commands, by the name `/skill:` takes. */
 export function piSkills(commands: readonly Command[]): Skill[] {
@@ -32,18 +29,12 @@ export function piSkills(commands: readonly Command[]): Skill[] {
   );
 }
 
-/** The skill a file the model reads belongs to, by its path as the call gave it; null for any other file. */
-export type SkillOf = (path: string) => string | null;
-
-/** The file holding a skill in a directory of its own, as the Agent Skills specification names it. */
-const SKILL_FILE = "SKILL.md";
-
 /**
- * Where the skill list is unknown, as in Dura, a `SKILL.md` is taken for the skill its
- * directory is named after. Pi also loads standalone Markdown skills, which only a known list finds.
+ * The skill a file the model reads belongs to, by its path as the call gave it; null for any
+ * other file. Only a known list of skills says which files are skills: Pi also loads standalone
+ * Markdown skills, and a `SKILL.md` the model reads may be one it is editing.
  */
-export const skillByFileName: SkillOf = (path) =>
-  basename(path) === SKILL_FILE ? basename(dirname(path)) || null : null;
+export type SkillOf = (path: string) => string | null;
 
 /**
  * The skill each of `skills`' files belongs to, for a model's reads from `cwd`. Pi's read tool
@@ -58,21 +49,32 @@ export function skillFiles(skills: readonly Skill[], cwd: string, home = homedir
   };
 }
 
-/** The `/skill:name` command a draft starts with, and the rest after it. */
-const LEADING = /^\/skill:(\S*)[ \t]*/;
+/** The skill command `draft` starts with: the name as typed, up to any whitespace, and the rest after it. */
+function leading(draft: string): { name: string; rest: string } | null {
+  if (!draft.startsWith(SKILL_COMMAND)) return null;
+  const after = draft.slice(SKILL_COMMAND.length);
+  const name = /^\S*/.exec(after)?.[0] ?? "";
+  return { name, rest: after.slice(name.length) };
+}
 
 /**
  * `draft` led by `/skill:name `, the rest of it the skill's request; a skill command already
  * leading it is replaced. Pi expands a skill only at the very start of a prompt.
  */
 export function withSkill(draft: string, name: string): string {
-  return `${SKILL_COMMAND}${name} ${draft.replace(LEADING, "").trimStart()}`;
+  return `${SKILL_COMMAND}${name} ${(leading(draft)?.rest ?? draft).trimStart()}`;
 }
 
 /** The skill a draft's leading `/skill:` names, as typed; null when it has none. */
 export function leadingSkill(draft: string): string | null {
-  return LEADING.exec(draft)?.[1] || null;
+  return leading(draft)?.name || null;
 }
+
+/**
+ * A skill command later in a draft, after whitespace. `SKILL_COMMAND` holds no character a
+ * pattern reads specially.
+ */
+const LATER = new RegExp(`\\s${SKILL_COMMAND}\\S`);
 
 /**
  * What is wrong with the skill commands in `draft`, given the skills Pi has loaded: Pi
@@ -86,10 +88,16 @@ export function skillFlag(draft: string, names: ReadonlySet<string>): string | n
     const space = draft.indexOf(" ");
     const name = draft.slice(SKILL_COMMAND.length, space === -1 ? undefined : space);
     const [first = ""] = name.split(/\s/);
-    if (first !== name) return `add a space after /skill:${first}: Pi reads the name up to one`;
-    if (space !== -1 && !name) return "name a skill straight after /skill:";
+    if (first !== name) {
+      const fix =
+        name[first.length] === "\n"
+          ? `start the request on the ${SKILL_COMMAND}${first} line`
+          : `put a plain space after ${SKILL_COMMAND}${first}`;
+      return `${fix}: Pi reads the name up to the first space`;
+    }
+    if (space !== -1 && !name) return `name a skill straight after ${SKILL_COMMAND}`;
     if (space !== -1 && !names.has(name)) return `Pi has no skill ${name}, so it goes as typed`;
     rest = space === -1 ? "" : draft.slice(space);
   }
-  return /\s\/skill:\S/.test(rest) ? "a skill loads only from /skill: at the start of the draft" : null;
+  return LATER.test(rest) ? `a skill loads only from ${SKILL_COMMAND} at the start of the draft` : null;
 }

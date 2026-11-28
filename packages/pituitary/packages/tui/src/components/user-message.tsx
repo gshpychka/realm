@@ -109,10 +109,19 @@ export function UserMessage({
         <text fg={theme.assistant}>{withImageChips(entry.text, entry.images)}</text>
       ) : (
         <box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-          <text fg={theme.assistant}>
-            {flow(segments, entry.images)}
-            {!expanded && expand ? <span fg={theme.dim}> · {expand}</span> : null}
-          </text>
+          {/* Text wraps at any space, so the key that shows the skill keeps a column of its
+              own after the words, level with their last row, rather than flowing with them
+              onto a row by itself. */}
+          <box flexDirection="row" alignItems="flex-end">
+            <text fg={theme.assistant} flexShrink={1} minWidth={0}>
+              {flow(segments, entry.images)}
+            </text>
+            {!expanded && expand ? (
+              <text selectable={false} fg={theme.dim} flexShrink={0} wrapMode="none">
+                {` · ${expand}`}
+              </text>
+            ) : null}
+          </box>
           {expanded
             ? skills.map((skill, index) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: a message's skills are identified by position

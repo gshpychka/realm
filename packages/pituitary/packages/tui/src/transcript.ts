@@ -1,6 +1,6 @@
 import type { AssistantEntry, Entry, ToolView } from "@pituitary/session";
 import { counted } from "./plural.ts";
-import { type SkillOf, skillByFileName } from "./skills.ts";
+import type { SkillOf } from "./skills.ts";
 
 /** One thing the model did on its way to a reply, in the order it did it. */
 export type Step =
@@ -39,13 +39,9 @@ const STOP_NOTE = new Map([
 
 /**
  * `entries` as the conversation draws them, while a run goes on when `running`. A read of a
- * file `skillOf` names loads that skill; without a skill list, a `SKILL.md` is taken for one.
+ * file `skillOf` names loads that skill; without a list of skills, as in Dura, no read does.
  */
-export function transcriptOf(
-  entries: readonly Entry[],
-  running: boolean,
-  skillOf: SkillOf = skillByFileName,
-): Item[] {
+export function transcriptOf(entries: readonly Entry[], running: boolean, skillOf?: SkillOf): Item[] {
   const items: Item[] = [];
   let stretch: AssistantEntry[] = [];
   const close = (live: boolean) => {
@@ -67,7 +63,7 @@ export function transcriptOf(
  * A stretch of consecutive replies as one box of work and the reply after it. The last
  * reply's words are the reply unless it goes on to call a tool; every other word is narration.
  */
-function split(stretch: readonly AssistantEntry[], running: boolean, skillOf: SkillOf): Item[] {
+function split(stretch: readonly AssistantEntry[], running: boolean, skillOf: SkillOf | undefined): Item[] {
   const last = stretch.at(-1);
   if (!last) return [];
   const answer = last.tools.length === 0 ? last : null;
@@ -100,21 +96,34 @@ function split(stretch: readonly AssistantEntry[], running: boolean, skillOf: Sk
 }
 
 /** The skill `tool` loads: a read of a skill's file, as `skillOf` knows them. */
-function loads(tool: ToolView, skillOf: SkillOf): string | null {
+function loads(tool: ToolView, skillOf: SkillOf | undefined): string | null {
   const path = tool.args.path;
-  return tool.name === "read" && typeof path === "string" ? skillOf(path) : null;
+  return skillOf && tool.name === "read" && typeof path === "string" ? skillOf(path) : null;
 }
 
-/** What a box of work comes to, such as `thought · used skill release-notes · 3 tools · 1 failed`. */
+/**
+ * What a box of work comes to, such as `thought · used skill release-notes · 3 tools · 1 failed`.
+ * A skill is used once a read of its file has not failed. A skill whose every read failed never
+ * reached the model, so the box says that skill failed instead; every other failed call counts
+ * among the failed.
+ */
 export function summary(work: Work): string {
   const thought = work.steps.some((step) => step.kind === "thinking");
   const calls = work.steps.filter((step) => step.kind === "tool");
-  const skills = [...new Set(calls.flatMap((step) => (step.skill ? [step.skill] : [])))];
+  const skillsOf = (keep: (skill: string, tool: ToolView) => boolean) =>
+    new Set(calls.flatMap(({ skill, tool }) => (skill && keep(skill, tool) ? [skill] : [])));
+  const used = skillsOf((_, tool) => tool.state !== "error");
+  const missed = skillsOf((skill) => !used.has(skill));
   const tools = calls.filter((step) => !step.skill).length;
-  const failed = calls.filter((step) => step.tool.state === "error").length;
+  const failed = calls.filter(
+    (step) => step.tool.state === "error" && !(step.skill && missed.has(step.skill)),
+  ).length;
+  const named = (skills: ReadonlySet<string>) =>
+    `${skills.size === 1 ? "skill" : "skills"} ${[...skills].join(", ")}`;
   return [
     thought ? "thought" : null,
-    skills.length > 0 ? `used ${skills.length === 1 ? "skill" : "skills"} ${skills.join(", ")}` : null,
+    used.size > 0 ? `used ${named(used)}` : null,
+    missed.size > 0 ? `${named(missed)} failed` : null,
     tools > 0 ? counted(tools, "tool") : null,
     failed > 0 ? `${failed} failed` : null,
   ]

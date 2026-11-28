@@ -295,7 +295,7 @@ export interface ConversationProps {
   /** Regular Pi's saved sessions can be resumed, forked and started afresh. */
   sessions?: boolean;
   display: Display;
-  /** The skill each file the model reads loads; without it, a `SKILL.md` is taken for one. */
+  /** The skill each file the model reads loads; without it, as in Dura, no read loads one. */
   skillOf?: SkillOf;
   /** How many of the latest entries are drawn; the earlier ones wait for the operator to scroll back. */
   window: number;

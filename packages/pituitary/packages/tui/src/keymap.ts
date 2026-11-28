@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { piAgentDir } from "./place.ts";
 
 /** What a key can do, named as pi names its keybinding actions. */
 export const ACTIONS = {
@@ -159,7 +160,7 @@ export function loadKeymap(own = ownKeybindingsFile()): Keymap {
 
 /** Regular Pi's terminal actions, with Pituitary's explicit overrides applied last. */
 export function loadPiKeymap(
-  base = join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "keybindings.json"),
+  base = join(piAgentDir(), "keybindings.json"),
   own = ownKeybindingsFile(),
 ): Keymap {
   return keymap({ ...readBindings(base), ...readBindings(own) });

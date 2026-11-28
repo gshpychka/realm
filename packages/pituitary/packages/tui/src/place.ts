@@ -40,3 +40,8 @@ function headOf(git: string): string | null {
 export function tilde(path: string, home = homedir()): string {
   return path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
+
+/** Pi's agent directory, which holds its settings, keybindings and the operator's own skills. */
+export function piAgentDir(): string {
+  return process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+}

@@ -1,5 +1,6 @@
 import { IMAGE_CHIP } from "../image-chip.ts";
 import * as profile from "../profile.ts";
+import { SKILL_COMMAND } from "../user-text.ts";
 import { BOOTSTRAP, HIGHLIGHTS } from "./bootstrap.ts";
 import { NvimRpc } from "./rpc.ts";
 import { type Frame, Screen } from "./screen.ts";
@@ -182,7 +183,7 @@ export class DraftEngine {
 
   /** Sets the skills `/skill:` can name, whose leading command the draft draws as a chip. */
   skills(names: readonly string[]): void {
-    this.ready.then(() => this.lua("pi_draft.skills(...)", [names])).catch(() => {});
+    this.ready.then(() => this.lua("pi_draft.skills(...)", [SKILL_COMMAND, names])).catch(() => {});
   }
 
   /** Feeds keys in nvim's notation, such as `<C-w>` or `ci"`. */

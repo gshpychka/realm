@@ -198,6 +198,8 @@ export interface PiLaunchOptions {
    * runs with `--no-skills`, so no skill of the machine's enters a scenario.
    */
   skills?: Record<string, string>;
+  /** Prompt templates Pi finds in its agent directory, by name: each file's content. */
+  prompts?: Record<string, string>;
   /** Runs a Pi that never loads Pituitary's bridge extension, as a Pi that failed to load it. */
   withoutBridge?: boolean;
   /**
@@ -243,6 +245,7 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
     env = {},
     extensions = {},
     skills,
+    prompts = {},
     withoutBridge = false,
     apiModels,
     from,
@@ -270,6 +273,10 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
     for (const [name, content] of Object.entries(skills ?? {})) {
       mkdirSync(join(agent, "skills", name), { recursive: true });
       writeFileSync(join(agent, "skills", name, "SKILL.md"), content);
+    }
+    for (const [name, content] of Object.entries(prompts)) {
+      mkdirSync(join(agent, "prompts"), { recursive: true });
+      writeFileSync(join(agent, "prompts", `${name}.md`), content);
     }
     const pi = [
       PI_CLI,

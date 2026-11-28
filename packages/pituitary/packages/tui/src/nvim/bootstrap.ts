@@ -145,17 +145,20 @@ end
 
 vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, { callback = mark_images })
 
--- A leading /skill:<name> naming a skill Pi has loaded is the command Pi expands into the
--- skill's instructions, so it shows as a chip; its text stays as typed. Pi reads the name up to
--- the first space, so a name another line follows straight after loads nothing and shows plain.
-local skill = { names = {}, ns = vim.api.nvim_create_namespace("pi_skill") }
+-- A leading skill command, such as /skill:<name>, naming a skill Pi has loaded is the command
+-- Pi expands into the skill's instructions, so it shows as a chip; its text stays as typed. Pi
+-- reads the name up to the first space, so a name another line follows straight after loads
+-- nothing and shows plain. The engine sets the command's prefix with the names.
+local skill = { command = nil, names = {}, ns = vim.api.nvim_create_namespace("pi_skill") }
 
 local function mark_skill()
   vim.api.nvim_buf_clear_namespace(0, skill.ns, 0, -1)
   local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-  local name, after = (lines[1] or ""):match("^/skill:([^%s]+)(.?)")
+  local first = lines[1] or ""
+  if not skill.command or not vim.startswith(first, skill.command) then return end
+  local name, after = first:sub(#skill.command + 1):match("^([^%s]+)(.?)")
   if name and skill.names[name] and (after == " " or (after == "" and #lines == 1)) then
-    vim.api.nvim_buf_set_extmark(0, skill.ns, 0, 0, { end_col = #"/skill:" + #name, hl_group = "PiSkill" })
+    vim.api.nvim_buf_set_extmark(0, skill.ns, 0, 0, { end_col = #skill.command + #name, hl_group = "PiSkill" })
   end
 end
 
@@ -193,7 +196,8 @@ _G.pi_draft = {
     placeholder.text = text
     mark_placeholder()
   end,
-  skills = function(names)
+  skills = function(command, names)
+    skill.command = command
     skill.names = {}
     for _, name in ipairs(names) do skill.names[name] = true end
     mark_skill()

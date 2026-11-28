@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -7,6 +7,7 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
   getAgentDir,
+  parseFrontmatter,
   type SessionInfo,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
@@ -30,7 +31,8 @@ import {
 export default function bridge(pi: ExtensionAPI): void {
   // Pi starts each runtime twice over when it replaces a session; the mark says the same both times.
   pi.on("session_start", (_event, ctx) => {
-    if (ctx.mode === "rpc") ctx.ui.setStatus(RUNTIME_STATUS, encodeRuntime({ cwd: ctx.cwd }));
+    if (ctx.mode === "rpc")
+      ctx.ui.setStatus(RUNTIME_STATUS, encodeRuntime({ cwd: ctx.cwd, argumentHints: argumentHints(pi) }));
   });
   pi.on("session_shutdown", (_event, ctx) => {
     if (ctx.mode === "rpc") ctx.ui.setStatus(RUNTIME_STATUS, undefined);
@@ -89,6 +91,26 @@ async function answer(pi: ExtensionAPI, call: BridgeCall, ctx: ExtensionCommandC
       await ctx.reload();
       return null;
   }
+}
+
+/**
+ * What each prompt template takes, as the `argument-hint` in its frontmatter says and Pi's own
+ * editor shows it; Pi reads the hint but keeps it from every command list it gives out.
+ */
+function argumentHints(pi: ExtensionAPI): Record<string, string> {
+  const hints: Record<string, string> = {};
+  for (const command of pi.getCommands()) {
+    if (command.source !== "prompt") continue;
+    try {
+      const hint = parseFrontmatter(readFileSync(command.sourceInfo.path, "utf8")).frontmatter[
+        "argument-hint"
+      ];
+      if (typeof hint === "string" && hint) hints[command.name] = hint;
+    } catch {
+      // A template removed or broken since Pi loaded it declares nothing.
+    }
+  }
+  return hints;
 }
 
 /** How many session files are read at once to count their prompts. */

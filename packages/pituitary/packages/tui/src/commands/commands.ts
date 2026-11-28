@@ -1,4 +1,5 @@
 import type { SourceInfo } from "@earendil-works/pi-coding-agent";
+import { SKILL_NAME } from "../user-text.ts";
 
 /**
  * A terminal command, completed by name in the editor: Pituitary's own, or one Pi's extensions,
@@ -106,7 +107,9 @@ export function typedName(text: string): string | null {
 /** The names a command is found by: a skill's also without its `skill:`, so `/pdf` finds `skill:pdf-tools`. */
 function namesOf(command: Command): string[] {
   const name = command.name.toLowerCase();
-  return command.source === "skill" ? [name, name.replace(/^skill:/, "")] : [name];
+  return command.source === "skill" && name.startsWith(SKILL_NAME)
+    ? [name, name.slice(SKILL_NAME.length)]
+    : [name];
 }
 
 /**

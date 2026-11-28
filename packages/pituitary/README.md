@@ -87,7 +87,8 @@ In the conversation, the message shows the skill as a chip before the request; `
 shows the skill's file and the instructions the model received. Up recalls the prompt as
 typed, and queued messages taken back into the draft and a fork's earlier prompt come back the
 same way. A prompt template expands for good, so its prompt comes back as the text it became.
-When the model reads a skill's file itself, its work says `used skill pdf-tools`.
+When the model reads a skill's file itself, its work says `used skill pdf-tools`, or
+`skill pdf-tools failed` when the read did.
 
 ## Connect your provider
 
@@ -260,9 +261,11 @@ Like Pi's own `alt` keys, `alt+u` and `alt+s` take chords Neovim's insert mode r
 without the kitty keyboard protocol may, it toggles the card instead of undoing; rebind
 `app.usage.toggle` or `app.skills` if that bites.
 
-`/` completes commands, marking Pi's skills, prompt templates and extension commands.
-`enter` runs a command named in full and completes a half-typed one, as `tab` does; a
-command that needs an argument, and a skill, complete to take one. `/hotkeys` shows your
+`/` completes commands, marking Pi's skills, prompt templates and extension commands, and
+shows the argument a template's `argument-hint` frontmatter declares. `enter` runs a command
+named in full and completes a half-typed one, as `tab` does; a command that needs an
+argument, such as a template whose hint reads `<focus>`, and a skill, complete to take one.
+`/hotkeys` shows your
 bindings. Local conversations complete `@` paths, up to 50 matches, and show the branch and
 GitHub pull request. `PITUITARY_GH=""` disables
 the pull request lookup. `PITUITARY_STILL=1` holds animation; `PITUITARY_PLAIN_GLYPHS=1`

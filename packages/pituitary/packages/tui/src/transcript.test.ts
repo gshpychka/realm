@@ -128,31 +128,6 @@ describe("summary", () => {
     expect(summary(boxOf(reply("a2", { tools: [tool("t1")] })))).toBe("1 tool");
     expect(summary(boxOf(reply("a3", { thinking: "hm", text: "Hi." })))).toBe("thought");
   });
-
-  test("a read of a skill's file loads that skill, which the summary names apart from the tools", () => {
-    const read = (id: string, path: string): ToolView => ({
-      id,
-      name: "read",
-      args: { path },
-      state: "ok",
-      output: "",
-    });
-    const skillOf = (path: string) => (path === "/skills/notes.md" ? "release-notes" : null);
-    const entry = reply("a1", {
-      tools: [read("r1", "/skills/notes.md"), read("r2", "/src/main.ts"), read("r3", "/skills/notes.md")],
-    });
-    const [box] = transcriptOf([entry], false, skillOf) as Work[];
-    expect(box?.steps.map((step) => (step.kind === "tool" ? (step.skill ?? step.tool.id) : step.id))).toEqual(
-      ["release-notes", "r2", "release-notes"],
-    );
-    expect(box && summary(box)).toBe("used skill release-notes · 1 tool");
-    // Without a skill list, a SKILL.md is taken for the skill its directory names.
-    const [unknown] = transcriptOf(
-      [reply("a2", { tools: [read("r4", "/x/lint/SKILL.md")] })],
-      false,
-    ) as Work[];
-    expect(unknown && summary(unknown)).toBe("used skill lint");
-  });
 });
 
 describe("worked", () => {

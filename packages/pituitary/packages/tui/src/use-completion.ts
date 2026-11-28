@@ -39,7 +39,8 @@ function commandsFor(text: string, commands: readonly Command[], editor: RefObje
   const typed = typedName(text) ?? "";
   return {
     items: named.map((each) => ({
-      label: `/${each.name}${each.args ? ` ${each.args}` : ""}`,
+      label: `/${each.name}`,
+      args: each.args,
       detail: each.description,
       icon: KIND_ICONS[each.source],
     })),

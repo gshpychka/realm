@@ -36,8 +36,11 @@ export interface TextSegment {
 
 export type Segment = SkillSegment | TextSegment;
 
+/** What the name of a skill's command starts with, as Pi names it: `skill:pdf-tools`. */
+export const SKILL_NAME = "skill:";
+
 /** What starts a command that loads a skill, as Pi reads it at the start of a prompt. */
-export const SKILL_COMMAND = "/skill:";
+export const SKILL_COMMAND = `/${SKILL_NAME}`;
 
 /** The opening line of an expanded skill. Pi writes the attributes unescaped, so neither holds a quote. */
 const OPENING = /<skill name="([^"\n]+)" location="([^"\n]+)">\n/y;
