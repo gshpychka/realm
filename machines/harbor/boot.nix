@@ -77,10 +77,8 @@ in
   # the BCM2835 watchdog's longest timeout; a hung kernel or PID 1 resets the board
   systemd.settings.Manager.RuntimeWatchdogSec = "15s";
 
-  # The SD image writes this U-Boot to the FIRMWARE partition. A running system
-  # doesn't rewrite it, since a boot chain rewritten in place can't fall back.
-  # To update it in place, copy u-boot.bin over the file config.txt's kernel= loads:
-  #   nix build .#nixosConfigurations.harbor.config.hardware.raspberry-pi.firmware.uboot.package
+  # every switch rewrites the FIRMWARE partition: GPU firmware, config.txt and this U-Boot
+  hardware.raspberry-pi.firmware.enable = true;
   hardware.raspberry-pi.firmware.uboot = {
     enable = true;
     package = pkgs.ubootRaspberryPiAarch64.override {
