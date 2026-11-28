@@ -22,7 +22,7 @@ const MARKS: Record<Exclude<TreeKind, "tool" | "other">, DetailIcon> = {
   compaction: { glyph: glyphs.summary, colour: theme.dim },
   branch: { glyph: glyphs.summary, colour: theme.dim },
 };
-/** A row off the branch the session is on keeps its mark, without the colour. */
+/** A row off the branch the session is on keeps its mark, without the colour, and reads dim. */
 const ASIDE: DetailIcon["colour"] = theme.dim;
 
 /** The lines that join a branch point to each branch, and carry on beside the branches below it. */
@@ -108,6 +108,7 @@ function row(node: TreeNode, lead: string, onBranch: boolean, current: boolean, 
     label: said(node),
     lead,
     mark: onBranch ? mark : { ...mark, colour: ASIDE },
+    ...(onBranch ? {} : { dim: true }),
     detail: [label, when(node.at, now)].filter(Boolean).join(" · "),
     ...(label ? { icon: { glyph: glyphs.label, colour: palette.yellow } } : {}),
     value: node.id,
@@ -131,8 +132,22 @@ function said(node: TreeNode): string {
         ? "compaction"
         : `compaction of ${node.tokens.toLocaleString("en")} tokens`;
     case "branch":
-      return `branch summary · ${line}`;
+      return `branch summary · ${summaryLine(node.text)}`;
     default:
       return line;
   }
+}
+
+/**
+ * What Pi writes before every branch summary it makes, which says nothing of the branch. Pi
+ * does not export it; a summary an extension wrote has none.
+ */
+const PI_PREAMBLE =
+  "The user explored a different conversation branch before returning here.\nSummary of that exploration:\n";
+
+/** The first line of a branch summary that says something of its own: past Pi's preamble, and its headings. */
+function summaryLine(text: string): string {
+  const body = text.startsWith(PI_PREAMBLE) ? text.slice(PI_PREAMBLE.length) : text;
+  const said = body.split("\n").find((line) => line.trim() && !/^\s*#{1,6}\s/.test(line));
+  return firstLine(said ?? body);
 }

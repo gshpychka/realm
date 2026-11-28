@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { TuiTest } from "@microsoft/tui-test";
+import { type Cell, TuiTest } from "@microsoft/tui-test";
 import { survivors } from "./processes.ts";
 
 export { survivors };
@@ -143,6 +143,18 @@ export async function waitMatch(terminal: TuiTest, pattern: RegExp, timeoutMs = 
     if (Date.now() - start > timeoutMs) throw new Error(`screen never matched ${pattern}:\n${screen}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+}
+
+/**
+ * The cells where `text` shows last on screen, as many as it has characters, for what the text
+ * alone does not say, such as colour. Columns count characters, which fits rows of one-cell ones.
+ */
+export async function cellsOf(terminal: TuiTest, text: string): Promise<Cell[]> {
+  const rows = (await terminal.text()).split("\n");
+  const row = rows.findLastIndex((line) => line.includes(text));
+  if (row === -1) throw new Error(`"${text}" is not on screen`);
+  const line = rows[row] ?? "";
+  return terminal.cells([...line.slice(0, line.lastIndexOf(text))].length, row, [...text].length, 1);
 }
 
 /** The status line of a run in progress, whatever the run is doing. */

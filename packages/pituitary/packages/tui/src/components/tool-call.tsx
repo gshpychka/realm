@@ -8,7 +8,8 @@ import { palette, theme } from "../theme.ts";
 import { filetypeOfCall, heading, preview, took, toolGlyph } from "../tools.ts";
 import { Markdown, syntax } from "./markdown.tsx";
 
-const STATE = {
+/** How a call stands, as its glyph shows it; an operator's shell command shows the same. */
+export const STATE = {
   running: { glyph: "◌", colour: theme.tool },
   ok: { glyph: "✓", colour: theme.ok },
   error: { glyph: "✗", colour: theme.error },

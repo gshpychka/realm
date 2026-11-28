@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { type Launched, launch, normalMode, RUNNING, waitMatch } from "./helpers/harness.ts";
+import { cellsOf, type Launched, launch, normalMode, RUNNING, waitMatch } from "./helpers/harness.ts";
 
 const CTRL_J = "\n";
 const ALT_ENTER = "\x1b\r";
@@ -33,6 +33,21 @@ test("the first prompt sends while the initial snapshot is still arriving", asyn
     assert.equal(app.profile()["session-loaded"], undefined);
     await app.terminal.submit("first prompt");
     await app.terminal.waitText("You said: first prompt", { timeout: 3000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test("a leading ! is no shell command for a Dura agent: the draft draws it as text and sends it as typed", async () => {
+  const app = await launch({ scenario: "hello" });
+  try {
+    await app.terminal.type("!ls -la");
+    await app.terminal.waitText("!ls -la");
+    await app.terminal.waitIdle();
+    const [mark, command] = await cellsOf(app.terminal, "!l");
+    assert.deepEqual(mark?.bg, command?.bg);
+    await app.terminal.submit();
+    await app.terminal.waitText("You said: !ls -la");
   } finally {
     await app.close();
   }

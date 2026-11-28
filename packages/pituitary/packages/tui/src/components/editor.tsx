@@ -49,6 +49,8 @@ export interface EditorHandle {
 export interface EditorProps {
   ref?: Ref<EditorHandle>;
   onSubmit(text: string): void;
+  /** A draft starting with `!` or `!!` runs as a shell command, which the draft marks: regular Pi's. */
+  shell?: boolean;
   /** Shown while the agent runs, where a submission becomes a steering message. */
   steering: boolean;
   /** False while something else, such as a dialog, holds the keyboard. */

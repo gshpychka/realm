@@ -1,4 +1,4 @@
-export type { ConversationLink, RunningShell, SessionSnapshot } from "./client.ts";
+export type { ConversationLink, SessionSnapshot, UnrecordedShell } from "./client.ts";
 export { encodeJsonLine, JsonLineDecoder } from "./jsonl.ts";
 export { EventPacer, type EventPacerOptions, MESSAGE_FLUSH_MS, TOOL_FLUSH_MS } from "./pacer.ts";
 export {
@@ -22,7 +22,6 @@ export {
   elapsed,
   emptySession,
   type LocalAction,
-  messageKey,
   type NoticeEntry,
   note,
   reduce,
@@ -30,8 +29,6 @@ export {
   type SessionAction,
   type SessionView,
   SHELL_OUTPUT_LIMIT,
-  type SummaryEntry,
   type ToolView,
   type TurnEntry,
-  type UserEntry,
 } from "./session.ts";

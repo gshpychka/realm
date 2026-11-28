@@ -54,6 +54,11 @@ export interface Display {
   thinking: boolean;
   /** The keys that reach the interrupt from where the draft stands, such as `esc esc`. */
   escapes: string;
+  /**
+   * The keys that stop the operator's running shell command: the interrupt's, unless it stops a
+   * run, a retry, a compaction or a branch's summary first, when there are none.
+   */
+  shellStops: string;
   /** Commands the operator can run here, which an error's remedy may name. */
   commands: ReadonlySet<string>;
 }
@@ -91,11 +96,14 @@ const EntryView = memo(function EntryView({
   entry,
   display,
   rows,
+  columns,
 }: {
   entry: Plain;
   display: Display;
   /** Rows a shell command's output shows until ctrl+o. */
   rows: number;
+  /** The terminal's width, which a shell command's output wraps within. */
+  columns: number;
 }) {
   const expand = useKeyHint("app.tools.expand");
   switch (entry.kind) {
@@ -153,7 +161,15 @@ const EntryView = memo(function EntryView({
         </box>
       );
     case "bash":
-      return <BashView entry={entry} expanded={display.expanded} rows={rows} escapes={display.escapes} />;
+      return (
+        <BashView
+          entry={entry}
+          expanded={display.expanded}
+          rows={rows}
+          columns={columns}
+          stops={display.shellStops}
+        />
+      );
     case "notice":
       return <Notice entry={entry} expanded={display.expanded} commands={display.commands} />;
   }
@@ -534,7 +550,7 @@ export function Conversation({
   onLeave,
   ref,
 }: ConversationProps) {
-  const { height } = useTerminalDimensions();
+  const { width, height } = useTerminalDimensions();
   const earlier = Math.max(0, entries.length - window);
   const clearHistoryAnchor = useHistoryAnchor(ref, earlier, window, entries.length > 0);
   const items = useMemo(() => transcriptOf(entries.slice(earlier), running), [entries, earlier, running]);
@@ -594,7 +610,15 @@ export function Conversation({
           case "reply":
             return <ReplyView key={item.id} reply={item} />;
           default:
-            return <EntryView key={item.id} entry={item} display={display} rows={shellRows(height)} />;
+            return (
+              <EntryView
+                key={item.id}
+                entry={item}
+                display={display}
+                rows={shellRows(height)}
+                columns={width}
+              />
+            );
         }
       })}
     </scrollbox>

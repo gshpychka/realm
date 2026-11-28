@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
-import { contentToText, messageKey, plain } from "@pituitary/session";
+import { contentToText, plain } from "@pituitary/session";
 import type { PickItem } from "./components/picker.tsx";
 import type { SessionSummary } from "./pi-bridge.ts";
 import { tilde } from "./place.ts";
@@ -13,8 +13,6 @@ export interface BranchPrompt {
   text: string;
   /** When the operator sent it, in milliseconds since the epoch. */
   at: number;
-  /** Its message's key, by which the transcript's entry for it names it. */
-  key?: string;
 }
 
 /**
@@ -33,13 +31,11 @@ export function branchPrompts(entries: readonly SessionEntry[], leafId: string |
   return branch.reverse().flatMap((entry) => {
     if (entry.type !== "message" || entry.message.role !== "user") return [];
     const { message } = entry;
-    const key = messageKey(message);
     return [
       {
         entryId: entry.id,
         text: contentToText(message.content),
         at: message.timestamp ?? Date.parse(entry.timestamp),
-        ...(key === null ? {} : { key }),
       },
     ];
   });

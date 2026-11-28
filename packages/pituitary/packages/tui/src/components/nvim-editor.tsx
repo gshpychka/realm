@@ -51,6 +51,7 @@ export function NvimEditor({
   ref,
   engine,
   onSubmit,
+  shell = false,
   steering,
   focused,
   agent,
@@ -90,6 +91,10 @@ export function NvimEditor({
   useEffect(() => {
     engine.placeholder(steering ? "queue a steering message" : `ask ${agent}`);
   }, [engine, steering, agent]);
+
+  useEffect(() => {
+    engine.shell(shell);
+  }, [engine, shell]);
 
   useImperativeHandle(ref, () => ({
     text: () => textOf(engine.draft),

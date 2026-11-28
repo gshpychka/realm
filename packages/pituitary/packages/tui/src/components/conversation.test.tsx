@@ -32,7 +32,13 @@ test("a narrow reply includes every wrapped row beside its mark in its first fra
           agent="pi"
           entries={entries}
           running={false}
-          display={{ expanded: false, thinking: false, escapes: "esc esc", commands: new Set() }}
+          display={{
+            expanded: false,
+            thinking: false,
+            escapes: "esc esc",
+            shellStops: "",
+            commands: new Set(),
+          }}
           window={100}
           browsing={false}
           onLeave={() => {}}
@@ -77,7 +83,13 @@ test("narrowing a long reply keeps its wrapped tail in view", async () => {
           agent="pi"
           entries={entries}
           running={false}
-          display={{ expanded: false, thinking: false, escapes: "esc esc", commands: new Set() }}
+          display={{
+            expanded: false,
+            thinking: false,
+            escapes: "esc esc",
+            shellStops: "",
+            commands: new Set(),
+          }}
           window={100}
           browsing={false}
           onLeave={() => {}}
@@ -129,7 +141,13 @@ test("a narrow streamed reply keeps its latest line visible through completion",
         agent="pi"
         entries={entries}
         running={!reply.done}
-        display={{ expanded: false, thinking: false, escapes: "esc esc", commands: new Set() }}
+        display={{
+          expanded: false,
+          thinking: false,
+          escapes: "esc esc",
+          shellStops: "",
+          commands: new Set(),
+        }}
         window={100}
         browsing={false}
         onLeave={() => {}}
@@ -181,7 +199,7 @@ test("loading earlier history moves back one page while keeping the reading posi
         agent="pi"
         entries={active ? entries : []}
         running={false}
-        display={{ expanded: false, thinking: false, escapes: "esc", commands: new Set() }}
+        display={{ expanded: false, thinking: false, escapes: "esc", shellStops: "", commands: new Set() }}
         window={window}
         browsing={false}
         onLeave={() => {}}
@@ -233,7 +251,7 @@ test("a history prepend with unchanged geometry cannot anchor a later resize", a
         agent="pi"
         entries={entries}
         running={false}
-        display={{ expanded, thinking: true, escapes: "esc", commands: new Set() }}
+        display={{ expanded, thinking: true, escapes: "esc", shellStops: "", commands: new Set() }}
         window={window}
         browsing={false}
         onLeave={() => {}}

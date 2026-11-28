@@ -1,5 +1,4 @@
 import { dirname } from "node:path";
-import type { UserEntry } from "@pituitary/session";
 import {
   type Dispatch,
   type RefObject,
@@ -30,7 +29,8 @@ export interface UsePiOptions {
   /** The App's list: a spec opens one, null closes it, and an update can open one only where none is. */
   pick: Dispatch<SetStateAction<PickerSpec | null>>;
   ask(question: Question): Promise<string | null>;
-  flash(text: string): void;
+  /** Shows a passing hint; what it returns takes the hint down early. */
+  flash(text: string): () => void;
   /** Hands the terminal to another program and takes it back. */
   terminal: { suspend(): void; resume(): void };
 }
@@ -56,8 +56,6 @@ export interface Pi {
    * the model; false for any other draft. A draft it cannot run yet goes back to the editor.
    */
   shell(draft: string): boolean;
-  /** Moves back before the prompt the transcript shows as `prompt`, which goes into the draft, as /tree does. */
-  editAt(prompt: UserEntry): void;
   /** A move is summarizing the branch it leaves. */
   summarizing: boolean;
   /**
@@ -88,6 +86,8 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
   const [keymap, setKeymap] = useState(() => pi?.keymap());
   // What stops a move that is summarizing the branch it leaves, while one is.
   const [stopSummary, setStopSummary] = useState<(() => void) | null>(null);
+  // Settles once the operator's running shell command ends.
+  const shellEnd = useRef<Promise<void>>(Promise.resolve());
   const commands = useMemo(
     () =>
       workspace.commands
@@ -109,7 +109,11 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
         flash,
         terminal,
         reloadKeys: () => setKeymap(pi.keymap()),
-        summarizing: (stop) => setStopSummary(() => stop),
+        summarizing: (stop) => {
+          setStopSummary(() => stop);
+          // Only this move's own end takes its stop away.
+          return () => setStopSummary((current) => (current === stop ? null : current));
+        },
       })
     : null;
   // `pituitary --resume` opens the picker once the session has loaded.
@@ -138,19 +142,16 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
     shell: (draft) => {
       const shell = shellCommand(draft);
       if (!shell) return false;
-      const refused = !shell.command
-        ? "type a command after ! to run it, or after !! to keep its output from pi"
-        : // As in Pi, one command runs at a time.
-          link.shellRunning
-          ? "a shell command is already running · stop it first"
-          : null;
-      if (refused) {
+      if (!shell.command) {
         editor.current?.set(draft);
-        flash(refused);
-      } else void link.bash(shell.command, shell.excluded);
+        flash("type a command after ! to run it, or after !! to keep its output from pi");
+      } else if (link.shellRunning) {
+        // As in Pi, one command runs at a time; the hint goes once the running one ends.
+        editor.current?.set(draft);
+        void shellEnd.current.then(flash("a shell command is already running · stop it first"));
+      } else shellEnd.current = link.bash(shell.command, shell.excluded);
       return true;
     },
-    editAt: actions.editAt,
     summarizing: stopSummary !== null,
     stop: () => {
       if (stopSummary) stopSummary();
@@ -180,9 +181,10 @@ function sessionActions(
     summarizing,
   }: Omit<UsePiOptions, "pi" | "session"> & {
     reloadKeys(): void;
-    summarizing(stop: (() => void) | null): void;
+    /** Says a move is summarizing, with what stops it; what it returns says the move is done. */
+    summarizing(stop: () => void): () => void;
   },
-): Pick<Pi, "run" | "editAt"> {
+): Pick<Pi, "run"> {
   const { conversation } = pi;
   const notify: SessionController["notify"] = (level, text, file) => latest.current.notify(level, text, file);
   const kept = () => notify("info", "An extension kept Pi on this session.");
@@ -220,6 +222,7 @@ function sessionActions(
     ask,
     flash,
     notify,
+    refresh: () => latest.current.refresh(),
     editor,
     settle,
     intoDraft,
@@ -229,7 +232,11 @@ function sessionActions(
   const forkAt = async (entryId: string) => {
     const queued = await settle();
     const draft = editor.current?.text() ?? "";
-    const forked = await conversation.fork(entryId);
+    const forked = await conversation.fork(entryId).catch((error: unknown) => {
+      // What was taken back from the run stays the operator's.
+      if (queued) intoDraft(queued);
+      throw error;
+    });
     if (!forked) {
       if (queued) intoDraft(queued);
       return kept();
@@ -431,7 +438,6 @@ function sessionActions(
       if (!PI_SCREENS.some((command) => command.name === name)) return false;
       return go(name, () => screen(`/${name}${args ? ` ${args}` : ""}`));
     },
-    editAt: (prompt) => void tree.editAt(prompt).catch(failed("tree")),
   };
 }
 

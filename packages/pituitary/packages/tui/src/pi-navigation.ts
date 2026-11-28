@@ -1,4 +1,3 @@
-import type { UserEntry } from "@pituitary/session";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { EditorHandle } from "./components/editor.tsx";
 import type { PickerSpec } from "./components/picker.tsx";
@@ -20,13 +19,15 @@ export interface NavigationOptions {
   ask(question: Question): Promise<string | null>;
   flash(text: string): void;
   notify: SessionController["notify"];
+  /** Reads the session again, which a move keeps: the view keeps what it shares with the branch left. */
+  refresh: SessionController["refresh"];
   editor: RefObject<EditorHandle | null>;
   /** Stops a run or compaction first, as Pi does before a move, and gives back what was queued. */
   settle(): Promise<string>;
   /** Puts `text` at the top of the draft, what was there below it. */
   intoDraft(text: string): void;
-  /** Says a move is summarizing the branch it leaves, with what stops it; null once it is done. */
-  summarizing(stop: (() => void) | null): void;
+  /** Says a move is summarizing the branch it leaves, with what stops it; what it returns says it is done. */
+  summarizing(stop: () => void): () => void;
 }
 
 /** Where the tree list opens again after a key's work or a cancelled move: its entry, and the filter. */
@@ -44,6 +45,7 @@ export function treeNavigation({
   ask,
   flash,
   notify,
+  refresh,
   editor,
   settle,
   intoDraft,
@@ -63,6 +65,7 @@ export function treeNavigation({
     const spec: PickerSpec = {
       title: "tree · move to another point of this session",
       items,
+      tall: true,
       ...keep,
       keys: [
         {
@@ -89,10 +92,12 @@ export function treeNavigation({
 
   const relabel = async (nodes: readonly TreeNode[], entryId: string) => {
     const node = nodes.find((each) => each.id === entryId);
+    // As in Pi, the label there is written out to change; enter keeps it as it stands.
     const label = await ask({
       method: "input",
       title: `Label “${firstLine(node?.text ?? "") || "this entry"}” · an empty label takes it off`,
-      placeholder: node?.label ?? "a label to find this point by",
+      ...(node?.label ? { prefill: node.label } : { placeholder: "a label to find this point by" }),
+      submits: "save",
     });
     if (label !== null) await conversation.bridge({ kind: "label", entryId, label });
   };
@@ -124,16 +129,23 @@ export function treeNavigation({
     const queued = await settle();
     const draft = editor.current?.text() ?? "";
     let stopped = false;
-    if (chosen.summarize)
-      summarizing(() => {
-        stopped = true;
-        void conversation.abort().catch(failed);
-      });
+    const done = chosen.summarize
+      ? summarizing(() => {
+          stopped = true;
+          void conversation.abort().catch(failed);
+        })
+      : undefined;
     let moved: { text: string } | null;
     try {
       moved = await conversation.navigate({ entryId, ...chosen });
+    } catch (error) {
+      // A summary that fails leaves the session where it was: what was taken back from the run
+      // stays the operator's, and the list comes back to try again.
+      if (queued) intoDraft(queued);
+      void back?.().catch(failed);
+      throw error;
     } finally {
-      if (chosen.summarize) summarizing(null);
+      done?.();
     }
     if (!moved) {
       if (queued) intoDraft(queued);
@@ -141,13 +153,13 @@ export function treeNavigation({
       flash("stopped summarizing · the session stays where it was");
       return back?.();
     }
-    if (!moved.text) {
-      if (queued) intoDraft(queued);
-      return notify("info", "Moved to that point of the session");
-    }
     // As a fork does, the prompt replaces the draft, which nvim's undo keeps; the queue taken
     // back from the run stays under it.
-    editor.current?.set([moved.text, queued].filter(Boolean).join("\n\n"), moved.text.length);
+    if (moved.text) editor.current?.set([moved.text, queued].filter(Boolean).join("\n\n"), moved.text.length);
+    else if (queued) intoDraft(queued);
+    // The notice follows the branch the session is on, once the view has read it.
+    await refresh();
+    if (!moved.text) return notify("info", "Moved to that point of the session");
     notify(
       "info",
       `Back before that prompt · editing it in the draft${draft.trim() ? " · esc u brings your draft back" : ""}`,
@@ -157,13 +169,5 @@ export function treeNavigation({
   return {
     /** Opens the tree list. */
     open: () => open(),
-    /** Moves back before the prompt the transcript shows as `prompt`, which goes into the draft. */
-    editAt: async (prompt: UserEntry) => {
-      const found =
-        prompt.key && (await conversation.branchPrompts()).find((each) => each.key === prompt.key);
-      if (!found) return notify("info", "That prompt is not on the branch the session is on.");
-      const { skipSummaryPrompt } = await conversation.bridge({ kind: "tree" });
-      await move(found.entryId, skipSummaryPrompt);
-    },
   };
 }

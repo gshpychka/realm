@@ -145,12 +145,17 @@ end
 
 vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, { callback = mark_images })
 
--- A draft that starts with ! runs as a shell command, and one with !! keeps its output from pi.
--- The marks show as a chip; the text stays as typed.
+-- Under regular Pi a draft that starts with ! runs as a shell command, and one with !! keeps
+-- its output from pi; elsewhere the draft goes to the agent as typed. The marks show as a
+-- chip; the text stays as typed.
 local shell = vim.api.nvim_create_namespace("pi_shell")
+local shell_drafts = false
 
 local function mark_shell()
   vim.api.nvim_buf_clear_namespace(0, shell, 0, -1)
+  if not shell_drafts then
+    return
+  end
   local first = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or ""
   local indent, marks = first:match("^(%s*)(!!?)")
   if marks then
@@ -193,6 +198,10 @@ _G.pi_draft = {
   placeholder = function(text)
     placeholder.text = text
     mark_placeholder()
+  end,
+  shell = function(on)
+    shell_drafts = on
+    mark_shell()
   end,
 }
 

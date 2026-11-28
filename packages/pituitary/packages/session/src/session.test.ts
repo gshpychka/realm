@@ -961,9 +961,4 @@ describe("what Pi folds away or keeps from view", () => {
     expect(transcript(view)).toBe("> q\n[plan] 1. read");
     expect(view.messages).toBe(3);
   });
-
-  test("a prompt keeps the key of its message, by which the session's entry for it is found", () => {
-    const prompt = { role: "user", content: "q", timestamp: 1234 };
-    expect(restore([prompt]).entries[0]).toMatchObject({ kind: "user", key: "user@1234" });
-  });
 });

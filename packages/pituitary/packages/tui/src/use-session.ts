@@ -130,8 +130,9 @@ export function useSession(link: ConversationLink): SessionController {
         event.type === "agent_settled" ||
         event.type === "session_info_changed" ||
         event.type === "thinking_level_changed" ||
-        // Pi records a shell command as it ends, unless a run is under way: it waits for the run's end then.
-        (event.type === "bash_end" && !reduced.current.running)
+        // Pi records a shell command as it ends, unless a run is under way: it waits for the run's
+        // end then. It records nothing of a command it could not run.
+        (event.type === "bash_end" && event.result !== undefined && !reduced.current.running)
       )
         void sync.current();
       if (event.type === "message_end" || event.type === "compaction_end") {

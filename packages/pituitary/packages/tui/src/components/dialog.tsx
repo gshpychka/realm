@@ -15,7 +15,14 @@ export type DialogRequest = {
   deadline?: number;
 } & (
   | { method: "select"; options: string[] }
-  | { method: "input"; placeholder?: string }
+  | {
+      method: "input";
+      placeholder?: string;
+      /** The text the field starts with, such as the value it changes. */
+      prefill?: string;
+      /** What enter does with the text, for the hint; it sends unless said. */
+      submits?: string;
+    }
   | { method: "editor"; prefill?: string }
 );
 export interface DialogResponse {
@@ -153,6 +160,7 @@ function Body({
         <box flexDirection="column">
           <input
             focused={ready}
+            value={dialog.prefill ?? ""}
             placeholder={dialog.placeholder}
             placeholderColor={theme.dim}
             textColor={theme.assistant}
@@ -161,7 +169,7 @@ function Body({
               if (typeof value === "string") onAnswer({ type: "dialog_response", id, value });
             }}
           />
-          <Hints hints={[["enter", "send"], page]} />
+          <Hints hints={[["enter", dialog.submits ?? "send"], page]} />
         </box>
       );
     case "select":

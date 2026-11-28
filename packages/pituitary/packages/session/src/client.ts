@@ -1,4 +1,5 @@
 import type {
+  BashResult,
   CommandResult,
   ImageContent,
   SessionCommand,
@@ -36,14 +37,19 @@ export interface SessionSnapshot {
   pendingToolCalls: readonly string[];
   pendingTools?: readonly { callId: string; name: string; output?: string; details?: unknown }[];
   queue?: { steering: readonly string[]; followUp: readonly string[] };
-  /** The operator's shell commands still running, which the session records only once they end. */
-  shells?: readonly RunningShell[];
+  /**
+   * The operator's shell commands Pi has yet to record: those still running, and those that
+   * ended during a run, which Pi records only once the run ends.
+   */
+  shells?: readonly UnrecordedShell[];
 }
-/** A shell command the operator ran that has yet to end, with its output so far. */
-export interface RunningShell {
+/** A shell command the operator ran that Pi has yet to record, with its output so far. */
+export interface UnrecordedShell {
   /** The request that runs it, which its streamed output names. */
   id: string;
   command: string;
   excludeFromContext: boolean;
   output: string;
+  /** How it ended, once it has. */
+  result?: BashResult;
 }

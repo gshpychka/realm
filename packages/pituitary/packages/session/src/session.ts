@@ -28,8 +28,6 @@ export interface UserEntry {
   text: string;
   /** Images the message carries, which its text names `[image 1]` onward. */
   images: number;
-  /** The session message's key, by which the session's own entry for the prompt is found. */
-  key?: string;
 }
 
 export interface AssistantEntry {
@@ -96,8 +94,12 @@ export interface BashEntry {
   /** Pi kept only the output's tail; `fullOutputPath` holds all of it. */
   truncated?: boolean;
   fullOutputPath?: string;
-  /** Why Pi could not run the command. */
+  /**
+   * Why Pi could not run the command. Pi records nothing of such a command, so its entry is
+   * local: it follows the session message keyed `after`, or leads the conversation without one.
+   */
   error?: string;
+  after?: string;
 }
 
 /** History pi folded into a summary: a compaction, or a branch left behind. */
@@ -226,7 +228,7 @@ interface Message {
 }
 
 /** A key that picks `message` out of its session: pi stamps each message with the time it made it. */
-export function messageKey(message: Pick<Message, "entryId" | "role" | "timestamp">): string | null {
+function place(message: Message): string | null {
   return message.entryId ?? (message.timestamp === undefined ? null : `${message.role}@${message.timestamp}`);
 }
 
@@ -244,11 +246,11 @@ export function restore(
   live?: SessionSnapshot,
 ): SessionView {
   const following = new Map<string, Entry[]>();
-  const leading: NoticeEntry[] = [];
+  const leading: (NoticeEntry | BashEntry)[] = [];
   for (const entry of previous?.entries ?? []) {
-    if (entry.kind !== "turn" && !(entry.kind === "notice" && entry.local)) continue;
+    if (!unrecorded(entry)) continue;
     if (entry.after !== undefined) following.set(entry.after, [...(following.get(entry.after) ?? []), entry]);
-    else if (entry.kind === "notice") leading.push(entry);
+    else if (entry.kind !== "turn") leading.push(entry);
   }
   // A view holding no message has yet to load the session, so its notices follow what loads.
   const loading = previous?.last === null;
@@ -258,7 +260,7 @@ export function restore(
         type: "message_end",
         message,
       } as SessionEvent);
-      const key = messageKey(message as Message);
+      const key = place(message as Message);
       const kept = key === null ? undefined : following.get(key);
       if (key === null || !kept) return next;
       following.delete(key);
@@ -291,7 +293,8 @@ export function restore(
       args: {},
       partialResult: { content: [{ type: "text", text: tool.output ?? "" }], details: tool.details },
     });
-  for (const shell of live?.shells ?? [])
+  // The operator's commands Pi has yet to record: running ones, and ones that ended during a run.
+  for (const shell of live?.shells ?? []) {
     view = reduce(
       reduce(view, {
         type: "bash_start",
@@ -301,6 +304,8 @@ export function restore(
       }),
       { type: "bash_execution_update", id: shell.id, delta: shell.output },
     );
+    if (shell.result) view = reduce(view, { type: "bash_end", id: shell.id, result: shell.result });
+  }
   if (live?.state.isCompacting) view = { ...view, phase: "compacting" };
   if (live?.retry) {
     const { errorMessage, ...retry } = live.retry;
@@ -445,7 +450,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
       const counted = {
         ...state,
         messages: state.messages + 1,
-        last: messageKey(message),
+        last: place(message),
         turn: recorded(state.turn, message),
       };
       if (message.role !== "assistant") return counted;
@@ -553,7 +558,13 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
 
     case "bash_end":
       return patchBash(state, event.id, ({ running: _running, ...entry }) =>
-        event.result ? { ...entry, ...ended(event.result) } : { ...entry, error: event.error ?? "failed" },
+        event.result
+          ? { ...entry, ...ended(event.result) }
+          : {
+              ...entry,
+              error: event.error ?? "failed",
+              ...(state.last === null ? {} : { after: state.last }),
+            },
       );
 
     default:
@@ -665,16 +676,13 @@ export function transcript(state: SessionView): string {
 
 function startMessage(state: SessionView, message: Message): SessionView {
   switch (message.role) {
-    case "user": {
-      const key = messageKey(message);
+    case "user":
       return append(state, (id) => ({
         kind: "user",
         id,
         text: contentToText(message.content),
         images: imageCount(message.content),
-        ...(key === null ? {} : { key }),
       }));
-    }
     case "assistant":
       return append(state, (id) => ({
         kind: "assistant",
@@ -900,6 +908,18 @@ export function partialJson(text: string): Record<string, unknown> | null {
 function append(state: SessionView, make: (id: string) => Entry): SessionView {
   const seq = state.seq + 1;
   return { ...state, seq, entries: [...state.entries, make(`e${seq}`)] };
+}
+
+/**
+ * Whether the view keeps `entry` across a snapshot, after the message it followed: Pi's session
+ * holds no record of a turn's figures, a local notice, or a command Pi could not run.
+ */
+function unrecorded(entry: Entry): entry is TurnEntry | NoticeEntry | BashEntry {
+  return (
+    entry.kind === "turn" ||
+    (entry.kind === "notice" && entry.local === true) ||
+    (entry.kind === "bash" && entry.error !== undefined)
+  );
 }
 
 /** The view with `entries` from another view appended, each under a new id. */

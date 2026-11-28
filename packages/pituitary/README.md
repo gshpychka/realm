@@ -64,19 +64,23 @@ works puts queued messages back in the draft and stops the run or compaction fir
 does. A fork puts the earlier prompt in place of the draft; `esc u` brings the draft back.
 As Pi's own, `/reload` asks to wait while a run or compaction is under way.
 
-`/tree` lists every branch of the session, as Pi's own tree does: a chain of entries stays in
-one column and the branches step in where they fork, with `├─` and `└─`, the branch the
-session is on first and in colour, and the point it stands on reads `· current`. Rows show
-prompts, replies, shell commands, extensions' messages and summaries, with their labels and
-times; the filter matches more of each than its first line. `shift+l` labels the entry under
-the cursor, an empty label taking it off (Pi's `app.tree.editLabel`); `app.session.tree` binds
-a key to open the list, which neither Pi nor Pituitary does by default. Picking an entry asks
-whether to summarize the branch you leave: no summary, a summary, or one with your own
-instructions, unless Pi's `branchSummary.skipPrompt` setting skips the question. While the
-summary is written, `esc` stops it and the list comes back; the summary then shows in the
-conversation as `[branch]`, its text behind `ctrl+o`. Moving to a prompt moves the session to
-just before it and puts the prompt in place of the draft to send again, edited or not; `esc u`
-brings the draft back. A move to any other entry leaves the draft as it was.
+`/tree` lists every branch of the session, as Pi's own tree does, taking up to half the
+screen: a chain of entries stays in one column and the branches step in where they fork, with
+`├─` and `└─`, the branch the session is on first and in colour, the others dim, and the point
+it stands on reads `· current`. Rows show prompts, replies, shell commands, extensions'
+messages and summaries, with their labels and times; the filter matches more of each than its
+first line, and lists its matches without the lines between branches. `shift+l` labels the
+entry under the cursor, its label ready to change and an empty label taking it off (Pi's
+`app.tree.editLabel`); `app.session.tree` binds a key to open the list, which neither Pi nor
+Pituitary does by default. Picking an entry asks whether to summarize the branch you leave: no
+summary, a summary, or one with your own instructions, unless Pi's `branchSummary.skipPrompt`
+setting skips the question. While the summary is written, the draft waits, as Pi's own editor
+does, and `esc` stops the summary and brings the list back; the summary then shows in the
+conversation as `[branch]`, its text behind `ctrl+o`. A summary that fails leaves the session
+where it was and brings the list back. Moving to a prompt moves the session to just before it
+and puts the prompt in place of the draft to send again, edited or not; `esc u` brings the
+draft back. A move to any other entry leaves the draft as it was. Moving while Pi works puts
+queued messages back in the draft and stops the run first.
 
 `/login`, `/logout`, `/settings`, `/scoped-models`, `/trust`, `/import`, and `/share` open
 Pi's own screen on the current session while Pi is idle, with the command ready to run on
@@ -87,9 +91,13 @@ Pi ends on, with the draft and the conversation as they were.
 
 A draft that starts with `!` runs the rest as a shell command through Pi, in Pi's working
 directory, as Pi's own editor does: `!git status --short`. Its output streams into the
-conversation, its latest lines up to half the screen until `ctrl+o`, and Pi gives it to the
-model with your next prompt. `!!` runs a command whose output stays out of the model's context, which the
-conversation marks. One command runs at a time; `esc` stops it. The leading `!` or `!!` shows
+conversation, its latest lines up to half the screen until `ctrl+o`, which shows its latest
+400, and Pi gives it to the model with your next prompt. When Pi keeps only the end of a long
+output, the conversation says so and links the file that holds all of it. `!!` runs a command
+whose output stays out of the model's context, which the conversation marks. One command runs
+at a time; `esc` stops it once no run, retry, compaction or branch summary takes the interrupt
+first. A command Pi cannot run, such as one whose working directory has gone, stays in the
+conversation with the reason. The leading `!` or `!!` shows
 as a chip in the draft, and `↑` recalls earlier commands with your prompts. Extensions' messages
 that ask not to be shown, such as context an extension adds for the model, stay out of the
 conversation.

@@ -144,7 +144,7 @@ function described(entry: SessionEntry): [TreeKind, string] {
           return [
             "assistant",
             textOf(message.content) ||
-              (message.stopReason === "aborted" ? "interrupted" : (message.errorMessage ?? "")),
+              (message.stopReason === "aborted" ? "aborted" : (message.errorMessage ?? "")),
           ];
         case "toolResult":
           return ["tool", ""];

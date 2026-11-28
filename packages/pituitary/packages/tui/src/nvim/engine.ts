@@ -175,6 +175,11 @@ export class DraftEngine {
     this.sizing = this.sizing.then(() => this.rpc.request(method, params)).catch(() => {});
   }
 
+  /** Whether a leading `!` or `!!` marks the draft as a shell command. */
+  shell(on: boolean): void {
+    this.ready.then(() => this.lua("pi_draft.shell(...)", [on])).catch(() => {});
+  }
+
   /** Sets the text an empty draft shows while inserting. */
   placeholder(text: string): void {
     this.ready.then(() => this.lua("pi_draft.placeholder(...)", [text])).catch(() => {});

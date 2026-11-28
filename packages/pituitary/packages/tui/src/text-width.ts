@@ -64,3 +64,47 @@ export function wrapCells(text: string, columns: number, lines: number): string[
   }
   return rows;
 }
+
+/** `line` cut into rows of `columns` cells, as a terminal wraps a command's output. */
+function cellRows(line: string, columns: number): string[] {
+  if (Bun.stringWidth(line) <= columns) return [line];
+  const rows: string[] = [];
+  let row = "";
+  let cells = 0;
+  for (const { segment } of graphemes.segment(line)) {
+    const width = Bun.stringWidth(segment);
+    if (row && cells + width > columns) {
+      rows.push(row);
+      row = "";
+      cells = 0;
+    }
+    row += segment;
+    cells += width;
+  }
+  rows.push(row);
+  return rows;
+}
+
+/**
+ * The last `rows` screen rows that `lines` fill when each wraps at `columns` cells, and how
+ * many rows come before them. Only the lines it shows are cut, so a long output costs no more
+ * than its tail.
+ */
+export function tailRows(
+  lines: readonly string[],
+  columns: number,
+  rows: number,
+): { shown: string[]; hidden: number } {
+  const width = Math.max(1, Math.floor(columns));
+  const shown: string[] = [];
+  let hidden = 0;
+  let index = lines.length - 1;
+  for (; index >= 0 && shown.length < rows; index--) {
+    const wrapped = cellRows(lines[index] ?? "", width);
+    const taken = wrapped.slice(-(rows - shown.length));
+    hidden += wrapped.length - taken.length;
+    shown.unshift(...taken);
+  }
+  for (; index >= 0; index--) hidden += Math.max(1, Math.ceil(Bun.stringWidth(lines[index] ?? "") / width));
+  return { shown, hidden };
+}

@@ -200,14 +200,10 @@ export function App({
     .map((binding) => (/^(esc|escape)$/i.test(binding) ? escapes : binding))
     .join(" / ");
   const summarizing = regular?.summarizing ?? false;
-  // The interrupt stops a run, a retry, a compaction, a branch's summary or a shell command; with
-  // none going it closes the footer's card.
-  const stops =
-    view.running ||
-    view.retry !== null ||
-    view.phase === "compacting" ||
-    summarizing ||
-    view.entries.some((entry) => entry.kind === "bash" && entry.running !== undefined);
+  // The interrupt stops a run, a retry, a compaction or a branch's summary first, then a shell
+  // command; with none going it closes the footer's card.
+  const working = view.running || view.retry !== null || view.phase === "compacting" || summarizing;
+  const stops = working || view.entries.some((entry) => entry.kind === "bash" && entry.running !== undefined);
   const stage = useMemo(() => new MascotStage(TRAVELS ? undefined : ["corner"]), []);
   const queued = view.queue.steering.length + view.queue.followUp.length;
   const operatorDialog: DialogRequest | null = operatorQuestion
@@ -270,9 +266,10 @@ export function App({
       expanded,
       thinking,
       escapes: interruptHint,
+      shellStops: working ? "" : interruptHint,
       commands: new Set(commands.map((command) => command.name)),
     }),
-    [expanded, thinking, interruptHint, commands],
+    [expanded, thinking, interruptHint, working, commands],
   );
   const completions = useCompletion(editor, commands, localCwd);
   // A travelling fire takes two rows beside the status; a closed status wraps its hint, such as
@@ -431,6 +428,7 @@ export function App({
   }, [keymap, readonly, archived, team, onReload, sessions]);
 
   const command = (name: string, args = "") => {
+    if (awaitingSummary()) return;
     if (!readonly && regular?.run(name, args)) return;
     if (team && TEAM_COMMANDS.some((command) => command.name === name)) {
       const task = team.detail.tasks.find((task) => task.id === team.taskId);
@@ -470,6 +468,15 @@ export function App({
     holdCommand(work);
   };
 
+  /**
+   * While a move summarizes the branch it leaves, Pi would run what it is sent on that branch,
+   * which the move then hides; as in Pi's own tree, nothing is sent until the summary ends or stops.
+   */
+  const awaitingSummary = () => {
+    if (summarizing) flash(`the draft waits for the branch summary · ${interruptHint} stops it`);
+    return summarizing;
+  };
+
   const toBottom = () => {
     const box = scroll.current;
     if (box) box.scrollTop = box.scrollHeight;
@@ -477,6 +484,10 @@ export function App({
 
   const submit = (text: string, followUp = false) => {
     if (!text.trim()) return;
+    if (awaitingSummary()) {
+      editor.current?.set(text);
+      return;
+    }
     const managed = (regular && named(text, PI_COMMANDS)) || (team && named(text, TEAM_COMMANDS));
     if (managed) {
       command(managed.name, managed.args);
@@ -891,6 +902,7 @@ export function App({
                 ref={editor}
                 attachments={attachments}
                 onSubmit={submit}
+                shell={sessions}
                 steering={view.running}
                 focused={!away}
                 agent={agent}

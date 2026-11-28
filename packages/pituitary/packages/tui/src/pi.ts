@@ -8,7 +8,6 @@ import {
   encodeJsonLine,
   type ImageContent,
   JsonLineDecoder,
-  type RunningShell,
   type SessionCommand,
   type SessionEvent,
   type SessionSnapshot,
@@ -16,6 +15,7 @@ import {
   type SessionStats,
   SHELL_OUTPUT_LIMIT,
   scrub,
+  type UnrecordedShell,
 } from "@pituitary/session";
 import type { Keymap } from "./keymap.ts";
 import {
@@ -165,8 +165,11 @@ export class PiConversation implements ConversationLink, PiUiPort {
     string,
     { callId: string; name: string; output?: string; details?: unknown }
   >();
-  /** The operator's shell commands Pi is running, by the request that runs each. */
-  private readonly shells = new Map<string, RunningShell>();
+  /**
+   * The operator's shell commands Pi has yet to record, by the request that runs each: those
+   * running, and those that ended during a run, which Pi records only as the run ends.
+   */
+  private readonly shells = new Map<string, UnrecordedShell>();
   private nextId = 0;
   private sequence = 0;
   private closed?: string;
@@ -343,7 +346,10 @@ export class PiConversation implements ConversationLink, PiUiPort {
     this.shells.set(id, { id, command, excludeFromContext, output: "" });
     this.emit({ type: "bash_start", id, command, excludeFromContext });
     const end = (outcome: { result: BashResult } | { error: string }) => {
-      this.shells.delete(id);
+      const shell = this.shells.get(id);
+      // Under a run Pi holds the command back until the run ends; until then snapshots carry it.
+      if (shell && "result" in outcome && this.running) this.shells.set(id, { ...shell, ...outcome });
+      else this.shells.delete(id);
       this.emit({ type: "bash_end", id, ...outcome });
     };
     // The end is reported as Pi's answer arrives, before any later record is handled.
@@ -355,7 +361,7 @@ export class PiConversation implements ConversationLink, PiUiPort {
   }
   /** Whether a shell command the operator ran is still running. */
   get shellRunning(): boolean {
-    return this.shells.size > 0;
+    return [...this.shells.values()].some((shell) => !shell.result);
   }
   /** Stops the operator's running shell command, whose end then says it was cancelled. */
   async abortBash(): Promise<void> {
@@ -364,14 +370,13 @@ export class PiConversation implements ConversationLink, PiUiPort {
   /**
    * Moves the session to another point of its tree, summarizing the branch it leaves when
    * asked; null when it stayed, by an extension's choice or an abort. Moving to a prompt leaves
-   * it to be written again: the session stands just before it, and `text` holds it.
+   * it to be written again: the session stands just before it, and `text` holds it. The
+   * session, its runtime and what it shares with the branch it left stay, so the view reads
+   * the branch it is on again rather than starting afresh.
    */
   async navigate(request: Omit<BridgeRequest<"navigate">, "kind">): Promise<{ text: string } | null> {
     const { cancelled, text } = await this.bridge({ kind: "navigate", ...request });
-    if (cancelled) return null;
-    // The runtime and its commands stay; the view starts afresh on the branch the session is on now.
-    this.replaced();
-    return { text };
+    return cancelled ? null : { text };
   }
 
   /** Starts a new session. False when an extension kept Pi on this one. */
@@ -403,7 +408,7 @@ export class PiConversation implements ConversationLink, PiUiPort {
     const { path } = await this.rpc({ type: "export_html", ...(outputPath ? { outputPath } : {}) });
     return resolve(launched, path);
   }
-  /** The operator's prompts on the current branch, oldest first, with the entries Pi forks and moves at. */
+  /** The operator's prompts on the current branch, oldest first, with the entries Pi forks at. */
   async branchPrompts(): Promise<BranchPrompt[]> {
     const { entries, leafId } = await this.rpc({ type: "get_entries" });
     return branchPrompts(entries, leafId);
@@ -673,6 +678,8 @@ export class PiConversation implements ConversationLink, PiUiPort {
       case "agent_settled":
         this.running = false;
         this.streaming = undefined;
+        // Pi has recorded the commands that ended during the run.
+        for (const [id, shell] of this.shells) if (shell.result) this.shells.delete(id);
         break;
       case "compaction_start":
         this.compacting = true;

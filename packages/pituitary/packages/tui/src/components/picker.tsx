@@ -10,10 +10,16 @@ import { Detail, type DetailIcon } from "./detail.tsx";
 
 export interface PickItem {
   label: string;
-  /** Drawn dim before the label and its mark, such as a tree's lines; the filter does not read it. */
+  /**
+   * Drawn dim before the label and its mark, such as a tree's lines. It joins a row to the rows
+   * around it, so a filtered list, which leaves some of those out, draws none; nor does the
+   * filter read it.
+   */
   lead?: string;
   /** Leads the label, such as the kind of entry a tree's row stands for. */
   mark?: DetailIcon;
+  /** Set apart from the rows that matter more, such as a tree's other branches: its label is dim. */
+  dim?: boolean;
   detail?: string;
   /** Leads the detail. */
   icon?: DetailIcon;
@@ -37,6 +43,8 @@ export interface PickerSpec {
   selected?: string;
   /** What other keys do to the item the list is on, such as renaming it. */
   keys?: readonly PickerKey[];
+  /** A list worth more rows than most, such as a session's tree: up to half the terminal, room permitting. */
+  tall?: boolean;
 }
 
 /** A key that acts on the item the list is on, given its value and the filter as typed. */
@@ -77,7 +85,7 @@ export function Picker({
   rows?: number;
   compact?: boolean;
 }) {
-  const { width } = useTerminalDimensions();
+  const { width, height: terminal } = useTerminalDimensions();
   const bindings = useKeymap();
   const input = useRef<InputRenderable>(null);
   const [query, setQuery] = useState(spec.query ?? "");
@@ -103,7 +111,8 @@ export function Picker({
   }, [spec]);
   const shown = useMemo(() => matchingItems(spec.items, query), [spec.items, query]);
   const index = Math.max(0, Math.min(selected, shown.length - 1));
-  const height = Math.max(1, Math.min(ROWS, rows));
+  const most = spec.tall ? Math.max(ROWS, Math.floor(terminal / 2)) : ROWS;
+  const height = Math.max(1, Math.min(most, rows));
   const top = Math.max(0, Math.min(index - Math.floor(height / 2), shown.length - height));
   const visible = shown.slice(top, top + height);
   const pick = (item: PickItem) => {
@@ -225,7 +234,7 @@ export function Picker({
             >
               {chosen ? SELECTED : UNSELECTED}
             </text>
-            <Row item={item} cells={cells} />
+            <Row item={item} cells={cells} filtered={query.trim() !== ""} chosen={chosen} />
           </box>
         );
       })}
@@ -248,12 +257,27 @@ export function Picker({
  * after its label, cutting the label for the mark unless that would leave the label narrower
  * than the mark; a label without its mark leaves the mark's room to the detail too. A lead and
  * a label's mark come first and keep their cells; a lead deeper than half the row keeps its end,
- * which joins the label.
+ * which joins the label, and a filtered list draws no lead.
  */
-function Row({ item, cells: row }: { item: PickItem; cells: number }) {
+function Row({
+  item,
+  cells: row,
+  filtered,
+  chosen,
+}: {
+  item: PickItem;
+  cells: number;
+  filtered: boolean;
+  /** The row the list is on, whose label reads in full colour. */
+  chosen: boolean;
+}) {
   const deepest = Math.floor(row / 2);
   const lead =
-    item.lead && item.lead.length > deepest ? item.lead.slice(item.lead.length - deepest) : item.lead;
+    !item.lead || filtered
+      ? undefined
+      : item.lead.length > deepest
+        ? item.lead.slice(item.lead.length - deepest)
+        : item.lead;
   const cells =
     row - (lead ? Bun.stringWidth(lead) : 0) - (item.mark ? Bun.stringWidth(item.mark.glyph) + 1 : 0);
   const icon = item.icon ? Bun.stringWidth(item.icon.glyph) + 1 : 0;
@@ -276,7 +300,7 @@ function Row({ item, cells: row }: { item: PickItem; cells: number }) {
       ) : null}
       <text
         selectable={false}
-        fg={item.current ? palette.yellow : theme.assistant}
+        fg={item.current ? palette.yellow : item.dim && !chosen ? theme.dim : theme.assistant}
         flexGrow={1}
         minWidth={0}
         wrapMode="none"
