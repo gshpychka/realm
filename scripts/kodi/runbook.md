@@ -167,6 +167,9 @@ in `cpm/patches/`, one directory per package:
 - `kodi/local-demux-replay-seek.patch` drops the packets the startup probes
   queue when playback seeks, so a resumed movie starts with audio and picture
   in sync
+- `kodi/local-aml-native-hdr-osd-pq-bypass.patch` selects the OSD PQ bypass
+  for native HDR playback, including Dolby Vision on-demand with VS10 bypassed.
+  The GUI shader already encodes the overlay in BT.2020/PQ
 - `kodi/local-window-close-message-flags.patch` reads a cross-thread window
   close's force and sound flags from the field the sender fills, so a forced
   close requested off the main thread completes

@@ -1,0 +1,32 @@
+diff --git a/xbmc/utils/AMLUtils.cpp b/xbmc/utils/AMLUtils.cpp
+index fa186fc..49333ce 100644
+--- a/xbmc/utils/AMLUtils.cpp
++++ b/xbmc/utils/AMLUtils.cpp
+@@ -1012,9 +1012,16 @@ static void aml_set_dv_hdr10_graphics(StreamHdrType hdrType)
+   logM(LOGINFO, "amdolby_vision hdr10_graphics [{}]", enable ? "enabled" : "disabled");
+ }
+ 
+-static void aml_set_osd_pq_bypass(GuiHdr guiHdr)
++static void aml_set_osd_pq_bypass(GuiHdr guiHdr,
++                                  StreamHdrType hdrType,
++                                  unsigned int bitDepth,
++                                  int vs10Override)
+ {
+-  const bool enable = (guiHdr == GuiHdr::HDR_PQ) && aml_dv_mode_off();
++  // Native HDR playback bypasses VS10 even with Dolby Vision on demand.
++  const bool nativeHdr = aml_dv_mode_off() ||
++                         aml_vs10_for(hdrType, bitDepth, vs10Override) ==
++                             DOLBY_VISION_OUTPUT_MODE_BYPASS;
++  const bool enable = (guiHdr == GuiHdr::HDR_PQ) && nativeHdr;
+ 
+   CSysfsPath("/sys/module/am_vecm/parameters/osd_pq_bypass", enable);
+   logM(LOGINFO, "am_vecm osd_pq_bypass [{}]", enable ? "enabled" : "disabled");
+@@ -1040,7 +1047,7 @@ static void aml_update_hdr_mode(StreamHdrType hdrType, unsigned int bitDepth, in
+   const GuiHdr guiHdr = aml_set_gui_hdr(hdrType, bitDepth, vs10Override);
+ 
+   aml_set_dv_hdr10_graphics(hdrType);
+-  aml_set_osd_pq_bypass(guiHdr);
++  aml_set_osd_pq_bypass(guiHdr, hdrType, bitDepth, vs10Override);
+ }
+ 
+ void aml_update_hdr_mode_state(StreamHdrType hdrType, unsigned int bitDepth)
