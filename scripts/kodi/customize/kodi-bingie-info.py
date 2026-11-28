@@ -44,10 +44,13 @@ def hide(block):
 def rating_row(name, label_id, variable):
     return f'''<include name="{name}">
         <!-- kodi-customize: genuine IMDb rating -->
-        <control type="group">
+        <control type="grouplist">
             <visible>!String.IsEmpty(Control.GetLabel({label_id}))</visible>
-            <width>150</width>
+            <width>140</width>
             <height>50</height>
+            <orientation>horizontal</orientation>
+            <usecontrolcoords>true</usecontrolcoords>
+            <itemgap>8</itemgap>
             <control type="image">
                 <left>0</left>
                 <top>9</top>
@@ -57,9 +60,8 @@ def rating_row(name, label_id, variable):
                 <texture>bingie/ratings/imdb.png</texture>
             </control>
             <control type="label" id="{label_id}">
-                <left>68</left>
                 <top>7</top>
-                <width>82</width>
+                <width>auto</width>
                 <height>36</height>
                 <aligny>center</aligny>
                 <font>Reg24</font>
@@ -73,6 +75,7 @@ def rating_row(name, label_id, variable):
 VARIABLES = '''
     <!-- kodi-customize: IMDb variables -->
     <variable name="KodiCustomizeIMDbRating">
+        <value condition="$EXP[IsMainMenuOpened] + Integer.IsGreater(Window(Home).Property(ListItem.IMDbRating),0)">$INFO[Window(Home).Property(ListItem.IMDbRating)]</value>
         <value condition="Integer.IsGreater(ListItem.Rating(imdb),0)">$INFO[ListItem.Rating(imdb)]</value>
         <value condition="$EXP[EXP_TMDbBingieHelper_Metadata] + Integer.IsGreater(Container(17195).ListItem.Property(IMDb_Rating),0)">$INFO[Container(17195).ListItem.Property(IMDb_Rating)]</value>
         <value></value>
@@ -86,6 +89,8 @@ VARIABLES = '''
 
 
 def details(text):
+    for name in ("MPAA_Details_Row", "MPAA_Details_RowNew", "MPAA_Details_RowUS", "MPAA_Details_RowUS_Fixed_Size"):
+        text = replace_elements(text, "include", {"name": name}, age_rating)
     for name in ("Thumbs_Up_Details_Row", "Thumbs_Down_Details_Row"):
         text = replace_elements(text, "include", {"name": name},
                                 lambda block: replace_elements(block, "control", {"type": "image"}, hide))
@@ -103,13 +108,42 @@ def details(text):
     return text.replace("</includes>", VARIABLES + "</includes>")
 
 
+def age_rating(block):
+    marker = '<!-- kodi-customize: age rating in details -->'
+    if marker not in block:
+        block = re.sub(r'(<control\b[^>]*>)',
+                       r'\1\n<visible>Window.IsVisible(movieinformation) | Window.IsVisible(1190)</visible>' + marker,
+                       block, count=1)
+    return block
+
+
+def widget_focus(text):
+    anchor = '<onfocus>SetProperty(ListItem.Rating, $ESCINFO[Container($PARAM[widgetid]).ListItem.Rating],Home)</onfocus>'
+    extra = '<onfocus>SetProperty(ListItem.IMDbRating,$ESCINFO[Container($PARAM[widgetid]).ListItem.Rating(imdb)],Home)</onfocus>'
+    if extra not in text:
+        if text.count(anchor) != 1:
+            raise ValueError("anchor not found: widget rating focus")
+        text = text.replace(anchor, extra + '\n' + anchor)
+    return text
+
+
+def widget_clear(text):
+    anchor = '<onload>ClearProperty(ListItem.Rating,Home)</onload>'
+    extra = '<onload>ClearProperty(ListItem.IMDbRating,Home)</onload>'
+    if extra not in text:
+        if text.count(anchor) != 1:
+            raise ValueError("anchor not found: widget rating clear")
+        text = text.replace(anchor, extra + '\n' + anchor)
+    return text
+
+
 def watched_button(template):
     button = template.replace('id="52"', 'id="9700"', 1)
     button = re.sub(r'\s*<visible>.*?</visible>', '', button, flags=re.S)
     condition = '!String.IsEmpty(ListItem.DBID) + [String.IsEqual(ListItem.DBType,movie) | String.IsEqual(ListItem.DBType,episode) | String.IsEqual(ListItem.DBType,tvshow)]'
     button = button.replace('id="9700">', 'id="9700">\n<visible>' + condition + '</visible>', 1)
     button = re.sub(r'<label>.*?</label>', '<label>Mark as watched</label>', button, count=1, flags=re.S)
-    button = button.replace('dialogs/videoinfo/info/play_beginning.png', 'overlays/normal/watched.png')
+    button = button.replace('dialogs/videoinfo/info/play_beginning.png', 'kodi-customize/watched.png')
     button = re.sub(r'\s*<!--.*?-->', '', button, flags=re.S)
     button = re.sub(r'\s*<onclick\b[^>]*>.*?</onclick>', '', button, flags=re.S)
     action = 'RunScript(/storage/.config/kodi-customize/kodi-mark-watched.py,$INFO[ListItem.DBType],$INFO[ListItem.DBID])'
@@ -132,7 +166,9 @@ def main():
     skin = Path(sys.argv[1])
     pending = []
     for filename, transform in (("IncludesBingie.xml", details),
-                                ("IncludesDialogVideoInfo.xml", info_menu)):
+                                ("IncludesDialogVideoInfo.xml", info_menu),
+                                ("IncludesFunctions.xml", widget_focus),
+                                ("Custom_1157_FlushWidgetProps.xml", widget_clear)):
         path = skin / filename
         before = path.read_text()
         after = transform(before)

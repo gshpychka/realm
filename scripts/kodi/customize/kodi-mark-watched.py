@@ -53,10 +53,6 @@ def main():
             mark_item("episode", episode["episodeid"])
     else:
         mark_item(kind, dbid)
-    xbmc.executebuiltin("Dialog.Close(movieinformation)")
-    xbmc.executebuiltin("Dialog.Close(1190)")
-    xbmc.executebuiltin("Container.Refresh")
-    xbmcgui.Dialog().notification("Kodi", "Marked as watched", xbmcgui.NOTIFICATION_INFO)
 
 
 if __name__ == "__main__":
@@ -64,4 +60,4 @@ if __name__ == "__main__":
         main()
     except Exception as error:
         xbmc.log(f"kodi-customize: mark watched failed: {error}", xbmc.LOGERROR)
-        xbmcgui.Dialog().notification("Mark as watched failed", str(error), xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().ok("Mark as watched failed", str(error))

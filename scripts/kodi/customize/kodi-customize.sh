@@ -191,10 +191,17 @@ advanced_settings() {
   fi
 }
 
-# Bingie's widgets hand InfoTagger an empty list in place of each stream type
-# an item's file lacks, which InfoTagger 0.0.9 rejects.
-bingie_widgets_streams() {
+# Widget metadata retains provider ratings and populated stream lists.
+bingie_widgets_metadata() {
   [ -f "$WIDGETS_KODIDB" ] || return 0
+  if insert_before_python "$WIDGETS_KODIDB" 'kodi_json["params"]["properties"] = fields' \
+    "$HERE/snippets/bingie-widgets-rating-fields.py"; then
+    log "Bingie widgets request named ratings"
+  fi
+  if insert_before_python "$WIDGETS_KODIDB" 'liz.setArt(item.get("art", {}))' \
+    "$HERE/snippets/bingie-widgets-ratings.py"; then
+    log "Bingie widgets preserve named ratings"
+  fi
   if insert_before_python "$WIDGETS_KODIDB" "info_tag.set_stream_details(stream_details)" \
     "$HERE/snippets/bingie-widgets-streams.py"; then
     log "Bingie widgets stream details patched"
@@ -513,7 +520,7 @@ install_splash() {
 advanced_settings
 install_splash
 pkc_hdr
-bingie_widgets_streams
+bingie_widgets_metadata
 if systemctl -q is-active kodi.service; then
   settings_live
 else
