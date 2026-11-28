@@ -85,6 +85,7 @@ export function Welcome({
         "sessions",
       ],
       [sessions ? bound("app.skills") : "", "choose a skill for the draft", "skills"],
+      [sessions ? bound("app.consult") : "", "ask other models for a second opinion", "second opinion"],
       [
         [bound("app.clear") && `${bound("app.clear")} twice`, bound("app.exit")].filter(Boolean).join("  "),
         "quit",

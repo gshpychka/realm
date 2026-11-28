@@ -14,6 +14,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { isOpinion } from "../consult/consult.ts";
+import type { LiveConsult } from "../consult/consults.ts";
 import { explain } from "../errors.ts";
 import { glyphs } from "../glyphs.ts";
 import { hintLine } from "../hints.ts";
@@ -28,6 +30,7 @@ import { useOpenBoxes } from "../use-open-boxes.ts";
 import { parseUserText, skillsIn } from "../user-text.ts";
 import { turnLine } from "../working.ts";
 import { BashView } from "./bash.tsx";
+import { ConsultCard, consultLayout, OpinionView } from "./consult.tsx";
 import { Link } from "./link.tsx";
 import { Markdown } from "./markdown.tsx";
 import { UserMessage } from "./user-message.tsx";
@@ -100,6 +103,7 @@ const EntryView = memo(function EntryView({
     case "user":
       return <UserMessage entry={entry} expanded={display.expanded} />;
     case "custom":
+      if (isOpinion(entry)) return <OpinionView entry={entry} />;
       return (
         <box flexDirection="column" flexShrink={0} marginTop={1}>
           <Marked mark="●" colour={theme.dim}>
@@ -255,10 +259,13 @@ export interface ConversationProps {
   onBelow?(below: boolean): void;
   /** Hands the keyboard back, as esc asks while browsing. */
   onLeave(): void;
+  /** Second opinions under way, and those that failed, drawn as cards after the entries. */
+  consults?: readonly LiveConsult[];
   ref: RefObject<ScrollBoxRenderable | null>;
 }
 
 const SCROLLBAR = { trackOptions: { foregroundColor: palette.rule, backgroundColor: theme.bg } };
+const NO_CONSULTS: readonly LiveConsult[] = [];
 
 /** Prepending history adds rows above the viewport; a page back should reveal one page, not a whole batch. */
 function useHistoryAnchor(
@@ -333,7 +340,10 @@ function scrollThrough(view: ScrollBoxRenderable | null, work: Work, by: number)
   if (view && !scrollWork(view, work, by)) view.scrollBy(by);
 }
 
-/** How the cursor marks a selected item other than a box: a bar down its left, in the conversation's margin. */
+/** Items the cursor marks by colouring their own frame rather than with a bar. */
+const FRAMED = new Set<Stop["kind"]>(["work", "consult"]);
+
+/** How the cursor marks a selected item without a frame: a bar down its left, in the conversation's margin. */
 function Selectable({
   stop,
   selected,
@@ -349,7 +359,7 @@ function Selectable({
   return (
     <box id={id} flexDirection="column" flexShrink={0} onSizeChange={() => onResized(id)}>
       {children}
-      {selected && stop.kind !== "work" ? (
+      {selected && !FRAMED.has(stop.kind) ? (
         // Every item stands a row below the one before it; the bar runs beside the item alone.
         <box
           position="absolute"
@@ -389,6 +399,7 @@ export function Conversation({
   hintColumns = 80,
   onBelow,
   onLeave,
+  consults = NO_CONSULTS,
   ref,
 }: ConversationProps) {
   const { height } = useTerminalDimensions();
@@ -399,8 +410,11 @@ export function Conversation({
     () => transcriptOf(entries.slice(earlier), running, skillOf),
     [entries, earlier, running, skillOf],
   );
-  const stops = useMemo(() => stopsOf(items), [items]);
-  const stopOf = useMemo(() => new Map<Item, Stop>(stops.map((stop) => [stop.item, stop])), [stops]);
+  const stops = useMemo(() => stopsOf(items, consults), [items, consults]);
+  const stopOf = useMemo(
+    () => new Map<Item | LiveConsult, Stop>(stops.map((stop) => [stop.item, stop])),
+    [stops],
+  );
   const { isOpen, isWhole, toggle, stretch, last } = useOpenBoxes(display.expanded, display.expansions);
   // Entries whose details the cursor showed, as ctrl+o shows every entry's, by `lasting`.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
@@ -487,6 +501,7 @@ export function Conversation({
     );
   const rows = boxRows(height);
   const selectedId = selected ? stopId(selected) : null;
+  const cards = consultLayout(columns, consults.length);
   return (
     <scrollbox
       ref={ref}
@@ -548,6 +563,24 @@ export function Conversation({
           <Fragment key={item.id}>{view}</Fragment>
         );
       })}
+      {consults.length > 0 ? (
+        <box flexDirection={cards.beside ? "row" : "column"} gap={cards.gap} flexShrink={0}>
+          {consults.map((consult) => {
+            const stop: Stop = { kind: "consult", item: consult };
+            const chosen = stopId(stop) === selectedId;
+            return (
+              <Selectable key={consult.id} stop={stop} selected={chosen} onResized={resized}>
+                <ConsultCard
+                  consult={consult}
+                  selected={chosen}
+                  width={cards.width}
+                  thinking={display.thinking}
+                />
+              </Selectable>
+            );
+          })}
+        </box>
+      ) : null}
     </scrollbox>
   );
 }

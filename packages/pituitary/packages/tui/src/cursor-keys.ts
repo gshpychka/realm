@@ -1,5 +1,8 @@
 import type { BashEntry, UserEntry } from "@pituitary/session";
-import { workText } from "./transcript.ts";
+import type { OpinionEntry } from "./consult/consult.ts";
+import { working } from "./consult/consults.ts";
+import type { Consult } from "./consult/use-consult.ts";
+import { type Reply, workText } from "./transcript.ts";
 import type { CursorKey, CursorKeys } from "./transcript-cursor.ts";
 import type { Pi } from "./use-pi.ts";
 import { typed } from "./user-text.ts";
@@ -12,6 +15,8 @@ export interface ActingOptions {
    * session from before it, or this one moved back before it. None in Dura.
    */
   prompts?: Pick<Pi, "forkAt" | "editAt">;
+  /** Regular Pi's second opinions: asking about a reply, acting on an opinion, and cancelling one under way. None in Dura. */
+  consult?: Pick<Consult, "weighIn" | "address" | "reply" | "cancel">;
   /** Hands the keyboard back to the draft, which going back to a prompt fills. */
   leave(): void;
 }
@@ -20,8 +25,11 @@ export interface ActingOptions {
  * What the cursor's keys do to an item beyond how it shows: `c` copies any of them as text, and
  * on a prompt regular Pi's `f` forks a new session from before it and `e` edits it in place.
  * Both need the prompt's own entry in Pi's session, which a prompt keyed by its message has.
+ * Regular Pi's `w` asks other models to weigh in on a reply; on a second opinion, `a` asks the
+ * agent to address it and `r` replies to the model that gave it; `esc` on a second opinion's
+ * card cancels it while it answers, or dismisses it once it failed, and leaves.
  */
-export function actingKeys({ copy, prompts, leave }: ActingOptions): CursorKeys {
+export function actingKeys({ copy, prompts, consult, leave }: ActingOptions): CursorKeys {
   /** `c`, which copies an item as `text` words it, saying it copied `what`. */
   const copies = <T>(what: string | ((item: T) => string), text: (item: T) => string): CursorKey<T> => ({
     keys: ["c"],
@@ -48,7 +56,49 @@ export function actingKeys({ copy, prompts, leave }: ActingOptions): CursorKeys 
         : []),
       copies("the prompt", (prompt) => typed(prompt.text)),
     ],
-    reply: [copies("the reply", (reply) => reply.text)],
+    reply: [
+      ...(consult
+        ? [
+            // The list of models takes the keyboard from the cursor, as the reply's question does for `r`.
+            {
+              keys: ["w"],
+              does: () => "weigh in",
+              applies: (reply: Reply) => reply.text !== "",
+              run: (reply: Reply) => consult.weighIn(reply),
+            },
+          ]
+        : []),
+      copies("the reply", (reply) => reply.text),
+    ],
+    opinion: [
+      ...(consult
+        ? [
+            {
+              keys: ["a"],
+              does: () => "address",
+              run: (entry: OpinionEntry) => {
+                leave();
+                consult.address(entry.details);
+              },
+            },
+            { keys: ["r"], does: () => "reply", run: (entry: OpinionEntry) => consult.reply(entry.details) },
+          ]
+        : []),
+      copies("the opinion", (entry) => entry.details.answer),
+    ],
+    consult: consult
+      ? [
+          {
+            keys: ["esc"],
+            does: (card) => (working(card) ? "cancel" : "dismiss"),
+            // The cursor leaves with the card, so esc pressed again, as vim hands press it, cancels nothing more.
+            run: (card) => {
+              leave();
+              consult.cancel(card.id);
+            },
+          },
+        ]
+      : [],
     shell: [copies("the command and its output", shell)],
     summary: [copies("the summary", (summary) => summary.text)],
     notice: [

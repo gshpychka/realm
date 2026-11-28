@@ -3,7 +3,15 @@ import { usePaste, useRenderer, useSelectionHandler, useTerminalDimensions } fro
 import { type ConversationLink, plain } from "@pituitary/session";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Attachments } from "./attachments.ts";
-import { BUILTINS, builtin, named, PI_SCREENS, SESSION_COMMANDS, SKILLS } from "./commands/commands.ts";
+import {
+  BUILTINS,
+  builtin,
+  CONSULT,
+  named,
+  PI_SCREENS,
+  SESSION_COMMANDS,
+  SKILLS,
+} from "./commands/commands.ts";
 import { runCommand } from "./commands/run-command.ts";
 import { Conversation, type Display } from "./components/conversation.tsx";
 import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
@@ -27,6 +35,7 @@ import {
   wideTeam,
 } from "./components/team.tsx";
 import { STATUS_INSET, statusUp, Working } from "./components/working.tsx";
+import { useConsult } from "./consult/use-consult.ts";
 import { actingKeys } from "./cursor-keys.ts";
 import { editExternally } from "./external-editor.ts";
 import { firelight } from "./firelight.ts";
@@ -106,7 +115,7 @@ const ARCHIVE_ACTIONS = new Set<Action>([
 ]);
 const ARCHIVE_COMMANDS = new Set(["copy", "session", "hotkeys", "quit"]);
 /** Regular Pi's commands that Pituitary runs itself, or hands to Pi's own screens. */
-const PI_COMMANDS = [...SESSION_COMMANDS, ...PI_SCREENS, SKILLS];
+const PI_COMMANDS = [...SESSION_COMMANDS, ...PI_SCREENS, SKILLS, CONSULT];
 
 const TEAM_COMMANDS = [
   { name: "tasks", description: "find a task or agent" },
@@ -194,6 +203,8 @@ export function App({
   const [below, setBelow] = useState(false);
   const [picker, setPicker] = useState<PickerSpec | null>(null);
   const regular = usePi({ pi, session, editor, pick: setPicker, ask: asking.ask, flash, terminal: handoff });
+  const consult = useConsult({ pi, session, editor, pick: setPicker, ask: asking.ask, flash });
+  const consulting = consult?.working;
   const piKeys = regular?.keymap;
   const keymap = useMemo(() => piKeys ?? keys ?? loadKeymap(), [piKeys, keys]);
   const sessions = Boolean(regular);
@@ -287,7 +298,7 @@ export function App({
   // A travelling fire takes two rows beside the status; a closed status wraps its hint, such as
   // the command that resumes the session, inside its padding.
   const statusRows = closed ? wrappedRows(hint ?? "", screenColumns - 2) : TRAVELS ? 2 : 1;
-  const workingRows = statusUp(view, closed, summarizing) ? statusRows : 0;
+  const workingRows = statusUp(view, closed, summarizing, consulting) ? statusRows : 0;
   const room = Math.max(
     0,
     screenRows - draftRows - footerRows - workingRows - (team ? teamRows(team, screenColumns) : 0),
@@ -419,6 +430,7 @@ export function App({
         return (!action.startsWith("app.team.") || team) &&
           (!action.startsWith("app.session.") || sessions) &&
           (action !== "app.skills" || sessions) &&
+          (action !== "app.consult" || sessions) &&
           (action !== "app.ui.reload" || onReload) &&
           (!readonly ||
             ARCHIVE_ACTIONS.has(action) ||
@@ -444,6 +456,10 @@ export function App({
     if (awaitingSummary()) return;
     if (!readonly && regular?.run(name, args)) return;
     if (!readonly && name === SKILLS.name && skills.open(args)) return;
+    if (!readonly && name === CONSULT.name && consult) {
+      consult.run(args);
+      return;
+    }
     if (team && TEAM_COMMANDS.some((command) => command.name === name)) {
       const task = team.detail.tasks.find((task) => task.id === team.taskId);
       if (name === "tasks") showTasks();
@@ -503,6 +519,7 @@ export function App({
         renderer.copyToClipboardOSC52(text) ? `copied ${what}` : "the terminal refused the clipboard write",
       ),
     prompts: readonly ? undefined : (regular ?? undefined),
+    consult: readonly ? undefined : (consult ?? undefined),
     leave: () => setBrowsing(false),
   });
 
@@ -614,6 +631,11 @@ export function App({
     "app.skills": () => {
       if (!regular) return false;
       command(SKILLS.name);
+      return true;
+    },
+    "app.consult": () => {
+      if (!consult) return false;
+      if (!awaitingSummary()) consult.fromDraft();
       return true;
     },
     "app.team.tasks": () => {
@@ -838,7 +860,7 @@ export function App({
   const shownHint = hint ?? (browsing ? cursorHint : null);
   // While pi works the status line takes the hint, and the draft's rule says when its output is out of view.
   const latest = keyHint(keymap, "tui.altScreen.bottom") ?? "pgdn";
-  const editorNote = statusUp(view, closed, summarizing)
+  const editorNote = statusUp(view, closed, summarizing, consulting)
     ? below
       ? `↓ more below · ${latest}`
       : null
@@ -879,6 +901,7 @@ export function App({
               hintColumns={screenColumns - STATUS_INSET}
               onBelow={setBelow}
               onLeave={() => setBrowsing(false)}
+              consults={consult?.live}
             />
             {wide && team ? <TeamCards team={team} wide open={selectTask} /> : null}
           </box>
@@ -904,6 +927,7 @@ export function App({
               escapes={interruptHint}
               agent={agent}
               summarizing={summarizing}
+              consulting={consulting}
             />
             <Queue queue={view.queue} dequeue={keymap["app.message.dequeue"][0]} rows={queueRows} />
             {resultTask && team ? (

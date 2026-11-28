@@ -122,7 +122,8 @@ test("the cursor copies a skill prompt as typed and a shell command with its out
     await app.terminal.waitIdle();
 
     await app.terminal.write(CTRL_F);
-    await app.terminal.waitText("━━ ↑↓ move · c copy · esc back ━");
+    // A reply asks other models to weigh in, or copies.
+    await app.terminal.waitText("━━ ↑↓ move · w weigh in · c copy · esc back ━");
     await app.terminal.write(UP);
     // The skill's chip opens to its instructions; the prompt forks, edits and copies as it was typed.
     await app.terminal.waitText("↑↓ move · enter show skill · f fork · e edit · c copy · esc back");
@@ -201,7 +202,7 @@ test("f forks a new session from before a prompt and e moves this one back to it
     await ask(app, "beta");
 
     await app.terminal.write(CTRL_F);
-    await app.terminal.waitText("━━ ↑↓ move · c copy · esc back ━");
+    await app.terminal.waitText("━━ ↑↓ move · w weigh in · c copy · esc back ━");
     await app.terminal.write(UP);
     await app.terminal.waitText("━━ ↑↓ move · f fork · e edit · c copy · esc back ━");
     await app.capture("cursor-pi-prompt");

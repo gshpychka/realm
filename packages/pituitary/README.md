@@ -5,7 +5,7 @@
 A conversation, an editor, a little fire. Work directly with your configured Pi,
 or use the same interface to follow a durable team running in Bay machines.
 
-[Start](#start-a-conversation) · [Sessions](#sessions) · [Skills](#skills) · [Sign in](#connect-your-provider) · [Teams](#connect-to-dura) ·
+[Start](#start-a-conversation) · [Sessions](#sessions) · [Skills](#skills) · [Second opinions](#second-opinions) · [Sign in](#connect-your-provider) · [Teams](#connect-to-dura) ·
 [Make it yours](#make-it-yours) · [Develop](#develop-without-rebuilding-the-system)
 
 ![Pituitary rendering a tool call and a queued steering message](docs/images/conversation.png)
@@ -124,6 +124,45 @@ instructions. A prompt template expands for good, so its prompt comes back as th
 When the model reads a skill's file itself, its work says `used skill pdf-tools`, or
 `skill pdf-tools failed` when the read did.
 
+## Second opinions
+
+`/consult [question]` asks other models to weigh in on the conversation, each with Pi's
+read-only tools (`read`, `grep`, `find`, `ls`) to check its claims against the code. `alt+o`
+asks the draft as the question, and on a reply the transcript cursor's `w` asks about that
+reply. Without a question, a model reviews the conversation so far: whether the approach is
+sound, the mistakes and risks it sees, and what it would do differently. Each answers with a
+verdict, its key points, and what it recommends.
+
+The list of models opens with the models `programs.pituitary.consult.models` declares marked
+(`PITUITARY_CONSULT_MODELS`, comma-separated `provider/id`), or else those you chose last; the
+conversation's own model says so. `space` marks several, and `enter` asks those marked, or the
+highlighted one when none is. The draft `alt+o` asks empties only once you choose, so a quick
+`esc o` that arrives as the chord closes with `esc` and loses nothing.
+
+Each model answers in a Pi of its own: your Pi command with the flags of yours a reviewer takes
+(`-e`/`--extension`, `--no-extensions`, `--skill`, `--no-skills`, `--no-context-files`,
+`--offline`, `--approve`, `--no-approve`), never Pituitary's own extensions, nor your session,
+model, tool or prompt flags, and without MCP. It reads the branch the session is on as Pi writes
+a conversation out for a summary, its oldest turns left out to fit half the smallest chosen
+model's context window. Its session stays under `$XDG_STATE_HOME/pituitary/consults`
+(`~/.local/state` without `XDG_STATE_HOME`), out of `--continue` and `/resume`. A question one
+of your extensions asks it is cancelled, since nobody is there to answer.
+
+While they answer, each model has a card at the end of the conversation with its latest steps
+and its reply as it streams, side by side where each gets 60 columns, and the working line
+names them. `/consult cancel` stops them; `esc` on a card under the transcript cursor stops that
+one, or dismisses one that failed, and leaves the cursor. Plain `esc` never does. A model whose
+Pi cannot start, such as one Pi does not know, says why on its card, in Pi's words.
+
+An answer joins the conversation as a second opinion with what answering took. Pi keeps it in
+the session as a custom message, which the model reads as yours from its next request on. While
+the agent works, Pi adds it as the agent's turn ends: a run that goes on reads it in its next
+request, as it would a steer, and one that ends there leaves it for your next prompt. An answer
+to a session Pi has since left is not recorded. On a second opinion, the cursor's `a` asks the
+agent to address it, steering a run under way, and `r` asks the model that gave it a follow-up
+in its own session, which records as a new opinion. The models stay for replies until
+Pituitary closes; a reply after a restart reopens the model's session.
+
 ## Connect your provider
 
 Start `pituitary`, type `/login`, and choose your provider. For a ChatGPT subscription,
@@ -179,16 +218,19 @@ not as failed. Replies that called no tool stand on their own. A turn ends with 
 worked, the tokens it wrote, and the time it ended; an interrupted reply says so beneath it.
 
 `ctrl+f` starts the transcript cursor on the latest item. `↑` and `↓` move it across prompts,
-boxes, replies, shell commands, summaries and notices, up past the first drawn item into the
-earlier ones, and the hint line lists the keys the selected item takes; `esc` leaves.
+boxes, replies, shell commands, summaries, notices, second opinions and their cards, up past
+the first drawn item into the earlier ones, and the hint line lists the keys the selected item
+takes; `esc` leaves.
 
 | Item | Keys |
 | --- | --- |
 | Box of work | `enter` open or close · `o` show it at full length, or bound it again · `j` `k` scroll · `c` copy its steps |
 | Prompt | `f` fork a new session from before it · `e` edit it in place, moving the session back before it (regular Pi) · `enter` show or hide a skill's instructions · `c` copy it as typed |
-| Reply | `c` copy |
+| Reply | `w` ask other models to weigh in on it (regular Pi) · `c` copy |
 | Shell command | `c` copy the command and its output |
 | Summary or notice | `enter` expand or fold · `c` copy |
+| Second opinion | `a` ask the agent to address it · `r` reply to the model that gave it · `c` copy its answer |
+| Second opinion's card | `esc` stop it, or dismiss it once it failed, and leave |
 
 Copies go to the terminal's clipboard (OSC 52), and the hint line says what was copied. An
 opened box takes the rows the conversation leaves empty below it. `ctrl+o` opens every box at
@@ -301,7 +343,8 @@ Import the [Home Manager module](../../modules/home-manager/pituitary.nix):
 ```
 
 Realm already imports it. The wrapper scopes editor, fire, colors, keybindings,
-and logging preferences to Pituitary. `model` selects the regular Pi default;
+and logging preferences to Pituitary. `model` selects the regular Pi default and
+`consult.models` the models a second opinion asks;
 `dura.stateDirectory` and `dura.socket` configure explicit Dura attachments.
 The [NixOS Dura module](../../modules/system/nixos/dura.nix) declares the harness.
 
@@ -317,16 +360,17 @@ external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 | ctrl+o / ctrl+t / ctrl+f | Open every box / toggle thinking / pick an item to open, copy or fork |
 | alt+r / alt+f / alt+n | Resume / fork / start a session (regular Pi) |
 | alt+s | Choose a skill for the draft (regular Pi) |
+| alt+o | Ask other models for a second opinion, the draft as the question (regular Pi) |
 | ctrl+g | Edit externally |
 | alt+u | Show usage and cost |
 | pgup / pgdn | Scroll |
 | alt+home / alt+end | Top of the conversation / back to its latest output |
 | ctrl+c twice / ctrl+d | Close |
 
-Like Pi's own `alt` keys, `alt+u` and `alt+s` take chords Neovim's insert mode reads as
-`esc` then `u` or `s`. Where the terminal delivers a quick `esc u` as that chord, as one
+Like Pi's own `alt` keys, `alt+u`, `alt+s` and `alt+o` take chords Neovim's insert mode reads
+as `esc` then `u`, `s` or `o`. Where the terminal delivers a quick `esc u` as that chord, as one
 without the kitty keyboard protocol may, it toggles the card instead of undoing; rebind
-`app.usage.toggle` or `app.skills` if that bites.
+`app.usage.toggle`, `app.skills` or `app.consult` if that bites.
 
 `/` completes commands, marking Pi's skills, prompt templates and extension commands, and
 shows the argument a template's `argument-hint` frontmatter declares. `enter` runs a command

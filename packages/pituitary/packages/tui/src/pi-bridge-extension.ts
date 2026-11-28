@@ -4,6 +4,8 @@ import { unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
+  buildSessionContext,
+  convertToLlm,
   type ExtensionAPI,
   type ExtensionCommandContext,
   getAgentDir,
@@ -11,6 +13,7 @@ import {
   type SessionEntry,
   type SessionInfo,
   SessionManager,
+  serializeConversation,
 } from "@earendil-works/pi-coding-agent";
 import {
   BRIDGE_COMMAND,
@@ -21,6 +24,8 @@ import {
   decodeCall,
   encodeReply,
   encodeRuntime,
+  OPINION_TYPE,
+  opinionText,
   RUNTIME_STATUS,
   type SessionSummary,
   type TreeKind,
@@ -115,8 +120,58 @@ async function answer(pi: ExtensionAPI, call: BridgeCall, ctx: ExtensionCommandC
     case "label":
       pi.setLabel(call.entryId, call.label || undefined);
       return null;
+    case "consult-context": {
+      // What the model sees of the branch: the latest compaction's summary, the entries it kept, and those after.
+      const { messages } = buildSessionContext(
+        ctx.sessionManager.getEntries(),
+        ctx.sessionManager.getLeafId(),
+      );
+      return digest(convertToLlm(messages), call.budget);
+    }
+    case "record-opinion":
+      // Shown in the conversation, and the model's to read from its next request; it starts no run.
+      pi.sendMessage(
+        {
+          customType: OPINION_TYPE,
+          content: opinionText(call.opinion),
+          display: true,
+          details: call.opinion,
+        },
+        { triggerTurn: false },
+      );
+      return null;
   }
 }
+
+type LlmMessage = ReturnType<typeof convertToLlm>[number];
+
+/**
+ * The conversation the model sees, compaction summary first, as Pi serializes one for a
+ * summary, its tool results already cut short: the latest turns that fit `budget` characters,
+ * each from a message of the operator's on, and how many earlier turns were left out. A latest
+ * turn longer than the budget keeps its end, the newest of it.
+ */
+function digest(messages: readonly LlmMessage[], budget: number): { digest: string; omitted: number } {
+  const turns: LlmMessage[][] = [];
+  for (const message of messages)
+    if (message.role === "user" || turns.length === 0) turns.push([message]);
+    else turns.at(-1)?.push(message);
+  const said = turns.map((turn) => serializeConversation(turn)).filter(Boolean);
+  const kept: string[] = [];
+  let room = budget;
+  for (const turn of said.slice().reverse()) {
+    if (turn.length > room) {
+      if (kept.length === 0) kept.push(turn.slice(turn.length - room));
+      break;
+    }
+    kept.push(turn);
+    room -= turn.length + TURN_GAP.length;
+  }
+  return { digest: kept.reverse().join(TURN_GAP), omitted: said.length - kept.length };
+}
+
+/** What separates turns in a digest, as Pi separates the messages of one. */
+const TURN_GAP = "\n\n";
 
 /** The most of an entry's text the tree carries: enough for its row, and for the filter to find it by. */
 const TREE_TEXT = 400;

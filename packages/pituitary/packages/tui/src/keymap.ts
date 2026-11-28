@@ -52,6 +52,12 @@ export const ACTIONS = {
    * alt+u, a quick esc s may arrive as this chord instead of substituting in normal mode.
    */
   "app.skills": ["alt+s"],
+  /**
+   * pituitary's own: asks other models for a second opinion, the draft's text as the question.
+   * Neither Pi nor nvim's insert mode binds alt+o; as with alt+u, a quick esc o may arrive as
+   * this chord, so the draft empties only once the models are chosen.
+   */
+  "app.consult": ["alt+o"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**

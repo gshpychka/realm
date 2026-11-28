@@ -25,6 +25,10 @@ let
           nvimPackage = pkgs.neovim-unwrapped;
           ghPackage = pkgs.gh;
           model = "anthropic/example-model";
+          consult.models = [
+            "anthropic/example-reviewer"
+            "openai/example-second"
+          ];
           dura.socket = "/home/check/.cache/dura/remote.sock";
           glyphs = "plain";
           animations = false;
@@ -75,6 +79,7 @@ pkgs.runCommand "pituitary-home-manager-check" { nativeBuildInputs = [ pkgs.jq ]
     jq -e --arg name "$1" --arg expected "$2" '.[$name] == $expected' environment.json >/dev/null
   }
   expect PITUITARY_MODEL anthropic/example-model
+  expect PITUITARY_CONSULT_MODELS anthropic/example-reviewer,openai/example-second
   expect DURA_RUNTIME_SOCKET /home/check/.cache/dura/remote.sock
   expect PITUITARY_NVIM ${pkgs.neovim-unwrapped}/bin/nvim
   expect PITUITARY_GH ${pkgs.gh}/bin/gh

@@ -72,6 +72,14 @@ export const SKILLS: Command = {
   args: "[filter]",
 };
 
+/** Regular Pi's second opinion: other models weigh in on the conversation, read-only. */
+export const CONSULT: Command = {
+  name: "consult",
+  description: "ask other models for a second opinion; cancel stops them",
+  source: "builtin",
+  args: "[question|cancel]",
+};
+
 /** Pi's own screens: Pituitary hands them the terminal and comes back when they close. */
 export const PI_SCREENS: readonly Command[] = [
   { name: "login", description: "connect a provider or subscription · opens Pi", source: "builtin" },

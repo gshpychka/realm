@@ -18,7 +18,9 @@ test("regular Pi keeps its executable, options and positional task separate", ()
     }),
   ).toEqual({
     command: "/configured/pi",
+    prefix: [],
     args: ["--continue", "--model", "provider/model"],
+    flags: [{ flag: "--continue" }, { flag: "--model", value: "provider/model" }],
     prompt: "fix the tests",
     resume: false,
     direct: false,

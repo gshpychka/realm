@@ -3,10 +3,19 @@ import { join } from "node:path";
 
 export interface PiCommand {
   command: string;
+  /** The configured Pi command's own arguments, `PI_AGENT_ARGS`, which lead `args`. */
+  prefix: string[];
   args: string[];
+  /** The operator's flags among `args`, in order, each with the value it takes. */
+  flags: PiFlag[];
   prompt?: string;
   resume: boolean;
   direct: boolean;
+}
+/** A flag the operator gave Pi, as typed, such as `--extension=mine.ts`, and the value it takes after it. */
+export interface PiFlag {
+  flag: string;
+  value?: string;
 }
 export interface DuraOptions {
   run: string;
@@ -61,8 +70,9 @@ export function piCommand(argv: readonly string[], environment: NodeJS.ProcessEn
   const command = environment.PI_AGENT_CMD ?? "pi";
   const prefix = environment.PI_AGENT_ARGS?.trim().split(/\s+/).filter(Boolean) ?? [];
   if (SUBCOMMANDS.has(argv[0] ?? "") || argv.some((arg) => DIRECT_FLAGS.has(arg)))
-    return { command, args: [...prefix, ...argv], resume: false, direct: true };
+    return { command, prefix, args: [...prefix, ...argv], flags: [], resume: false, direct: true };
   const args = [...prefix],
+    flags: PiFlag[] = [],
     words: string[] = [];
   let resume = false;
   for (let index = 0; index < argv.length; index++) {
@@ -76,13 +86,23 @@ export function piCommand(argv: readonly string[], environment: NodeJS.ProcessEn
       continue;
     }
     if (arg.startsWith("-")) {
-      args.push(arg);
-      if (VALUE_FLAGS.has(arg) && argv[index + 1] !== undefined) args.push(argv[++index] as string);
+      const value = VALUE_FLAGS.has(arg) ? argv[index + 1] : undefined;
+      if (value !== undefined) index++;
+      flags.push(value === undefined ? { flag: arg } : { flag: arg, value });
+      args.push(arg, ...(value === undefined ? [] : [value]));
     } else words.push(arg);
   }
   if (environment.PITUITARY_MODEL && !args.some((arg) => arg === "--model" || arg.startsWith("--model=")))
     args.push("--model", environment.PITUITARY_MODEL);
-  return { command, args, resume, direct: false, ...(words.length ? { prompt: words.join(" ") } : {}) };
+  return {
+    command,
+    prefix,
+    args,
+    flags,
+    resume,
+    direct: false,
+    ...(words.length ? { prompt: words.join(" ") } : {}),
+  };
 }
 
 /** Managed work is selected explicitly; it never changes what a plain `pituitary` means. */

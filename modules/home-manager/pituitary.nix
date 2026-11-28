@@ -29,6 +29,9 @@ let
     PITUITARY_FOOTER_HEARTH = toString cfg.footer.hearth;
   }
   // lib.optionalAttrs (cfg.model != null) { PITUITARY_MODEL = cfg.model; }
+  // lib.optionalAttrs (cfg.consult.models != [ ]) {
+    PITUITARY_CONSULT_MODELS = lib.concatStringsSep "," cfg.consult.models;
+  }
   // lib.optionalAttrs (cfg.dura.socket != null) { DURA_RUNTIME_SOCKET = cfg.dura.socket; }
   // lib.optionalAttrs (cfg.nvimPackage != null) {
     PITUITARY_NVIM = lib.getExe' cfg.nvimPackage "nvim";
@@ -90,6 +93,22 @@ in
       default = null;
       example = "anthropic/your-model";
       description = "Initial provider/model for local conversations. Declared agents use their own model.";
+    };
+
+    consult = {
+      models = mkOption {
+        type = types.listOf (types.strMatching "[^/[:space:],]+/[^[:space:],]+");
+        default = [ ];
+        example = [
+          "anthropic/your-reviewer"
+          "openai/your-second-reviewer"
+        ];
+        description = ''
+          The provider/model pairs `/consult` and `alt+o` ask for a second opinion unless you
+          choose others: the list of models opens with them marked. Empty marks the models
+          chosen last in the running frontend.
+        '';
+      };
     };
 
     nvimPackage = mkOption {

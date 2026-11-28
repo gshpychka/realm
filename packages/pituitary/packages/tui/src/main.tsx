@@ -9,6 +9,7 @@ import { createRoot } from "@opentui/react";
 import { App } from "./app.tsx";
 import { duraOptions, type PiCommand, piCommand, resumePiArgs } from "./cli.ts";
 import { openLog } from "./config.ts";
+import { consultLaunch } from "./consult/consult.ts";
 import { loadPiKeymap } from "./keymap.ts";
 import { prewarm } from "./nvim/engine.ts";
 import { type PiControls, PiConversation } from "./pi.ts";
@@ -131,6 +132,7 @@ async function runPi(agent: PiCommand): Promise<void> {
     handoff,
     resumeAtStart: agent.resume,
     keymap: () => loadPiKeymap(),
+    consult: { ...consultLaunch(agent), log: (text) => log.write(text) },
   };
   process.once("SIGTERM", () => void quit());
   process.once("SIGHUP", () => void quit());

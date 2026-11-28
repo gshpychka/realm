@@ -52,6 +52,11 @@ function doing(activity: Activity): string {
   }
 }
 
+/** What the working line says of the models giving second opinions, by name. */
+export function consultingWords(models: readonly string[]): string {
+  return `◆ ${models.length === 1 ? models[0] : `${models.length} models`} weighing in`;
+}
+
 /**
  * A finished turn's figures as one line: the time it worked, its output tokens, and the time of
  * day it ended, which `at` keeps from reading as another duration.

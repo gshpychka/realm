@@ -1,6 +1,7 @@
 /**
  * Pituitary's own channel into Pi, for what Pi's RPC lacks: listing and managing saved
- * sessions, moving through the session's tree, and reloading resources. The frontend sends a
+ * sessions, moving through the session's tree, reloading resources, and a second opinion's
+ * context and record. The frontend sends a
  * request as the arguments of the bridge extension's command, and the extension answers
  * through a status that the frontend takes out of the stream before any extension UI sees
  * it. Both sides share this module, so it imports nothing.
@@ -72,6 +73,71 @@ export interface TreeNode {
   at: number;
 }
 
+/**
+ * The custom message type a second opinion is recorded as. Pi sends a custom message to the
+ * model as the operator's, so the agent reads the opinion as context from then on.
+ */
+export const OPINION_TYPE = "pituitary.opinion";
+
+/** A second opinion another model gave on the conversation, as its custom message's details hold it. */
+export interface Opinion {
+  /** Which consultation it answers, unique among them. */
+  id: string;
+  provider: string;
+  /** The model's id at its provider. */
+  model: string;
+  /** What Pi's registry names the model, when it names it. */
+  name?: string;
+  question: string;
+  answer: string;
+  /** The consultant's own session file, which a reply to it continues. */
+  session?: string;
+  /** What answering cost, in dollars, the tokens it took, and the tool calls it made to check the code. */
+  cost: number;
+  tokens: number;
+  tools: number;
+}
+
+/** The model an opinion came from, as the operator reads it: its name, or `provider/id`. */
+export const opinionModel = (opinion: Pick<Opinion, "provider" | "model" | "name">): string =>
+  opinion.name?.trim() || `${opinion.provider}/${opinion.model}`;
+
+/** What the model reads of a recorded opinion. */
+export function opinionText(opinion: Opinion): string {
+  return `Second opinion from ${opinionModel(opinion)}, requested by the operator.\nQuestion: ${opinion.question}\n\n${opinion.answer}`;
+}
+
+/** The opinion a custom message's details hold; undefined when they hold none. */
+export function readOpinion(details: unknown): Opinion | undefined {
+  if (!isFields(details)) return undefined;
+  const { id, provider, model, name, question, answer, session, cost, tokens, tools } = details;
+  if (
+    !text(id) ||
+    !text(provider) ||
+    !text(model) ||
+    typeof question !== "string" ||
+    typeof answer !== "string" ||
+    typeof cost !== "number" ||
+    typeof tokens !== "number" ||
+    typeof tools !== "number" ||
+    (name !== undefined && typeof name !== "string") ||
+    (session !== undefined && typeof session !== "string")
+  )
+    return undefined;
+  return {
+    id,
+    provider,
+    model,
+    ...(name ? { name } : {}),
+    question,
+    answer,
+    ...(session ? { session } : {}),
+    cost,
+    tokens,
+    tools,
+  };
+}
+
 /** What each kind of request carries, and what its reply holds. */
 export interface BridgeKinds {
   /** This project's saved sessions, or every project's. */
@@ -101,6 +167,17 @@ export interface BridgeKinds {
   };
   /** Labels an entry of the session; an empty label takes the label off. */
   label: { request: { entryId: string; label: string }; result: null };
+  /**
+   * The branch the session is on as text another model can read, as Pi serializes a
+   * conversation for a summary: its latest turns, as many as `budget` characters hold, and how
+   * many earlier ones that left out. Empty when the branch holds no conversation yet.
+   */
+  "consult-context": { request: { budget: number }; result: { digest: string; omitted: number } };
+  /**
+   * Records a second opinion as a custom message the conversation shows, which the model
+   * reads from its next request on. While a run goes on, Pi adds it as the run's turn ends.
+   */
+  "record-opinion": { request: { opinion: Opinion }; result: null };
 }
 export type BridgeKind = keyof BridgeKinds;
 export type BridgeRequest<K extends BridgeKind = BridgeKind> = K extends BridgeKind
@@ -191,6 +268,15 @@ export function decodeCall(args: string): BridgeCall {
       if (!text(value.entryId) || typeof value.label !== "string")
         fail("label needs an entryId and a label.");
       return { id, kind: "label", entryId: value.entryId as string, label: (value.label as string).trim() };
+    case "consult-context":
+      if (typeof value.budget !== "number" || !(value.budget > 0))
+        fail("consult-context needs a budget of characters.");
+      return { id, kind: "consult-context", budget: Math.floor(value.budget as number) };
+    case "record-opinion": {
+      const opinion = readOpinion(value.opinion);
+      if (!opinion) fail("record-opinion needs an opinion.");
+      return { id, kind: "record-opinion", opinion: opinion as Opinion };
+    }
     default:
       return fail(`Unknown bridge request: ${String(value.kind)}`);
   }
@@ -230,6 +316,13 @@ export function readResult<K extends BridgeKind>(kind: K, result: unknown): Brid
         nodes: Array.isArray(fields.nodes) ? fields.nodes.filter(isTreeNode) : [],
         leaf: text(fields.leaf) ? fields.leaf : null,
         skipSummaryPrompt: fields.skipSummaryPrompt === true,
+      } as BridgeResult<K>;
+    }
+    case "consult-context": {
+      const fields = isFields(result) ? result : {};
+      return {
+        digest: typeof fields.digest === "string" ? fields.digest : "",
+        omitted: typeof fields.omitted === "number" ? fields.omitted : 0,
       } as BridgeResult<K>;
     }
     case "navigate": {
