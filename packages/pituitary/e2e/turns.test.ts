@@ -67,15 +67,16 @@ test("a run's work stays a few rows however long it streams, says what it did, a
     assert.match(done, FIGURES);
     assert.doesNotMatch(done, /\d+ tools?\b/);
 
-    // Opened, the box takes the rows the conversation leaves empty, its short steps a row each.
+    // Opened, the box takes the rows the conversation leaves empty, its short steps a row each:
+    // the turn's figures come down to the draft's rule, and the prompt stays in view above.
     await app.terminal.write(CTRL_F);
     await app.terminal.waitText("━━ ↑↓ move · c copy · esc back ━");
     await app.terminal.write(UP);
     await app.terminal.waitText("enter open · o full length");
     await app.terminal.write("\r");
-    const open = await app.terminal.waitText("enter close").then(() => app.terminal.text());
-    await app.capture("turns-open-room");
-    assert.ok(boxRows(open, /^ ╭ ▾ /) > 28 / 3 + 2, open);
+    await waitMatch(app.terminal, /^ \S+ \d+s · \S+ \d+ · at \d\d:\d\d\n━━ ↑↓ move · enter close/m);
+    const open = await app.capture("turns-open-room");
+    assert.match(open, /^ ▌ run the steps$/m);
     assert.match(
       open,
       /│ Step 1: read\.\s+\S?│\n │ ✓ \S+ read README\.md · 1 line\s+\S?│\n │ Step 2: grep\./,
@@ -107,6 +108,7 @@ test("a run's work stays a few rows however long it streams, says what it did, a
     await app.terminal.waitText("enter close");
     await app.terminal.keyboard.press("Escape");
     await waitGone(app.terminal, /esc back/);
+    assert.match(await app.terminal.text(), /^ ╭ ▾ /m);
     // Every box open at full length runs past the conversation's rows, and none of it shows
     // through the draft's row below them.
     await app.terminal.write(CTRL_O);

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { boot, launch, pastGrace, REPO, unscrolled, waitMatch } from "./helpers/harness.ts";
+import { boot, launch, pastGrace, REPO, settled, unscrolled, waitMatch } from "./helpers/harness.ts";
 import { re } from "./helpers/pattern.ts";
 import { launchPi } from "./helpers/pi.ts";
 
@@ -126,7 +126,9 @@ test("a mention offers the file whose name matches first, and letters in order a
 test("custom work and interrupt hints match dispatch, and unbound hints disappear", async () => {
   for (const unbound of [false, true]) {
     const app = await launch({
-      scenario: "long",
+      // Bound, a long answer gives the interrupt time to reach it; unbound, a refused request
+      // leaves a notice with more to show than its line.
+      scenario: unbound ? "refused" : "long",
       delayMs: 150,
       prepare: (home) => {
         const directory = join(home, ".config/pituitary");
@@ -146,6 +148,11 @@ test("custom work and interrupt hints match dispatch, and unbound hints disappea
       assert.doesNotMatch(welcome, /ctrl\+o|ctrl\+t/);
       if (unbound) {
         assert.doesNotMatch(welcome, /interrupt and take back|show or hide thinking|open every box/);
+        // With no key to show the rest, a notice's line names none after it.
+        await app.terminal.submit("hello");
+        await app.terminal.waitText("invalid x-api-key");
+        await settled(app.terminal);
+        assert.match(await app.capture("keybindings-unbound-notice"), /^ \S+ 401:? invalid x-api-key$/m);
         // With no interrupt key, the list names no key to close it.
         await app.terminal.type("/");
         await app.terminal.waitText("/compact [instructions]");

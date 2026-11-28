@@ -733,6 +733,7 @@ test("a live snapshot preserves the retry countdown without inventing a partial 
     running: true,
     retry: { attempt: 2, maxAttempts: 3, at: 5000, error: "overloaded" },
   });
+  expect(reduce(view, { type: "agent_settled" }).entries.some((entry) => entry.kind === "turn")).toBe(false);
 });
 
 test("snapshot partial tool output is retained for active and interrupted calls", () => {

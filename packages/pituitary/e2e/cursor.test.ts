@@ -65,7 +65,8 @@ test("a box says what its run read, edited, wrote and ran, and the call that fai
     await app.terminal.write(CTRL_F);
     await press(app.terminal, UP, "enter open · o full length");
     await app.terminal.write("\r");
-    await app.terminal.waitText("✓ $ printf 'one\\n' … +2 lines");
+    await app.terminal.waitText("enter close");
+    await waitMatch(app.terminal, /^ │ ✓ \$ printf 'one\\n' … \+2 lines +│$/m);
     await app.terminal.write("o");
     await app.terminal.waitText("printf 'three\\n'");
     await app.capture("cursor-pi-command-whole");

@@ -395,8 +395,9 @@ test("a move while Pi works takes the queue back and keeps the branch it moves t
     await waitMatch(app.terminal, /» queued two/);
     await app.terminal.waitIdle();
     const failed = await app.capture("tree-summary-failed");
-    // The reply the move stopped reads as the conversation said it.
-    assert.match(failed, /● aborted/);
+    // The reply the move stopped reads in the list as the conversation says it.
+    assert.match(failed, /^ ▌ delta\n\n {3}interrupted$/m);
+    assert.match(failed, /● interrupted · current/);
     assert.equal(app.provider.requests.length, 5);
     await app.terminal.keyboard.press("Escape");
     await waitMatch(app.terminal, /▌ delta/);
