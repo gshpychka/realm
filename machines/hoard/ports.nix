@@ -16,6 +16,7 @@
     prowlarr = config.services.prowlarr.settings.server.port;
     bazarr = config.services.bazarr.settings.general.port;
     seerr = config.services.seerr.port;
+    seerr-mcp = 5056;
     maintainerr = 6246;
     tautulli = config.services.tautulli.port;
     openclaw = config.services.openclaw-gateway.port;

@@ -39,6 +39,7 @@
     ./openclaw.nix
     ./openclaw-queued-media.nix
     ./hermes-agent.nix
+    ./seerr-mcp.nix
     ./hermes-ssh-key.nix
     ./voice-broker.nix
     ./resolve-db.nix
