@@ -336,12 +336,6 @@ describe("native failure presentation", () => {
     ).toMatchObject({ text: "/plan: no" });
   });
 
-  test("a prompt carries the key its session knows it by", () => {
-    expect(restore([{ role: "user", content: "q", timestamp: 5 }]).entries[0]).toMatchObject({
-      place: "user@5",
-    });
-  });
-
   test("an aborted reply says so", () => {
     const view = run([
       { type: "agent_start" },

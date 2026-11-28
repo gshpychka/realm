@@ -28,8 +28,6 @@ export interface UserEntry {
   text: string;
   /** Images the message carries, which its text names `[image 1]` onward. */
   images: number;
-  /** The key that picks the message out of its session, as `messagePlace` makes it. */
-  place?: string;
 }
 
 export interface AssistantEntry {
@@ -64,6 +62,8 @@ export interface NoticeEntry {
   local?: boolean;
   /** The key of the session message a local notice follows; one without leads the conversation. */
   after?: string;
+  /** A file the notice is about, such as a page it wrote, drawn on a line of its own as a link that opens it. */
+  file?: string;
 }
 
 /** A native domain message with host attribution, such as an inter-agent inbox delivery. */
@@ -190,11 +190,8 @@ interface Message {
   timestamp?: number;
 }
 
-/**
- * A key that picks `message` out of its session: pi stamps each message with the time it made it,
- * so a user message is `user@<milliseconds>` unless its host names its entry.
- */
-export function messagePlace(message: Message): string | null {
+/** A key that picks `message` out of its session: pi stamps each message with the time it made it. */
+function place(message: Message): string | null {
   return message.entryId ?? (message.timestamp === undefined ? null : `${message.role}@${message.timestamp}`);
 }
 
@@ -223,7 +220,7 @@ export function restore(
         type: "message_end",
         message,
       } as SessionEvent);
-      const key = messagePlace(message as Message);
+      const key = place(message as Message);
       const kept = key === null ? undefined : following.get(key);
       if (key === null || !kept) return next;
       following.delete(key);
@@ -396,7 +393,7 @@ export function reduce(state: SessionView, event: SessionAction, now = Date.now(
       const counted = {
         ...state,
         messages: state.messages + 1,
-        last: messagePlace(message),
+        last: place(message),
         turn: recorded(state.turn, message),
       };
       if (message.role !== "assistant") return counted;
@@ -591,16 +588,13 @@ export function transcript(state: SessionView): string {
 
 function startMessage(state: SessionView, message: Message): SessionView {
   switch (message.role) {
-    case "user": {
-      const at = messagePlace(message);
+    case "user":
       return append(state, (id) => ({
         kind: "user",
         id,
         text: contentToText(message.content),
         images: imageCount(message.content),
-        ...(at === null ? {} : { place: at }),
       }));
-    }
     case "assistant":
       return append(state, (id) => ({
         kind: "assistant",
@@ -794,6 +788,7 @@ export function note(
   level: NoticeEntry["level"],
   text: string,
   local = false,
+  file?: string,
 ): SessionView {
   const next = append(state, (id) => ({
     kind: "notice",
@@ -801,6 +796,7 @@ export function note(
     level,
     text,
     ...(local ? { local: true, ...(state.last === null ? {} : { after: state.last }) } : {}),
+    ...(file ? { file } : {}),
   }));
   return level === "error" ? { ...next, detail: text } : next;
 }

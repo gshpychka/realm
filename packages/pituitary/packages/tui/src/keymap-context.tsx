@@ -1,7 +1,7 @@
 import { createContext, useContext } from "react";
-import { ACTIONS, type Action, type Keymap } from "./keymap.ts";
+import { type Action, type Keymap, keymap, type ListAction } from "./keymap.ts";
 
-const KeymapContext = createContext<Keymap>(ACTIONS);
+const KeymapContext = createContext<Keymap>(keymap());
 export const KeymapProvider = KeymapContext.Provider;
 
 /** The same bindings the app dispatches, with defaults for isolated components. */
@@ -9,7 +9,7 @@ export function useKeymap(): Keymap {
   return useContext(KeymapContext);
 }
 
-export function keyHint(bindings: Keymap, action: Action): string | null {
+export function keyHint(bindings: Keymap, action: Action | ListAction): string | null {
   const keys = bindings[action].map((key) => key.replaceAll("escape", "esc"));
   return keys.length > 0 ? keys.join(" / ") : null;
 }

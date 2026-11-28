@@ -51,6 +51,17 @@ describe("keymap", () => {
     expect(map["app.model.select"]).toEqual([]);
   });
 
+  test("the resume list's keys share keys with the rest without taking them", () => {
+    // Pi binds its own list's delete to ctrl+d, which closes the frontend everywhere else.
+    const map = keymap({ "app.session.delete": "ctrl+d", "app.session.rename": "ctrl+e" });
+    expect(map["app.session.delete"]).toEqual(["ctrl+d"]);
+    expect(map["app.exit"]).toEqual(["ctrl+d"]);
+    expect(actionFor(map, { name: "d", ctrl: true })).toBe("app.exit");
+    expect(map["app.session.rename"]).toEqual(["ctrl+e"]);
+    expect(map["tui.input.tab"]).toEqual(["tab"]);
+    expect(actionFor(keymap(), { name: "tab" })).toBeNull();
+  });
+
   test("an unknown action or a malformed value is ignored", () => {
     const map = keymap({ "app.nope": "ctrl+x", "app.clear": 42 });
     expect(actionFor(map, { name: "c", ctrl: true })).toBe("app.clear");

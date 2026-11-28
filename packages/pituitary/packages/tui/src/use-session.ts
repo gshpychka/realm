@@ -25,7 +25,8 @@ export interface SessionController {
   abortRetry(): void;
   takeQueue(): Promise<string>;
   refresh(): Promise<void>;
-  notify(level: "info" | "warning" | "error", text: string): void;
+  /** Notes `text` in the conversation; `file` names a file it is about, drawn as a link. */
+  notify(level: "info" | "warning" | "error", text: string, file?: string): void;
 }
 
 /** Native snapshots establish a cursor; only later events are replayed over them. */
@@ -37,7 +38,7 @@ export function useSession(link: ConversationLink): SessionController {
   const reduced = useRef(emptySession);
   const generation = useRef(0);
   const sync = useRef<() => Promise<void>>(async () => {});
-  const notice = useRef<(level: "info" | "warning" | "error", text: string) => void>(() => {});
+  const notice = useRef<SessionController["notify"]>(() => {});
   useEffect(() => {
     let active = true;
     generation.current++;
@@ -61,10 +62,10 @@ export function useSession(link: ConversationLink): SessionController {
       },
       onFlush: () => setView(reduced.current),
     });
-    notice.current = (level, text) => {
+    notice.current = (level, text, file) => {
       if (!active) return;
       pacer.flush();
-      reduced.current = note(reduced.current, level, text, true);
+      reduced.current = note(reduced.current, level, text, true, file);
       setView(reduced.current);
     };
     const readStats = () => {
@@ -166,8 +167,8 @@ export function useSession(link: ConversationLink): SessionController {
       pacer.dispose();
     };
   }, [link]);
-  const notify = useCallback(
-    (level: "info" | "warning" | "error", text: string) => notice.current(level, text),
+  const notify = useCallback<SessionController["notify"]>(
+    (level, text, file) => notice.current(level, text, file),
     [],
   );
   const send = useCallback(

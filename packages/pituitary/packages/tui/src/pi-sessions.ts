@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
-import { contentToText, messagePlace, plain } from "@pituitary/session";
+import { contentToText, plain } from "@pituitary/session";
 import type { PickItem } from "./components/picker.tsx";
 import type { SessionSummary } from "./pi-bridge.ts";
 import { tilde } from "./place.ts";
@@ -10,8 +10,6 @@ import { clock } from "./working.ts";
 /** A prompt on the session's current branch, with what forking from it needs. */
 export interface BranchPrompt {
   entryId: string;
-  /** The transcript's key for the message, as `messagePlace` makes it. */
-  place: string | null;
   text: string;
   /** When the operator sent it, in milliseconds since the epoch. */
   at: number;
@@ -36,7 +34,6 @@ export function branchPrompts(entries: readonly SessionEntry[], leafId: string |
     return [
       {
         entryId: entry.id,
-        place: messagePlace(message),
         text: contentToText(message.content),
         at: message.timestamp ?? Date.parse(entry.timestamp),
       },
@@ -83,16 +80,17 @@ export function sessionRows(
   const visit = (session: SessionSummary, depth: number) => {
     if (shown.has(session.path)) return;
     shown.add(session.path);
-    const label = plain(session.name ?? "").trim() || firstLine(session.first) || "an empty session";
+    const label = sessionLabel(session);
     rows.push({
       label: depth === 0 ? label : `${"  ".repeat(depth - 1)}└ ${label}`,
       detail: [
-        ago(session.modified, now),
-        counted(session.messages, "message"),
+        sessionDetail(session, now),
         ...(all && session.cwd ? [tilde(plain(session.cwd), home)] : []),
       ].join(" · "),
       value: session.path,
       current: session.path === current,
+      // A renamed session is still found by what it began with.
+      keywords: plain(session.first),
     });
     for (const fork of forks.get(session.path) ?? []) visit(fork, depth + 1);
   };
@@ -100,6 +98,16 @@ export function sessionRows(
   // Sessions whose parents fork from each other have no root; they still appear.
   for (const session of recent) visit(session, 0);
   return rows;
+}
+
+/** What a session is called: its name, else its first prompt's first line. */
+export function sessionLabel(session: SessionSummary): string {
+  return plain(session.name ?? "").trim() || firstLine(session.first) || "an empty session";
+}
+
+/** How recent and how long a session is: `5m ago · 3 prompts`. */
+export function sessionDetail(session: SessionSummary, now: number): string {
+  return `${ago(session.modified, now)} · ${counted(session.prompts, "prompt")}`;
 }
 
 /** How long ago `at` was, in the largest unit that fits: `just now`, `5m ago`, `3h ago`, `2d ago`, else the date. */

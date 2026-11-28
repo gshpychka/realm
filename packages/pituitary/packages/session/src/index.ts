@@ -20,7 +20,6 @@ export {
   elapsed,
   emptySession,
   type LocalAction,
-  messagePlace,
   type NoticeEntry,
   note,
   reduce,
@@ -29,5 +28,4 @@ export {
   type SessionView,
   type ToolView,
   type TurnEntry,
-  type UserEntry,
 } from "./session.ts";

@@ -56,7 +56,11 @@ export const SESSION_COMMANDS: readonly Command[] = [
 export const PI_SCREENS: readonly Command[] = [
   { name: "login", description: "connect a provider or subscription · opens Pi", source: "builtin" },
   { name: "logout", description: "disconnect a provider · opens Pi", source: "builtin" },
-  { name: "tree", description: "navigate the session tree · opens Pi", source: "builtin" },
+  {
+    name: "tree",
+    description: "navigate the session tree · opens Pi; only a move with a summary carries back",
+    source: "builtin",
+  },
   { name: "settings", description: "change Pi settings · opens Pi", source: "builtin" },
   { name: "scoped-models", description: "choose models for cycling · opens Pi", source: "builtin" },
   { name: "trust", description: "manage project trust · opens Pi", source: "builtin" },

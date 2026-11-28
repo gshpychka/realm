@@ -1,12 +1,22 @@
-import type { UserEntry } from "@pituitary/session";
-import { type RefObject, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { dirname } from "node:path";
+import {
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { type Command, PI_SCREENS } from "./commands/commands.ts";
 import type { EditorHandle } from "./components/editor.tsx";
-import type { PickerSpec } from "./components/picker.tsx";
+import type { PickerKey, PickerSpec } from "./components/picker.tsx";
+import type { Keymap } from "./keymap.ts";
 import type { PiControls, PiWorkspace } from "./pi.ts";
 import type { SessionSummary } from "./pi-bridge.ts";
 import { PI_EXTENSIONS } from "./pi-extensions.ts";
-import { forkRows, sessionRows } from "./pi-sessions.ts";
+import { forkRows, sessionDetail, sessionLabel, sessionRows } from "./pi-sessions.ts";
 import { tilde } from "./place.ts";
 import type { Question } from "./use-ask.ts";
 import type { SessionController } from "./use-session.ts";
@@ -15,7 +25,8 @@ export interface UsePiOptions {
   pi: PiControls | undefined;
   session: SessionController;
   editor: RefObject<EditorHandle | null>;
-  pick(spec: PickerSpec): void;
+  /** The App's list: a spec opens one, null closes it, and an update can open one only where none is. */
+  pick: Dispatch<SetStateAction<PickerSpec | null>>;
   ask(question: Question): Promise<string | null>;
   flash(text: string): void;
   /** Hands the terminal to another program and takes it back. */
@@ -27,10 +38,10 @@ export interface Pi {
   workspace: PiWorkspace;
   /** Pi's extension, prompt-template and skill commands, without Pituitary's own bridge. */
   commands: Command[];
+  /** Pi's keybindings under Pituitary's own, read again by each /reload, as Pi's own /reload does. */
+  keymap: Keymap;
   /** Runs `/name args` when it is a session command or one of Pi's screens; false for anything else. */
   run(name: string, args: string): boolean;
-  /** Forks a new session that ends before `prompt`, a prompt the transcript shows, its text into the draft. */
-  forkFrom(prompt: UserEntry): void;
   /** Opens or closes the provider usage card, through Pituitary's usage extension. */
   toggleUsage(): void;
 }
@@ -52,6 +63,7 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
   const latest = useRef(session);
   latest.current = session;
   const resumed = useRef(false);
+  const [keymap, setKeymap] = useState(() => pi?.keymap());
   const commands = useMemo(
     () =>
       workspace.commands
@@ -65,7 +77,16 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
         ),
     [workspace],
   );
-  const actions = pi ? sessionActions(pi, latest, { editor, pick, ask, flash, terminal }) : null;
+  const actions = pi
+    ? sessionActions(pi, latest, {
+        editor,
+        pick,
+        ask,
+        flash,
+        terminal,
+        reloadKeys: () => setKeymap(pi.keymap()),
+      })
+    : null;
   // `pituitary --resume` opens the picker once the session has loaded.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the picker opens once, on the first snapshot
   useEffect(() => {
@@ -73,12 +94,13 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
     resumed.current = true;
     actions.run("resume", "");
   }, [session.state, pi]);
-  if (!pi || !actions) return null;
+  if (!pi || !actions || !keymap) return null;
   const { conversation: link } = pi;
   return {
     workspace,
     commands,
-    ...actions,
+    keymap,
+    run: actions.run,
     toggleUsage: () => {
       const name = link.commandOf(PI_EXTENSIONS.usage);
       if (!name) session.notify("warning", "Pi has not loaded Pituitary's provider usage extension.");
@@ -87,37 +109,69 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
   };
 }
 
+/** Which sessions the resume list shows: this project's, or every project's. */
+type Scope = "here" | "all";
+/** What the resume list keeps when it comes back after a key's work: the filter, and the session to start on. */
+type Keep = { query?: string; selected?: string };
+
 function sessionActions(
   pi: PiControls,
   latest: RefObject<SessionController>,
-  { editor, pick, ask, flash, terminal }: Omit<UsePiOptions, "pi" | "session">,
-): Pick<Pi, "run" | "forkFrom"> {
+  {
+    editor,
+    pick,
+    ask,
+    flash,
+    terminal,
+    reloadKeys,
+  }: Omit<UsePiOptions, "pi" | "session"> & { reloadKeys(): void },
+): Pick<Pi, "run"> {
   const { conversation } = pi;
-  const notify: SessionController["notify"] = (level, text) => latest.current.notify(level, text);
+  const notify: SessionController["notify"] = (level, text, file) => latest.current.notify(level, text, file);
   const kept = () => notify("info", "An extension kept Pi on this session.");
+  const failed = (name: string) => (error: unknown) => notify("error", `/${name}: ${describe(error)}`);
 
   /** Puts `text` at the top of the draft, what was there below it, with the cursor at its end. */
   const intoDraft = (text: string) => {
     const draft = editor.current?.text() ?? "";
     editor.current?.set(draft.trim() ? `${text}\n\n${draft}` : text, text.length);
   };
+  /** What Pi is busy with: a run, or a compaction, which a manual /compact runs outside any run. */
+  const busy = (): "run" | "compaction" | null => {
+    const { view } = latest.current;
+    return view.running ? "run" : view.phase === "compacting" ? "compaction" : null;
+  };
   /**
-   * Pi replaces a session only between runs. As Pi's own screen does, what is queued goes back
-   * to the draft and the run stops first.
+   * Pi replaces a session only while idle. As Pi's own screen does, the queue comes back and the
+   * run or compaction stops first. Returns what was queued.
    */
-  const settle = async () => {
-    if (!latest.current.view.running) return;
+  const settle = async (): Promise<string> => {
+    if (!busy()) return "";
     const queued = await latest.current.takeQueue();
-    if (queued) intoDraft(queued);
     await conversation.abort();
+    return queued;
+  };
+  /** Settles, putting what was queued at the top of the draft. */
+  const settled = async () => {
+    const queued = await settle();
+    if (queued) intoDraft(queued);
   };
 
   const forkAt = async (entryId: string) => {
-    await settle();
+    const queued = await settle();
+    const draft = editor.current?.text() ?? "";
     const forked = await conversation.fork(entryId);
-    if (!forked) return kept();
-    if (forked.text) intoDraft(forked.text);
-    notify("info", "Forked into a new session · editing your earlier prompt");
+    if (!forked) {
+      if (queued) intoDraft(queued);
+      return kept();
+    }
+    // As in Pi, the earlier prompt replaces the draft, which nvim's undo keeps; the queue taken
+    // back from the run stays under it.
+    editor.current?.set([forked.text, queued].filter(Boolean).join("\n\n"), forked.text.length);
+    notify(
+      "info",
+      `Forked into a new session · editing your earlier prompt${draft.trim() ? " · esc u brings your draft back" : ""}`,
+    );
   };
   const fork = async () => {
     const prompts = await conversation.branchPrompts();
@@ -129,76 +183,110 @@ function sessionActions(
     });
   };
   const clone = async () => {
-    await settle();
+    await settled();
     if (await conversation.clone()) notify("info", "Cloned this session into a new one");
     else kept();
   };
   const fresh = async () => {
-    await settle();
+    await settled();
     if (!(await conversation.newSession())) kept();
   };
 
-  const resume = async (all: boolean, keep: { query?: string; selected?: string } = {}) => {
-    const { sessions } = await conversation.bridge({ kind: "sessions", all });
+  /**
+   * The resume list of `wanted` sessions; a project without saved sessions yet lists every
+   * project's instead. `again` marks the list coming back after a key's work, which stays shut
+   * when another list opened meanwhile.
+   */
+  const resume = async (wanted: Scope, keep: Keep = {}, again = false): Promise<void> => {
+    let all = wanted === "all";
+    let { sessions } = await conversation.bridge({ kind: "sessions", all });
+    const elsewhere = !all && !sessions.length;
+    if (elsewhere) {
+      all = true;
+      ({ sessions } = await conversation.bridge({ kind: "sessions", all }));
+    }
+    if (!sessions.length) return notify("info", "Pi has no saved sessions yet.");
+    const now = Date.now();
     const current = latest.current.state?.sessionFile;
-    const items = sessionRows(sessions, { current, all, now: Date.now() });
-    if (!items.length)
-      return notify(
-        "info",
-        all
-          ? "Pi has no saved sessions."
-          : "This project has no saved sessions yet. /resume all lists every project's.",
-      );
-    const label = (path: string) =>
-      items.find((item) => item.value === path)?.label.replace(/^\s*└ /, "") ?? path;
-    const again = (query: string, selected?: string) =>
-      resume(all, { ...(query ? { query } : {}), ...(selected ? { selected } : {}) });
-    pick({
-      title: all ? "resume · every project's sessions" : "resume · this project's sessions",
-      items,
+    const named = (path: string) => {
+      const target = sessions.find((each) => each.path === path);
+      return {
+        label: target ? sessionLabel(target) : tilde(path),
+        detail: target && sessionDetail(target, now),
+      };
+    };
+    /** A key's work runs with the list shut, so nothing picks from a list it is changing; the list then comes back. */
+    const act = (work: () => Promise<Keep>, scope: Scope = wanted) => {
+      pick(null);
+      void work()
+        .then((keep) => resume(scope, keep, true))
+        .catch(failed("resume"));
+    };
+    const keys: PickerKey[] = [
+      {
+        action: "app.session.rename",
+        label: "rename",
+        run: (path, query) =>
+          act(async () => {
+            const { label } = named(path);
+            const name = (
+              await ask({ method: "input", title: `Rename “${label}”`, placeholder: label })
+            )?.trim();
+            if (!name) return { query, selected: path };
+            await conversation.bridge({ kind: "rename-session", path, name });
+            // The filter may not match the new name, so the whole list comes back, on the renamed session.
+            return { selected: path };
+          }),
+      },
+      {
+        action: "app.session.delete",
+        label: "delete",
+        run: (path, query) => {
+          if (path === current) return flash("Pi has this session open, so it stays");
+          act(async () => {
+            const { label, detail } = named(path);
+            const answer = await ask({
+              method: "select",
+              title: `Delete “${label}”?${detail ? ` · ${detail}` : ""}\nIt goes to the trash where a trash command is installed, otherwise for good.`,
+              options: ["Keep it", "Delete it"],
+            });
+            if (answer !== "Delete it") return { query, selected: path };
+            const { trashed } = await conversation.bridge({ kind: "delete-session", path });
+            flash(trashed ? "moved the session to the trash" : "deleted the session");
+            return { query };
+          });
+        },
+      },
+      // With nothing in this project there is nothing to switch to.
+      ...(elsewhere
+        ? []
+        : [
+            {
+              action: "tui.input.tab",
+              label: all ? "this project" : "every project",
+              run: (_path, query) => act(async () => ({ query }), all ? "here" : "all"),
+            } satisfies PickerKey,
+          ]),
+    ];
+    const spec: PickerSpec = {
+      title: elsewhere
+        ? "resume · every project's sessions · none in this project yet"
+        : all
+          ? "resume · every project's sessions"
+          : "resume · this project's sessions",
+      items: sessionRows(sessions, { current, all, now }),
       ...keep,
-      keys: [
-        {
-          binding: "ctrl+r",
-          label: "rename",
-          run: (path, query) =>
-            void (async () => {
-              const name = await ask({
-                method: "input",
-                title: `Rename “${label(path)}”`,
-                placeholder: label(path),
-              });
-              if (name?.trim())
-                await conversation.bridge({ kind: "rename-session", path, name: name.trim() });
-              await again(query, path);
-            })().catch(failed("resume")),
-        },
-        {
-          binding: "ctrl+x",
-          label: "delete",
-          run: (path, query) => {
-            if (path === current) return flash("Pi has this session open, so it stays");
-            void (async () => {
-              const answer = await ask({
-                method: "select",
-                title: `Delete “${label(path)}”?\n${tilde(path)}`,
-                options: ["Keep it", "Delete it"],
-              });
-              if (answer === "Delete it") await conversation.bridge({ kind: "delete-session", path });
-              await again(query);
-            })().catch(failed("resume"));
-          },
-        },
-      ],
+      keys,
       onPick: (path) => {
         const target = sessions.find((each) => each.path === path);
         if (target) void open(target).catch(failed("resume"));
       },
-    });
+    };
+    pick(again ? (shown) => shown ?? spec : spec);
   };
   const open = async (target: SessionSummary) => {
     if (target.path === latest.current.state?.sessionFile) return flash("this is the session you are in");
-    await settle();
+    await settled();
     const from = conversation.workspace().cwd;
     if (!(await conversation.switchSession(target.path))) return kept();
     const to = conversation.workspace().cwd;
@@ -206,8 +294,12 @@ function sessionActions(
   };
 
   const screen = async (command: string) => {
-    if (latest.current.view.running)
-      return notify("warning", `${command} opens Pi's own screen once the run finishes or is interrupted.`);
+    const work = busy();
+    if (work)
+      return notify(
+        "warning",
+        `${command} opens Pi's own screen once the ${work} finishes or is interrupted.`,
+      );
     terminal.suspend();
     try {
       await pi.handoff(command);
@@ -217,7 +309,6 @@ function sessionActions(
     await latest.current.refresh();
   };
 
-  const failed = (name: string) => (error: unknown) => notify("error", `/${name}: ${describe(error)}`);
   const go = (name: string, work: () => Promise<void>) => {
     void work().catch(failed(name));
     return true;
@@ -232,31 +323,42 @@ function sessionActions(
             notify("warning", "Use /resume, or /resume all for every project's sessions.");
             return true;
           }
-          return go(name, () => resume(args === "all"));
+          return go(name, () => resume(args === "all" ? "all" : "here"));
         case "fork":
           return go(name, fork);
         case "clone":
           return go(name, clone);
-        case "reload":
+        case "reload": {
+          // As Pi's own /reload: replacing the extensions under a run or a compaction would pull them from under it.
+          const work = busy();
+          if (work) {
+            notify(
+              "warning",
+              work === "run"
+                ? "Wait for the current response to finish before reloading."
+                : "Wait for compaction to finish before reloading.",
+            );
+            return true;
+          }
           return go(name, async () => {
             await conversation.bridge({ kind: "reload" });
-            notify("info", "Reloaded Pi's extensions, skills, prompts and context files");
+            reloadKeys();
+            notify("info", "Reloaded Pi's extensions, skills, prompts, context files and keybindings");
           });
+        }
         case "export":
           return go(name, async () => {
-            const path = await conversation.exportHtml(args || undefined);
-            notify("info", `Exported this session to ${tilde(path)}`);
+            const path = await conversation.exportHtml(args || undefined).catch((error: unknown) => {
+              // Pi reports a folder that is not there as the file it could not open.
+              throw args && /^ENOENT\b/.test(describe(error))
+                ? new Error(`the folder ${dirname(args)}/ does not exist`)
+                : error;
+            });
+            notify("info", "Exported this session to", path);
           });
       }
       if (!PI_SCREENS.some((command) => command.name === name)) return false;
       return go(name, () => screen(`/${name}${args ? ` ${args}` : ""}`));
-    },
-    forkFrom(prompt) {
-      void (async () => {
-        const target = (await conversation.branchPrompts()).find((each) => each.place === prompt.place);
-        if (!target) return notify("warning", "That prompt is not on this session's current branch.");
-        await forkAt(target.entryId);
-      })().catch(failed("fork"));
     },
   };
 }

@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { createInterface } from "node:readline";
 import {
   type ExtensionAPI,
   type ExtensionCommandContext,
@@ -74,7 +75,7 @@ async function answer(pi: ExtensionAPI, call: BridgeCall, ctx: ExtensionCommandC
         : within(dir, join(getAgentDir(), "sessions"))
           ? await SessionManager.listAll()
           : await SessionManager.listAll(dir);
-      return { sessions: sessions.map(summary) };
+      return { sessions: await summaries(sessions) };
     }
     case "rename-session":
       // The open session's manager records the name itself, keeping its own entries in order.
@@ -83,16 +84,25 @@ async function answer(pi: ExtensionAPI, call: BridgeCall, ctx: ExtensionCommandC
       return null;
     case "delete-session":
       if (same(call.path)) throw new Error("The session Pi has open cannot be deleted.");
-      await remove(call.path);
-      return null;
+      return { trashed: await remove(call.path) };
     case "reload":
       await ctx.reload();
       return null;
   }
 }
 
-/** A session without the text of every message, which the picker never shows. */
-function summary(info: SessionInfo): SessionSummary {
+/** How many session files are read at once to count their prompts. */
+const READING = 8;
+
+/** The sessions as the picker shows them, without the text of every message. */
+async function summaries(sessions: readonly SessionInfo[]): Promise<SessionSummary[]> {
+  const counted: SessionSummary[] = [];
+  for (let start = 0; start < sessions.length; start += READING)
+    counted.push(...(await Promise.all(sessions.slice(start, start + READING).map(summary))));
+  return counted;
+}
+
+async function summary(info: SessionInfo): Promise<SessionSummary> {
   return {
     path: info.path,
     id: info.id,
@@ -100,9 +110,34 @@ function summary(info: SessionInfo): SessionSummary {
     ...(info.name ? { name: info.name } : {}),
     ...(info.parentSessionPath ? { parent: info.parentSessionPath } : {}),
     modified: info.modified.getTime(),
-    messages: info.messageCount,
+    prompts: await promptsIn(info.path),
     first: info.firstMessage,
   };
+}
+
+/**
+ * The operator's prompts in a session file. Pi's own count takes in every message it stores,
+ * the system prompt and each tool result among them, so one exchange would read as three.
+ */
+async function promptsIn(path: string): Promise<number> {
+  let prompts = 0;
+  const lines = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
+  for await (const line of lines) {
+    try {
+      const entry: unknown = JSON.parse(line);
+      if (isPrompt(entry)) prompts++;
+    } catch {
+      // Pi skips a line it cannot read too.
+    }
+  }
+  return prompts;
+}
+
+function isPrompt(entry: unknown): boolean {
+  if (typeof entry !== "object" || entry === null || !("type" in entry) || entry.type !== "message")
+    return false;
+  const message = "message" in entry ? entry.message : undefined;
+  return typeof message === "object" && message !== null && "role" in message && message.role === "user";
 }
 
 function within(path: string, root: string): boolean {
@@ -110,9 +145,13 @@ function within(path: string, root: string): boolean {
   return offset === "" || (!offset.startsWith("..") && !isAbsolute(offset));
 }
 
-/** Deletes a session file as Pi's own picker does: into the trash when a `trash` command can, otherwise for good. */
-async function remove(path: string): Promise<void> {
+/**
+ * Deletes a session file as Pi's own picker does: into the trash when a `trash` command can,
+ * otherwise for good. True when it went to the trash.
+ */
+async function remove(path: string): Promise<boolean> {
   const trashed = spawnSync("trash", path.startsWith("-") ? ["--", path] : [path], { encoding: "utf8" });
-  if (trashed.status === 0 || !existsSync(path)) return;
+  if (trashed.status === 0 || !existsSync(path)) return true;
   await unlink(path);
+  return false;
 }

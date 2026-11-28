@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
-import { messagePlace } from "@pituitary/session";
 import type { SessionSummary } from "./pi-bridge.ts";
 import { ago, branchPrompts, forkRows, sessionRows } from "./pi-sessions.ts";
 
@@ -32,12 +31,11 @@ const entries = [
   entry("b3", "b2", { role: "assistant" }, 9),
 ];
 
-test("prompts come from the current branch only, oldest first, keyed as the transcript keys them", () => {
+test("prompts come from the current branch only, oldest first", () => {
   const prompts = branchPrompts(entries, "b3");
   expect(prompts.map((prompt) => prompt.entryId)).toEqual(["u1", "b2"]);
   expect(prompts[0]).toEqual({
     entryId: "u1",
-    place: messagePlace({ role: "user", timestamp: at(30) }),
     text: "first prompt\nwith detail",
     at: at(30),
   });
@@ -53,7 +51,7 @@ test("the fork picker lists prompts newest first by how far back they are", () =
     { label: "edited prompt", detail: "latest prompt · 14:50", value: "b2" },
     { label: "first prompt", detail: "1 prompt ago · 14:30", value: "u1" },
   ]);
-  const yesterday = forkRows([{ entryId: "old", place: null, text: "\n  \n", at: at(24 * 60) }], NOW);
+  const yesterday = forkRows([{ entryId: "old", text: "\n  \n", at: at(24 * 60) }], NOW);
   expect(yesterday).toEqual([{ label: "an image", detail: "latest prompt · Nov 27 15:00", value: "old" }]);
 });
 
@@ -63,7 +61,7 @@ test("saved sessions are listed most recent first, with each fork under the sess
     id: path,
     cwd: "/home/me/projects/realm",
     modified: at(minutes),
-    messages: 4,
+    prompts: 4,
     first: `${path} prompt`,
     ...extra,
   });
@@ -72,7 +70,7 @@ test("saved sessions are listed most recent first, with each fork under the sess
     session("fork", 5, { parent: "root", name: "Fork \x1b[31mred\x1b[0m" }),
     session("forkfork", 50, { parent: "fork" }),
     session("orphan", 2, { parent: "gone" }),
-    session("newest", 1, { messages: 1 }),
+    session("newest", 1, { prompts: 1 }),
   ];
   const rows = sessionRows(sessions, { current: "fork", all: false, now: NOW, home: "/home/me" });
   expect(rows.map((row) => row.label)).toEqual([
@@ -83,15 +81,17 @@ test("saved sessions are listed most recent first, with each fork under the sess
     "  └ forkfork prompt",
   ]);
   expect(rows.map((row) => row.detail)).toEqual([
-    "1m ago · 1 message",
-    "2m ago · 4 messages",
-    "1h ago · 4 messages",
-    "5m ago · 4 messages",
-    "50m ago · 4 messages",
+    "1m ago · 1 prompt",
+    "2m ago · 4 prompts",
+    "1h ago · 4 prompts",
+    "5m ago · 4 prompts",
+    "50m ago · 4 prompts",
   ]);
   expect(rows.filter((row) => row.current).map((row) => row.value)).toEqual(["fork"]);
+  // A renamed session is still found by its first prompt.
+  expect(rows[3]?.keywords).toBe("fork prompt");
   const everywhere = sessionRows([session("root", 60)], { all: true, now: NOW, home: "/home/me" });
-  expect(everywhere[0]?.detail).toBe("1h ago · 4 messages · ~/projects/realm");
+  expect(everywhere[0]?.detail).toBe("1h ago · 4 prompts · ~/projects/realm");
   // Sessions that fork from each other still show.
   const looped = sessionRows([session("a", 1, { parent: "b" }), session("b", 2, { parent: "a" })], {
     all: false,

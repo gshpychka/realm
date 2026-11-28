@@ -31,7 +31,8 @@ export interface SessionSummary {
   parent?: string;
   /** When the session last changed, in milliseconds since the epoch. */
   modified: number;
-  messages: number;
+  /** The prompts the operator sent in it, on every branch. */
+  prompts: number;
   /** The session's first prompt. */
   first: string;
 }
@@ -41,8 +42,8 @@ export interface BridgeKinds {
   /** This project's saved sessions, or every project's. */
   sessions: { request: { all: boolean }; result: { sessions: SessionSummary[] } };
   "rename-session": { request: { path: string; name: string }; result: null };
-  /** Refused for the session Pi has open. */
-  "delete-session": { request: { path: string }; result: null };
+  /** Refused for the session Pi has open; `trashed` when a `trash` command took the file rather than deleting it for good. */
+  "delete-session": { request: { path: string }; result: { trashed: boolean } };
   /** Reloads extensions, skills, prompts, themes and context files. */
   reload: { request: Record<never, never>; result: null };
 }
@@ -138,6 +139,8 @@ export function readResult<K extends BridgeKind>(kind: K, result: unknown): Brid
       const sessions = isFields(result) && Array.isArray(result.sessions) ? result.sessions : [];
       return { sessions: sessions.filter(isSummary) } as BridgeResult<K>;
     }
+    case "delete-session":
+      return { trashed: isFields(result) && result.trashed === true } as BridgeResult<K>;
     default:
       return null as BridgeResult<K>;
   }
@@ -150,7 +153,7 @@ function isSummary(value: unknown): value is SessionSummary {
     text(value.id) &&
     typeof value.cwd === "string" &&
     typeof value.modified === "number" &&
-    typeof value.messages === "number" &&
+    typeof value.prompts === "number" &&
     typeof value.first === "string" &&
     (value.name === undefined || typeof value.name === "string") &&
     (value.parent === undefined || typeof value.parent === "string")

@@ -27,7 +27,7 @@ import { statusUp, Working } from "./components/working.tsx";
 import { editExternally } from "./external-editor.ts";
 import { firelight } from "./firelight.ts";
 import { usePullRequest } from "./github/use-pull-request.ts";
-import { type Action, actionFor, type Keymap, loadKeymap } from "./keymap.ts";
+import { type Action, actionFor, isListAction, type Keymap, type ListAction, loadKeymap } from "./keymap.ts";
 import { KeymapProvider, keyHint } from "./keymap-context.tsx";
 import { modelTitle } from "./model-names.ts";
 import { PasteEvents } from "./paste-events.ts";
@@ -135,7 +135,6 @@ export function App({
   const { view, state, stats, closed, send, abort } = session;
   const renderer = useRenderer();
   const { width: screenColumns, height: screenRows } = useTerminalDimensions();
-  const keymap = useMemo(() => keys ?? loadKeymap(), [keys]);
   const editor = useRef<EditorHandle | null>(null);
   const [attachments] = useState(() => new Attachments());
   const pastes = useRef<PasteEvents | null>(null);
@@ -167,6 +166,8 @@ export function App({
   const [browsing, setBrowsing] = useState(false);
   const [picker, setPicker] = useState<PickerSpec | null>(null);
   const regular = usePi({ pi, session, editor, pick: setPicker, ask: asking.ask, flash, terminal: handoff });
+  const piKeys = regular?.keymap;
+  const keymap = useMemo(() => piKeys ?? keys ?? loadKeymap(), [piKeys, keys]);
   const sessions = Boolean(regular);
   const [window, setWindow] = useState(initialView?.window ?? WINDOW);
   const [operatorQuestion, setOperatorQuestion] = useState<TeamQuestion | null>(null);
@@ -367,17 +368,23 @@ export function App({
   });
 
   const hotkeys = useCallback(() => {
-    const bound = (Object.entries(keymap) as [Action, readonly string[]][]).flatMap(([action, bindings]) =>
-      bindings.length > 0 &&
-      (!action.startsWith("app.team.") || team) &&
-      (!action.startsWith("app.session.") || sessions) &&
-      (action !== "app.ui.reload" || onReload) &&
-      (!readonly ||
-        ARCHIVE_ACTIONS.has(action) ||
-        action.startsWith("app.team.") ||
-        action === "app.ui.reload")
-        ? [`${bindings.join(", ").padEnd(16)} ${action.replace(/^app\./, "")}`]
-        : [],
+    const line = (bindings: readonly string[], action: string) =>
+      `${bindings.join(", ").padEnd(16)} ${action.replace(/^app\./, "")}`;
+    const bound = (Object.entries(keymap) as [Action | ListAction, readonly string[]][]).flatMap(
+      ([action, bindings]) => {
+        if (!bindings.length) return [];
+        if (isListAction(action))
+          return sessions && !readonly ? [`${line(bindings, action)} · in /resume`] : [];
+        return (!action.startsWith("app.team.") || team) &&
+          (!action.startsWith("app.session.") || sessions) &&
+          (action !== "app.ui.reload" || onReload) &&
+          (!readonly ||
+            ARCHIVE_ACTIONS.has(action) ||
+            action.startsWith("app.team.") ||
+            action === "app.ui.reload")
+          ? [line(bindings, action)]
+          : [];
+      },
     );
     if (readonly)
       return [

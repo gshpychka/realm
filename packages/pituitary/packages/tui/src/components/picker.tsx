@@ -1,7 +1,9 @@
 import type { InputRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { matches } from "../keymap.ts";
+import { type ListAction, matches } from "../keymap.ts";
+import { keyHint, useKeymap } from "../keymap-context.tsx";
+import { ellipsize } from "../text-width.ts";
 import { palette, theme } from "../theme.ts";
 import { Detail, type DetailIcon } from "./detail.tsx";
 
@@ -13,6 +15,8 @@ export interface PickItem {
   value: string;
   /** Marks the item that is in effect now, such as the current model. */
   current?: boolean;
+  /** Text the filter also matches that the row does not show, such as a renamed session's first prompt. */
+  keywords?: string;
 }
 
 /** A choice the operator makes from a list, and what follows it. */
@@ -32,8 +36,8 @@ export interface PickerSpec {
 
 /** A key that acts on the item the list is on, given its value and the filter as typed. */
 export interface PickerKey {
-  /** The key, as keybindings name one: `ctrl+r`. */
-  binding: string;
+  /** The action whose keys do it, as the operator's keybindings bind them. */
+  action: ListAction;
   /** What the key does, for the list's hint. */
   label: string;
   run(value: string, query: string): void;
@@ -46,7 +50,7 @@ function matchingItems(items: readonly PickItem[], query: string) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return items
     .filter((item) => {
-      const haystack = `${item.label} ${item.detail ?? ""}`.toLowerCase();
+      const haystack = `${item.label} ${item.detail ?? ""} ${item.keywords ?? ""}`.toLowerCase();
       return words.every((word) => haystack.includes(word));
     })
     .sort(
@@ -69,6 +73,7 @@ export function Picker({
   compact?: boolean;
 }) {
   const { width } = useTerminalDimensions();
+  const bindings = useKeymap();
   const input = useRef<InputRenderable>(null);
   const [query, setQuery] = useState(spec.query ?? "");
   const [selected, setSelected] = useState(() => {
@@ -125,7 +130,7 @@ export function Picker({
       key.preventDefault();
       move(key.name === "pageup" ? -height : height);
     } else {
-      const bound = spec.keys?.find((each) => matches(key, each.binding));
+      const bound = spec.keys?.find((each) => bindings[each.action].some((binding) => matches(key, binding)));
       if (!bound) return;
       key.preventDefault();
       const { matches: items, index } = current();
@@ -133,7 +138,23 @@ export function Picker({
       if (item) bound.run(item.value, input.current?.value ?? query);
     }
   });
-  const keyHints = spec.keys?.map((each) => `${each.binding} ${each.label}`).join(" · ");
+  const keyHints =
+    spec.keys?.flatMap((each) => {
+      const hint = keyHint(bindings, each.action);
+      return hint ? [`${hint} ${each.label}`] : [];
+    }) ?? [];
+  // The cells inside the frame and its padding, and a row's after its selection mark.
+  const inner = width - (compact ? 0 : 2) - 2;
+  const cells = inner - 2;
+  const count = `${shown.length} of ${spec.items.length}`;
+  // The keys every list has go first when the list's own keys need the room.
+  const hints = [count, "↑↓ move", "enter pick", ...keyHints, "esc close"].join(" · ");
+  const hint =
+    width < 50
+      ? `enter pick · esc close · ${count}`
+      : Bun.stringWidth(hints) <= inner
+        ? hints
+        : ellipsize([count, ...keyHints, "esc close"].join(" · "), inner);
 
   return (
     <box
@@ -205,25 +226,41 @@ export function Picker({
             >
               {chosen ? "▸ " : "  "}
             </text>
-            <text
-              selectable={false}
-              fg={item.current ? palette.yellow : theme.assistant}
-              flexGrow={1}
-              minWidth={0}
-              truncate
-              wrapMode="none"
-            >
-              {item.label}
-              {item.detail ? <Detail text={item.detail} icon={item.icon} /> : null}
-            </text>
+            <Row item={item} cells={cells} />
           </box>
         );
       })}
       <text selectable={false} fg={theme.dim} truncate wrapMode="none">
-        {width < 50
-          ? `enter pick · esc close · ${shown.length} of ${spec.items.length}`
-          : `${shown.length} of ${spec.items.length} · ↑↓ move · enter pick${keyHints ? ` · ${keyHints}` : ""} · esc close`}
+        {hint}
       </text>
     </box>
+  );
+}
+
+/**
+ * One item: its label cut at the end to the room its detail leaves, and the detail at the right
+ * edge, so details line up down the list. The detail takes at most half the row.
+ */
+function Row({ item, cells }: { item: PickItem; cells: number }) {
+  const icon = item.icon ? Bun.stringWidth(item.icon.glyph) + 1 : 0;
+  const detail = item.detail ? ellipsize(item.detail, Math.floor(cells / 2) - 1 - icon) : "";
+  const room = cells - (detail ? Bun.stringWidth(detail) + 1 + icon : 0);
+  return (
+    <>
+      <text
+        selectable={false}
+        fg={item.current ? palette.yellow : theme.assistant}
+        flexGrow={1}
+        minWidth={0}
+        wrapMode="none"
+      >
+        {ellipsize(item.label, room)}
+      </text>
+      {detail ? (
+        <text selectable={false} flexShrink={0} wrapMode="none">
+          <Detail text={detail} icon={item.icon} />
+        </text>
+      ) : null}
+    </>
   );
 }

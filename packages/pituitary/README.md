@@ -46,21 +46,29 @@ screen stay where they are while the conversation changes under them.
 | `/resume [all]` | `alt+r` | Switch to a saved session of this project, or of every project with `all` |
 | `/fork` | `alt+f` | Start a new session from before an earlier prompt, that prompt in the draft |
 | `/clone` | | Copy this session into a new one |
-| `/export [path]` | | Write this session as an HTML page, into the project unless a path says otherwise |
-| `/reload` | | Reload Pi's extensions, skills, prompt templates, and context files |
-| `/session [copy]` | | Show the session's file, name, messages, context, and cost; `copy` copies the file's path |
+| `/export [path]` | | Write this session as an HTML page, into the directory Pi's process started in unless the path is absolute |
+| `/reload` | | Reload Pi's extensions, skills, prompt templates, context files, and keybindings |
+| `/session [copy]` | | Show the session's name, messages, context, cost, and file; `copy` copies the file's path |
 
 The resume list puts the most recently changed session first and each fork under the
-session it came from. `ctrl+r` renames the session under the cursor and `ctrl+x` deletes
-it, to the trash when a `trash` command is available. A session from another project moves
-Pi, the footer, and `@` completion to that project. `pituitary --resume` (`-r`) opens the
-list at start. Starting, forking, or resuming while Pi works puts queued messages back in
-the draft and stops the run first, as Pi does.
+session it came from, with how long ago it changed and how many prompts it holds. The
+filter matches names and first prompts. `ctrl+r` renames the session under the cursor,
+`ctrl+x` deletes it, to the trash when a `trash` command is available, and `tab` switches
+between this project's sessions and every project's; Pi's `app.session.rename`,
+`app.session.delete`, and `tui.input.tab` keybindings rebind them. A project without saved
+sessions lists every project's. A session from another project moves Pi, the footer, and `@`
+completion to that project, and Pi's commands follow; Pi's process stays where it started.
+`pituitary --resume` (`-r`) opens the list at start. Starting, forking, or resuming while Pi
+works puts queued messages back in the draft and stops the run or compaction first, as Pi
+does. A fork puts the earlier prompt in place of the draft; `esc u` brings the draft back.
+As Pi's own, `/reload` asks to wait while a run or compaction is under way.
 
 `/login`, `/logout`, `/settings`, `/scoped-models`, `/trust`, `/import`, `/share`, and
-`/tree` open Pi's own screen on the current session between runs, with the command ready
+`/tree` open Pi's own screen on the current session while Pi is idle, with the command ready
 to run on `enter`. `ctrl+d` on its empty editor, or `ctrl+c` twice, returns to Pituitary on
-the session Pi ends on, with the draft and the conversation as they were.
+the session Pi ends on, with the draft and the conversation as they were. Pi reopens that
+session at its last entry, so of a `/tree` move only one that leaves a branch summary
+carries back; a move without one, and the prompt Pi puts in its editor, stay behind.
 
 ## Connect your provider
 

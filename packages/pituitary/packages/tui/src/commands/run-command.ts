@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { type ConversationLink, plain } from "@pituitary/session";
 import type { PickerSpec } from "../components/picker.tsx";
 import { modelName, modelSource, modelTitle } from "../model-names.ts";
@@ -99,8 +100,11 @@ async function run(name: string, args: string, { link, session, ...context }: Co
       return;
     case "session": {
       const file = state?.sessionFile;
+      // Pi writes a session's file with its first message; until then there is nothing at its path.
+      const saved = file !== undefined && existsSync(file);
       if (args === "copy") {
         if (!file) throw new Error("This conversation has no session file");
+        if (!saved) throw new Error("Pi saves this session's file with its first message");
         if (!context.copy(file)) throw new Error("The terminal refused the clipboard write");
         session.notify("info", `Copied ${tilde(file)}`);
         return;
@@ -113,12 +117,16 @@ async function run(name: string, args: string, { link, session, ...context }: Co
       session.notify(
         "info",
         [
-          `conversation ${state?.sessionName ? `${plain(state.sessionName)} · ` : ""}${stats.sessionId}`,
-          ...(file ? [`file ${tilde(file)} · /session copy copies its path`] : []),
+          `session ${state?.sessionName ? `${plain(state.sessionName)} · ` : ""}${stats.sessionId}`,
           `messages ${stats.userMessages} from you · ${counted(stats.assistantMessages, "reply", "replies")} · ${counted(stats.toolCalls, "tool call")}`,
           `${typeof percent !== "number" ? "" : `context ${Math.round(percent)}% · `}tokens: input ${count(t.input)} · output ${count(t.output)} · cache read ${count(t.cacheRead)} · cache written ${count(t.cacheWrite)}`,
           `cost ${dollars(stats.cost)}`,
+          // The notice draws the path last, on a line of its own, since it is long enough to wrap.
+          ...(!file
+            ? []
+            : [saved ? "file · /session copy copies it" : "file not saved until the first message"]),
         ].join("\n"),
+        saved ? file : undefined,
       );
       return;
     }

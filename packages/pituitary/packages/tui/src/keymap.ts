@@ -29,8 +29,24 @@ export const ACTIONS = {
   "app.model.cycleForward": ["ctrl+p"],
 } as const satisfies Record<string, readonly string[]>;
 
+/**
+ * What a key does inside the resume list, named as pi names these actions. As in pi, they may
+ * share keys with the actions above, which apply everywhere else.
+ */
+export const LIST_ACTIONS = {
+  "app.session.rename": ["ctrl+r"],
+  /** pi binds delete to ctrl+d, which closes Pituitary everywhere else; ctrl+x deletes here. */
+  "app.session.delete": ["ctrl+x"],
+  /** Switches the list between this project's sessions and every project's, as pi's does. */
+  "tui.input.tab": ["tab"],
+} as const satisfies Record<string, readonly string[]>;
+
 export type Action = keyof typeof ACTIONS;
-export type Keymap = Record<Action, readonly string[]>;
+export type ListAction = keyof typeof LIST_ACTIONS;
+export type Keymap = Record<Action | ListAction, readonly string[]>;
+
+/** Whether `action` applies only inside the resume list. */
+export const isListAction = (action: string): action is ListAction => Object.hasOwn(LIST_ACTIONS, action);
 
 /** The parts of a key event a binding is matched against. */
 export interface KeyLike {
@@ -65,10 +81,10 @@ export function matches(key: KeyLike, binding: string): boolean {
   );
 }
 
-/** The action `key` triggers, if any. */
+/** The action `key` triggers outside lists, if any. */
 export function actionFor(keymap: Keymap, key: KeyLike): Action | null {
-  for (const [action, bindings] of Object.entries(keymap) as [Action, readonly string[]][]) {
-    if (bindings.some((binding) => matches(key, binding))) return action;
+  for (const action of Object.keys(ACTIONS) as Action[]) {
+    if (keymap[action].some((binding) => matches(key, binding))) return action;
   }
   return null;
 }
@@ -78,20 +94,23 @@ export function actionFor(keymap: Keymap, key: KeyLike): Action | null {
  * maps an action to a key or a list of keys. An override for an action replaces its defaults.
  */
 export function keymap(overrides: Record<string, unknown> = {}): Keymap {
-  const map = { ...ACTIONS } as Keymap;
-  const assigned = new Map<string, Action>();
+  const map: Keymap = { ...ACTIONS, ...LIST_ACTIONS };
+  type Named = keyof Keymap;
+  // A key belongs to one action everywhere outside lists, and to one inside the resume list.
+  const claim = (action: Named, key: string) => `${isListAction(action) ? "list" : "app"} ${bindingId(key)}`;
+  const assigned = new Map<string, Named>();
   for (const [action, value] of Object.entries(overrides)) {
     const keys = keysOf(value);
-    if (Object.hasOwn(ACTIONS, action) && keys) {
-      map[action as Action] = keys;
-      for (const key of keys) assigned.set(bindingId(key), action as Action);
+    if (Object.hasOwn(map, action) && keys) {
+      map[action as Named] = keys;
+      for (const key of keys) assigned.set(claim(action as Named, key), action as Named);
     }
   }
   // A deliberate binding wins over another action's default, including actions later in
   // the table. Otherwise assigning a key can look valid in /hotkeys while doing something else.
-  for (const action of Object.keys(map) as Action[]) {
+  for (const action of Object.keys(map) as Named[]) {
     map[action] = map[action].filter((key) => {
-      const owner = assigned.get(bindingId(key));
+      const owner = assigned.get(claim(action, key));
       return owner === undefined || owner === action;
     });
   }

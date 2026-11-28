@@ -64,10 +64,12 @@ test("replies and runtime marks are read only when well formed", () => {
 });
 
 test("a sessions result keeps only the sessions it can show", () => {
-  const good = { path: "/s/a.jsonl", id: "a", cwd: "", modified: 1, messages: 0, first: "", name: "Plan" };
+  const good = { path: "/s/a.jsonl", id: "a", cwd: "", modified: 1, prompts: 0, first: "", name: "Plan" };
   expect(readResult("sessions", { sessions: [good, { ...good, modified: "soon" }, null] })).toEqual({
     sessions: [good],
   });
   expect(readResult("sessions", "nonsense")).toEqual({ sessions: [] });
   expect(readResult("reload", { anything: true })).toBeNull();
+  expect(readResult("delete-session", { trashed: true })).toEqual({ trashed: true });
+  expect(readResult("delete-session", null)).toEqual({ trashed: false });
 });

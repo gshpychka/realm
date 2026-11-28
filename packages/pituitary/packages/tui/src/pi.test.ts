@@ -213,16 +213,21 @@ test("the bridge is found by its file under Pi's renamed command, and answers ou
     client.onRequest((request) => shown.push(request));
     const { sessions } = await client.bridge({ kind: "sessions", all: false });
     expect(client.workspace().bridge).toBe("pituitary:2");
-    // A malformed session in the reply is dropped rather than shown.
+    // A malformed session in the reply is dropped rather than shown, and what the reply carries is
+    // scrubbed although it came as JSON inside the record's JSON.
     expect(sessions).toEqual([
-      { path: "/s/a.jsonl", id: "a", cwd: "/w", modified: 2, messages: 3, first: "hello" },
+      { path: "/s/a.jsonl", id: "a", cwd: "/w", modified: 2, prompts: 3, first: "hello" },
     ]);
     expect(
       shown.some((request) => request.method === "setStatus" && request.statusKey === BRIDGE_STATUS),
     ).toBe(false);
+    // A reload loads the commands again, as Pi names them now.
+    await client.bridge({ kind: "reload" });
+    expect(client.workspace().commands.map((command) => command.name)).toEqual(["pituitary:2", "reloaded"]);
     // The bridge's own command failing rejects its request instead of reaching the transcript.
     const events: SessionEvent[] = [];
     client.onEvent((event) => events.push(event));
+    await ask(client, "fixture_break_reload");
     await expect(client.bridge({ kind: "reload" })).rejects.toThrow("reload exploded");
     expect(events).toEqual([]);
     await ask(client, "fixture_extension_error");
@@ -250,18 +255,65 @@ test("without Pi's bridge command a request is refused before anything reaches P
   }
 });
 
-test("a replaced session reaches its listeners, and a runtime's working directory becomes the workspace's", async () => {
-  const client = open();
+test("a new session's start reaches the view that replaces the old one, once, with its commands", async () => {
+  const client = open(true);
   try {
-    let replaced = 0;
-    client.onReplace(() => replaced++);
+    await client.getState();
+    const order: string[] = [];
+    client.onReplace(() => order.push("replaced"));
+    client.onRequest((request) => {
+      if (request.method === "notify") order.push(request.message);
+    });
+    client.onEvent((event) => {
+      if (event.type === "extension_error") order.push(event.error);
+    });
+    expect(order).toEqual(["Pi extension ready"]);
     expect(await client.newSession()).toBe(true);
-    expect(replaced).toBe(1);
-    const shown: PiUiRequest[] = [];
-    client.onRequest((request) => shown.push(request));
+    // Pi started the new runtime twice before it answered; what that start said comes once, after the reset.
+    expect(order).toEqual(["Pi extension ready", "replaced", "demo noticed a new session", "demo broke"]);
+    expect(client.workspace().cwd).toBe("/fresh");
+    await client.bridge({ kind: "sessions", all: false });
+    expect(client.workspace().commands.map((command) => command.name)).toContain("fresh");
     await ask(client, "fixture_runtime");
     expect(client.workspace().cwd).toBe("/elsewhere");
-    expect(shown.at(-1)).toMatchObject({ method: "setStatus", statusKey: "pituitary.runtime" });
+  } finally {
+    await client.close();
+  }
+});
+
+test("Pi restarted on another session after its own screen starts the view afresh before its start is shown", async () => {
+  const client = open();
+  try {
+    await client.getState();
+    const order: string[] = [];
+    client.onReplace(() => order.push("replaced"));
+    client.onRequest((request) => {
+      if (request.method === "notify") order.push(request.message);
+    });
+    order.length = 0;
+    await client.suspend();
+    await client.resume([fixture, "--session", "pi-session"]);
+    expect(order).toEqual(["Pi extension ready"]);
+    await client.suspend();
+    await client.resume([fixture, "--session", "elsewhere"]);
+    expect(client.sessionId).toBe("elsewhere");
+    expect(order).toEqual(["Pi extension ready", "replaced", "Pi extension ready"]);
+  } finally {
+    await client.close();
+  }
+});
+
+test("an export names where Pi wrote it: relative to where its process started, wherever the session moved", async () => {
+  const client = new PiConversation({
+    command: process.execPath,
+    args: [fixture],
+    cwd: "/tmp",
+    bridge: BRIDGE,
+  });
+  try {
+    await client.newSession();
+    expect(client.workspace().cwd).toBe("/fresh");
+    expect(await client.exportHtml("out.html")).toBe("/tmp/out.html");
   } finally {
     await client.close();
   }

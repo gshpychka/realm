@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import type { KeyEvent, ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import type { Entry, NoticeEntry } from "@pituitary/session";
@@ -18,9 +19,11 @@ import { glyphs } from "../glyphs.ts";
 import { IMAGE_CHIP } from "../image-chip.ts";
 import type { Action } from "../keymap.ts";
 import { keyHint, useKeyHint, useKeymap } from "../keymap-context.tsx";
+import { tilde } from "../place.ts";
 import { palette, theme } from "../theme.ts";
 import { type Item, type Reply, transcriptOf, type Work } from "../transcript.ts";
 import { turnLine } from "../working.ts";
+import { Link } from "./link.tsx";
 import { Markdown } from "./markdown.tsx";
 import { boxId, scrollWork, WorkBox } from "./work.tsx";
 
@@ -160,6 +163,11 @@ function Notice({ entry, expanded }: { entry: NoticeEntry; expanded: boolean }) 
             </text>
           ) : null}
         </box>
+        {entry.file ? (
+          <text fg={colour}>
+            <Link href={pathToFileURL(entry.file).href}>{tilde(entry.file)}</Link>
+          </text>
+        ) : null}
         {original && expanded ? <text fg={theme.dim}>{original}</text> : null}
       </Marked>
     </box>

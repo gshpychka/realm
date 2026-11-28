@@ -3,6 +3,8 @@ import { KeyEvent, parseKeypress } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
 import { act, type ReactNode } from "react";
+import { keymap } from "../keymap.ts";
+import { KeymapProvider } from "../keymap-context.tsx";
 import { Dialog, GRACE_MS } from "./dialog.tsx";
 import { Picker } from "./picker.tsx";
 
@@ -15,8 +17,8 @@ async function draw(view: ReactNode) {
   await app.renderOnce();
   return {
     ...app,
-    async key(name: string) {
-      await act(async () => app.mockInput.pressKey(name));
+    async key(name: string, modifiers?: { ctrl?: boolean }) {
+      await act(async () => app.mockInput.pressKey(name, modifiers));
       await app.renderOnce();
     },
     async type(text: string) {
@@ -169,6 +171,72 @@ test("the wheel moves a choice without moving the text filter", async () => {
     await act(async () => app.mockMouse.scroll(8, 4, "up"));
     await app.renderOnce();
     expect(app.captureCharFrame()).toContain("▸ match first");
+  } finally {
+    app.close();
+  }
+});
+
+test("a long label is cut at its end, so the details line up at the right edge", async () => {
+  const long = {
+    label: `another session with a deliberately very long first prompt ${"x".repeat(40)}`,
+    value: "long",
+  };
+  const app = await draw(
+    <Picker
+      spec={{
+        title: "resume",
+        items: [
+          { ...long, detail: "3m ago · 5 prompts" },
+          { label: "short", detail: "just now · 1 prompt", value: "short", keywords: "zebra topic" },
+        ],
+        onPick() {},
+      }}
+      onClose={() => {}}
+    />,
+  );
+  try {
+    const rows = app.captureCharFrame().split("\n");
+    expect(rows.find((row) => row.includes("another session"))).toMatch(
+      /│ ▸ another session with a deliberately very long first pr… 3m ago · 5 prompts │/,
+    );
+    expect(rows.find((row) => row.includes("short"))).toMatch(/│ {3}short\s+just now · 1 prompt │/);
+    // Text the row does not show still finds it.
+    await app.type("zebra");
+    expect(app.captureCharFrame()).toContain("▸ short");
+  } finally {
+    app.close();
+  }
+});
+
+test("a list's own keys follow the operator's bindings, and its hint names them", async () => {
+  const acted: string[] = [];
+  const app = await draw(
+    <KeymapProvider value={keymap({ "app.session.rename": "ctrl+e" })}>
+      <Picker
+        spec={{
+          title: "resume",
+          items,
+          keys: [
+            { action: "app.session.rename", label: "rename", run: (value) => acted.push(`rename ${value}`) },
+            { action: "app.session.delete", label: "delete", run: (value) => acted.push(`delete ${value}`) },
+            { action: "tui.input.tab", label: "every project", run: () => acted.push("scope") },
+          ],
+          onPick() {},
+        }}
+        onClose={() => {}}
+      />
+    </KeymapProvider>,
+  );
+  try {
+    // At 80 columns the keys every list has give way to the list's own.
+    expect(app.captureCharFrame()).toContain(
+      "3 of 3 · ctrl+e rename · ctrl+x delete · tab every project · esc close",
+    );
+    await app.key("r", { ctrl: true });
+    await app.key("e", { ctrl: true });
+    await app.key("x", { ctrl: true });
+    await act(async () => app.mockInput.pressTab());
+    expect(acted).toEqual(["rename other", "delete other", "scope"]);
   } finally {
     app.close();
   }

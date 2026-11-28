@@ -14,6 +14,7 @@ import {
   type SessionStats,
   scrub,
 } from "@pituitary/session";
+import type { Keymap } from "./keymap.ts";
 import {
   BRIDGE_STATUS,
   type BridgeCall,
@@ -93,9 +94,15 @@ export interface PiControls {
   handoff(command: string): Promise<void>;
   /** Opens the session picker once the session loads, for `pituitary --resume`. */
   resumeAtStart?: boolean;
+  /** Reads Pi's keybindings with Pituitary's own over them, at start and after each /reload. */
+  keymap(): Keymap;
 }
 
 type Pending = { resolve(data: unknown): void; reject(error: Error): void };
+/** What a runtime reports as it starts that belongs to the conversation it starts. */
+type Held = Extract<PiUiRequest, { method: "notify" }> | Extract<SessionEvent, { type: "extension_error" }>;
+/** Whether a replacing operation's answer says Pi moved to another session. */
+const moved = ({ cancelled }: { cancelled: boolean }) => !cancelled;
 type Block = {
   type: string;
   text?: string;
@@ -160,6 +167,15 @@ export class PiConversation implements ConversationLink, PiUiPort {
   private closing?: Promise<void>;
   private loading: Promise<void> = Promise.resolve();
   private current: PiWorkspace;
+  /** Where the running Pi process started, which its relative paths, such as an export's, are relative to. */
+  private launched: string;
+  /** Operations under way that may replace the session. */
+  private replacing = 0;
+  /**
+   * A new runtime's startup report, notices and extension failures, held from the old runtime's
+   * end until the replacement answers. Keyed so the same report is kept once.
+   */
+  private held?: Map<string, Held>;
   private streaming?: { role: "assistant"; content: Block[] };
   private running?: boolean;
   private compacting?: boolean;
@@ -170,6 +186,7 @@ export class PiConversation implements ConversationLink, PiUiPort {
 
   constructor(private readonly options: PiOptions) {
     this.current = { cwd: options.cwd ?? process.cwd(), commands: [] };
+    this.launched = this.current.cwd;
     this.start(options.args ?? []);
   }
 
@@ -206,19 +223,26 @@ export class PiConversation implements ConversationLink, PiUiPort {
   respond(response: PiUiResponse): void {
     if (!this.closed) this.child?.stdin.write(encodeJsonLine(response));
   }
-  /** One of Pi's RPC commands, answered with its typed data. */
-  rpc<T extends RpcType>(command: Extract<RpcCommand, { type: T }>): Promise<RpcData<T>> {
-    return this.send(command) as Promise<RpcData<T>>;
+  /**
+   * One of Pi's RPC commands, answered with its typed data, or with what `read` makes of it.
+   * `read` runs as the answer arrives, before any later record in the stream is handled.
+   */
+  rpc<T extends RpcType, R = RpcData<T>>(
+    command: Extract<RpcCommand, { type: T }>,
+    read?: (data: RpcData<T>) => R,
+  ): Promise<R> {
+    return this.send(command, read as ((data: unknown) => R) | undefined);
   }
   async call<C extends SessionCommand>(command: C): Promise<CommandResult<C["type"]>> {
-    return (await this.send(command)) as CommandResult<C["type"]>;
+    // The conversation protocol's commands are Pi RPC commands that Dura answers too.
+    return (await this.rpc(command as RpcCommand)) as CommandResult<C["type"]>;
   }
   async prompt(
     message: string,
     streamingBehavior?: "steer" | "followUp",
     images?: ImageContent[],
   ): Promise<void> {
-    await this.send({
+    await this.rpc({
       type: "prompt",
       message,
       ...(streamingBehavior ? { streamingBehavior } : {}),
@@ -226,17 +250,16 @@ export class PiConversation implements ConversationLink, PiUiPort {
     });
   }
   async abort(): Promise<void> {
-    await this.send({ type: "abort" });
+    await this.rpc({ type: "abort" });
   }
   async abortRetry(): Promise<void> {
-    await this.send({ type: "abort_retry" });
+    await this.rpc({ type: "abort_retry" });
   }
   async clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
     return this.rpc({ type: "clear_queue" });
   }
   async getState(): Promise<SessionState> {
-    return this.send({ type: "get_state" }, (data) => {
-      const state = data as SessionState;
+    return this.rpc({ type: "get_state" }, (state) => {
       this.sessionFile = state.sessionFile;
       this.sessionId = state.sessionId;
       return state;
@@ -246,24 +269,24 @@ export class PiConversation implements ConversationLink, PiUiPort {
     return (await this.rpc({ type: "get_messages" })).messages;
   }
   async getSessionStats(): Promise<SessionStats> {
-    return (await this.send({ type: "get_session_stats" })) as SessionStats;
+    return this.rpc({ type: "get_session_stats" });
   }
   async getSnapshot(): Promise<SessionSnapshot> {
     const state = await this.getState();
     // Capture the live projection at the response's position in the same JSONL stream.
     // Later records can share its chunk; a Promise continuation would observe them too late.
-    return this.send({ type: "get_messages" }, (data) => ({
+    return this.rpc({ type: "get_messages" }, ({ messages }) => ({
       sequence: this.sequence,
       state: {
         ...state,
         isStreaming: this.running ?? state.isStreaming,
         isCompacting: this.compacting ?? state.isCompacting,
-        messageCount: (data as { messages: unknown[] }).messages.length,
+        messageCount: messages.length,
         pendingMessageCount: this.queue
           ? this.queue.steering.length + this.queue.followUp.length
           : state.pendingMessageCount,
       },
-      messages: (data as { messages: unknown[] }).messages,
+      messages,
       streamingMessage: this.streaming ? structuredClone(this.streaming) : undefined,
       pendingToolCalls: [...this.tools.keys()],
       pendingTools: [...this.tools.values()],
@@ -282,11 +305,11 @@ export class PiConversation implements ConversationLink, PiUiPort {
     if (!name) throw new Error("Pi has not loaded Pituitary's bridge extension, so nothing was sent to Pi.");
     const id = this.newId();
     const call = { ...request, id } as BridgeCall;
-    const { disposition } = (await this.send(
-      { type: "prompt", message: `/${name} ${encodeCall(call)}` },
+    const { disposition } = await this.send<RpcData<"prompt">>(
+      { type: "prompt", message: `/${name} ${encodeCall(call)}` } satisfies RpcCommand,
       undefined,
       id,
-    )) as RpcData<"prompt">;
+    );
     const reply = this.replies.get(id);
     this.replies.delete(id);
     if (!reply) {
@@ -304,34 +327,32 @@ export class PiConversation implements ConversationLink, PiUiPort {
 
   /** Starts a new session. False when an extension kept Pi on this one. */
   async newSession(): Promise<boolean> {
-    const { cancelled } = await this.rpc({ type: "new_session" });
-    if (!cancelled) this.replaced();
+    const { cancelled } = await this.replace(() => this.rpc({ type: "new_session" }), moved);
     return !cancelled;
   }
   /** Forks a new session that ends before the prompt `entryId`, whose text it returns; null when cancelled. */
   async fork(entryId: string): Promise<{ text: string } | null> {
-    const { text, cancelled } = await this.rpc({ type: "fork", entryId });
-    if (cancelled) return null;
-    this.replaced();
-    return { text };
+    const { text, cancelled } = await this.replace(() => this.rpc({ type: "fork", entryId }), moved);
+    return cancelled ? null : { text };
   }
   /** Copies the current branch into a new session. False when an extension cancelled it. */
   async clone(): Promise<boolean> {
-    const { cancelled } = await this.rpc({ type: "clone" });
-    if (!cancelled) this.replaced();
+    const { cancelled } = await this.replace(() => this.rpc({ type: "clone" }), moved);
     return !cancelled;
   }
   /** Opens the saved session at `sessionPath`, in the project it was started in. */
   async switchSession(sessionPath: string): Promise<boolean> {
-    const { cancelled } = await this.rpc({ type: "switch_session", sessionPath });
-    if (!cancelled) this.replaced();
+    const { cancelled } = await this.replace(() => this.rpc({ type: "switch_session", sessionPath }), moved);
     return !cancelled;
   }
-  /** Writes the session as an HTML page, by default into Pi's working directory, and returns where. */
+  /**
+   * Writes the session as an HTML page and returns where. Pi writes it relative to the directory
+   * its process started in, which a session resumed from another project does not move.
+   */
   async exportHtml(outputPath?: string): Promise<string> {
+    const launched = this.launched;
     const { path } = await this.rpc({ type: "export_html", ...(outputPath ? { outputPath } : {}) });
-    // Pi names the page it chose relative to its working directory.
-    return resolve(this.current.cwd, path);
+    return resolve(launched, path);
   }
   /** The operator's prompts on the current branch, oldest first, with the entries Pi forks at. */
   async branchPrompts(): Promise<BranchPrompt[]> {
@@ -356,9 +377,15 @@ export class PiConversation implements ConversationLink, PiUiPort {
   async resume(args: readonly string[]): Promise<void> {
     if (this.child || this.closed) return;
     const before = this.sessionId;
-    this.start(args);
-    const { sessionId } = await this.getState();
-    if (sessionId !== before) this.replaced();
+    // What the new process says as it starts waits until it is known whether the session moved.
+    this.held = new Map();
+    try {
+      this.start(args);
+      const { sessionId } = await this.getState();
+      if (sessionId !== before) this.replaced();
+    } finally {
+      this.release();
+    }
   }
   close(): Promise<void> {
     if (this.closing) return this.closing;
@@ -367,8 +394,9 @@ export class PiConversation implements ConversationLink, PiUiPort {
   }
 
   private start(args: readonly string[]): void {
+    this.launched = this.current.cwd;
     const child = spawn(this.options.command, [...args, "--mode", "rpc"], {
-      cwd: this.current.cwd,
+      cwd: this.launched,
       env: { ...process.env, ...this.options.env },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -409,10 +437,51 @@ export class PiConversation implements ConversationLink, PiUiPort {
     this.current = { ...this.current, ...patch };
     for (const listener of this.workspaceListeners) listener();
   }
+  /**
+   * Runs an operation that may replace the session. From the old runtime's end until the
+   * operation answers, what the new runtime reports as it starts is held, so it lands in the
+   * view that starts afresh rather than in the one that goes.
+   */
+  private async replace<T>(operation: () => Promise<T>, replaces: (result: T) => boolean): Promise<T> {
+    this.replacing++;
+    try {
+      const result = await operation();
+      if (replaces(result)) {
+        // The new runtime loaded the extensions, prompt templates and skills of its project.
+        this.loading = this.loadCommands();
+        this.replaced();
+      }
+      return result;
+    } finally {
+      this.replacing--;
+      this.release();
+    }
+  }
   /** The session moved: nothing projected from the last one's stream carries over. */
   private replaced(): void {
     this.forget();
     for (const listener of this.replaceListeners) listener();
+  }
+  /** Holds a new runtime's startup report while a replacement is under way; false when none is. */
+  private hold(output: Held): boolean {
+    if (!this.held) return false;
+    // Pi starts each new runtime twice over, so the same report comes twice.
+    const key = JSON.stringify(
+      output.type === "extension_error"
+        ? [output.extensionPath, output.event, output.error]
+        : [output.notifyType, output.message],
+    );
+    if (!this.held.has(key)) this.held.set(key, output);
+    return true;
+  }
+  /** Hands on what was held, in the order it came. */
+  private release(): void {
+    const held = this.held;
+    if (!held || this.replacing > 0) return;
+    this.held = undefined;
+    for (const output of held.values())
+      if (output.type === "extension_error") this.emit(output);
+      else this.dispatchUi(output);
   }
   private forget(): void {
     this.streaming = undefined;
@@ -499,17 +568,27 @@ export class PiConversation implements ConversationLink, PiUiPort {
     }
     this.emit(output as unknown as SessionEvent);
   }
-  /** Bridge replies leave the stream here, before any extension UI could draw them. */
+  /**
+   * Bridge replies leave the stream here, before any extension UI could draw them. They and the
+   * runtime marks are JSON inside the record's JSON, which `receive` scrubbed only as text, so
+   * what they carry is scrubbed once decoded.
+   */
   private extensionUi(request: PiUiRequest): void {
     if (request.method === "setStatus" && request.statusKey === BRIDGE_STATUS) {
-      const reply = decodeReply(request.statusText);
+      const reply = scrub(decodeReply(request.statusText));
       if (reply) this.replies.set(reply.id, reply);
       return;
     }
     if (request.method === "setStatus" && request.statusKey === RUNTIME_STATUS) {
-      const cwd = decodeRuntime(request.statusText)?.cwd;
-      if (cwd && cwd !== this.current.cwd) this.update({ cwd });
+      if (request.statusText === undefined) {
+        // The runtime ended; when a replacement ends it, the next one's start is held.
+        if (this.replacing > 0) this.held ??= new Map();
+      } else {
+        const cwd = scrub(decodeRuntime(request.statusText))?.cwd;
+        if (cwd && cwd !== this.current.cwd) this.update({ cwd });
+      }
     }
+    if (request.method === "notify" && this.hold(request)) return;
     this.dispatchUi(request);
   }
   private dispatchUi(request: PiUiRequest): void {
@@ -524,7 +603,13 @@ export class PiConversation implements ConversationLink, PiUiPort {
       this.bridgeFailures.push(error);
       return;
     }
-    this.emit({ type: "extension_error", extensionPath, event: String(output.event ?? ""), error });
+    const failure: Held = {
+      type: "extension_error",
+      extensionPath,
+      event: String(output.event ?? ""),
+      error,
+    };
+    if (!this.hold(failure)) this.emit(failure);
   }
   private emit(event: SessionEvent): void {
     this.project(event);

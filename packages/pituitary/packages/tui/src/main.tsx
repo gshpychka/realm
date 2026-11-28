@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,12 @@ import { type PiControls, PiConversation } from "./pi.ts";
 import { extensionArgs, HANDOFF_EXTENSION, PI_EXTENSIONS } from "./pi-extensions.ts";
 import { mark } from "./profile.ts";
 import { RELOAD_UI } from "./ui-state.ts";
+
+/**
+ * Erases the screen and puts the cursor at its top left. Pi's own screen switches to an
+ * alternate screen and back as it starts, so an alternate screen around it would not hold it.
+ */
+const CLEAR_SCREEN = "\x1b[2J\x1b[H";
 
 mark("modules");
 const argv = process.argv.slice(2);
@@ -91,30 +97,34 @@ async function runPi(agent: PiCommand): Promise<void> {
     const carried = saved(state?.sessionFile);
     let selected = carried;
     try {
-      spawnSync(agent.command, [...resumePiArgs(agent.args, carried), "--extension", HANDOFF_EXTENSION], {
-        stdio: "inherit",
-        cwd: client.workspace().cwd,
-        env: { ...process.env, PITUITARY_HANDOFF: command, PITUITARY_HANDOFF_RESULT: result },
-      });
+      try {
+        spawnSync(agent.command, [...resumePiArgs(agent.args, carried), "--extension", HANDOFF_EXTENSION], {
+          stdio: "inherit",
+          cwd: client.workspace().cwd,
+          env: { ...process.env, PITUITARY_HANDOFF: command, PITUITARY_HANDOFF_RESULT: result },
+        });
+      } finally {
+        // Pi draws its screen inline and prints its own resume line as it exits. The screen is
+        // cleared, at once, so the instructions Pituitary prints when it closes are not read
+        // alongside Pi's.
+        writeSync(process.stdout.fd, CLEAR_SCREEN);
+      }
       if (existsSync(result)) selected = saved(readFileSync(result, "utf8").trim()) ?? carried;
     } finally {
       rmSync(scratch, { recursive: true, force: true });
       await client.resume([...resumePiArgs(agent.args, selected), ...extensionArgs()]);
     }
   };
-  const pi: PiControls = { conversation: client, handoff, resumeAtStart: agent.resume };
+  const pi: PiControls = {
+    conversation: client,
+    handoff,
+    resumeAtStart: agent.resume,
+    keymap: () => loadPiKeymap(),
+  };
   process.once("SIGTERM", () => void quit());
   process.once("SIGHUP", () => void quit());
   process.once("exit", () => mark("exit"));
-  root.render(
-    <App
-      link={client}
-      pi={pi}
-      initialPrompt={agent.prompt}
-      keys={loadPiKeymap()}
-      onQuit={() => void quit()}
-    />,
-  );
+  root.render(<App link={client} pi={pi} initialPrompt={agent.prompt} onQuit={() => void quit()} />);
 }
 
 /** `word` as one shell word. */
