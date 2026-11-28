@@ -58,6 +58,11 @@ export async function serveConversationFixture(
         );
       const user = [...transcript.messages].reverse().find((message) => message.role === "user");
       const text = typeof user?.content === "string" ? user.content : JSON.stringify(user?.content ?? "");
+      // A reply the model's output limit cut short: after some words, or while it was still thinking.
+      if (scenario === "cut")
+        return text.includes("think")
+          ? fauxAssistantMessage([fauxThinking("Weighing the request.")], { stopReason: "length" })
+          : fauxAssistantMessage("partial answer", { stopReason: "length" });
       return fauxAssistantMessage(
         scenario === "thinking"
           ? [fauxThinking("I will reason through the request."), { type: "text", text: `You said: ${text}` }]

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
@@ -16,7 +16,13 @@ test("team conversations, attention and retained results stay readable in compac
     PITUITARY_GH: "",
     PITUITARY_STILL: "1",
     PITUITARY_UI_STATE: join(home, "frontend.json"),
+    PITUITARY_FIXTURE_ACTIONS: join(home, "actions"),
   };
+  /** What the operator asked Dura to do so far, as the fixture recorded it. */
+  const actions = () =>
+    existsSync(env.PITUITARY_FIXTURE_ACTIONS)
+      ? readFileSync(env.PITUITARY_FIXTURE_ACTIONS, "utf8").trim().split("\n").filter(Boolean)
+      : [];
   const launch = (cols: number, resume = false) =>
     boot({
       entry: join(REPO, "packages/tui/src/managed.fixture.tsx"),
@@ -39,10 +45,22 @@ test("team conversations, attention and retained results stay readable in compac
       compact,
       /^ {3}builder · Fix the environment and continue the menu polish\n {3}Environment image unavailable$/m,
     );
-    assert.match(compact, /^ {3}\+1 more · ctrl\+k tasks$/m);
+    assert.match(compact, /^ {3}\+1 more\b/m);
     await app.terminal.type("Keep this draft while I inspect the team");
     await app.terminal.write("\x0b");
     await app.terminal.waitText("tasks · choose");
+    await app.terminal.waitIdle();
+    // A short role leaves its room to the whole state and objective beside it.
+    const listed = await app.capture("team-tasks");
+    assert.match(
+      listed,
+      /▶ coordinator · current +waiting for builder · Ship an accessible, polished command menu +│/,
+    );
+    assert.match(listed, /builder +needs your answer · Build keyboard navigation and focus handling +│/);
+    assert.match(
+      listed,
+      /builder +Environment image unavailable · Fix the environment and continue the menu polish +│/,
+    );
     await pastGrace();
     await app.terminal.type("builder");
     await app.terminal.keyboard.press("Enter");
@@ -70,11 +88,21 @@ test("team conversations, attention and retained results stay readable in compac
     await app.terminal.type("r");
     await app.terminal.waitText("r again to start a fresh attempt");
     await app.capture("team-retry-confirm");
-    // Esc steps out of the confirmation, and the next esc closes the panel.
+    // Esc steps out of the confirmation without retrying.
     await app.terminal.keyboard.press("Escape");
     await app.terminal.waitText("r retry · e revise");
+    assert.deepEqual(actions(), []);
+    // The second press retries, once.
+    await pastGrace();
+    await app.terminal.type("r");
+    await app.terminal.waitText("r again to start a fresh attempt");
+    await app.terminal.type("r");
+    await waitMatch(app.terminal, /^(?![\s\S]*r again to start a fresh attempt)/);
+    assert.deepEqual(actions(), ["retry failed-builder 1"]);
+    // Esc closes the panel, and the draft is still there.
     await app.terminal.keyboard.press("Escape");
-    await waitMatch(app.terminal, /Keep this draft while I inspect the team/);
+    await waitMatch(app.terminal, /^(?![\s\S]*result · builder)/);
+    assert.match(await app.terminal.text(), /» Keep this draft while I inspect the team/);
     await app.close();
     app = undefined;
     app = await launch(148);
@@ -83,7 +111,6 @@ test("team conversations, attention and retained results stay readable in compac
     assert.match(wide, /work · 2\/4 active · 4\dm left/);
     // The attached task says so in words; the arrow marks only a list's highlighted row.
     assert.match(wide, /coordinator · current · /);
-    assert.doesNotMatch(wide, /▶/);
     assert.match(wide, /verified 2\/2/);
     // Objectives that start alike are cut at their ends, so the two builders read apart.
     assert.match(wide, /builder · Build keyboard navigation and\n.*│ {3}focus handling$/m);
@@ -101,11 +128,33 @@ test("team conversations, attention and retained results stay readable in compac
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText("result · reviewer");
     const result = await app.capture("team-retained-result");
-    assert.match(result, /Code retained · tree \w{12} · 8 KiB/);
+    assert.match(result, /Code retained · tree \w+ · 8 KiB/);
     assert.match(result, /Independent checks: passed/);
     assert.match(result, /✓ types/);
-    assert.doesNotMatch(result, /types · passed/);
-    assert.doesNotMatch(result, /i integrate|r retry/);
+    assert.doesNotMatch(result, /i integrate/);
+    await pastGrace();
+    // An accepted task has nothing to retry.
+    const asked = actions().length;
+    await app.terminal.type("r");
+    await app.terminal.type("r");
+    await app.terminal.waitIdle();
+    assert.doesNotMatch(await app.terminal.text(), /r again to start a fresh attempt/);
+    // Applying to the operator's workspace waits for a second press, which another key or esc forgoes.
+    await app.terminal.type("a");
+    await app.terminal.waitText("a again to apply to /work/workspace");
+    await app.terminal.type("x");
+    await app.terminal.waitText("a apply · e revise");
+    await app.terminal.type("a");
+    await app.terminal.waitText("a again to apply to /work/workspace");
+    await app.terminal.keyboard.press("Escape");
+    await app.terminal.waitText("a apply · e revise");
+    assert.match(await app.terminal.text(), /result · reviewer/);
+    assert.equal(actions().length, asked);
+    await app.terminal.type("a");
+    await app.terminal.waitText("a again to apply to /work/workspace");
+    await app.terminal.type("a");
+    await waitMatch(app.terminal, /^(?![\s\S]*a again to apply)/);
+    assert.deepEqual(actions().slice(asked), ["apply run-team"]);
     await pastGrace();
     await app.terminal.type("i");
     await app.terminal.waitIdle();

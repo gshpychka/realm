@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { type ConversationClient, connectConversation } from "@realm/dura/client";
@@ -236,6 +236,11 @@ const saved = readManagedView(process.env.PITUITARY_UI_STATE);
 let selected = process.env.PITUITARY_UI_RESUME === "1" ? (saved?.taskId ?? "coordinator") : "coordinator";
 if (!tasks.some((task) => task.id === selected)) selected = "coordinator";
 let coordinatorConnections = 0;
+/** What the operator asked of Dura, one line each, in the file a scenario names to read them. */
+const record = (line: string) => {
+  const file = process.env.PITUITARY_FIXTURE_ACTIONS;
+  if (file) appendFileSync(file, `${line}\n`);
+};
 const runtime = {
   inspect: async () => structuredClone(detail),
   connect: async (_run: unknown, control: boolean, id?: string) => {
@@ -257,10 +262,10 @@ const runtime = {
     if (!task) throw new Error("Unknown question task");
     task.status = "running";
   },
-  retry: async () => {},
+  retry: async (taskId: string, revision: number) => record(`retry ${taskId} ${revision}`),
   revise: async () => {},
   integrate: async () => {},
-  apply: async () => {},
+  apply: async (runId: string) => record(`apply ${runId}`),
 };
 let current: ConversationClient = await runtime.connect("run-team", saved?.control ?? true, selected);
 const renderer = await createCliRenderer({ exitOnCtrlC: false, targetFps: 120, maxFps: 120 });

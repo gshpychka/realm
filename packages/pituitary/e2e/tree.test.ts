@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { cellsOf, pastGrace, press, RUNNING, waitMatch } from "./helpers/harness.ts";
@@ -14,6 +17,7 @@ const UP = "\x1b[A";
 const CTRL_U = "\x15";
 /** Clears the draft. */
 const CTRL_C = "\x03";
+const BACKSPACE = "\x7f";
 /** A turn's figures row: how long it took, and more. */
 const FIGURES = /\n\n \S+ \d+s · /;
 
@@ -38,6 +42,8 @@ test("/tree moves back before an earlier prompt, which comes back to the draft, 
     await ask(app, "beta");
     await tree(app);
     const listed = await app.capture("tree-list");
+    // The bridge answers out of band, so nothing of its reply shows.
+    assert.doesNotMatch(listed, /"ok":|"id":|pituitary-\d+/);
     // The session stands on its latest reply; every entry of the one branch stays in one column.
     assert.match(listed, /▶ ● Reply to: beta · current +\d\d:\d\d +│/);
     assert.match(listed, /^│ {3}▌ alpha +\d\d:\d\d +│$/m);
@@ -81,7 +87,9 @@ test("/tree moves back before an earlier prompt, which comes back to the draft, 
     await app.terminal.keyboard.press("Enter");
     await waitMatch(app.terminal, /▶ └─ ▌ beta +\S+ first try · \d\d:\d\d/);
     await app.terminal.waitIdle();
-    await app.capture("tree-labelled");
+    const labelled = await app.capture("tree-labelled");
+    // A label is bookkeeping Pi's session now stands on, which has no row, so the reply before it stays current.
+    assert.match(labelled, /^│ {3}│ {2}● Reply to: gamma · current +\d\d:\d\d +│$/m);
     // Labelling it again starts from its label, which enter keeps.
     await app.terminal.write("L");
     await app.terminal.waitText("enter save");
@@ -89,15 +97,29 @@ test("/tree moves back before an earlier prompt, which comes back to the draft, 
     await pastGrace();
     await app.terminal.keyboard.press("Enter");
     await waitMatch(app.terminal, /▶ └─ ▌ beta +\S+ first try · \d\d:\d\d/);
+    // An empty label takes it off.
+    await app.terminal.write("L");
+    await app.terminal.waitText("enter save");
+    await pastGrace();
+    await app.terminal.write(BACKSPACE.repeat("first try".length));
+    await app.terminal.keyboard.press("Enter");
+    await waitMatch(app.terminal, /▶ └─ ▌ beta +\d\d:\d\d/);
+    assert.doesNotMatch(await app.terminal.text(), /first try/);
 
-    // A move off gamma's branch with a summary: the provider answers the summary request.
+    // A move off gamma's branch with a summary the operator instructs: the provider answers the
+    // summary request, which carries the instructions.
     app.provider.reply("The branch asked gamma and was answered.");
     await press(app.terminal, DOWN, "▶    ● Reply to: beta");
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText("Summarize the branch you leave?");
     await pastGrace();
-    await press(app.terminal, DOWN, "▶ Summarize");
+    await press(app.terminal, DOWN, "▶ Summarize with custom prompt");
     await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Instructions for the summary");
+    await pastGrace();
+    await app.terminal.type("mention only gamma");
+    // The instructions are an editor of their own, which ctrl+s saves.
+    await app.terminal.write("\x13");
     await app.terminal.waitText("Moved to that point of the session");
     await app.terminal.waitText("[branch] summary of the branch you left");
     await app.terminal.waitIdle();
@@ -106,6 +128,7 @@ test("/tree moves back before an earlier prompt, which comes back to the draft, 
     assert.doesNotMatch(summarized, /Reply to: gamma/);
     assert.equal(app.provider.requests.length, 4);
     assert.match(JSON.stringify(app.provider.requests[3]?.body), /gamma/);
+    assert.match(JSON.stringify(app.provider.requests[3]?.body), /mention only gamma/);
     await app.terminal.write("\x0f");
     await app.terminal.waitText("The branch asked gamma and was answered.");
     await app.capture("tree-summary-expanded");
@@ -134,6 +157,130 @@ test("/tree moves back before an earlier prompt, which comes back to the draft, 
     assert.doesNotMatch(filtered, /^│ [▶ ] [│├└]/m);
     await app.terminal.keyboard.press("Escape");
   } finally {
+    await app.close();
+  }
+});
+
+test("with Pi set to skip the summary question a move goes straight back, and the tree steps in forks inside branches and a second root", async () => {
+  const app = await launchPi({ settings: { branchSummary: { skipPrompt: true } } });
+  try {
+    await ask(app, "alpha");
+    await ask(app, "beta");
+    await ask(app, "gamma");
+    // Pi's setting skips the question: the move goes straight back, and asks the provider nothing.
+    await tree(app);
+    await press(app.terminal, UP, "▶ ▌ gamma");
+    await press(app.terminal, UP, "▶ ● Reply to: beta");
+    await press(app.terminal, UP, "▶ ▌ beta");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Back before that prompt · editing it in the draft");
+    await waitMatch(app.terminal, /» beta/);
+    assert.doesNotMatch(await app.terminal.text(), /Summarize the branch you leave\?/);
+    assert.equal(app.provider.requests.length, 3);
+    await app.terminal.write(CTRL_U);
+    await ask(app, "delta");
+
+    // A fork inside a branch steps in again beside the line of the fork above it.
+    await tree(app);
+    await press(app.terminal, DOWN, "▶    ▌ gamma");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Back before that prompt · editing it in the draft");
+    await waitMatch(app.terminal, /» gamma/);
+    await app.terminal.write(CTRL_U);
+    await ask(app, "epsilon");
+    await tree(app);
+    const nested = await app.capture("tree-nested");
+    assert.match(nested, /^│ {3}├─ ▌ beta +\d\d:\d\d +│$/m);
+    assert.match(nested, /^│ {3}│ {2}● Reply to: beta +\d\d:\d\d +│$/m);
+    assert.match(nested, /^│ {3}│ {2}├─ ▌ epsilon +\d\d:\d\d +│$/m);
+    assert.match(nested, /▶ │ {2}│ {2}● Reply to: epsilon · current/);
+    assert.match(nested, /^│ {3}│ {2}└─ ▌ gamma +\d\d:\d\d +│$/m);
+    assert.match(nested, /^│ {3}│ {5}● Reply to: gamma +\d\d:\d\d +│$/m);
+    assert.match(nested, /^│ {3}└─ ▌ delta +\d\d:\d\d +│$/m);
+
+    // Asked afresh from before its first prompt, the session has two roots, its own first.
+    await press(app.terminal, UP, "▶ ▌ alpha", 10_000);
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Back before that prompt · editing it in the draft");
+    await waitMatch(app.terminal, /» alpha/);
+    await app.terminal.write(CTRL_U);
+    await ask(app, "omega");
+    await tree(app);
+    const roots = await app.capture("tree-roots");
+    assert.match(roots, /^│ {3}├─ ▌ omega +\d\d:\d\d +│$/m);
+    assert.match(roots, /▶ │ {2}● Reply to: omega · current/);
+    assert.match(roots, /^│ {3}└─ ▌ alpha +\d\d:\d\d +│$/m);
+    // The older root's entries go on in its own column.
+    assert.match(roots, /^│ {6}● Reply to: alpha +\d\d:\d\d +│$/m);
+    assert.match(roots, /^│ {6}├─ ▌ beta +\d\d:\d\d +│$/m);
+    // No move asked for a summary.
+    assert.deepEqual(
+      app.provider.requests.map((request) => request.prompt),
+      ["alpha", "beta", "gamma", "delta", "epsilon", "omega"],
+    );
+    await app.terminal.keyboard.press("Escape");
+  } finally {
+    await app.close();
+  }
+});
+
+test("a session as long as fifty thousand entries opens in /tree and filters", async () => {
+  const app = await launchPi();
+  let again: PiLaunch | undefined;
+  try {
+    await ask(app, "alpha");
+    // A second session in the same place, written as Pi writes one: its header, settings and a
+    // chain of prompts and replies, then a short branch off its first reply that the session
+    // stands on, so the conversation drawn stays short while the tree is long.
+    const [file] = app.sessions();
+    const [header, ...entries] = readFileSync(file as string, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const settings = entries.filter((entry) => entry.type !== "message");
+    const role = (name: string) =>
+      entries.find((entry) => (entry.message as { role?: string } | undefined)?.role === name);
+    const [user, reply] = [role("user"), role("assistant")];
+    const said = (
+      entry: Record<string, unknown> | undefined,
+      id: string,
+      parentId: unknown,
+      text: string,
+    ) => ({
+      ...entry,
+      id,
+      parentId,
+      message: { ...(entry?.message as object), content: [{ type: "text", text }] },
+    });
+    const CHAIN = 50_000;
+    const lines: unknown[] = [{ ...header, id: randomUUID() }, ...settings];
+    let parent = settings.at(-1)?.id ?? null;
+    for (let step = 0; step < CHAIN; step++) {
+      const id = step.toString(16).padStart(8, "0");
+      lines.push(said(step % 2 ? reply : user, id, parent, `step ${step}`));
+      parent = id;
+    }
+    lines.push(said(user, "fffffff0", (1).toString(16).padStart(8, "0"), "short"));
+    lines.push(said(reply, "fffffff1", "fffffff0", "Reply to: short"));
+    const long = join(dirname(file as string), `long_${randomUUID()}.jsonl`);
+    writeFileSync(long, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
+    await app.terminal.write("\x04");
+    await app.terminal.waitText("Resume: pituitary --session");
+
+    again = await launchPi({ from: app, argv: ["--session", long] });
+    await again.terminal.waitText("Reply to: short");
+    await again.terminal.waitIdle();
+    await tree(again);
+    const listed = await again.capture("tree-long");
+    assert.doesNotMatch(listed, /\/tree:/);
+    assert.match(listed, / 50002 of 50002 /);
+    assert.match(listed, /▶ │ {2}● Reply to: short · current/);
+    assert.match(listed, /^│ {3}└─ ▌ step 2 +\d\d:\d\d +│$/m);
+    await again.terminal.type("step 49999");
+    await again.terminal.waitText("1 of 50002");
+    await waitMatch(again.terminal, /▶ ● step 49999/);
+  } finally {
+    await again?.close();
     await app.close();
   }
 });

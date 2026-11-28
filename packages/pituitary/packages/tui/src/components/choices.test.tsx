@@ -3,22 +3,20 @@ import { KeyEvent, parseKeypress } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
 import { act, type ReactNode } from "react";
-import { keymap } from "../keymap.ts";
-import { KeymapProvider } from "../keymap-context.tsx";
-import { Dialog, dialogTitle, GRACE_MS } from "./dialog.tsx";
+import { Dialog, GRACE_MS } from "./dialog.tsx";
 import { Picker } from "./picker.tsx";
 
-async function draw(view: ReactNode, width = 80) {
+async function draw(view: ReactNode) {
   const environment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  const app = await createTestRenderer({ width, height: 24 });
+  const app = await createTestRenderer({ width: 80, height: 24 });
   const root = createRoot(app.renderer);
   act(() => flushSync(() => root.render(view)));
   await app.renderOnce();
   return {
     ...app,
-    async key(name: string, modifiers?: { ctrl?: boolean }) {
-      await act(async () => app.mockInput.pressKey(name, modifiers));
+    async key(name: string) {
+      await act(async () => app.mockInput.pressKey(name));
       await app.renderOnce();
     },
     async type(text: string) {
@@ -176,114 +174,6 @@ test("the wheel moves a choice without moving the text filter", async () => {
   }
 });
 
-test("a long label is cut at its end, so the details line up at the right edge past the current mark", async () => {
-  const long = {
-    label: `another session with a deliberately very long first prompt ${"x".repeat(40)}`,
-    value: "long",
-  };
-  const app = await draw(
-    <Picker
-      spec={{
-        title: "resume",
-        items: [
-          { ...long, detail: "3m ago · 5 prompts" },
-          { label: "short", detail: "just now · 1 prompt", value: "short", keywords: "zebra topic" },
-          { label: "in effect", detail: "1h ago · 2 prompts", value: "now", current: true },
-        ],
-        onPick() {},
-      }}
-      onClose={() => {}}
-    />,
-  );
-  try {
-    const rows = app.captureCharFrame().split("\n");
-    expect(rows.find((row) => row.includes("another session"))).toMatch(
-      /│ {3}another session with a deliberately very long first pr… 3m ago · 5 prompts │/,
-    );
-    expect(rows.find((row) => row.includes("short"))).toMatch(/│ {3}short\s+just now · 1 prompt │/);
-    // The list starts on the item in effect, which says so after its label; its detail keeps the column.
-    expect(rows.find((row) => row.includes("in effect"))).toMatch(
-      /│ ▶ in effect · current\s+1h ago · 2 prompts │/,
-    );
-    // Text the row does not show still finds it.
-    await app.type("zebra");
-    expect(app.captureCharFrame()).toContain("▶ short");
-  } finally {
-    app.close();
-  }
-});
-
-test("a short label leaves its room to a long detail, as a task's role does to its objective", async () => {
-  const app = await draw(
-    <Picker
-      spec={{
-        title: "tasks",
-        items: [
-          {
-            label: "coordinator",
-            detail: "waiting for builder · Ship an accessible settings page",
-            value: "lead",
-            current: true,
-          },
-          {
-            label: "builder",
-            detail: "Environment image unavailable · Fix the environment and continue",
-            value: "b",
-          },
-        ],
-        onPick() {},
-      }}
-      onClose={() => {}}
-    />,
-    60,
-  );
-  try {
-    const rows = app.captureCharFrame().split("\n");
-    expect(rows.find((row) => row.includes("coordinator"))).toMatch(
-      /│ ▶ coordinator · current waiting for builder · Ship an a… │/,
-    );
-    expect(rows.find((row) => row.includes("builder") && !row.includes("coordinator"))).toMatch(
-      /│ {3}builder Environment image unavailable · Fix the envir… │/,
-    );
-  } finally {
-    app.close();
-  }
-});
-
-test("a list's own keys follow the operator's bindings, and its hint names them", async () => {
-  const acted: string[] = [];
-  const app = await draw(
-    <KeymapProvider value={keymap({ "app.session.rename": "ctrl+e" })}>
-      <Picker
-        spec={{
-          title: "resume",
-          items,
-          keys: [
-            { action: "app.session.rename", label: "rename", run: (value) => acted.push(`rename ${value}`) },
-            { action: "app.session.delete", label: "delete", run: (value) => acted.push(`delete ${value}`) },
-            { action: "tui.input.tab", label: "every project", run: () => acted.push("scope") },
-          ],
-          onPick() {},
-        }}
-        onClose={() => {}}
-      />
-    </KeymapProvider>,
-  );
-  try {
-    // At 80 columns the keys every list has give way to the list's own.
-    expect(app.captureCharFrame()).toContain(
-      "ctrl+e rename · ctrl+x delete · tab every project · esc close · 3 of 3",
-    );
-    await app.key("r", { ctrl: true });
-    await app.key("e", { ctrl: true });
-    await app.key("x", { ctrl: true });
-    await act(async () => app.mockInput.pressTab());
-    expect(acted).toEqual(["rename other", "delete other", "scope"]);
-  } finally {
-    app.close();
-  }
-});
-
 test("keypad Enter picks the focused model", async () => {
   let picked = "";
   const picker = await draw(
@@ -337,38 +227,3 @@ for (const method of ["select", "editor"] as const) {
     }
   });
 }
-
-test("a long question takes half the dialog, and pgup and pgdn scroll it", async () => {
-  const title = [
-    "builder asks",
-    ...Array.from({ length: 12 }, (_, line) => `paragraph line ${line + 1}`),
-  ].join("\n");
-  const app = await draw(
-    <Dialog
-      dialog={{ type: "dialog", id: "long", title, method: "select", options: ["yes", "no"] }}
-      behind={0}
-      rows={12}
-      onAnswer={() => {}}
-    />,
-  );
-  try {
-    let frame = app.captureCharFrame();
-    expect(frame).toContain("paragraph line 5");
-    expect(frame).not.toContain("paragraph line 6");
-    expect(frame).toContain("↑↓ move · enter pick · pgup pgdn scroll");
-    await app.key("\x1b[6~");
-    await app.key("\x1b[6~");
-    frame = app.captureCharFrame();
-    expect(frame).toContain("paragraph line 8");
-    expect(frame).not.toContain("builder asks");
-  } finally {
-    app.close();
-  }
-});
-
-test("a dialog's border counts the questions waiting and the seconds left", () => {
-  expect(dialogTitle(0, null)).toBeUndefined();
-  expect(dialogTitle(1, null)).toBe(" 1 of 2 ");
-  expect(dialogTitle(0, 7)).toBe(" auto-cancels in 7s ");
-  expect(dialogTitle(2, 0)).toBe(" 1 of 3 · auto-cancels in 0s ");
-});

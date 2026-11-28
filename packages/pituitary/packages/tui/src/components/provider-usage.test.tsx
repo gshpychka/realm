@@ -2,8 +2,6 @@ import { expect, test } from "bun:test";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot, flushSync } from "@opentui/react";
 import type { ReactNode } from "react";
-import { keymap } from "../keymap.ts";
-import { KeymapProvider } from "../keymap-context.tsx";
 import type { UsageReport } from "../usage/types.ts";
 import { UsagePanel } from "./provider-usage.tsx";
 
@@ -108,50 +106,5 @@ test("large usage reports keep the expanded panel bounded", async () => {
     expect(frame).not.toContain("metric-19");
   } finally {
     close();
-  }
-});
-
-test("the panel names the interrupt's keys as a way to close it only while they would", async () => {
-  const idle = await draw(
-    <UsagePanel report={report()} now={NOW} escapes="esc esc" command="usage" />,
-    100,
-    24,
-  );
-  try {
-    expect(idle.frame).toContain("alt+u / esc esc close · /usage refresh updates");
-  } finally {
-    idle.close();
-  }
-  // While a run goes, the interrupt's keys stop it instead.
-  const running = await draw(<UsagePanel report={report()} now={NOW} command="usage" />, 100, 24);
-  try {
-    expect(running.frame).toContain("alt+u close · /usage refresh updates");
-    expect(running.frame).not.toContain("esc");
-  } finally {
-    running.close();
-  }
-});
-
-test("the panel names its commands as Pi named them, and none it does not know", async () => {
-  // Pi renames commands whose names collide, so another extension's `usage` makes this one `usage:2`.
-  const unbound = keymap({ "app.usage.toggle": [] });
-  const renamed = await draw(
-    <KeymapProvider value={unbound}>
-      <UsagePanel report={report()} now={NOW} command="usage:2" />
-    </KeymapProvider>,
-    100,
-    24,
-  );
-  try {
-    expect(renamed.frame).toContain("/usage:2 off close · /usage:2 refresh updates");
-  } finally {
-    renamed.close();
-  }
-  const unknown = await draw(<UsagePanel report={report()} now={NOW} />, 100, 24);
-  try {
-    expect(unknown.frame).toContain("alt+u close");
-    expect(unknown.frame).not.toContain("/usage");
-  } finally {
-    unknown.close();
   }
 });

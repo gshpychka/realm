@@ -79,7 +79,7 @@ function useSecondsLeft(deadline: number | undefined): number | null {
 }
 
 /** Where the question stands among those waiting, and how long it waits for an answer, for the border. */
-export function dialogTitle(behind: number, seconds: number | null): string | undefined {
+function dialogTitle(behind: number, seconds: number | null): string | undefined {
   const parts = [
     behind > 0 ? `1 of ${behind + 1}` : null,
     seconds === null ? null : `auto-cancels in ${seconds}s`,

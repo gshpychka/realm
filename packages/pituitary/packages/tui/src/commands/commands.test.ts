@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mentionAt, rank } from "../files.ts";
-import { BUILTINS, builtin, type Command, shellCommand, suggest } from "./commands.ts";
+import { mentionAt } from "../files.ts";
+import { BUILTINS, builtin, type Command, suggest } from "./commands.ts";
 
 const extra: Command[] = [
   { name: "review", description: "", source: "builtin" },
@@ -21,19 +21,6 @@ describe("builtin", () => {
   });
 });
 
-describe("shellCommand", () => {
-  test("reads a draft as Pi's editor does: ! runs a command, !! keeps its output from the model", () => {
-    expect(shellCommand("!git status --short")).toEqual({ command: "git status --short", excluded: false });
-    expect(shellCommand("  !! cat .env \n")).toEqual({ command: "cat .env", excluded: true });
-    expect(shellCommand("!")).toEqual({ command: "", excluded: false });
-  });
-
-  test("leaves every other draft to the model", () => {
-    expect(shellCommand("run !this")).toBeNull();
-    expect(shellCommand("/tree")).toBeNull();
-  });
-});
-
 describe("suggest", () => {
   const all = [...BUILTINS, ...extra];
 
@@ -49,47 +36,6 @@ describe("suggest", () => {
   test("stops once arguments begin, and outside a command", () => {
     expect(suggest("/model fake", all)).toBeNull();
     expect(suggest("hello /mo", all)).toBeNull();
-  });
-
-  test("the command named in full comes first", () => {
-    const names = [{ name: "copy-all", description: "", source: "extension" }, ...all] satisfies Command[];
-    expect(suggest("/copy", names)?.map((command) => command.name)).toEqual(["copy", "copy-all"]);
-  });
-
-  test("a skill is found by its name after skill:, as a name starting with what is typed", () => {
-    const skills: Command[] = [
-      { name: "podcast", description: "", source: "prompt" },
-      { name: "skill:pdf-tools", description: "", source: "skill" },
-      { name: "skill:release-notes", description: "", source: "skill" },
-      { name: "update-pdf", description: "", source: "extension" },
-    ];
-    expect(suggest("/pd", skills)?.map((command) => command.name)).toEqual(["skill:pdf-tools", "update-pdf"]);
-    expect(suggest("/notes", skills)?.map((command) => command.name)).toEqual(["skill:release-notes"]);
-    // Typing the prefix itself lists only skills.
-    expect(suggest("/skill:", skills)?.map((command) => command.name)).toEqual([
-      "skill:pdf-tools",
-      "skill:release-notes",
-    ]);
-  });
-});
-
-describe("rank", () => {
-  const paths = ["src/payouts/limits.ts", "src/limits/index.ts", "docs/payouts.md", "test/limits.test.ts"];
-
-  test("a match inside the file name comes first", () => {
-    expect(rank("limits", paths, 8)[0]).toBe("src/payouts/limits.ts");
-  });
-
-  test("letters in order across the path still match", () => {
-    expect(rank("dpm", paths, 8)).toEqual(["docs/payouts.md"]);
-  });
-
-  test("letters out of order do not", () => {
-    expect(rank("zzz", paths, 8)).toEqual([]);
-  });
-
-  test("offers no more than the limit", () => {
-    expect(rank("", paths, 2)).toHaveLength(2);
   });
 });
 

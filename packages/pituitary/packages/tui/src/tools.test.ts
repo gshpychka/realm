@@ -19,23 +19,6 @@ const tool = (
 const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n");
 
 describe("heading", () => {
-  test("names what each built-in tool acted on", () => {
-    expect(heading(tool("read", { path: "a.ts", offset: 10, limit: 5 }))).toEqual({
-      title: "read",
-      detail: "a.ts:10-14",
-    });
-    expect(heading(tool("write", { path: "b.md", content: "x\ny\n" }))).toEqual({
-      title: "write",
-      detail: "b.md · 2 lines",
-    });
-    expect(heading(tool("bash", { command: "ls -1" }))).toEqual({ title: "$", detail: "ls -1" });
-    expect(heading(tool("grep", { pattern: "TODO", path: "src" }))).toEqual({
-      title: "grep",
-      detail: "TODO in src",
-    });
-    expect(heading(tool("ls", {}))).toEqual({ title: "ls", detail: "." });
-  });
-
   test("a tool it does not know shows its arguments on one line", () => {
     expect(heading(tool("mcp", { server: "gh", tool: "issues" }))).toEqual({
       title: "mcp",

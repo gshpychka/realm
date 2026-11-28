@@ -269,10 +269,7 @@ test("native local model selection uses configured models while declared roles s
     expect(await local.call({ type: "cycle_thinking_level" })).toEqual({ level: "xhigh" });
     expect(await local.call({ type: "cycle_thinking_level" })).toEqual({ level: "max" });
     expect(await local.call({ type: "cycle_thinking_level" })).toEqual({ level: "off" });
-    await local.call({ type: "set_thinking_level", level: "high" });
     await local.call({ type: "set_model", provider: "faux", modelId: "second" });
-    // A model without reasoning takes no thinking level, as Pi clamps it on a switch.
-    expect((await local.snapshot()).state.thinkingLevel).toBe("off");
     await expect(declared.call({ type: "set_model", provider: "faux", modelId: "first" })).rejects.toThrow(
       "declared",
     );

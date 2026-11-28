@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { boot, click, normalMode, REPO, waitMatch } from "./helpers/harness.ts";
+import { boot, click, normalMode, REPO, settled, waitMatch } from "./helpers/harness.ts";
 import { API_KEY, launchPi, type PiLaunch } from "./helpers/pi.ts";
 
 after(async () => {
@@ -49,6 +49,16 @@ for (const cols of [44, 120])
     }
   });
 
+/** Another extension's `usage` command, whose name Pi then gives to this one alone, renaming Pituitary's. */
+const OTHER_USAGE = `
+export default function (pi) {
+  pi.registerCommand("usage", {
+    description: "another extension's usage",
+    handler: async (_args, ctx) => ctx.ui.notify("the other usage ran", "warning"),
+  });
+}
+`;
+
 for (const cols of [44, 120])
   test(`provider usage opens, observes API limits, and closes at ${cols} columns`, async () => {
     // The reply streams its words, then holds the run open until the test lets it finish.
@@ -58,7 +68,12 @@ for (const cols of [44, 120])
     });
     let app: PiLaunch | undefined;
     try {
-      app = await launchPi({ apiModels: [{ id: "usage-fixture" }], cols, rows: 36 });
+      app = await launchPi({
+        apiModels: [{ id: "usage-fixture" }],
+        cols,
+        rows: 36,
+        extensions: { "other-usage.ts": OTHER_USAGE },
+      });
       app.provider.reply({
         text: "Observed the API response.",
         until: finished,
@@ -73,23 +88,25 @@ for (const cols of [44, 120])
       assert.equal(app.provider.requests.length, 0);
       const unavailable = await app.capture(`usage-unavailable-${cols}`);
       assert.match(unavailable, /usage unavailable/);
-      // Esc closes the card while nothing runs, twice from the draft's insert mode.
-      assert.match(unavailable, /alt\+u \/ esc esc close/);
-      // Where the line has room, it names the usage command as Pi registered it.
-      if (cols === 120) assert.match(unavailable, /esc esc close · \/usage refresh updates/);
+      // Pi renamed Pituitary's usage command, and the card names it as Pi does, whole or not at all.
+      for (const row of unavailable.split("\n").filter((line) => line.includes("/usage")))
+        assert.match(row, /\/usage:\d+ refresh updates/);
+      const named = /\/(usage:\d+) refresh updates/.exec(unavailable)?.[1];
+      if (cols === 120) assert.ok(named, unavailable);
       await app.terminal.submit("inspect");
       await app.terminal.waitText("Observed the API response.");
-      // While the run goes, esc interrupts it, so the card names only its own key.
-      const running = await waitMatch(app.terminal, /alt\+u close/);
-      assert.doesNotMatch(running, /alt\+u \/ esc/);
-      finish();
-      await waitMatch(app.terminal, /alt\+u \/ esc esc close/);
+      // While the run goes, the interrupt stops it rather than closing the card.
+      await normalMode(app.terminal);
+      await app.terminal.keyboard.press("Escape");
+      await app.terminal.waitText("aborted");
+      await settled(app.terminal);
       await app.terminal.waitIdle();
       const screen = await app.capture(`usage-api-${cols}`);
       assert.match(screen, /100/);
       assert.match(screen, /session estimate/);
       assert.doesNotMatch(screen, new RegExp(`${API_KEY}|\\{"report"`));
       assert.equal(app.provider.requests.length, 1);
+      await app.terminal.write("i");
       await clickCard(app.terminal);
       await waitMatch(app.terminal, /^(?![\s\S]*session estimate)/);
       const closed = await app.capture(`usage-closed-${cols}`);
@@ -101,6 +118,17 @@ for (const cols of [44, 120])
       await normalMode(app.terminal);
       await app.terminal.keyboard.press("Escape");
       await waitMatch(app.terminal, /^(?![\s\S]*session estimate)/);
+      if (named) {
+        // The command as Pi named it closes the card, and neither runs the other extension's nor asks the model.
+        await app.terminal.write("i");
+        await app.terminal.write("\x1bu");
+        await app.terminal.waitText("session estimate");
+        await app.terminal.submit(`/${named} off`);
+        await waitMatch(app.terminal, /^(?![\s\S]*session estimate)/);
+        await app.terminal.waitIdle();
+        assert.doesNotMatch(await app.terminal.text(), /the other usage ran/);
+        assert.equal(app.provider.requests.length, 1);
+      }
     } finally {
       finish();
       await app?.close();

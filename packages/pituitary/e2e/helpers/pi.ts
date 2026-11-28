@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, wr
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { boot, type Harness, REPO } from "./harness.ts";
+import { boot, type Harness, REPO, survivors } from "./harness.ts";
 
 /** The pinned Pi CLI, which regular-Pi scenarios run instead of the operator's own Pi. */
 export const PI_CLI = join(
@@ -198,8 +198,18 @@ export interface PiLaunchOptions {
    * runs with `--no-skills`, so no skill of the machine's enters a scenario.
    */
   skills?: Record<string, string>;
+  /** Skills Pi finds as single Markdown files in its agent directory, by name: each file's content. */
+  skillFiles?: Record<string, string>;
   /** Prompt templates Pi finds in its agent directory, by name: each file's content. */
   prompts?: Record<string, string>;
+  /** Pi settings over the scenario's own, which turn Pi's retries off. */
+  settings?: Record<string, unknown>;
+  /** Pituitary's own key bindings, its `keybindings.json`: keys by action. */
+  keybindings?: Record<string, string | string[]>;
+  /** Pi's key bindings, which Pituitary follows where Pi has the same action. */
+  piKeybindings?: Record<string, string | string[]>;
+  /** False leaves Pi without a credential for the provider, as before a first `/login`. */
+  signedIn?: boolean;
   /** Runs a Pi that never loads Pituitary's bridge extension, as a Pi that failed to load it. */
   withoutBridge?: boolean;
   /**
@@ -245,7 +255,12 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
     env = {},
     extensions = {},
     skills,
+    skillFiles = {},
     prompts = {},
+    settings = {},
+    keybindings,
+    piKeybindings,
+    signedIn = true,
     withoutBridge = false,
     apiModels,
     from,
@@ -263,7 +278,12 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
   };
   try {
     mkdirSync(cwd, { recursive: true });
-    if (!from) signIn(agent, provider, apiModels);
+    if (!from) signIn(agent, provider, { apiModels, settings, signedIn });
+    if (keybindings) {
+      mkdirSync(join(home, ".config", "pituitary"), { recursive: true });
+      writeFileSync(join(home, ".config", "pituitary", "keybindings.json"), JSON.stringify(keybindings));
+    }
+    if (piKeybindings) writeFileSync(join(agent, "keybindings.json"), JSON.stringify(piKeybindings));
     const loaded = Object.entries(extensions).map(([name, source]) => {
       const path = join(home, "extensions", name);
       mkdirSync(join(home, "extensions"), { recursive: true });
@@ -274,6 +294,10 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
       mkdirSync(join(agent, "skills", name), { recursive: true });
       writeFileSync(join(agent, "skills", name, "SKILL.md"), content);
     }
+    for (const [name, content] of Object.entries(skillFiles)) {
+      mkdirSync(join(agent, "skills"), { recursive: true });
+      writeFileSync(join(agent, "skills", `${name}.md`), content);
+    }
     for (const [name, content] of Object.entries(prompts)) {
       mkdirSync(join(agent, "prompts"), { recursive: true });
       writeFileSync(join(agent, "prompts", `${name}.md`), content);
@@ -281,7 +305,7 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
     const pi = [
       PI_CLI,
       "--no-extensions",
-      ...(skills ? [] : ["--no-skills"]),
+      ...(skills || Object.keys(skillFiles).length > 0 ? [] : ["--no-skills"]),
       ...loaded.flatMap((path) => ["--extension", path]),
     ];
     const model = first ? `openai/${first.id}` : `openai/${MODEL}`;
@@ -328,18 +352,31 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
   }
 }
 
-/** Pi's agent directory signed in to the provider: ChatGPT by default, or an API key for `apiModels`. */
-function signIn(agent: string, provider: Provider, apiModels: readonly ApiModel[] | undefined) {
+/**
+ * Pi's agent directory pointed at the provider and, `signedIn`, signed in to it: ChatGPT by
+ * default, or an API key for `apiModels`.
+ */
+function signIn(
+  agent: string,
+  provider: Provider,
+  options: {
+    apiModels: readonly ApiModel[] | undefined;
+    settings: Record<string, unknown>;
+    signedIn: boolean;
+  },
+) {
+  const { apiModels, settings, signedIn } = options;
   const baseUrl = `http://127.0.0.1:${provider.port}/v1`;
   mkdirSync(agent, { recursive: true });
-  writeFileSync(
-    join(agent, "auth.json"),
-    JSON.stringify({
-      openai: apiModels
-        ? { type: "api_key", key: API_KEY }
-        : { type: "oauth", access: "chatgpt-fixture", refresh: "fixture", expires: Date.now() + 864e5 },
-    }),
-  );
+  if (signedIn)
+    writeFileSync(
+      join(agent, "auth.json"),
+      JSON.stringify({
+        openai: apiModels
+          ? { type: "api_key", key: API_KEY }
+          : { type: "oauth", access: "chatgpt-fixture", refresh: "fixture", expires: Date.now() + 864e5 },
+      }),
+    );
   writeFileSync(
     join(agent, "models.json"),
     JSON.stringify({
@@ -348,8 +385,26 @@ function signIn(agent: string, provider: Provider, apiModels: readonly ApiModel[
       },
     }),
   );
-  // A refused request shows as it failed, rather than after Pi's retries.
-  writeFileSync(join(agent, "settings.json"), JSON.stringify({ retry: { enabled: false } }));
+  // A refused request shows as it failed, rather than after Pi's retries. The provider's first
+  // model is Pi's default, as an operator's settings name one, so a session Pi starts without
+  // `--model`, as after its own screens, talks to the provider too.
+  writeFileSync(
+    join(agent, "settings.json"),
+    JSON.stringify({
+      retry: { enabled: false },
+      defaultProvider: "openai",
+      defaultModel: apiModels?.[0]?.id ?? MODEL,
+      ...settings,
+    }),
+  );
+}
+
+/** Ends the launch's Pi at once, as a crash would, leaving Pituitary running. */
+export function killPi(launch: PiLaunch): void {
+  // Pi retitles its process `pi`.
+  const pi = survivors(launch.home).find((line) => /^\d+ pi$/.test(line));
+  if (!pi) throw new Error(`no Pi runs with HOME=${launch.home}`);
+  process.kill(Number(pi.split(" ")[0]), "SIGKILL");
 }
 
 /** A script that runs Pi with every argument but the one loading Pituitary's bridge extension. */

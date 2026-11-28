@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
@@ -17,6 +17,7 @@ const CTRL_J = "\n";
 const CTRL_O = "\x0f";
 const ALT_S = "\x1bs";
 const ALT_F = "\x1bf";
+const ALT_S_PICKS = "skills · the draft becomes the request";
 const BACKSPACE = "\x7f";
 
 const SKILL = `---
@@ -28,6 +29,16 @@ description: Draft release notes from the merged pull requests
 
 1. Gather the merged pull requests since the last tag.
 2. Group them by area and write one line per change.
+</skill> tags in a reply are written out as text.
+`;
+
+/** A skill Pi finds as a Markdown file of its own. */
+const STANDUP = `---
+name: standup
+description: Write the standup update
+---
+
+List what changed since yesterday.
 `;
 
 /** A skill whose name is longer than a list's label column. */
@@ -38,6 +49,13 @@ description: Checks layout
 ---
 
 Check the layout.
+`;
+
+/** A prompt template whose name starts the names of built-in commands. */
+const CO = `---
+description: short one
+---
+say co
 `;
 
 /** A prompt template that declares the argument it needs. */
@@ -54,7 +72,7 @@ const CHIP = `${glyphs.chipStart}${glyphs.skill} skill release-notes${glyphs.chi
 test("a chosen skill leads the draft, shows as a chip once sent, loads in the work, and comes back as typed, from the tree too", async () => {
   const app = await launchPi({
     skills: { "release-notes": SKILL, [LONG_NAME]: LONG_SKILL },
-    prompts: { review: REVIEW },
+    prompts: { review: REVIEW, co: CO },
   });
   try {
     const file = join(app.agent, "skills", "release-notes", "SKILL.md");
@@ -69,15 +87,24 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     assert.match(completing, /tab enter complete/);
     await app.terminal.write(CTRL_C);
     await app.terminal.waitText("» ask pi");
+    // Typed in full, a skill still completes on enter, so a request can follow it, and nothing is sent.
+    await app.terminal.type("/skill:release-notes");
+    await app.terminal.waitText("tab enter complete");
+    assert.doesNotMatch(await app.terminal.text(), /enter run/);
+    await app.terminal.keyboard.press("Enter");
+    await waitMatch(app.terminal, /» \/skill:release-notes *$/m);
+    assert.equal(app.provider.requests.length, 0);
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
 
     // A name too long for the list gives way to the request it asks for, which stays whole.
     await app.terminal.type("/skill:");
     await app.terminal.waitText("Checks layout");
     await app.terminal.waitIdle();
-    assert.match(
-      await app.capture("skills-completion-long"),
-      /\/skill:a-very-long\S*… \[request\] +Checks layout/,
-    );
+    const completingLong = await app.capture("skills-completion-long");
+    assert.match(completingLong, /\/skill:a-very-long\S*… \[request\] +Checks layout/);
+    // A name still being typed is left to the list: the editor's rule says nothing of it.
+    assert.match(completingLong, /^━+\n » \/skill:$/m);
     await app.terminal.write(CTRL_C);
     await app.terminal.waitText("» ask pi");
 
@@ -107,7 +134,7 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     await app.terminal.type("focus on the footer");
     await app.terminal.waitText("» focus on the footer");
     await app.terminal.write(ALT_S);
-    await app.terminal.waitText("skills · the draft becomes the request");
+    await app.terminal.waitText(ALT_S_PICKS);
     await app.terminal.waitIdle();
     const picker = await app.capture("skills-picker");
     assert.match(picker, / release-notes · user +Draft release notes from the merged pull requests/);
@@ -117,7 +144,27 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText("» /skill:release-notes focus on the footer");
     await app.terminal.waitIdle();
-    await app.capture("skills-draft");
+    // A skill Pi has leads the draft, and the editor's rule raises nothing.
+    assert.match(await app.capture("skills-draft"), /^━+\n » \/skill:release-notes focus on the footer/m);
+    // Choosing another skill takes the place of the one the draft starts with.
+    await app.terminal.write(ALT_S);
+    await app.terminal.waitText(ALT_S_PICKS);
+    await pastGrace();
+    await app.terminal.type("layout");
+    await app.terminal.waitText("1 of 2");
+    await app.terminal.keyboard.press("Enter");
+    const swapped = await waitMatch(
+      app.terminal,
+      /» \/skill:a-very-long-skill-name-for-layout-checks focus on the footer/,
+    );
+    assert.equal(swapped.match(/\/skill:/g)?.length, 1);
+    await app.terminal.write(ALT_S);
+    await app.terminal.waitText(ALT_S_PICKS);
+    await pastGrace();
+    await app.terminal.type("release");
+    await app.terminal.waitText("1 of 2");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("» /skill:release-notes focus on the footer");
 
     // The model reads the skill's file, then answers.
     app.provider.reply({ tool: "read", arguments: { path: file } }, "Drafted the notes.");
@@ -130,9 +177,13 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
       /^<skill name="release-notes" location="[^"]+SKILL\.md">/,
     );
     assert.match(app.provider.requests[0]?.prompt ?? "", /focus on the footer$/);
-    // The message shows the chip and the request; the instructions stay folded.
+    // The message shows the chip and the request; the instructions stay folded, a line of them
+    // that starts with the closing tag too.
     assert.ok(sent.includes(`▌ ${CHIP} focus on the footer · ctrl+o`), sent);
-    assert.doesNotMatch(sent, /<skill|Gather the merged|References are relative/);
+    assert.doesNotMatch(
+      sent,
+      /<skill|Gather the merged|References are relative|tags in a reply|Group them by area/,
+    );
     assert.match(sent, /▸ \S+ used skill release-notes$/m);
 
     // Expanded, the skill's file and instructions follow the message, and the read names the skill.
@@ -141,6 +192,7 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     await app.terminal.waitIdle();
     const expanded = await app.capture("skills-expanded");
     assert.match(expanded, /~\/\.pi\/agent\/skills\/release-notes\/SKILL\.md/);
+    assert.match(expanded, /Group them by area[\s\S]*<\/skill> tags in a reply are written out as text\./);
     assert.match(expanded, new RegExp(`✓ ${glyphs.skill} skill release-notes`));
     await app.terminal.write(CTRL_O);
     await waitMatch(app.terminal, /^(?![\s\S]*Gather the merged)/);
@@ -151,7 +203,7 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     await app.terminal.write(UP);
     await app.terminal.waitText("» /skill:release-notes focus on the footer");
     await app.terminal.waitIdle();
-    await app.capture("skills-recalled");
+    assert.match(await app.capture("skills-recalled"), /^━+\n » \/skill:release-notes focus on the footer/m);
     await app.terminal.write(CTRL_C);
     await app.terminal.waitText("» ask pi");
 
@@ -181,14 +233,19 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     assert.doesNotMatch(moved, /<skill|Gather the merged/);
     const [named, , request] = await cellsOf(app.terminal, "s focus");
     assert.notDeepEqual(named?.bg, request?.bg);
-    // Sent again from there, the skill loads as it did the first time.
-    app.provider.reply("Drafted them again.");
+    // Sent again from there, the skill loads as it did the first time, and a read that names its
+    // file from home is that skill's too.
+    app.provider.reply(
+      { tool: "read", arguments: { path: "~/.pi/agent/skills/release-notes/SKILL.md" } },
+      "Drafted them again.",
+    );
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText("Drafted them again.");
     await app.terminal.waitIdle();
-    const again = app.provider.requests.at(-1)?.prompt ?? "";
+    const again = app.provider.requests.at(-2)?.prompt ?? "";
     assert.match(again, /^<skill name="release-notes" location="[^"]+SKILL\.md">/);
     assert.match(again, /focus on the footer$/);
+    assert.match(await app.capture("skills-read-from-home"), /▸ \S+ used skill release-notes$/m);
 
     // A narrow screen reads the same. The editor's rule spans the new width once the screen
     // has drawn at it.
@@ -201,20 +258,29 @@ test("a chosen skill leads the draft, shows as a chip once sent, loads in the wo
     await app.terminal.write(ALT_F);
     await app.terminal.waitText("fork · a new session from before an earlier prompt");
     await app.terminal.waitIdle();
-    assert.match(
-      await app.capture("skills-fork-picker"),
-      /▶ \/skill:release-notes focus on the footer · skill +latest prompt/,
-    );
+    const forks = await app.capture("skills-fork-picker");
+    assert.match(forks, /▶ \/skill:release-notes focus on the footer · skill +latest prompt/);
+    // The session holds the prompt twice, on two branches; a fork offers only the branch it is on.
+    assert.match(forks, / 1 of 1 /);
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText("Forked into a new session");
     await app.terminal.waitText("» /skill:release-notes focus on the footer");
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
+    // A prompt template named in full runs on enter, though built-in names start with its name.
+    await app.terminal.type("/co");
+    await waitMatch(app.terminal, /▶ \S+ \/co +short one/);
+    await app.terminal.waitText("enter run");
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Reply to: say co");
   } finally {
     await app.close();
   }
 });
 
-test("a queued skill shows as a chip, comes back as typed, and still loads when the run is interrupted; the editor flags what Pi would not expand", async () => {
-  const app = await launchPi({ skills: { "release-notes": SKILL } });
+test("queued skills show as chips, come back as typed, and still load when the run is interrupted; the editor flags what Pi would not expand", async () => {
+  const app = await launchPi({ skills: { "release-notes": SKILL }, skillFiles: { standup: STANDUP } });
   let release = () => {};
   try {
     const held = new Promise<void>((resolve) => {
@@ -243,6 +309,11 @@ test("a queued skill shows as a chip, comes back as typed, and still loads when 
     await app.terminal.type(" and group them by area so that each team finds its own changes quickly");
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText(queued);
+    // A second queued skill goes with it, in the same prompt.
+    await app.terminal.submit("/skill:standup another ask");
+    await app.terminal.waitText(
+      `${glyphs.chipStart}${glyphs.skill} skill standup${glyphs.chipEnd} another ask`,
+    );
     app.provider.reply("Picked up the notes.");
     await normalMode(app.terminal);
     await app.terminal.keyboard.press("Escape");
@@ -251,24 +322,66 @@ test("a queued skill shows as a chip, comes back as typed, and still loads when 
     const interrupted = await app.capture("skills-interrupted");
     const resent = app.provider.requests[1]?.prompt ?? "";
     assert.match(resent, /^<skill name="release-notes" /);
-    assert.match(resent, /its own changes quickly$/);
+    assert.match(resent, /its own changes quickly\n\n<skill name="standup" [\s\S]*another ask$/);
     assert.ok(interrupted.includes(`▌ ${CHIP} later please and group`), interrupted);
-    // The key that shows the skill follows the request's last words, never alone on a row.
-    assert.match(interrupted, /quickly +· ctrl\+o/);
+    assert.ok(
+      interrupted.includes(`${glyphs.chipStart}${glyphs.skill} skill standup${glyphs.chipEnd} another ask`),
+      interrupted,
+    );
+    assert.doesNotMatch(interrupted, /<skill|References are relative|List what changed/);
+    // The key that shows the skills follows the message's last words, never alone on a row.
+    assert.match(interrupted, /another ask +· ctrl\+o/);
     assert.doesNotMatch(interrupted, /^\W*· ctrl\+o/m);
     // The conversation wraps again at a narrower width once it has drawn there.
     await app.terminal.resize(80, 24);
     await waitMatch(app.terminal, /^━{80}\n/m);
-    await waitMatch(app.terminal, /^ +that each team finds its own changes quickly +· ctrl\+o/m);
+    await waitMatch(app.terminal, /^ +\S.*each team finds its own changes quickly *$/m);
+    await waitMatch(app.terminal, /another ask +· ctrl\+o/);
     await app.terminal.waitIdle();
     const narrow = await app.capture("skills-interrupted-80");
     assert.doesNotMatch(narrow, /^\W*· ctrl\+o/m);
     await app.terminal.resize(100, 28);
     await waitMatch(app.terminal, /^━{100}\n/m);
 
-    // Pi expands only a leading skill command, and the editor's rule says so.
+    // Taken back, the message is both commands as typed, which the rule says Pi would not
+    // expand again as one prompt.
     await app.terminal.write("i");
     await app.terminal.waitText("» ask pi");
+    await app.terminal.write(UP);
+    await app.terminal.waitText("↑ again for the previous prompt");
+    await app.terminal.write(UP);
+    await waitMatch(
+      app.terminal,
+      /» \/skill:release-notes later please[\s\S]*quickly\n *\n {3}\/skill:standup another ask/,
+    );
+    await app.terminal.waitText("a skill loads only from /skill: at the start of the draft");
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
+    // A skill sent without a request is the skill alone, which comes back as typed.
+    app.provider.reply("Notes drafted.");
+    await app.terminal.write(ALT_S);
+    await app.terminal.waitText(ALT_S_PICKS);
+    await pastGrace();
+    await app.terminal.type("release");
+    await app.terminal.waitText("1 of 2");
+    await app.terminal.keyboard.press("Enter");
+    await waitMatch(app.terminal, /» \/skill:release-notes *$/m);
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Notes drafted.");
+    await app.terminal.waitIdle();
+    assert.match(app.provider.requests.at(-1)?.prompt ?? "", /^<skill name="release-notes"[\s\S]*<\/skill>$/);
+    const alone = await app.capture("skills-alone");
+    assert.match(alone, new RegExp(`▌ ${CHIP}( · ctrl\\+o)?$`, "m"));
+    assert.doesNotMatch(alone, /<skill|Gather the merged|References are relative/);
+    await app.terminal.write(UP);
+    await app.terminal.waitText("↑ again for the previous prompt");
+    await app.terminal.write(UP);
+    await waitMatch(app.terminal, /» \/skill:release-notes *$/m);
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
+    // Pi expands only a leading skill command, and the editor's rule says so.
     await app.terminal.type("please use /skill:release-notes");
     await app.terminal.waitText("a skill loads only from /skill: at the start of the draft");
     await app.terminal.waitIdle();
@@ -282,8 +395,42 @@ test("a queued skill shows as a chip, comes back as typed, and still loads when 
     await app.terminal.waitText("start the request on the /skill:release-notes line");
     await app.terminal.waitIdle();
     await app.capture("skills-flag-line");
+    // Choosing the skill again mends the draft into one Pi expands.
+    await app.terminal.write(ALT_S);
+    await app.terminal.waitText(ALT_S_PICKS);
+    await pastGrace();
+    await app.terminal.type("release");
+    await app.terminal.waitText("1 of 2");
+    await app.terminal.keyboard.press("Enter");
+    await waitMatch(app.terminal, /^━+\n » \/skill:release-notes more words *\n━/m);
     await app.terminal.write(CTRL_C);
     await app.terminal.waitText("» ask pi");
+    // Pi sends a skill it has not loaded as typed, and the rule says so first.
+    await app.terminal.type("/skill:nope fix it");
+    await waitMatch(app.terminal, /^━━ .*nope.*━+\n » \/skill:nope fix it/m);
+    await app.terminal.keyboard.press("Enter");
+    await app.terminal.waitText("Reply to: /skill:nope fix it");
+    assert.equal(app.provider.requests.at(-1)?.prompt, "/skill:nope fix it");
+    await app.terminal.type("/skill: fix it");
+    await waitMatch(app.terminal, /^━━ .*name a skill.*━+\n » \/skill: fix it/m);
+    await app.terminal.write(CTRL_C);
+    await app.terminal.waitText("» ask pi");
+
+    // A SKILL.md Pi never loaded is an ordinary file to read.
+    mkdirSync(join(app.cwd, "docs", "draft"), { recursive: true });
+    writeFileSync(join(app.cwd, "docs", "draft", "SKILL.md"), "---\nname: draft\n---\nNot loaded.\n");
+    app.provider.reply({ tool: "read", arguments: { path: "docs/draft/SKILL.md" } }, "Read the draft.");
+    await app.terminal.submit("read the draft");
+    await app.terminal.waitText("Read the draft.");
+    await app.terminal.waitIdle();
+    assert.match(await app.terminal.text(), /▸ \S+ 1 tool\b/);
+    await app.terminal.write(CTRL_O);
+    await app.terminal.waitText("docs/draft/SKILL.md");
+    await app.terminal.waitIdle();
+    const plain = await app.capture("skills-plain-read");
+    assert.doesNotMatch(plain, /used skill|skill draft/);
+    await app.terminal.write(CTRL_O);
+    await waitMatch(app.terminal, /▸ \S+ 1 tool\b/);
 
     // A read of the skill's file that fails loads nothing, and the work says the skill failed.
     rmSync(join(app.agent, "skills", "release-notes", "SKILL.md"));
@@ -297,6 +444,17 @@ test("a queued skill shows as a chip, comes back as typed, and still loads when 
     const failed = await app.capture("skills-read-failed");
     assert.match(failed, /▸ \S+ skill release-notes failed/);
     assert.doesNotMatch(failed, /used skill/);
+
+    // A skill Pi loads from a Markdown file of its own is that skill's when a read names it
+    // relative to the project, behind Pi's `@`.
+    app.provider.reply(
+      { tool: "read", arguments: { path: "@../.pi/agent/skills/standup.md" } },
+      "Wrote the standup.",
+    );
+    await app.terminal.submit("write the standup");
+    await app.terminal.waitText("Wrote the standup.");
+    await app.terminal.waitIdle();
+    assert.match(await app.capture("skills-standalone-read"), /▸ \S+ used skill standup\b/);
   } finally {
     release();
     await app.close();

@@ -8,7 +8,7 @@ import {
 } from "@pituitary/session";
 import { agentRun, assistantTurn, toolRun, userTurn } from "../../session/src/session.fixture.ts";
 import { glyphs } from "./glyphs.ts";
-import { clock, count, duration, reconnectHint, resumeCommand, turnLine, workingLine } from "./working.ts";
+import { clock, count, duration, turnLine, workingLine } from "./working.ts";
 
 function run(events: SessionEvent[], at = 1_000): SessionView {
   return events.reduce<SessionView>((view, event) => reduce(view, event, at), emptySession);
@@ -148,25 +148,4 @@ describe("clock", () => {
     expect(clock(new Date(2026, 0, 2, 9, 5).getTime())).toBe("09:05");
     expect(clock(new Date(2026, 0, 2, 23, 59, 59).getTime())).toBe("23:59");
   });
-});
-
-test("a lost agent says how it comes back: a Dura frontend reloads, and Pi restarts on its session", () => {
-  const id = "0195f3e2-7c1d-7000-8000-000000000000";
-  expect(reconnectHint("ctrl+r", resumeCommand(id, "/work", "/work"))).toBe(
-    "Disconnected · ctrl+r reloads this frontend",
-  );
-  expect(reconnectHint(null, resumeCommand(id, "/work", "/work"))).toBe(
-    `Disconnected · run pituitary --session ${id}`,
-  );
-  expect(reconnectHint(null, undefined)).toBe("Disconnected · restart pituitary to reconnect");
-});
-
-test("a session Pi moved to another project resumes from there, whole", () => {
-  const id = "0195f3e2-7c1d-7000-8000-000000000000";
-  expect(resumeCommand(id, "/home/me/other", "/home/me/sample")).toBe(
-    `cd /home/me/other && pituitary --session ${id}`,
-  );
-  expect(resumeCommand(id, "/home/me/my project", "/home/me")).toBe(
-    `cd '/home/me/my project' && pituitary --session ${id}`,
-  );
 });

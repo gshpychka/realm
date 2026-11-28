@@ -96,21 +96,6 @@ describe("transcriptOf", () => {
     expect(shape(transcriptOf(entries, false))).toEqual(["user", "work(t1)"]);
   });
 
-  test("a reply cut at the output limit says so, even with no words of its own", () => {
-    const [, box, cut] = transcriptOf(
-      [user("u"), reply("a1", { tools: [tool("t1")], stopReason: "length" })],
-      false,
-    );
-    expect(box?.kind).toBe("work");
-    expect(cut).toEqual({
-      kind: "reply",
-      id: "a1",
-      text: "",
-      streaming: false,
-      note: "the reply reached the output limit and stopped · ask it to continue",
-    });
-  });
-
   test("a reply that failed before it said anything leaves nothing", () => {
     expect(transcriptOf([user("u"), reply("a1", { stopReason: "error" })], false)).toEqual([user("u")]);
   });

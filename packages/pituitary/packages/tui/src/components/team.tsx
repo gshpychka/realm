@@ -109,7 +109,7 @@ const NARROW_TASKS = 2;
  * The children of `taskId` a narrow screen shows, those waiting on the operator first, then
  * failures, and what it leaves out: how many, and how many of those failed.
  */
-export function narrowTasks(detail: RunDetail, taskId: string) {
+function narrowTasks(detail: RunDetail, taskId: string) {
   const urgency = (task: TeamTask) => (asks(detail, task) ? 0 : failed(detail, task) ? 1 : 2);
   const children = detail.tasks
     .filter((task) => task.parentTaskId === taskId)
@@ -129,7 +129,7 @@ const WIDE_COLUMNS = 120;
 export const wideTeam = (columns: number) => columns >= WIDE_COLUMNS;
 
 /** The side panel's share of the screen, kept wide enough to tell objectives apart. */
-export function teamPanelWidth(columns: number): number {
+function teamPanelWidth(columns: number): number {
   return Math.max(35, Math.min(60, Math.round(columns * 0.3)));
 }
 
@@ -326,7 +326,7 @@ const SECOND = 1000;
  * whole minutes, and hours past an hour, rounded down so it never promises more time than
  * there is, and seconds only in the last minute.
  */
-export function timeLeft(deadline: number, now: number): { text: string; holds: number | null } {
+function timeLeft(deadline: number, now: number): { text: string; holds: number | null } {
   const left = deadline - now;
   if (left <= 0) return { text: "overdue", holds: null };
   const seconds = Math.ceil(left / SECOND);
@@ -451,7 +451,7 @@ export function TeamCards({
 const BYTE_UNITS = ["KiB", "MiB", "GiB", "TiB"] as const;
 
 /** A size as the operator reads it: `512 bytes`, `1.5 KiB`, `8 KiB`, `217 KiB`. */
-export function byteSize(bytes: number): string {
+function byteSize(bytes: number): string {
   if (bytes < 1024) return counted(bytes, "byte");
   let value = bytes / 1024;
   let unit = 0;
