@@ -1,31 +1,124 @@
 /** An error as the operator reads it: one line on what went wrong, and what deals with it. */
 export interface Explanation {
   text: string;
-  /** The words the error arrived in, present when `text` rewords them. */
-  original?: string;
+  /** What deals with the error, naming a command the operator can run, when one is known. */
+  remedy?: string;
+  /** What the error said that `text` leaves out, such as a stack or a raw response body. */
+  detail?: string;
 }
 
 /** Characters of an error's line kept before it is cut at a word. */
 const KEPT = 160;
 
-/** Condense native runtime, provider and tool errors while retaining the original for inspection. */
-export function explain(text: string): Explanation {
-  const brief = condense(text);
-  return brief === text.trim() ? { text: brief } : { text: brief, original: text };
+/** What deals with errors whose words match; one naming a command is offered only while it can run. */
+interface Remedy {
+  matches: readonly RegExp[];
+  command?: string;
+  says: string;
+}
+
+/**
+ * An HTTP status where providers put it: leading the error, as `401 {…}` or `429: Rate limit…`
+ * read, or after the word `status`. A bare number elsewhere, such as a stack frame's line, is
+ * not a status.
+ */
+function status(codes: string): RegExp {
+  return new RegExp(`^\\s*(?:${codes})\\b|\\bstatus(?: code)?:? (?:${codes})\\b`, "i");
+}
+
+/**
+ * Remedies by what the error says, the first match winning. A refused permission (403) has
+ * none: the credential works, and what it may not reach is the account's to change.
+ */
+const REMEDIES: readonly Remedy[] = [
+  {
+    matches: [
+      /prompt is too long|context (?:length|window|limit)|maximum context|exceeds? (?:the )?context|too many (?:input )?tokens/i,
+    ],
+    command: "compact",
+    says: "/compact frees context",
+  },
+  {
+    matches: [
+      status("401"),
+      /\bunauthori[sz]ed\b|invalid (?:x-)?(?:api[ _-]?key|token|credential)|(?:api[ _-]?key|token|credential)s? (?:is |are )?(?:not valid|invalid)|(?:token|credential)s? (?:has |have )?(?:been )?(?:expired|revoked)|authentication (?:failed|error)/i,
+    ],
+    command: "login",
+    says: "/login signs in again",
+  },
+  {
+    matches: [status("429|529"), /rate.?limit|overloaded|too many requests/i],
+    says: "wait a moment, then send again",
+  },
+];
+
+/** A sentence naming the command that deals with an error, as Pi's own errors close. */
+const USE = /^Use \/[a-z][\w:-]*\b[^.\n]*\./;
+
+/**
+ * Condense native runtime, provider and tool errors while retaining the rest for inspection.
+ * A remedy names a command only while it is among `commands`, those the operator can run.
+ */
+export function explain(text: string, commands: ReadonlySet<string> = new Set()): Explanation {
+  const headline = condense(text);
+  const use = commandSentence(text, headline);
+  const remedy = use ? undefined : remedyFor(text, commands);
+  const detail = rest(text, headline, use);
+  return {
+    text: use ? `${headline} ${use}` : headline,
+    ...(remedy ? { remedy } : {}),
+    ...(detail ? { detail } : {}),
+  };
+}
+
+/** The remedy for what `text` says once its stack and diagnostics are out, which name no cause. */
+function remedyFor(text: string, commands: ReadonlySet<string>): string | undefined {
+  const words = said(text);
+  const found = REMEDIES.find((each) => each.matches.some((pattern) => pattern.test(words)));
+  return found && (!found.command || commands.has(found.command)) ? found.says : undefined;
 }
 
 /** The first line of `text` worth reading, cut to `KEPT` characters. */
 function condense(text: string): string {
-  const said = unwrapJson(text.split(/\n\s*at\s|;?\s*\bstack=/)[0] ?? text)
-    .replace(/<(?:!doctype html|html)\b[\s\S]*?(?:<\/html>|$)/i, page)
-    // A sentence followed by `key=value` diagnostics, as pi-ai's OAuth errors end.
-    .replace(/\.\s+[a-z_]+=[\s\S]*$/i, ".")
-    .replace(/^\s*[A-Za-z]*Error:\s+/, "");
-  const line = said
+  const line = said(text)
     .split("\n")
     .map((each) => each.trim())
     .find(Boolean);
   return clip(line ?? text.trim(), KEPT);
+}
+
+/** What `text` says once a stack, an HTML page, trailing diagnostics and JSON wrapping are taken out. */
+function said(text: string): string {
+  return (
+    unwrapJson(text.split(/\n\s*at\s|;?\s*\bstack=/)[0] ?? text)
+      .replace(/<(?:!doctype html|html)\b[\s\S]*?(?:<\/html>|$)/i, page)
+      // A sentence followed by `key=value` diagnostics, as pi-ai's OAuth errors end.
+      .replace(/\.\s+[a-z_]+=[\s\S]*$/i, ".")
+      .replace(/^\s*[A-Za-z]*Error:\s+/, "")
+  );
+}
+
+/** A later line's `Use /command …` sentence, which says in the error's own words what deals with it. */
+function commandSentence(text: string, headline: string): string | null {
+  for (const line of said(text).split("\n").slice(1)) {
+    const sentence = USE.exec(line.trim())?.[0];
+    if (sentence && !headline.includes(sentence)) return clip(sentence, KEPT);
+  }
+  return null;
+}
+
+/**
+ * `text` without what the brief already shows, the line that reads as its headline and the
+ * words of its `Use` sentence, so the detail adds a stack or a raw body rather than repeating.
+ */
+function rest(text: string, headline: string, use: string | null): string {
+  return (use && !use.endsWith("…") ? text.replace(use, "") : text)
+    .split("\n")
+    .filter((line) => line.trim().replace(/^[A-Za-z]*Error:\s+/, "") !== headline)
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /** An HTML page in an error, as its title. */
@@ -43,9 +136,9 @@ function unwrapJson(text: string): string {
     if (open < from) continue;
     const close = closing(text, open);
     if (close === -1) continue;
-    const said = bodyMessage(text.slice(open, close + 1));
-    if (said === null) continue;
-    out += text.slice(from, open) + said;
+    const message = bodyMessage(text.slice(open, close + 1));
+    if (message === null) continue;
+    out += text.slice(from, open) + message;
     from = close + 1;
   }
   return out + text.slice(from);

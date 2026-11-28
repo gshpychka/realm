@@ -15,6 +15,7 @@ import { type PiControls, PiConversation } from "./pi.ts";
 import { extensionArgs, HANDOFF_EXTENSION, PI_EXTENSIONS } from "./pi-extensions.ts";
 import { mark } from "./profile.ts";
 import { RELOAD_UI } from "./ui-state.ts";
+import { resumeCommand } from "./working.ts";
 
 /**
  * Erases the screen and puts the cursor at its top left. Pi's own screen switches to an
@@ -82,9 +83,7 @@ async function runPi(agent: PiCommand): Promise<void> {
     mark("agent-closed");
     // Pi writes a session's file with its first message; until then there is nothing to resume.
     if (sessionId && sessionFile && existsSync(sessionFile))
-      process.stdout.write(
-        `Resume: ${cwd === process.cwd() ? "" : `cd ${shellWord(cwd)} && `}pituitary --session ${sessionId}\n`,
-      );
+      process.stdout.write(`Resume: ${resumeCommand(sessionId, cwd)}\n`);
     process.exit(0);
   };
   /** Pi's own screen on the current session, then Pi over RPC again on the session it ends on. */
@@ -125,11 +124,6 @@ async function runPi(agent: PiCommand): Promise<void> {
   process.once("SIGHUP", () => void quit());
   process.once("exit", () => mark("exit"));
   root.render(<App link={client} pi={pi} initialPrompt={agent.prompt} onQuit={() => void quit()} />);
-}
-
-/** `word` as one shell word. */
-function shellWord(word: string): string {
-  return /^[\w./~@%+=:,-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 }
 
 /** Reload only the disposable frontend process, retaining its draft and Dura's live work. */

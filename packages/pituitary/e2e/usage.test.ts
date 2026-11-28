@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { closeAll } from "@microsoft/tui-test";
 import { glyphs } from "../packages/tui/src/glyphs.ts";
-import { boot, click, REPO, waitMatch } from "./helpers/harness.ts";
+import { boot, click, normalMode, REPO, waitMatch } from "./helpers/harness.ts";
+import { API_KEY, launchPi, type PiLaunch } from "./helpers/pi.ts";
 
 after(async () => {
   await closeAll();
 });
-
-const PI = join(REPO, "packages/tui/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js");
 
 async function clickCard(terminal: Parameters<typeof click>[0]): Promise<void> {
   const rows = (await terminal.text()).split("\n");
@@ -55,103 +51,56 @@ for (const cols of [44, 120])
 
 for (const cols of [44, 120])
   test(`provider usage opens, observes API limits, and closes at ${cols} columns`, async () => {
-    let requests = 0;
-    const server = createServer((request, response) => {
-      request.resume();
-      request.on("end", () => {
-        requests++;
-        response.writeHead(200, {
-          "content-type": "text/event-stream",
+    // The reply streams its words, then holds the run open until the test lets it finish.
+    let finish = () => {};
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let app: PiLaunch | undefined;
+    try {
+      app = await launchPi({ apiModels: [{ id: "usage-fixture" }], cols, rows: 36 });
+      app.provider.reply({
+        text: "Observed the API response.",
+        until: finished,
+        headers: {
           "x-ratelimit-limit-requests": "100",
           "x-ratelimit-remaining-requests": "0",
           "x-ratelimit-reset-requests": "1m",
-        });
-        response.end(
-          [
-            {
-              id: "chunk",
-              choices: [
-                {
-                  index: 0,
-                  delta: { role: "assistant", content: "Observed the API response." },
-                  finish_reason: null,
-                },
-              ],
-            },
-            { id: "chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-            "[DONE]",
-          ]
-            .map((event) => `data: ${typeof event === "string" ? event : JSON.stringify(event)}\n\n`)
-            .join(""),
-        );
-      });
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const home = realpathSync(mkdtempSync("/tmp/pituitary-usage-e2e-"));
-    const agent = join(home, ".pi", "agent");
-    const cwd = join(home, "sample");
-    mkdirSync(agent, { recursive: true });
-    mkdirSync(cwd);
-    const endpoint = server.address() as AddressInfo;
-    writeFileSync(
-      join(agent, "auth.json"),
-      JSON.stringify({ openai: { type: "api_key", key: "fixture-secret" } }),
-    );
-    writeFileSync(
-      join(agent, "models.json"),
-      JSON.stringify({
-        providers: {
-          openai: {
-            baseUrl: `http://127.0.0.1:${endpoint.port}/v1`,
-            api: "openai-completions",
-            models: [{ id: "usage-fixture" }],
-          },
-        },
-      }),
-    );
-    let app: Awaited<ReturnType<typeof boot>> | undefined;
-    try {
-      app = await boot({
-        entry: join(REPO, "packages/tui/src/main.tsx"),
-        argv: ["--model", "openai/usage-fixture"],
-        cwd,
-        cols,
-        rows: 36,
-        ready: "usage-fixture",
-        env: {
-          HOME: home,
-          XDG_CONFIG_HOME: join(home, ".config"),
-          PI_AGENT_CMD: "node",
-          PI_AGENT_ARGS: `${PI} --no-extensions --no-skills`,
-          PI_CODING_AGENT_DIR: agent,
-          PI_OFFLINE: "1",
-          PI_SKIP_VERSION_CHECK: "1",
-          PI_TELEMETRY: "0",
-          PITUITARY_STILL: "1",
-          PITUITARY_GH: "",
-          PITUITARY_LOG: join(home, "tui.log"),
         },
       });
       await clickCard(app.terminal);
       await app.terminal.waitText("session estimate");
-      assert.equal(requests, 0);
-      assert.match(await app.capture(`usage-unavailable-${cols}`), /usage unavailable/);
+      assert.equal(app.provider.requests.length, 0);
+      const unavailable = await app.capture(`usage-unavailable-${cols}`);
+      assert.match(unavailable, /usage unavailable/);
+      // Esc closes the card while nothing runs, twice from the draft's insert mode.
+      assert.match(unavailable, /alt\+u \/ esc esc close/);
       await app.terminal.submit("inspect");
       await app.terminal.waitText("Observed the API response.");
+      // While the run goes, esc interrupts it, so the card names only its own key.
+      const running = await waitMatch(app.terminal, /alt\+u close/);
+      assert.doesNotMatch(running, /alt\+u \/ esc/);
+      finish();
+      await waitMatch(app.terminal, /alt\+u \/ esc esc close/);
       await app.terminal.waitIdle();
       const screen = await app.capture(`usage-api-${cols}`);
       assert.match(screen, /100/);
       assert.match(screen, /session estimate/);
-      assert.doesNotMatch(screen, /fixture-secret|\{"report"/);
-      assert.equal(requests, 1);
+      assert.doesNotMatch(screen, new RegExp(`${API_KEY}|\\{"report"`));
+      assert.equal(app.provider.requests.length, 1);
       await clickCard(app.terminal);
       await waitMatch(app.terminal, /^(?![\s\S]*session estimate)/);
       const closed = await app.capture(`usage-closed-${cols}`);
       assert.doesNotMatch(closed, /session estimate|Requests|remaining/);
       assert.match(closed, /usage-fixture/);
+      // The keyboard opens the card too, and esc closes it once the draft leaves insert mode.
+      await app.terminal.write("\x1bu");
+      await app.terminal.waitText("session estimate");
+      await normalMode(app.terminal);
+      await app.terminal.keyboard.press("Escape");
+      await waitMatch(app.terminal, /^(?![\s\S]*session estimate)/);
     } finally {
+      finish();
       await app?.close();
-      server.close();
-      rmSync(home, { recursive: true, force: true });
     }
   });

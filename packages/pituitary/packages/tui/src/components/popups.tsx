@@ -7,7 +7,7 @@ export interface PopupsProps {
   dialogs: readonly DialogRequest[];
   picker: PickerSpec | null;
   /** What the draft could complete to, with the one chosen, while the draft has the keyboard. */
-  completion: { items: Suggestion[]; index: number } | null;
+  completion: { items: Suggestion[]; index: number; runs: boolean } | null;
   /** Rows the screen leaves a popup above the editor. */
   rows: number;
   onAnswer(id: string, response: DialogResponse): void;
@@ -43,7 +43,12 @@ export function Popups({ dialogs, picker, completion, rows, onAnswer, onClosePic
         />
       ) : null}
       {completion && !picker ? (
-        <Suggestions items={completion.items} index={completion.index} rows={rows - 1} />
+        <Suggestions
+          items={completion.items}
+          index={completion.index}
+          runs={completion.runs}
+          rows={rows - 1}
+        />
       ) : null}
     </>
   );

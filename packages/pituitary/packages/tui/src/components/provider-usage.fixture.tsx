@@ -48,7 +48,8 @@ function Preview() {
             ? { ...report, state: "error", error: "Usage refresh failed.", retryAt: now + 60_000 }
             : report,
         }}
-        onUsageToggle={() => setOpen((value) => !value)}
+        cardOpen={open}
+        onCard={() => setOpen((value) => !value)}
       />
     </box>
   );

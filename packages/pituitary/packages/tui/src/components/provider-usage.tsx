@@ -1,5 +1,7 @@
 import { useTerminalDimensions } from "@opentui/react";
 import { glyphs } from "../glyphs.ts";
+import { hintLine } from "../hints.ts";
+import { useKeyHint } from "../keymap-context.tsx";
 import { providerMark } from "../provider.ts";
 import { palette, theme } from "../theme.ts";
 import {
@@ -20,6 +22,8 @@ export interface UsagePanelProps {
   now: number;
   /** The running session's own token-cost estimate; the provider's account billing is separate. */
   sessionCost?: number;
+  /** The interrupt's keys, such as `esc esc`, while they close the card: nothing runs for them to stop. */
+  escapes?: string | undefined;
 }
 
 /** Share of the terminal's height the scrolled metrics and notes may fill. */
@@ -37,14 +41,16 @@ function scrollRows(terminalHeight: number): number {
  * estimate kept visibly apart from it.
  *
  * Only the metrics and notes list is bounded to a share of the terminal's height; the header
- * rows above it are not.
+ * rows above it are not. Its last row says how to close it and check again.
  */
-export function UsagePanel({ report, now, sessionCost }: UsagePanelProps) {
-  const { height } = useTerminalDimensions();
+export function UsagePanel({ report, now, sessionCost, escapes }: UsagePanelProps) {
+  const { width, height } = useTerminalDimensions();
+  const toggle = useKeyHint("app.usage.toggle");
   const mark = providerMark(report.provider);
   const stale = isUsageStale(report, now);
   const statusTone = report.state === "error" ? theme.error : stale ? palette.yellow : theme.dim;
   const hasBody = report.metrics.length > 0 || report.notes.length > 0;
+  const closes = [toggle, escapes].filter(Boolean).join(" / ");
   return (
     <box
       flexDirection="column"
@@ -97,6 +103,16 @@ export function UsagePanel({ report, now, sessionCost }: UsagePanelProps) {
           {sessionEstimateLine(sessionCost)}
         </text>
       ) : null}
+      <text fg={theme.dim} wrapMode="none" selectable={false}>
+        {hintLine(
+          [
+            [closes || "/usage off", "close"],
+            ["/usage refresh", "updates"],
+          ],
+          null,
+          width - 2,
+        )}
+      </text>
     </box>
   );
 }

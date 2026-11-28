@@ -24,9 +24,9 @@ describe("heading", () => {
       title: "read",
       detail: "a.ts:10-14",
     });
-    expect(heading(tool("write", { path: "b.md", content: "x\ny" }))).toEqual({
+    expect(heading(tool("write", { path: "b.md", content: "x\ny\n" }))).toEqual({
       title: "write",
-      detail: "b.md (2 lines)",
+      detail: "b.md · 2 lines",
     });
     expect(heading(tool("bash", { command: "ls -1" }))).toEqual({ title: "$", detail: "ls -1" });
     expect(heading(tool("grep", { pattern: "TODO", path: "src" }))).toEqual({

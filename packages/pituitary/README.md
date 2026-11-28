@@ -51,8 +51,8 @@ screen stay where they are while the conversation changes under them.
 | `/session [copy]` | | Show the session's name, messages, context, cost, and file; `copy` copies the file's path |
 
 The resume list puts the most recently changed session first and each fork under the
-session it came from, with how long ago it changed and how many prompts it holds. The
-filter matches names and first prompts. `ctrl+r` renames the session under the cursor,
+session it came from, with how long ago it changed and how many prompts it holds; the
+session Pi has open reads `· current`. The filter matches names and first prompts. `ctrl+r` renames the session under the cursor,
 `ctrl+x` deletes it, to the trash when a `trash` command is available, and `tab` switches
 between this project's sessions and every project's; Pi's `app.session.rename`,
 `app.session.delete`, and `tui.input.tab` keybindings rebind them. A project without saved
@@ -101,17 +101,25 @@ Ghostty 1.4 or kitty. Through tmux they need Realm's tmux, which relays them.
 
 Standard extension dialogs, notifications, status text, widgets, commands, and prompt
 completions appear in Pituitary, and a failing extension handler shows as a warning naming
-the extension. Extensions that render custom stock-terminal components need Pi's
-interactive screen; that rendering API is outside Pi RPC. Pituitary loads its own Pi
-extensions for Fast mode, provider usage, and a bridge for what Pi's RPC lacks, such as
-listing sessions; they stay out of Pi's own screens.
+the extension. A dialog with a timeout counts down in its border and says so in the
+conversation when it cancels itself; `pgup` and `pgdn` scroll a long question. Extensions
+that render custom stock-terminal components need Pi's interactive screen; that rendering
+API is outside Pi RPC. Pituitary loads its own Pi extensions for Fast mode, provider usage,
+and a bridge for what Pi's RPC lacks, such as listing sessions; they stay out of Pi's own
+screens.
+
+Models carry the names Pi's registry gives them, with `provider/id` beside them in
+`/model`. Errors say what deals with them where they can, such as `/compact` for a full
+context or `/login` for a refused credential; `ctrl+o` shows the rest of the error.
 
 ## Provider usage
 
 The footer's credit-card icon opens usage for the selected provider credential. Click
-it or use `/usage` to open the details; `/usage off` closes them and `/usage refresh`
-requests an update. Percentages mean **used**. The panel keeps the session's estimated
-model cost separate from provider-reported account usage.
+it, press `alt+u`, or use `/usage` to open the details; `alt+u` or `/usage off` closes
+them, as does `esc` (twice from insert mode) while nothing runs for it to interrupt, and
+`/usage refresh` requests an update. Without a provider report, as in Dura, the card
+shows the session's estimated cost. Percentages mean **used**. The panel keeps the
+session's estimated model cost separate from provider-reported account usage.
 
 | Credential | Provider-reported data |
 | --- | --- |
@@ -174,7 +182,9 @@ otherwise the client uses the local socket for the selected state directory.
 
 The interface adds tasks, questions, results, and independent verification. Use
 `ctrl+k` to browse tasks, `ctrl+q` for attention, and `alt+i` to join a teammate's
-input lease. Closing this attachment leaves Dura's work running.
+input lease. A narrow terminal lists the child tasks that need you first and counts
+the rest. In a task's result, retrying (`r`) and applying to your workspace (`a`) each
+take a second press. Closing this attachment leaves Dura's work running.
 
 | Mode | Runtime and state | Configuration |
 | --- | --- | --- |
@@ -214,13 +224,19 @@ external editor; `PITUITARY_EDITOR`, `$VISUAL`, and `$EDITOR` select it.
 | --- | --- |
 | enter / shift+enter | Send / newline |
 | alt+enter | Queue a follow-up |
-| esc | Leave insert mode, then interrupt; close a picker |
+| esc | Leave insert mode, then interrupt; close a picker, or the usage card while nothing runs |
 | ctrl+l / ctrl+p / shift+tab | Choose model / cycle model / cycle thinking |
 | ctrl+o / ctrl+t / ctrl+f | Expand work / toggle thinking / browse work |
 | alt+r / alt+f / alt+n | Resume / fork / start a session (regular Pi) |
 | ctrl+g | Edit externally |
+| alt+u | Show usage and cost |
 | pgup / pgdn | Scroll |
 | ctrl+c twice / ctrl+d | Close |
+
+Like Pi's own `alt` keys, `alt+u` takes a chord Neovim's insert mode reads as `esc` then
+`u`. Where the terminal delivers a quick `esc u` as that chord, as one without the kitty
+keyboard protocol may, it toggles the card instead of undoing; rebind `app.usage.toggle`
+if that bites.
 
 `/` completes commands. `/hotkeys` shows your bindings. Local conversations complete
 `@` paths and show the branch and GitHub pull request. `PITUITARY_GH=""` disables

@@ -8,7 +8,6 @@ export const palette = {
   faint: "#7c6f64",
   muted: "#a89984",
   text: "#ebdbb2",
-  bright: "#fbf1c7",
   red: "#fb4934",
   green: "#b8bb26",
   yellow: "#fabd2f",
@@ -69,8 +68,6 @@ export const brand = {
 /** Colours by role, so screens stay consistent. */
 export const theme = {
   bg: palette.bg,
-  bar: palette.bar,
-  barText: palette.text,
   user: palette.blue,
   assistant: palette.text,
   thinking: palette.faint,

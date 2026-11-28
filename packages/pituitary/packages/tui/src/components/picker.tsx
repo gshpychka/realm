@@ -1,6 +1,7 @@
 import type { InputRenderable } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CURRENT, type Hint, hintLine, MOVE, PICK, SELECTED, UNSELECTED } from "../hints.ts";
 import { type ListAction, matches } from "../keymap.ts";
 import { keyHint, useKeymap } from "../keymap-context.tsx";
 import { ellipsize } from "../text-width.ts";
@@ -138,24 +139,15 @@ export function Picker({
       if (item) bound.run(item.value, input.current?.value ?? query);
     }
   });
+  // The list's own keys, as the operator binds them; an unbound one has no hint.
   const keyHints =
-    spec.keys?.flatMap((each) => {
-      const hint = keyHint(bindings, each.action);
-      return hint ? [`${hint} ${each.label}`] : [];
+    spec.keys?.map((each): Hint | null => {
+      const keys = keyHint(bindings, each.action);
+      return keys ? [keys, each.label] : null;
     }) ?? [];
   // The cells inside the frame and its padding, and a row's after its selection mark.
-  const inner = width - (compact ? 0 : 2) - 2;
-  const cells = inner - 2;
-  const count = `${shown.length} of ${spec.items.length}`;
-  // The keys every list has go first when the list's own keys need the room.
-  const hints = [count, "↑↓ move", "enter pick", ...keyHints, "esc close"].join(" · ");
-  const hint =
-    width < 50
-      ? `enter pick · esc close · ${count}`
-      : Bun.stringWidth(hints) <= inner
-        ? hints
-        : ellipsize([count, ...keyHints, "esc close"].join(" · "), inner);
-
+  const inner = width - (compact ? 2 : 4);
+  const cells = inner - Bun.stringWidth(SELECTED);
   return (
     <box
       flexDirection="column"
@@ -173,8 +165,8 @@ export function Picker({
         move(direction === "up" ? -1 : 1);
       }}
     >
-      <text selectable={false} fg={theme.user} truncate wrapMode="none">
-        {spec.title}
+      <text selectable={false} fg={theme.user} wrapMode="none">
+        {ellipsize(spec.title, inner)}
       </text>
       <box flexDirection="row">
         <text selectable={false} fg={theme.dim}>
@@ -186,6 +178,9 @@ export function Picker({
           flexGrow={1}
           value={spec.query ?? ""}
           placeholder="type to narrow"
+          placeholderColor={theme.dim}
+          textColor={theme.assistant}
+          focusedTextColor={theme.assistant}
           onInput={(value: string) => {
             setQuery(value);
             select(0);
@@ -224,14 +219,18 @@ export function Picker({
               flexShrink={0}
               wrapMode="none"
             >
-              {chosen ? "▸ " : "  "}
+              {chosen ? SELECTED : UNSELECTED}
             </text>
             <Row item={item} cells={cells} />
           </box>
         );
       })}
-      <text selectable={false} fg={theme.dim} truncate wrapMode="none">
-        {hint}
+      <text selectable={false} fg={theme.dim} wrapMode="none">
+        {hintLine(
+          [MOVE, PICK, ...keyHints, ["esc", "close"]],
+          `${shown.length} of ${spec.items.length}`,
+          inner,
+        )}
       </text>
     </box>
   );
@@ -239,12 +238,16 @@ export function Picker({
 
 /**
  * One item: its label cut at the end to the room its detail leaves, and the detail at the right
- * edge, so details line up down the list. The detail takes at most half the row.
+ * edge, so details line up down the list. The detail takes at most half the row. The item in
+ * effect now says so after its label, cutting the label for the mark unless that would leave
+ * the label narrower than the mark.
  */
 function Row({ item, cells }: { item: PickItem; cells: number }) {
   const icon = item.icon ? Bun.stringWidth(item.icon.glyph) + 1 : 0;
   const detail = item.detail ? ellipsize(item.detail, Math.floor(cells / 2) - 1 - icon) : "";
   const room = cells - (detail ? Bun.stringWidth(detail) + 1 + icon : 0);
+  const mark = Bun.stringWidth(CURRENT);
+  const current = Boolean(item.current) && room >= 2 * mark;
   return (
     <>
       <text
@@ -254,7 +257,8 @@ function Row({ item, cells }: { item: PickItem; cells: number }) {
         minWidth={0}
         wrapMode="none"
       >
-        {ellipsize(item.label, room)}
+        {ellipsize(item.label, current ? room - mark : room)}
+        {current ? CURRENT : null}
       </text>
       {detail ? (
         <text selectable={false} flexShrink={0} wrapMode="none">

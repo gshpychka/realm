@@ -11,6 +11,7 @@ after(async () => {
 const BOLT = "\u{f140b}";
 
 test("/fast marks the ChatGPT model in the footer and asks the provider for priority", async () => {
+  // The footer names the model as Pi's registry does.
   const app = await launchPi();
   try {
     app.provider.reply("Answered at priority.");
@@ -19,21 +20,20 @@ test("/fast marks the ChatGPT model in the footer and asks the provider for prio
     await app.terminal.waitText("answer faster on ChatGPT models");
     await app.capture("fast-command");
     await app.terminal.keyboard.press("Enter");
-    await waitMatch(app.terminal, new RegExp(`gpt-6\\.1-sol ${BOLT}`));
+    await waitMatch(app.terminal, new RegExp(`GPT-6\\.1 Sol ${BOLT}`));
     await app.terminal.submit("hurry");
     await app.terminal.waitText("Answered at priority.");
     await app.terminal.waitIdle();
     const screen = await app.capture("fast-on");
-    assert.match(screen, new RegExp(`gpt-6\\.1-sol ${BOLT}`));
+    assert.match(screen, new RegExp(`GPT-6\\.1 Sol ${BOLT}`));
     assert.deepEqual(
       app.provider.requests.map((request) => request.body.service_tier),
       ["priority"],
     );
     await app.terminal.submit("/fast");
-    await waitMatch(app.terminal, new RegExp(`gpt-6\\.1-sol(?! ${BOLT})`));
+    await waitMatch(app.terminal, new RegExp(`GPT-6\\.1 Sol(?! ${BOLT})`));
     await app.capture("fast-off");
   } finally {
     await app.close();
-    await app.provider.close();
   }
 });

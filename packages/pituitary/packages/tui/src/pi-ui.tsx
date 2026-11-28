@@ -1,10 +1,12 @@
 import type { CliRenderer } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import { plain } from "@pituitary/session";
 import { type RefObject, useEffect, useSyncExternalStore } from "react";
 import type { DialogRequest, DialogResponse } from "./components/dialog.tsx";
 import type { EditorHandle } from "./components/editor.tsx";
 import type { PiUiPort } from "./pi.ts";
 import { type PiUiState, type PiWidget, piUiStore } from "./pi-ui-store.ts";
+import { ellipsize } from "./text-width.ts";
 import { theme } from "./theme.ts";
 import type { SessionController } from "./use-session.ts";
 
@@ -41,8 +43,13 @@ export function usePiUI(
     return () => clearTimeout(timer);
   }, [store, questions]);
 
-  const dialogs: DialogRequest[] = questions.map(({ request }): DialogRequest => {
-    const base = { type: "dialog" as const, id: request.id, title: plain(request.title) };
+  const dialogs: DialogRequest[] = questions.map(({ request, deadline }): DialogRequest => {
+    const base = {
+      type: "dialog" as const,
+      id: request.id,
+      title: plain(request.title),
+      ...(deadline ? { deadline } : {}),
+    };
     switch (request.method) {
       case "select":
         return { ...base, method: "select", options: request.options.map(plain) };
@@ -76,6 +83,19 @@ export function PiWidgets({ widgets, placement }: { widgets: PiWidget[]; placeme
   return (
     <box paddingLeft={1} flexShrink={0} maxHeight={5} overflow="hidden">
       <text fg={theme.dim}>{lines.join("\n")}</text>
+    </box>
+  );
+}
+
+/** Extension statuses on one line under the editor, inset like the widgets beside them. */
+export function PiStatuses({ statuses }: { statuses: readonly string[] }) {
+  const { width } = useTerminalDimensions();
+  if (!statuses.length) return null;
+  return (
+    <box paddingLeft={1} paddingRight={1} flexShrink={0} height={1}>
+      <text fg={theme.dim} wrapMode="none">
+        {ellipsize(statuses.join(" · "), width - 2)}
+      </text>
     </box>
   );
 }

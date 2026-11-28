@@ -53,6 +53,8 @@ export interface EditorProps {
   steering: boolean;
   /** False while something else, such as a dialog, holds the keyboard. */
   focused: boolean;
+  /** What the operator calls the agent, such as `pi` or `the builder` for a Dura task's role. */
+  agent: string;
   /** Draft and cursor restored when this conversation is attached. */
   initialDraft?: string;
   initialCursor?: number;
@@ -147,6 +149,7 @@ function PlainEditor({
   onSubmit,
   steering,
   focused,
+  agent,
   initialDraft,
   initialCursor,
   note,
@@ -195,7 +198,7 @@ function PlainEditor({
   const shownRows = Math.min(rows, maxRows);
 
   return (
-    <EditorFrame signal={{}} rows={shownRows} note={note} confirm={confirm} mark={draftMark(steering)}>
+    <EditorFrame rows={shownRows} note={note} confirm={confirm} mark={draftMark(steering)}>
       <textarea
         ref={area}
         focused={focused}
@@ -204,7 +207,7 @@ function PlainEditor({
         keyBindings={BINDINGS}
         textColor={theme.assistant}
         placeholderColor={theme.dim}
-        placeholder={steering ? "queue a steering message" : "ask pi"}
+        placeholder={steering ? "queue a steering message" : `ask ${agent}`}
         onContentChange={measure}
         onSizeChange={measure}
         onCursorChange={measure}

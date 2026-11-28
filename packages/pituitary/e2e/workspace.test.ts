@@ -42,6 +42,10 @@ test("a remote agent shows its own workspace and never offers the operator's fil
     assert.match(attached, /builder:\/work/);
     assert.doesNotMatch(attached, /HOST_ONLY_BRANCH|host-checkout|#999/);
     assert.doesNotMatch(attached, /files to mention|pick a model|take the next model/);
+    // A Dura conversation calls its agent by role, never pi.
+    assert.match(attached, /Ask the builder something to get started/);
+    assert.match(attached, /queue a follow-up while the builder works/);
+    assert.match(attached, /» ask the builder/);
     assert.equal(existsSync(ghCalls), false, "remote footer invoked the operator's GitHub CLI");
     await app.terminal.submit("/model");
     await app.terminal.waitText("The model is declared by this agent's role.");

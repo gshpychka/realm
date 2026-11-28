@@ -142,7 +142,7 @@ const EMBERS_CPU_SHARE = 0.08;
 
 test("typing stays prompt with the corner fire burning", async () => {
   const app = await launch({ scenario: "hello", cols: WIDE, settle: false, env: { PITUITARY_STILL: "0" } });
-  await app.terminal.waitText("faux-1");
+  await app.terminal.waitText("Faux Model");
   const echo = summarise(await echoes(app.terminal, 40));
   record("echo-embers", { echo }, `p95 < ${ECHO_P95_MS}ms`);
   assert.ok(echo.p95 < ECHO_P95_MS, JSON.stringify(echo));
@@ -162,7 +162,7 @@ test("an idle UI with the corner fire burning draws once a step and stays light 
       record: true,
       env: { PITUITARY_STILL: still ? "1" : "0" },
     });
-    await app.terminal.waitText("faux-1");
+    await app.terminal.waitText("Faux Model");
     await new Promise((resolve) => setTimeout(resolve, 500));
     const pid = uiPid(app.home);
     const cpu = cpuMs(pid);

@@ -42,8 +42,8 @@ export interface Pi {
   keymap: Keymap;
   /** Runs `/name args` when it is a session command or one of Pi's screens; false for anything else. */
   run(name: string, args: string): boolean;
-  /** Opens or closes the provider usage card, through Pituitary's usage extension. */
-  toggleUsage(): void;
+  /** Opens or closes the provider usage card, through Pituitary's usage extension, whatever Pi named its command. */
+  showUsage(open: boolean): void;
 }
 
 const subscribeNone = () => () => {};
@@ -101,10 +101,13 @@ export function usePi({ pi, session, editor, pick, ask, flash, terminal }: UsePi
     commands,
     keymap,
     run: actions.run,
-    toggleUsage: () => {
+    showUsage: (open) => {
       const name = link.commandOf(PI_EXTENSIONS.usage);
       if (!name) session.notify("warning", "Pi has not loaded Pituitary's provider usage extension.");
-      else void link.prompt(`/${name}`).catch((error) => session.notify("warning", describe(error)));
+      else
+        void link
+          .prompt(`/${name} ${open ? "on" : "off"}`)
+          .catch((error) => session.notify("warning", describe(error)));
     },
   };
 }

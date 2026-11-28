@@ -29,6 +29,13 @@ export type PiUiEffect =
 
 const EMPTY: PiUiState = { questions: [], statuses: {}, widgets: {}, fast: false };
 
+/**
+ * How much sooner than Pi a timed question closes. Pi's own timer starts as it sends the
+ * question and answers with the default when it fires; closing first answers it with that
+ * same default, so the notice saying so lands before whatever the extension does next.
+ */
+const AHEAD_OF_PI_MS = 250;
+
 /** Extension counters that belong in their own commands' views, such as /automode status and /rewind. */
 const UNSHOWN = new Set(["pi-automode", "rewind"]);
 
@@ -94,12 +101,18 @@ export class PiUiStore {
     this.set({ questions: this.state.questions.filter(({ request }) => request.id !== question.id) });
     return true;
   }
-  /** Cancels each question whose deadline has passed by `now`. */
+  /** Cancels each question whose deadline has passed by `now`, and says it timed out. */
   expire(now: number): void {
     const expired = this.state.questions.filter(({ deadline }) => deadline !== undefined && deadline <= now);
     if (!expired.length) return;
-    for (const { request } of expired)
+    for (const { request } of expired) {
       this.port.respond({ type: "extension_ui_response", id: request.id, cancelled: true });
+      this.effect({
+        kind: "notify",
+        level: "info",
+        text: `The question timed out: ${plain(request.title).split("\n")[0]}`,
+      });
+    }
     this.set({ questions: this.state.questions.filter((question) => !expired.includes(question)) });
   }
 
@@ -134,7 +147,9 @@ export class PiUiStore {
             ...this.state.questions,
             {
               request,
-              ...("timeout" in request && request.timeout ? { deadline: Date.now() + request.timeout } : {}),
+              ...("timeout" in request && request.timeout
+                ? { deadline: Date.now() + Math.max(0, request.timeout - AHEAD_OF_PI_MS) }
+                : {}),
             },
           ],
         });

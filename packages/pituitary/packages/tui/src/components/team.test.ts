@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { RunDetail } from "@realm/dura/types";
-import { readyToApply, taskState } from "./team.tsx";
+import { byteSize, narrowTasks, readyToApply, taskState, teamPanelWidth, timeLeft } from "./team.tsx";
 
 const task = {
   id: "builder",
@@ -58,4 +58,57 @@ test("task errors stay on one line in the sidebar", () => {
     error: "Image unavailable\nlong diagnostics",
   } as RunDetail["attempts"][number];
   expect(taskState({ ...detail, attempts: [attempt] }, task)).toBe("Image unavailable");
+});
+
+test("a narrow screen shows the children that need the operator first, and counts the rest", () => {
+  const child = (id: string, status: RunDetail["tasks"][number]["status"]) =>
+    ({
+      ...task,
+      id,
+      status,
+      parentTaskId: "coordinator",
+      currentAttemptId: `attempt-${id}`,
+    }) as RunDetail["tasks"][number];
+  const team = {
+    ...detail,
+    tasks: [
+      child("done", "accepted"),
+      child("broken", "failed"),
+      child("asking", "waiting"),
+      child("late", "conflicted"),
+    ],
+    questions: [{ id: "question", taskId: "asking", status: "open" }],
+  } as unknown as RunDetail;
+  const shown = narrowTasks(team, "coordinator");
+  expect(shown.tasks.map((item) => item.id)).toEqual(["asking", "broken"]);
+  expect(shown.hidden).toBe(2);
+  expect(shown.hiddenFailed).toBe(1);
+  expect(narrowTasks(team, "done")).toEqual({ tasks: [], hidden: 0, hiddenFailed: 0 });
+});
+
+test("the wide panel takes a share of the screen, within bounds", () => {
+  expect(teamPanelWidth(120)).toBe(36);
+  expect(teamPanelWidth(100)).toBe(35);
+  expect(teamPanelWidth(148)).toBe(44);
+  expect(teamPanelWidth(300)).toBe(60);
+});
+
+test("sizes and deadlines read as the operator says them", () => {
+  expect(byteSize(1)).toBe("1 byte");
+  expect(byteSize(512)).toBe("512 bytes");
+  expect(byteSize(1536)).toBe("1.5 KiB");
+  expect(byteSize(8192)).toBe("8 KiB");
+  expect(byteSize(222_222)).toBe("217 KiB");
+  expect(byteSize(64 * 1024 * 1024)).toBe("64 MiB");
+  expect(timeLeft(1_000, 5_000)).toEqual({ text: "overdue", holds: null });
+});
+
+test("a deadline counts down by the minute, hours past an hour, and seconds only in its last minute", () => {
+  expect(timeLeft(4 * 3_600_000 + 1_000, 1_000)).toEqual({ text: "4h 0m left", holds: 1_000 });
+  // Forty-four and a half minutes read as forty-four until fewer than forty-four whole minutes remain.
+  expect(timeLeft(44 * 60_000 + 30_000, 0)).toEqual({ text: "44m left", holds: 31_000 });
+  expect(timeLeft(44 * 60_000 - 1_000, 0).text).toBe("43m left");
+  expect(timeLeft(59_500, 0)).toEqual({ text: "1m left", holds: 500 });
+  expect(timeLeft(59_000, 0)).toEqual({ text: "59s left", holds: 1_000 });
+  expect(timeLeft(1, 0)).toEqual({ text: "1s left", holds: 1 });
 });

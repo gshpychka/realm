@@ -1,5 +1,5 @@
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { boot, type Harness, REPO } from "./harness.ts";
@@ -9,15 +9,24 @@ export const PI_CLI = join(
   REPO,
   "packages/tui/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
 );
-/** The ChatGPT model the scenarios talk to; Pi knows it from its catalog. */
+/** The ChatGPT model the scenarios talk to unless they bring API models; Pi knows it from its catalog. */
 export const MODEL = "gpt-6.1-sol";
+/** MODEL as Pi's catalog names it, which the footer shows. */
+export const MODEL_NAME = "GPT-6.1 Sol";
+/** The placeholder key Pi signs in to API models with, which nothing may show. */
+export const API_KEY = "fixture-secret";
 const MAIN = join(REPO, "packages/tui/src/main.tsx");
 
 /**
- * What the provider answers one request with: the reply's text, OpenAI Responses stream events,
- * or a reply that starts streaming and finishes only once `until` settles, keeping Pi at work.
+ * What the provider answers one request with: the reply's text, or that text with response
+ * headers, such as a provider's rate limits, and an `until` that holds the reply's end back
+ * until it settles, keeping Pi at work; or an error status with its JSON body. Text streams in
+ * the API the request came in.
  */
-export type Reply = string | { events: readonly unknown[] } | { text: string; until: Promise<unknown> };
+export type Reply =
+  | string
+  | { text: string; until?: Promise<unknown>; headers?: Record<string, string> }
+  | { status: number; body: unknown };
 
 /** A request the provider received: its JSON body, and the latest prompt in it. */
 export interface Received {
@@ -25,7 +34,7 @@ export interface Received {
   prompt: string;
 }
 
-/** A stand-in for OpenAI's Responses API on localhost, answering from a script. */
+/** A stand-in for OpenAI's Responses and Chat Completions APIs on localhost, answering from a script. */
 export interface Provider {
   /** Every request so far, in order. */
   readonly requests: Received[];
@@ -35,23 +44,58 @@ export interface Provider {
   close(): Promise<void>;
 }
 
-/** The stream of one finished reply whose text is `text`. */
-export function replyEvents(text: string): unknown[] {
-  const item = { type: "message", id: "msg", role: "assistant" };
-  return [
-    { type: "response.created", response: { id: "resp", status: "in_progress" } },
-    { type: "response.output_item.added", output_index: 0, item: { ...item, content: [] } },
-    {
-      type: "response.output_item.done",
-      output_index: 0,
-      item: { ...item, content: [{ type: "output_text", text }] },
-    },
-    {
-      type: "response.completed",
-      response: { id: "resp", status: "completed", usage: { input_tokens: 1, output_tokens: 1 }, output: [] },
-    },
-  ];
+/** A model Pi reaches with an API key over Chat Completions, which `models.json` declares. */
+export interface ApiModel {
+  id: string;
+  /** What Pi's registry names it; without one Pi shows the id. */
+  name?: string;
 }
+
+/**
+ * One reply's stream in `api`, split where a held reply waits: the Responses API's after the
+ * reply has started and before its text, Chat Completions' after its text and before its end.
+ */
+function replyStream(api: Api, text: string): { head: unknown[]; tail: unknown[] } {
+  if (api === "completions") {
+    const chunk = (delta: Record<string, unknown>, finish: string | null) => ({
+      id: "chunk",
+      choices: [{ index: 0, delta, finish_reason: finish }],
+    });
+    return {
+      head: [chunk({ role: "assistant", content: text }, null)],
+      tail: [chunk({}, "stop"), "[DONE]"],
+    };
+  }
+  const item = { type: "message", id: "msg", role: "assistant" };
+  return {
+    head: [
+      { type: "response.created", response: { id: "resp", status: "in_progress" } },
+      { type: "response.output_item.added", output_index: 0, item: { ...item, content: [] } },
+    ],
+    tail: [
+      {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { ...item, content: [{ type: "output_text", text }] },
+      },
+      {
+        type: "response.completed",
+        response: {
+          id: "resp",
+          status: "completed",
+          usage: { input_tokens: 1, output_tokens: 1 },
+          output: [],
+        },
+      },
+    ],
+  };
+}
+
+type Api = "responses" | "completions";
+
+/** Server-sent events; a string goes out as it is, as Chat Completions' closing `[DONE]` does. */
+const sse = (events: readonly unknown[]) =>
+  events.map((event) => `data: ${typeof event === "string" ? event : JSON.stringify(event)}\n\n`).join("");
 
 /** Answers `Reply to: <prompt>` unless a test queued something else. */
 export async function fakeProvider(): Promise<Provider> {
@@ -64,22 +108,23 @@ export async function fakeProvider(): Promise<Provider> {
     });
     request.on("end", () => {
       const parsed = JSON.parse(body) as Record<string, unknown>;
+      const api = apiOf(request);
       const received = { body: parsed, prompt: latestPrompt(parsed) };
       requests.push(received);
       const reply = queued.shift() ?? `Reply to: ${received.prompt}`;
-      const events =
-        typeof reply === "string"
-          ? replyEvents(reply)
-          : "events" in reply
-            ? reply.events
-            : replyEvents(reply.text);
-      const stream = (part: readonly unknown[]) =>
-        part.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      if (typeof reply === "object" && "until" in reply) {
-        response.write(stream(events.slice(0, 2)));
-        void reply.until.then(() => response.end(stream(events.slice(2))));
-      } else response.end(stream(events));
+      if (typeof reply === "object" && "status" in reply) {
+        response.writeHead(reply.status, { "content-type": "application/json" });
+        response.end(JSON.stringify(reply.body));
+        return;
+      }
+      const { text, until, headers } = typeof reply === "string" ? { text: reply } : reply;
+      const { head, tail } = replyStream(api, text);
+      response.writeHead(200, { "content-type": "text/event-stream", ...headers });
+      if (!until) response.end(sse([...head, ...tail]));
+      else {
+        response.write(sse(head));
+        void until.then(() => response.end(sse(tail)));
+      }
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -91,10 +136,15 @@ export async function fakeProvider(): Promise<Provider> {
   };
 }
 
-/** The text of the last user item in a Responses request. */
+/** Which API a request came in: Pi posts Chat Completions to `/chat/completions`, Responses to `/responses`. */
+function apiOf(request: IncomingMessage): Api {
+  return request.url?.endsWith("/chat/completions") ? "completions" : "responses";
+}
+
+/** The text of the last user item in a Responses request, or the last user message in Chat Completions'. */
 function latestPrompt(body: Record<string, unknown>): string {
-  const input = Array.isArray(body.input) ? (body.input as Record<string, unknown>[]) : [];
-  const user = input.findLast((item) => item.role === "user");
+  const items = Array.isArray(body.input) ? body.input : Array.isArray(body.messages) ? body.messages : [];
+  const user = (items as Record<string, unknown>[]).findLast((item) => item.role === "user");
   if (!user) return "";
   if (typeof user.content === "string") return user.content;
   return (Array.isArray(user.content) ? (user.content as Record<string, unknown>[]) : [])
@@ -103,7 +153,7 @@ function latestPrompt(body: Record<string, unknown>): string {
 }
 
 export interface PiLaunchOptions {
-  /** Arguments for `pituitary`; the model comes first unless they choose another. */
+  /** Arguments for `pituitary`; the first model comes first unless they choose another. */
   argv?: string[];
   cols?: number;
   rows?: number;
@@ -112,11 +162,16 @@ export interface PiLaunchOptions {
   extensions?: Record<string, string>;
   /** Runs a Pi that never loads Pituitary's bridge extension, as a Pi that failed to load it. */
   withoutBridge?: boolean;
-  /** An earlier launch's HOME, whose sessions and provider this launch takes over. */
+  /**
+   * Models Pi reaches with API_KEY over Chat Completions on the provider. Without them Pi signs
+   * in to ChatGPT with a placeholder credential and talks to MODEL over the Responses API.
+   */
+  apiModels?: readonly ApiModel[];
+  /** An earlier launch's HOME, whose sessions, sign-in and provider this launch takes over. */
   from?: PiLaunch;
   /** The project directory inside HOME that Pituitary runs in. */
   project?: string;
-  /** Text on the first frame; the footer's model by default. */
+  /** Text on the first frame; the footer's model name by default. */
   ready?: string;
 }
 
@@ -130,12 +185,17 @@ export interface PiLaunch extends Harness {
   provider: Provider;
   /** The session files Pi has written for every project, oldest first. */
   sessions(): string[];
+  /**
+   * Closes Pituitary. The launch that made HOME also closes its provider and removes HOME, so a
+   * relaunch `from` it closes first.
+   */
+  close(): Promise<void>;
 }
 
 /**
- * Regular Pituitary, as `main.tsx` runs it, over the pinned Pi CLI in a throwaway HOME.
- * Pi signs in to ChatGPT with a placeholder credential and talks to `provider` on localhost,
- * so no request leaves the machine and every one can be inspected.
+ * Regular Pituitary, as `main.tsx` runs it, over the pinned Pi CLI in a throwaway HOME, with
+ * only the extensions a test names besides Pituitary's own. Pi talks to `provider` on
+ * localhost, so no request leaves the machine and every one can be inspected.
  */
 export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch> {
   const {
@@ -145,66 +205,96 @@ export async function launchPi(options: PiLaunchOptions = {}): Promise<PiLaunch>
     env = {},
     extensions = {},
     withoutBridge = false,
+    apiModels,
     from,
     project = "sample",
-    ready = MODEL,
   } = options;
+  const first = apiModels?.[0];
+  const ready = options.ready ?? (first ? (first.name ?? first.id) : MODEL_NAME);
   const home = from?.home ?? realpathSync(mkdtempSync("/tmp/pituitary-pi-"));
   const agent = join(home, ".pi", "agent");
   const cwd = join(home, project);
   const provider = from?.provider ?? (await fakeProvider());
-  mkdirSync(cwd, { recursive: true });
-  if (!from) {
-    mkdirSync(agent, { recursive: true });
-    writeFileSync(
-      join(agent, "auth.json"),
-      JSON.stringify({
-        openai: { type: "oauth", access: "chatgpt-fixture", refresh: "fixture", expires: Date.now() + 864e5 },
-      }),
-    );
-    writeFileSync(
-      join(agent, "models.json"),
-      JSON.stringify({ providers: { openai: { baseUrl: `http://127.0.0.1:${provider.port}/v1` } } }),
-    );
-    writeFileSync(join(agent, "settings.json"), JSON.stringify({ retry: { enabled: false } }));
-  }
-  const loaded = Object.entries(extensions).map(([name, source]) => {
-    const path = join(home, "extensions", name);
-    mkdirSync(join(home, "extensions"), { recursive: true });
-    writeFileSync(path, source);
-    return path;
-  });
-  const pi = [PI_CLI, "--no-extensions", "--no-skills", ...loaded.flatMap((path) => ["--extension", path])];
-  const harness = await boot({
-    entry: MAIN,
-    argv: argv.includes("--model") ? argv : ["--model", `openai/${MODEL}`, ...argv],
-    cwd,
-    cols,
-    rows,
-    ready,
-    env: {
-      HOME: home,
-      XDG_CONFIG_HOME: join(home, ".config"),
-      PI_AGENT_CMD: "node",
-      PI_AGENT_ARGS: (withoutBridge ? [bridgeless(home), ...pi] : pi).join(" "),
-      PI_CODING_AGENT_DIR: agent,
-      PI_OFFLINE: "1",
-      PI_SKIP_VERSION_CHECK: "1",
-      PI_TELEMETRY: "0",
-      PITUITARY_STILL: "1",
-      PITUITARY_GH: "",
-      PITUITARY_LOG: join(home, "tui.log"),
-      ...env,
-    },
-  });
-  return {
-    ...harness,
-    home,
-    cwd,
-    agent,
-    provider,
-    sessions: () => sessionFiles(join(agent, "sessions")),
+  const owned = async () => {
+    await provider.close();
+    rmSync(home, { recursive: true, force: true });
   };
+  try {
+    mkdirSync(cwd, { recursive: true });
+    if (!from) signIn(agent, provider, apiModels);
+    const loaded = Object.entries(extensions).map(([name, source]) => {
+      const path = join(home, "extensions", name);
+      mkdirSync(join(home, "extensions"), { recursive: true });
+      writeFileSync(path, source);
+      return path;
+    });
+    const pi = [PI_CLI, "--no-extensions", "--no-skills", ...loaded.flatMap((path) => ["--extension", path])];
+    const model = first ? `openai/${first.id}` : `openai/${MODEL}`;
+    const harness = await boot({
+      entry: MAIN,
+      argv: argv.includes("--model") ? argv : ["--model", model, ...argv],
+      cwd,
+      cols,
+      rows,
+      ready,
+      env: {
+        HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
+        PI_AGENT_CMD: "node",
+        PI_AGENT_ARGS: (withoutBridge ? [bridgeless(home), ...pi] : pi).join(" "),
+        PI_CODING_AGENT_DIR: agent,
+        PI_OFFLINE: "1",
+        PI_SKIP_VERSION_CHECK: "1",
+        PI_TELEMETRY: "0",
+        PITUITARY_STILL: "1",
+        PITUITARY_GH: "",
+        PITUITARY_LOG: join(home, "tui.log"),
+        ...env,
+      },
+    });
+    return {
+      ...harness,
+      home,
+      cwd,
+      agent,
+      provider,
+      sessions: () => sessionFiles(join(agent, "sessions")),
+      close: async () => {
+        try {
+          await harness.close();
+        } finally {
+          if (!from) await owned();
+        }
+      },
+    };
+  } catch (error) {
+    if (!from) await owned();
+    throw error;
+  }
+}
+
+/** Pi's agent directory signed in to the provider: ChatGPT by default, or an API key for `apiModels`. */
+function signIn(agent: string, provider: Provider, apiModels: readonly ApiModel[] | undefined) {
+  const baseUrl = `http://127.0.0.1:${provider.port}/v1`;
+  mkdirSync(agent, { recursive: true });
+  writeFileSync(
+    join(agent, "auth.json"),
+    JSON.stringify({
+      openai: apiModels
+        ? { type: "api_key", key: API_KEY }
+        : { type: "oauth", access: "chatgpt-fixture", refresh: "fixture", expires: Date.now() + 864e5 },
+    }),
+  );
+  writeFileSync(
+    join(agent, "models.json"),
+    JSON.stringify({
+      providers: {
+        openai: apiModels ? { baseUrl, api: "openai-completions", models: apiModels } : { baseUrl },
+      },
+    }),
+  );
+  // A refused request shows as it failed, rather than after Pi's retries.
+  writeFileSync(join(agent, "settings.json"), JSON.stringify({ retry: { enabled: false } }));
 }
 
 /** A script that runs Pi with every argument but the one loading Pituitary's bridge extension. */

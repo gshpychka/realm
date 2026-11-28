@@ -29,9 +29,10 @@ test("a narrow reply includes every wrapped row beside its mark in its first fra
     flushSync(() =>
       root.render(
         <Conversation
+          agent="pi"
           entries={entries}
           running={false}
-          display={{ expanded: false, thinking: false, escapes: "esc esc" }}
+          display={{ expanded: false, thinking: false, escapes: "esc esc", commands: new Set() }}
           window={100}
           browsing={false}
           onLeave={() => {}}
@@ -73,9 +74,10 @@ test("narrowing a long reply keeps its wrapped tail in view", async () => {
     flushSync(() =>
       root.render(
         <Conversation
+          agent="pi"
           entries={entries}
           running={false}
-          display={{ expanded: false, thinking: false, escapes: "esc esc" }}
+          display={{ expanded: false, thinking: false, escapes: "esc esc", commands: new Set() }}
           window={100}
           browsing={false}
           onLeave={() => {}}
@@ -124,9 +126,10 @@ test("a narrow streamed reply keeps its latest line visible through completion",
     ];
     return (
       <Conversation
+        agent="pi"
         entries={entries}
         running={!reply.done}
-        display={{ expanded: false, thinking: false, escapes: "esc esc" }}
+        display={{ expanded: false, thinking: false, escapes: "esc esc", commands: new Set() }}
         window={100}
         browsing={false}
         onLeave={() => {}}
@@ -175,9 +178,10 @@ test("loading earlier history moves back one page while keeping the reading posi
     load = () => setActive(true);
     return (
       <Conversation
+        agent="pi"
         entries={active ? entries : []}
         running={false}
-        display={{ expanded: false, thinking: false, escapes: "esc" }}
+        display={{ expanded: false, thinking: false, escapes: "esc", commands: new Set() }}
         window={window}
         browsing={false}
         onLeave={() => {}}
@@ -226,9 +230,10 @@ test("a history prepend with unchanged geometry cannot anchor a later resize", a
     expand = () => setExpanded(true);
     return (
       <Conversation
+        agent="pi"
         entries={entries}
         running={false}
-        display={{ expanded, thinking: true, escapes: "esc" }}
+        display={{ expanded, thinking: true, escapes: "esc", commands: new Set() }}
         window={window}
         browsing={false}
         onLeave={() => {}}

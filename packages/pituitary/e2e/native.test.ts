@@ -32,7 +32,7 @@ test("a local conversation chooses a configured native model before its first pr
     assert.match(picker, /faux-2/);
     await app.terminal.type("faux-2");
     await app.terminal.keyboard.press("Enter");
-    await app.terminal.waitText("model: faux/faux-2");
+    await app.terminal.waitText("model: Faux Fast · faux/faux-2");
     await app.terminal.submit("continue with this model");
     await app.terminal.waitText("You said: continue with this model");
     await app.capture("native-model-selected");

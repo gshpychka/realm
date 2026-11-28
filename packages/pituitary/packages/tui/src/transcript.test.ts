@@ -107,7 +107,7 @@ describe("transcriptOf", () => {
       id: "a1",
       text: "",
       streaming: false,
-      note: "the reply reached the output limit and stopped",
+      note: "the reply reached the output limit and stopped · ask it to continue",
     });
   });
 

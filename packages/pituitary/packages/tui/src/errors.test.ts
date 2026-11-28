@@ -1,29 +1,87 @@
 import { describe, expect, test } from "bun:test";
 import { explain } from "./errors.ts";
 
-describe("any other error", () => {
-  test("short words pass through untouched", () => {
+const PI_COMMANDS = new Set(["compact", "login"]);
+
+describe("what deals with an error", () => {
+  test("a full context offers /compact, where the operator can run it", () => {
+    expect(explain("400 invalid_request_error: prompt is too long", PI_COMMANDS)).toEqual({
+      text: "400 invalid_request_error: prompt is too long",
+      remedy: "/compact frees context",
+    });
     expect(explain("400 invalid_request_error: prompt is too long")).toEqual({
       text: "400 invalid_request_error: prompt is too long",
     });
-    expect(explain("529 overloaded_error")).toEqual({ text: "529 overloaded_error" });
   });
 
-  test("a stack trace is dropped, and the error's class with it", () => {
+  test("a refused credential offers /login only where /login exists", () => {
+    expect(explain('401 {"error":{"message":"invalid x-api-key"}}', PI_COMMANDS).remedy).toBe(
+      "/login signs in again",
+    );
+    expect(explain("OAuth token has expired", new Set(["compact"])).remedy).toBeUndefined();
+  });
+
+  test("a refused permission is not a sign-in problem, so it offers no /login", () => {
+    const refused =
+      '403 {"type":"error","error":{"type":"permission_error","message":"Your API key does not have permission to use the specified resource."}}';
+    expect(explain(refused, PI_COMMANDS)).toEqual({
+      text: "403 Your API key does not have permission to use the specified resource.",
+      detail: refused,
+    });
+  });
+
+  test("a status is read where providers put it, never from a stack frame's line number", () => {
+    const crash =
+      "TypeError: Cannot read properties of undefined (reading 'x')\n    at run (/ext/index.ts:401:9)\n    at go (/ext/loop.ts:529:3)";
+    expect(explain(crash, PI_COMMANDS).remedy).toBeUndefined();
+    expect(explain("Error: boom\n    at f (/x/y.ts:429:3)").remedy).toBeUndefined();
+    expect(explain("Request failed with status code 529").remedy).toBe("wait a moment, then send again");
+  });
+
+  test("an overloaded or rate-limited provider asks for patience", () => {
+    expect(explain("529 overloaded_error")).toEqual({
+      text: "529 overloaded_error",
+      remedy: "wait a moment, then send again",
+    });
+    expect(explain("429 Too Many Requests").remedy).toBe("wait a moment, then send again");
+  });
+
+  test("an error's own `Use /…` sentence stays in the brief, and the detail adds only what it leaves out", () => {
+    const thrown = [
+      "No API key found for the selected model.",
+      "",
+      "Use /login to log into a provider via OAuth or API key. See:",
+      "  /docs/providers.md",
+      "  /docs/models.md",
+    ].join("\n");
+    expect(explain(thrown, PI_COMMANDS)).toEqual({
+      text: "No API key found for the selected model. Use /login to log into a provider via OAuth or API key.",
+      detail: "See:\n  /docs/providers.md\n  /docs/models.md",
+    });
+  });
+});
+
+describe("any other error", () => {
+  test("short words pass through untouched", () => {
+    expect(explain("Tool failed: exit 1")).toEqual({ text: "Tool failed: exit 1" });
+  });
+
+  test("a stack trace is dropped from the brief, and the detail shows only the stack", () => {
     const thrown =
       "TypeError: Cannot read properties of undefined (reading 'x')\n    at run (/ext/index.ts:4:9)";
     expect(explain(thrown)).toEqual({
       text: "Cannot read properties of undefined (reading 'x')",
-      original: thrown,
+      detail: "at run (/ext/index.ts:4:9)",
     });
   });
 
-  test("a response body reads as its message", () => {
-    expect(
-      explain(
-        '400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}',
-      ).text,
-    ).toBe("400 prompt is too long: 210000 tokens > 200000 maximum");
+  test("a response body reads as its message, and the body is kept as the detail", () => {
+    const body =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 210000 tokens > 200000 maximum"}}';
+    expect(explain(body)).toEqual({
+      text: "400 prompt is too long: 210000 tokens > 200000 maximum",
+      detail: body,
+    });
   });
 
   test("a body that carries no message is left as it is", () => {
@@ -36,11 +94,11 @@ describe("any other error", () => {
     ).toBe("Token exchange request failed.");
   });
 
-  test("a long line is cut at a word, and only the first line shows", () => {
+  test("a long line is cut at a word, and the detail keeps it whole", () => {
     const long = `${"word ".repeat(60)}\nsecond line`;
-    const { text, original } = explain(long);
+    const { text, detail } = explain(long);
     expect(text.length).toBeLessThanOrEqual(160);
     expect(text.endsWith("word…")).toBe(true);
-    expect(original).toBe(long);
+    expect(detail).toBe(`${"word ".repeat(60).trimEnd()}\nsecond line`);
   });
 });

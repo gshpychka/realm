@@ -67,7 +67,8 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     await app.terminal.waitText("resume · this project's sessions");
     await app.terminal.waitIdle();
     const listed = await app.capture("sessions-resume");
-    assert.match(listed, /▸ second question +just now · 1 prompt +│/);
+    // The session Pi has open says so, and the details line up at the right edge.
+    assert.match(listed, /▶ second question · current +just now · 1 prompt +│/);
     assert.match(listed, / {2}first question +just now · 1 prompt +│/);
     assert.match(listed, /ctrl\+r rename · ctrl\+x delete · tab every project/);
     // As in Pi's own list, tab switches between this project's sessions and every project's.
@@ -76,7 +77,7 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     await app.terminal.waitText("tab this project");
     await app.terminal.write("\t");
     await app.terminal.waitText("resume · this project's sessions");
-    await app.terminal.waitText("▸ second question");
+    await app.terminal.waitText("▶ second question");
 
     // The session Pi has open is renamed through Pi, another in its own file.
     await app.terminal.write(CTRL_R);
@@ -84,8 +85,8 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     await pastGrace();
     await app.terminal.type("Ongoing");
     await app.terminal.keyboard.press("Enter");
-    await app.terminal.waitText("▸ Ongoing");
-    await press(app.terminal, DOWN, "▸ first question");
+    await app.terminal.waitText("▶ Ongoing");
+    await press(app.terminal, DOWN, "▶ first question");
     await app.terminal.write(CTRL_R);
     await app.terminal.waitText("Rename “first question”");
     await pastGrace();
@@ -93,12 +94,17 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     await app.terminal.waitText("Planning");
     await app.capture("sessions-rename-dialog");
     await app.terminal.keyboard.press("Enter");
-    await app.terminal.waitText("▸ Planning");
+    await app.terminal.waitText("▶ Planning");
     await app.terminal.waitIdle();
     await app.capture("sessions-renamed");
     // The picker's frame closes at the new right edge once it has drawn at the new size.
     await app.terminal.resize(80, 24);
     await waitMatch(app.terminal, /this project's sessions {20,}│/);
+    // A narrow hint keeps the list's own keys, the way out and the count, before moving and picking.
+    await waitMatch(
+      app.terminal,
+      /^│ ctrl\+r rename · ctrl\+x delete · tab every project · esc close · 2 of 2 +│$/m,
+    );
     await app.capture("sessions-resume-80");
     await app.terminal.resize(100, 28);
     await waitMatch(app.terminal, /this project's sessions {40,}│/);
@@ -137,7 +143,7 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     // The filter finds a renamed session by its first prompt too.
     await again.terminal.type("second");
     await again.terminal.waitText("1 of 2");
-    await again.terminal.waitText("▸ Ongoing");
+    await again.terminal.waitText("▶ Ongoing");
     await again.terminal.keyboard.press("Enter");
     await again.terminal.waitText("Reply to: second question");
     await again.terminal.waitText("Working in ~/sample, where this session started");
@@ -159,9 +165,9 @@ test("sessions are started afresh, listed, renamed and resumed without leaving t
     assert.match(exported, /~\/other\/pi-session-\S+\.html/);
     assert.equal(readdirSync(again.cwd).filter((name) => name.endsWith(".html")).length, 1);
   } finally {
-    await app.close();
+    // The relaunch closes first: closing the launch it came from removes their HOME.
     await again?.close();
-    await app.provider.close();
+    await app.close();
   }
 });
 
@@ -177,7 +183,7 @@ test("a fork puts an earlier prompt in place of the draft; a clone copies the se
     await app.terminal.waitText("fork · a new session from before an earlier prompt");
     await app.terminal.waitIdle();
     const picker = await app.capture("sessions-fork-picker");
-    assert.match(picker, /▸ beta +latest prompt · \d\d:\d\d/);
+    assert.match(picker, /▶ beta +latest prompt · \d\d:\d\d/);
     assert.match(picker, /alpha +1 prompt ago/);
     await app.terminal.keyboard.press("Enter");
     await app.terminal.waitText(
@@ -206,7 +212,7 @@ test("a fork puts an earlier prompt in place of the draft; a clone copies the se
     await app.terminal.waitText("resume · this project's sessions");
     await app.terminal.write(CTRL_X);
     await app.terminal.waitText("Pi has this session open, so it stays");
-    await press(app.terminal, UP, "▸ alpha");
+    await press(app.terminal, UP, "▶ alpha");
     await app.terminal.write(CTRL_X);
     await app.terminal.waitText("Delete “alpha”? · just now · 2 prompts");
     await app.terminal.waitIdle();
@@ -244,7 +250,6 @@ test("a fork puts an earlier prompt in place of the draft; a clone copies the se
     assert.equal(app.provider.requests.length, 3);
   } finally {
     await app.close();
-    await app.provider.close();
   }
 });
 
@@ -278,7 +283,6 @@ test("a new session while Pi works takes the queued messages back into the draft
   } finally {
     release();
     await app.close();
-    await app.provider.close();
   }
 });
 
@@ -297,7 +301,6 @@ test("without Pituitary's bridge Pi is asked nothing, and extension failures are
     assert.match(failed, /demo\.ts · before_agent_start: demo handler exploded/);
   } finally {
     await app.close();
-    await app.provider.close();
   }
 });
 
@@ -329,6 +332,5 @@ test("Pi's own screens take the terminal and give it back with the conversation 
     assert.doesNotMatch(closed, /To resume this session|Press enter to run/);
   } finally {
     await app.close();
-    await app.provider.close();
   }
 });

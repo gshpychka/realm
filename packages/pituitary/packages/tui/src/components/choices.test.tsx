@@ -5,7 +5,7 @@ import { createRoot, flushSync } from "@opentui/react";
 import { act, type ReactNode } from "react";
 import { keymap } from "../keymap.ts";
 import { KeymapProvider } from "../keymap-context.tsx";
-import { Dialog, GRACE_MS } from "./dialog.tsx";
+import { Dialog, dialogTitle, GRACE_MS } from "./dialog.tsx";
 import { Picker } from "./picker.tsx";
 
 async function draw(view: ReactNode) {
@@ -50,9 +50,9 @@ const items = [
 test("a picker starts a narrowed search at its first result", async () => {
   const app = await draw(<Picker spec={{ title: "models", items, onPick() {} }} onClose={() => {}} />);
   try {
-    expect(app.captureCharFrame()).toContain("▸ other current");
+    expect(app.captureCharFrame()).toContain("▶ other current");
     await app.type("match");
-    expect(app.captureCharFrame()).toContain("▸ match first");
+    expect(app.captureCharFrame()).toContain("▶ match first");
   } finally {
     app.close();
   }
@@ -132,7 +132,7 @@ test("an empty picker can recover from arrow navigation without losing its selec
     await app.type("z");
     await app.key("ARROW_DOWN");
     await app.key("BACKSPACE");
-    expect(app.captureCharFrame()).toContain("▸ match first");
+    expect(app.captureCharFrame()).toContain("▶ match first");
     await app.key("RETURN");
     expect(picked).toBe("first");
   } finally {
@@ -167,16 +167,16 @@ test("the wheel moves a choice without moving the text filter", async () => {
   try {
     await act(async () => app.mockMouse.scroll(8, 4, "up"));
     await app.renderOnce();
-    expect(app.captureCharFrame()).toContain("▸ match second");
+    expect(app.captureCharFrame()).toContain("▶ match second");
     await act(async () => app.mockMouse.scroll(8, 4, "up"));
     await app.renderOnce();
-    expect(app.captureCharFrame()).toContain("▸ match first");
+    expect(app.captureCharFrame()).toContain("▶ match first");
   } finally {
     app.close();
   }
 });
 
-test("a long label is cut at its end, so the details line up at the right edge", async () => {
+test("a long label is cut at its end, so the details line up at the right edge past the current mark", async () => {
   const long = {
     label: `another session with a deliberately very long first prompt ${"x".repeat(40)}`,
     value: "long",
@@ -188,6 +188,7 @@ test("a long label is cut at its end, so the details line up at the right edge",
         items: [
           { ...long, detail: "3m ago · 5 prompts" },
           { label: "short", detail: "just now · 1 prompt", value: "short", keywords: "zebra topic" },
+          { label: "in effect", detail: "1h ago · 2 prompts", value: "now", current: true },
         ],
         onPick() {},
       }}
@@ -197,12 +198,16 @@ test("a long label is cut at its end, so the details line up at the right edge",
   try {
     const rows = app.captureCharFrame().split("\n");
     expect(rows.find((row) => row.includes("another session"))).toMatch(
-      /│ ▸ another session with a deliberately very long first pr… 3m ago · 5 prompts │/,
+      /│ {3}another session with a deliberately very long first pr… 3m ago · 5 prompts │/,
     );
     expect(rows.find((row) => row.includes("short"))).toMatch(/│ {3}short\s+just now · 1 prompt │/);
+    // The list starts on the item in effect, which says so after its label; its detail keeps the column.
+    expect(rows.find((row) => row.includes("in effect"))).toMatch(
+      /│ ▶ in effect · current\s+1h ago · 2 prompts │/,
+    );
     // Text the row does not show still finds it.
     await app.type("zebra");
-    expect(app.captureCharFrame()).toContain("▸ short");
+    expect(app.captureCharFrame()).toContain("▶ short");
   } finally {
     app.close();
   }
@@ -230,7 +235,7 @@ test("a list's own keys follow the operator's bindings, and its hint names them"
   try {
     // At 80 columns the keys every list has give way to the list's own.
     expect(app.captureCharFrame()).toContain(
-      "3 of 3 · ctrl+e rename · ctrl+x delete · tab every project · esc close",
+      "ctrl+e rename · ctrl+x delete · tab every project · esc close · 3 of 3",
     );
     await app.key("r", { ctrl: true });
     await app.key("e", { ctrl: true });
@@ -295,3 +300,38 @@ for (const method of ["select", "editor"] as const) {
     }
   });
 }
+
+test("a long question takes half the dialog, and pgup and pgdn scroll it", async () => {
+  const title = [
+    "builder asks",
+    ...Array.from({ length: 12 }, (_, line) => `paragraph line ${line + 1}`),
+  ].join("\n");
+  const app = await draw(
+    <Dialog
+      dialog={{ type: "dialog", id: "long", title, method: "select", options: ["yes", "no"] }}
+      behind={0}
+      rows={12}
+      onAnswer={() => {}}
+    />,
+  );
+  try {
+    let frame = app.captureCharFrame();
+    expect(frame).toContain("paragraph line 5");
+    expect(frame).not.toContain("paragraph line 6");
+    expect(frame).toContain("↑↓ move · enter pick · pgup pgdn scroll");
+    await app.key("\x1b[6~");
+    await app.key("\x1b[6~");
+    frame = app.captureCharFrame();
+    expect(frame).toContain("paragraph line 8");
+    expect(frame).not.toContain("builder asks");
+  } finally {
+    app.close();
+  }
+});
+
+test("a dialog's border counts the questions waiting and the seconds left", () => {
+  expect(dialogTitle(0, null)).toBeUndefined();
+  expect(dialogTitle(1, null)).toBe(" 1 of 2 ");
+  expect(dialogTitle(0, 7)).toBe(" auto-cancels in 7s ");
+  expect(dialogTitle(2, 0)).toBe(" 1 of 3 · auto-cancels in 0s ");
+});
