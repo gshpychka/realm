@@ -47,6 +47,8 @@ in
       updates.check = false;
       timezone = config.time.timeZone;
       approvals.mode = "off";
+      display.busy_input_mode = "steer";
+      agent.reasoning_effort = "xhigh";
       agent.service_tier = "fast";
       agent.restart_continue = true;
       model = {
